@@ -769,15 +769,36 @@ const TraitNames = (typeof TRAIT_DATA !== "undefined") ? TRAIT_DATA : {};
 /* CE data from craft_essences/craft_essences.js */
 const CEList = (() => {
   const map = (typeof CE_DATA !== "undefined") ? CE_DATA : {};
-  return Object.entries(map).map(([id, data]) => ({
-    id,
-    name: data.name || `CE ${id}`,
-    bonus: data.bonus || 0,
-    traits: Array.isArray(data.traits) ? data.traits : [],
-    matchAll: !!data.matchAll,
-    traitGroups: Array.isArray(data.traitGroups) ? data.traitGroups : [],
-    image: `craft_essences/${id}.webp`
-  })).sort((a, b) => a.id.localeCompare(b.id));
+  return Object.entries(map).map(([id, data]) => {
+    const isGroup = !!data.isGroup;
+    const base = {
+      id,
+      name: data.name || `CE ${id}`,
+      bonus: data.bonus || 0,
+      traits: Array.isArray(data.traits) ? data.traits : [],
+      matchAll: !!data.matchAll,
+      traitGroups: Array.isArray(data.traitGroups) ? data.traitGroups : [],
+      isGroup,
+      flatBonus: isGroup ? (data.flatBonus || 0) : 0,
+      image: `craft_essences/${id}.webp`
+    };
+    if (isGroup && data.options) {
+      const folder = data.folder || id;
+      base.options = Object.entries(data.options).map(([optId, opt]) => ({
+        id: optId,
+        name: opt.name || `CE ${optId}`,
+        image: `craft_essences/${folder}/${optId}.webp`
+      }));
+      // Use the specified groupImage option, fallback to option matching group ID, then first
+      const groupOpt = data.groupImage
+        ? base.options.find(o => o.id === data.groupImage)
+        : (base.options.find(o => o.id === id) || base.options[0]);
+      if (groupOpt) {
+        base.image = groupOpt.image;
+      }
+    }
+    return base;
+  }).sort((a, b) => a.id.localeCompare(b.id));
 })();
 
 /* ============================================
@@ -960,7 +981,9 @@ const ServantSelector = {
       item.addEventListener("click", () => {
         this.pendingSlot = false; // servant selected, don't remove on close
         if (servant.hasAscensions) {
-          AscensionSelector.open(servant, this.activeSlotIndex);
+          const idx = this.activeSlotIndex;
+          this.close();
+          AscensionSelector.open(servant, idx);
         } else {
           BondApp.setServant(this.activeSlotIndex, servant.id, null);
           this.close();
@@ -1004,7 +1027,7 @@ const AscensionSelector = {
     }
     if (modal) {
       modal.addEventListener("click", (e) => {
-        if (e.target === modal) this.back();
+        if (e.target === modal) this.close();
       });
     }
   },
@@ -1028,14 +1051,11 @@ const AscensionSelector = {
   },
 
   back() {
-    const modal = document.getElementById("ascensionModal");
-    if (modal) modal.classList.remove("open");
-    const servantModal = document.getElementById("servantModal");
-    if (servantModal && !servantModal.classList.contains("open") && this.slotIndex !== null) {
-      ServantSelector.open(this.slotIndex);
+    const idx = this.slotIndex;
+    this.close();
+    if (idx !== null) {
+      ServantSelector.open(idx);
     }
-    this.servant = null;
-    this.slotIndex = null;
   },
 
   renderGrid() {
@@ -1072,6 +1092,93 @@ const AscensionSelector = {
 
       grid.appendChild(item);
     });
+  }
+};
+
+/* ============================================
+   SERVANT DRAG REORDER
+   ============================================ */
+const ServantDrag = {
+  dragIndex: null,
+  holdTimer: null,
+  isDragging: false,
+
+  init() {
+    const grid = document.getElementById("servantGrid");
+    grid.addEventListener("mousedown", (e) => this.onHoldStart(e));
+    grid.addEventListener("touchstart", (e) => this.onHoldStart(e), { passive: false });
+    document.addEventListener("mousemove", (e) => this.onHoldMove(e));
+    document.addEventListener("touchmove", (e) => this.onHoldMove(e), { passive: false });
+    document.addEventListener("mouseup", () => this.onHoldEnd());
+    document.addEventListener("touchend", () => this.onHoldEnd());
+  },
+
+  onHoldStart(e) {
+    // Don't interfere with inputs/selects
+    const tag = e.target.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "OPTION") return;
+
+    const slot = e.target.closest(".servant-slot:not(.servant-add-slot)");
+    if (!slot || slot.dataset.slotIndex === undefined) return;
+    const index = parseInt(slot.dataset.slotIndex);
+    if (isNaN(index)) return;
+
+    // Prevent native image drag on desktop
+    if (e.type === "mousedown") e.preventDefault();
+
+    this.dragIndex = index;
+    this.isDragging = false;
+    this.holdTimer = setTimeout(() => {
+      this.isDragging = true;
+      slot.classList.add("dragging");
+    }, 300);
+  },
+
+  onHoldMove(e) {
+    if (!this.isDragging) return;
+    e.preventDefault();
+
+    const grid = document.getElementById("servantGrid");
+    const touch = e.touches ? e.touches[0] : e;
+    const target = document.elementFromPoint(touch.clientX, touch.clientY);
+    const slot = target ? target.closest(".servant-slot:not(.servant-add-slot)") : null;
+
+    grid.querySelectorAll(".servant-slot.drag-over").forEach(s => s.classList.remove("drag-over"));
+    if (slot && slot.dataset.slotIndex !== undefined) {
+      const targetIndex = parseInt(slot.dataset.slotIndex);
+      if (targetIndex !== this.dragIndex) {
+        slot.classList.add("drag-over");
+      }
+    }
+  },
+
+  onHoldEnd() {
+    clearTimeout(this.holdTimer);
+    if (!this.isDragging) {
+      this.dragIndex = null;
+      return;
+    }
+
+    const grid = document.getElementById("servantGrid");
+    const dragOver = grid.querySelector(".servant-slot.drag-over");
+    if (dragOver && this.dragIndex !== null) {
+      const targetIndex = parseInt(dragOver.dataset.slotIndex);
+      if (!isNaN(targetIndex) && targetIndex !== this.dragIndex) {
+        BondApp.flushInputsToState();
+        const slots = BondApp.state.slots;
+        const temp = slots[this.dragIndex];
+        slots[this.dragIndex] = slots[targetIndex];
+        slots[targetIndex] = temp;
+        BondApp.saveState();
+        BondApp.buildServantSlots();
+      }
+    }
+
+    grid.querySelectorAll(".servant-slot").forEach(s => {
+      s.classList.remove("dragging", "drag-over");
+    });
+    this.dragIndex = null;
+    this.isDragging = false;
   }
 };
 
@@ -1147,6 +1254,12 @@ const CESelector = {
       item.appendChild(name);
 
       item.addEventListener("click", () => {
+        if (ce.isGroup) {
+          const idx = this.activeSlotIndex;
+          this.close();
+          CESubSelector.open(ce, idx);
+          return;
+        }
         this.pendingSlot = false;
         BondApp.setCE(this.activeSlotIndex, ce.id);
         this.close();
@@ -1166,6 +1279,91 @@ const CESelector = {
       c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
     );
     this.renderGrid(filtered);
+  }
+};
+
+/* ============================================
+   CE SUB-SELECTOR (GROUP OPTIONS)
+   ============================================ */
+const CESubSelector = {
+  groupCE: null,
+  activeSlotIndex: null,
+
+  init() {
+    const modal = document.getElementById("ceSubModal");
+    const closeBtn = document.getElementById("ceSubModalClose");
+    const backBtn = document.getElementById("ceSubModalBack");
+
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => this.close());
+    }
+    if (backBtn) {
+      backBtn.addEventListener("click", () => this.back());
+    }
+    if (modal) {
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) this.close();
+      });
+    }
+  },
+
+  open(groupCE, slotIndex) {
+    this.groupCE = groupCE;
+    this.activeSlotIndex = slotIndex;
+    const modal = document.getElementById("ceSubModal");
+    const title = document.getElementById("ceSubModalTitle");
+
+    if (title) title.textContent = groupCE.name;
+    this.renderGrid();
+    if (modal) modal.classList.add("open");
+  },
+
+  close() {
+    const modal = document.getElementById("ceSubModal");
+    if (modal) modal.classList.remove("open");
+    this.groupCE = null;
+    this.activeSlotIndex = null;
+  },
+
+  back() {
+    const idx = this.activeSlotIndex;
+    this.close();
+    if (idx !== null) {
+      CESelector.open(idx);
+    }
+  },
+
+  renderGrid() {
+    const grid = document.getElementById("ceSubPickerGrid");
+    if (!grid || !this.groupCE) return;
+    grid.innerHTML = "";
+
+    const options = this.groupCE.options || [];
+    options.forEach(opt => {
+      const item = DOMFactory.el("div", "servant-picker-item");
+
+      const img = DOMFactory.el("img", null, { src: opt.image, alt: opt.name });
+      img.onerror = () => {
+        const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
+        fb.textContent = opt.id;
+        img.replaceWith(fb);
+      };
+
+      const label = DOMFactory.el("div", "servant-picker-name");
+      label.textContent = opt.name;
+
+      item.appendChild(img);
+      item.appendChild(label);
+
+      item.addEventListener("click", () => {
+        CESelector.pendingSlot = false;
+        BondApp.setCE(this.activeSlotIndex, this.groupCE.id, opt.id);
+        this.close();
+        CESelector.close();
+      });
+
+      grid.appendChild(item);
+    });
   }
 };
 
@@ -1244,12 +1442,17 @@ const BondApp = {
     // Init ascension selector
     AscensionSelector.init();
 
+    // Init servant drag reorder
+    ServantDrag.init();
+
     // Init CE selector
     CESelector.init();
+    CESubSelector.init();
   },
 
   addSlot() {
     if (this.state.slots.length >= SERVANT_MAX_SLOTS) return;
+    this.flushInputsToState();
     this.state.slots.push({ servantId: null, bondNeeded: 0, type: "normal", ascension: null });
     this.saveState();
     this.buildServantSlots();
@@ -1269,26 +1472,40 @@ const BondApp = {
     const count = this.state.ces.length;
 
     for (let i = 0; i < count; i++) {
-      const ceId = this.state.ces[i];
-      if (!ceId) continue; // skip pending null slots
-      const ce = CEList.find(c => c.id === ceId);
+      const ceEntry = this.state.ces[i];
+      if (!ceEntry) continue; // skip pending null slots
+
+      // Resolve CE entry (string or group object)
+      let ce, ceName, ceImage, ceBonusText;
+      if (typeof ceEntry === "object" && ceEntry.groupId) {
+        ce = CEList.find(c => c.id === ceEntry.groupId);
+        const selectedOption = ce && ce.options ? ce.options.find(o => o.id === ceEntry.optionId) : null;
+        ceName = selectedOption ? selectedOption.name : (ce ? ce.name : ceEntry.groupId);
+        ceImage = selectedOption ? selectedOption.image : (ce ? ce.image : null);
+        ceBonusText = ce ? (ce.flatBonus > 0 ? `+${ce.flatBonus} pts All` : `+${ce.bonus}% All`) : "";
+      } else {
+        ce = CEList.find(c => c.id === ceEntry);
+        ceName = ce ? ce.name : ceEntry;
+        ceImage = ce ? ce.image : null;
+        ceBonusText = null;
+      }
 
       const slot = DOMFactory.el("div", "ce-slot");
       slot.dataset.slotIndex = i;
 
       // Portrait
       const portraitArea = DOMFactory.el("div");
-      if (ce) {
-        const img = DOMFactory.el("img", "ce-portrait", { src: ce.image, alt: ce.name });
+      if (ceImage) {
+        const img = DOMFactory.el("img", "ce-portrait", { src: ceImage, alt: ceName });
         img.onerror = () => {
           const fb = DOMFactory.el("div", "ce-portrait-fallback");
-          fb.textContent = ce.id;
+          fb.textContent = typeof ceEntry === "object" ? ceEntry.groupId : ceEntry;
           img.replaceWith(fb);
         };
         portraitArea.appendChild(img);
       } else {
         const fb = DOMFactory.el("div", "ce-portrait-fallback");
-        fb.textContent = ceId;
+        fb.textContent = typeof ceEntry === "object" ? ceEntry.groupId : ceEntry;
         portraitArea.appendChild(fb);
       }
       slot.appendChild(portraitArea);
@@ -1297,10 +1514,13 @@ const BondApp = {
       const info = DOMFactory.el("div");
       if (ce) {
         const nameEl = DOMFactory.el("div", "ce-slot-name");
-        nameEl.textContent = ce.name;
+        nameEl.textContent = ceName;
         info.appendChild(nameEl);
         const bonusEl = DOMFactory.el("div", "ce-slot-bonus");
-        if (ce.traitGroups.length > 0) {
+        if (ceBonusText !== null) {
+          // Grouped CE (pre-computed bonus text)
+          bonusEl.textContent = ceBonusText;
+        } else if (ce.traitGroups.length > 0) {
           const groups = ce.traitGroups.map(group =>
             group.map(t => TraitNames[t] || t).join(" or ")
           ).join(" and ");
@@ -1315,6 +1535,16 @@ const BondApp = {
         info.appendChild(bonusEl);
       }
       slot.appendChild(info);
+
+      // Click slot to re-select
+      slot.style.cursor = "pointer";
+      slot.addEventListener("click", () => {
+        if (ce && ce.isGroup) {
+          CESubSelector.open(ce, i);
+        } else {
+          CESelector.open(i);
+        }
+      });
 
       // Remove button
       const removeBtn = DOMFactory.el("button", "servant-remove-btn", { type: "button" });
@@ -1347,9 +1577,13 @@ const BondApp = {
     grid.appendChild(addSlot);
   },
 
-  setCE(slotIndex, ceId) {
+  setCE(slotIndex, ceId, optionId) {
     if (slotIndex < 0 || slotIndex >= this.state.ces.length) return;
-    this.state.ces[slotIndex] = ceId;
+    if (optionId) {
+      this.state.ces[slotIndex] = { groupId: ceId, optionId: optionId };
+    } else {
+      this.state.ces[slotIndex] = ceId;
+    }
     this.saveState();
     this.buildCESlots();
   },
@@ -1358,6 +1592,15 @@ const BondApp = {
     this.state.ces.splice(index, 1);
     this.saveState();
     this.buildCESlots();
+  },
+
+  flushInputsToState() {
+    this.state.slots.forEach((slot, i) => {
+      const input = this.elements[`slotBond_${i}`];
+      if (input && (slot.type || "normal") === "normal") {
+        slot.bondNeeded = Validator.clamp(input.value, 0, 9999999);
+      }
+    });
   },
 
   buildServantSlots() {
@@ -1373,6 +1616,7 @@ const BondApp = {
       if (!slotData.servantId) continue; // skip pending slots
       const slot = DOMFactory.el("div", "servant-slot");
       slot.dataset.slotIndex = i;
+      slot.style.cursor = "grab";
 
       // Portrait area (clickable to open selector)
       const portraitArea = DOMFactory.el("div", "servant-slot-select-btn");
@@ -1386,7 +1630,8 @@ const BondApp = {
           const imgSrc = ServantData.getImageForAscension(servant.id, ascension);
           const img = DOMFactory.el("img", "servant-slot-portrait", {
             src: imgSrc,
-            alt: servant.name
+            alt: servant.name,
+            draggable: "false"
           });
           img.onerror = () => {
             if (ascension && !img.dataset.retriedFlat) {
@@ -1457,6 +1702,7 @@ const BondApp = {
       info.appendChild(typeRow);
 
       typeSelect.addEventListener("change", () => {
+        this.flushInputsToState();
         this.state.slots[i].type = typeSelect.value;
         this.saveState();
         this.buildServantSlots();
@@ -1519,6 +1765,7 @@ const BondApp = {
 
   setServant(slotIndex, servantId, ascension) {
     if (slotIndex < 0 || slotIndex >= this.state.slots.length) return;
+    this.flushInputsToState();
     this.state.slots[slotIndex].servantId = servantId;
     this.state.slots[slotIndex].ascension = ascension || null;
     this.saveState();
@@ -1569,6 +1816,7 @@ const BondApp = {
         maxBondServants.push({
           servantId: slot.servantId,
           name: servant ? ServantData.getAscensionName(slot.servantId, mbAsc) : slot.servantId,
+          image: servant ? ServantData.getImageForAscension(slot.servantId, mbAsc) : null,
         });
       }
     }
@@ -1584,6 +1832,7 @@ const BondApp = {
         frontlineSupports.push({
           servantId: slot.servantId,
           name: servant ? ServantData.getAscensionName(slot.servantId, supAsc) : slot.servantId,
+          image: servant ? ServantData.getImageForAscension(slot.servantId, supAsc) : null,
         });
       }
     }
@@ -1621,36 +1870,73 @@ const BondApp = {
         appliedCEs.push({ id: "maxbond_" + mb.servantId, name: mb.name, bonus: 25, image: mb.image, isMaxBond: true });
       });
 
-      // CE trait matching
+      // CE trait matching + flat bonus
       const ascension = slot.ascension || (servant && servant.hasAscensions ? "000" : null);
       const servantTraits = servant ? ServantData.getTraitsForAscension(servantId, ascension) : [];
-      this.state.ces.forEach(ceId => {
+      let flatBonus = 0;
+      this.state.ces.forEach(ceEntry => {
+        // Resolve CE from entry (string or group object)
+        let ceId, optionId;
+        if (typeof ceEntry === "object" && ceEntry.groupId) {
+          ceId = ceEntry.groupId;
+          optionId = ceEntry.optionId;
+        } else {
+          ceId = ceEntry;
+          optionId = null;
+        }
+
         const ce = CEList.find(c => c.id === ceId);
         if (!ce) return;
 
-        let matched = false;
-        if (ce.traitGroups.length > 0) {
-          const allGroupsMatch = ce.traitGroups.every(group =>
-            group.some(t => servantTraits.includes(t))
-          );
-          if (allGroupsMatch) matched = true;
-        } else if (ce.traits.length === 0) {
-          matched = true;
-        } else if (ce.matchAll) {
-          const hasAll = ce.traits.every(t => servantTraits.includes(t));
-          if (hasAll) matched = true;
+        if (ce.isGroup) {
+          // Grouped CE: universal bonus (percentage or flat)
+          const option = ce.options ? ce.options.find(o => o.id === optionId) : null;
+          if (option) {
+            if (ce.flatBonus > 0) {
+              flatBonus += ce.flatBonus;
+              appliedCEs.push({
+                id: option.id,
+                name: option.name,
+                flatBonus: ce.flatBonus,
+                image: option.image,
+                isFlatBonus: true
+              });
+            } else if (ce.bonus > 0) {
+              ceBonusPercent += ce.bonus;
+              appliedCEs.push({
+                id: option.id,
+                name: option.name,
+                bonus: ce.bonus,
+                image: option.image
+              });
+            }
+          }
         } else {
-          const hasTrait = ce.traits.some(t => servantTraits.includes(t));
-          if (hasTrait) matched = true;
-        }
+          // Normal CE: trait matching
+          let matched = false;
+          if (ce.traitGroups.length > 0) {
+            const allGroupsMatch = ce.traitGroups.every(group =>
+              group.some(t => servantTraits.includes(t))
+            );
+            if (allGroupsMatch) matched = true;
+          } else if (ce.traits.length === 0) {
+            matched = true;
+          } else if (ce.matchAll) {
+            const hasAll = ce.traits.every(t => servantTraits.includes(t));
+            if (hasAll) matched = true;
+          } else {
+            const hasTrait = ce.traits.some(t => servantTraits.includes(t));
+            if (hasTrait) matched = true;
+          }
 
-        if (matched) {
-          ceBonusPercent += ce.bonus;
-          appliedCEs.push(ce);
+          if (matched) {
+            ceBonusPercent += ce.bonus;
+            appliedCEs.push(ce);
+          }
         }
       });
 
-      const effectiveBond = Math.round(bondPerRun * (1 + ceBonusPercent / 100));
+      const effectiveBond = Math.floor(bondPerRun * (1 + ceBonusPercent / 100)) + flatBonus;
       slotResults.push({
         index: i,
         servantId,
@@ -1677,16 +1963,6 @@ const BondApp = {
     // Show results
     const container = document.getElementById("bondResultContent");
     container.innerHTML = "";
-
-    // Quest info
-    const questRow = DOMFactory.el("div", "bond-result-row");
-    const questLabel = DOMFactory.el("span", "bond-result-label");
-    questLabel.textContent = "Quest";
-    const questValue = DOMFactory.el("span", "bond-result-value");
-    questValue.textContent = `${questName} (${bondPerRun} pts/run)`;
-    questRow.appendChild(questLabel);
-    questRow.appendChild(questValue);
-    container.appendChild(questRow);
 
     // Per-servant results grid
     const resultGrid = DOMFactory.el("div", "bond-result-servant-grid");
@@ -1759,6 +2035,18 @@ const BondApp = {
             icon.onerror = () => { icon.style.display = "none"; };
             wrap.appendChild(icon);
             ceImgGrid.appendChild(wrap);
+          } else if (ce.isFlatBonus) {
+            const ceImg = DOMFactory.el("img", "bond-result-ce-img", {
+              src: ce.image,
+              alt: ce.name,
+              title: `${ce.name} +${ce.flatBonus} pts`
+            });
+            ceImg.onerror = () => {
+              const fb = DOMFactory.el("div", "bond-result-ce-fallback");
+              fb.textContent = `+${ce.flatBonus}`;
+              ceImg.replaceWith(fb);
+            };
+            ceImgGrid.appendChild(ceImg);
           } else {
             const ceImg = DOMFactory.el("img", "bond-result-ce-img", {
               src: ce.image,
@@ -1843,7 +2131,11 @@ const BondApp = {
         })),
         selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",
         customBond: Validator.clamp(data.customBond || 0, 0, 99999),
-        ces: Array.isArray(data.ces) ? data.ces.filter(id => typeof id === "string" && id) : []
+        ces: Array.isArray(data.ces) ? data.ces.filter(entry => {
+          if (typeof entry === "string" && entry) return true;
+          if (entry && typeof entry === "object" && entry.groupId && entry.optionId) return true;
+          return false;
+        }) : []
       };
     } catch (e) {
       return null;

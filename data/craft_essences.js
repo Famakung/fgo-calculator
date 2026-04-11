@@ -1,4 +1,22 @@
 var CE_DATA = {
+  "0099": {
+    "name": "Heroic Portrait",
+    "isGroup": true,
+    "flatBonus": 50,
+    "folder": "0099-0108",
+    "options": {
+      "0099": { "name": "Heroic Portrait: Mash Kyrielight" },
+      "0100": { "name": "Heroic Portrait: Altria Pendragon" },
+      "0101": { "name": "Heroic Portrait: Jeanne d'Arc" },
+      "0102": { "name": "Heroic Portrait: Altera" },
+      "0103": { "name": "Heroic Portrait: Arjuna" },
+      "0104": { "name": "Heroic Portrait: Scathach" },
+      "0105": { "name": "Heroic Portrait: Ushiwakamaru" },
+      "0106": { "name": "Heroic Portrait: Henry Jekyll & Hyde" },
+      "0107": { "name": "Heroic Portrait: Mephistopheles" },
+      "0108": { "name": "Heroic Portrait: Darius III" }
+    }
+  },
   "0330": { "name": "Chaldea Lunchtime", "bonus": 10, "traits": [] },
   "0910": { "name": "Chaldea Teatime", "bonus": 15, "traits": [] },
   "1080": { "name": "Great Detective Foumes", "bonus": 5, "traits": [] },
@@ -11,5 +29,35 @@ var CE_DATA = {
   "2233": { "name": "Blessed Bride", "bonus": 20, "traits": ["0300", "0002"], "matchAll": true },
   "2437": { "name": "Foreign God", "bonus": 20, "traits": ["0304", "0203"] },
   "2509": { "name": "Those from Chaldea", "bonus": 20, "traitGroups": [["0301"], ["0100", "0101", "0102", "0103", "0104", "0105", "0106"]] },
-  "2583": { "name": "Great Library of Memories", "bonus": 20, "traits": ["0302"] }
+  "2583": { "name": "Great Library of Memories", "bonus": 20, "traits": ["0302"] },
+  "2512": {
+    "name": "Heroic Spirit Apex",
+    "isGroup": true,
+    "bonus": 2,
+    "groupImage": "2526",
+    "folder": "2512-2532",
+    "options": {
+      "2512": { "name": "Heroic Spirit Apex: Ashiya Douman" },
+      "2513": { "name": "Heroic Spirit Apex: Altria Pendragon" },
+      "2514": { "name": "Heroic Spirit Apex: Yan Qing" },
+      "2515": { "name": "Heroic Spirit Apex: Orion" },
+      "2516": { "name": "Heroic Spirit Apex: Kama" },
+      "2517": { "name": "Heroic Spirit Apex: Gilgamesh" },
+      "2518": { "name": "Heroic Spirit Apex: Sakata Kintoki" },
+      "2519": { "name": "Heroic Spirit Apex: Sigurd" },
+      "2520": { "name": "Heroic Spirit Apex: Jeanne d'Arc" },
+      "2521": { "name": "Heroic Spirit Apex: Scathach-Skadi" },
+      "2522": { "name": "Heroic Spirit Apex: Space Ishtar" },
+      "2523": { "name": "Heroic Spirit Apex: Tomoe Gozen" },
+      "2524": { "name": "Heroic Spirit Apex: Nemo" },
+      "2525": { "name": "Heroic Spirit Apex: BB" },
+      "2526": { "name": "Heroic Spirit Apex: Mash Kyrielight" },
+      "2527": { "name": "Heroic Spirit Apex: Melusine" },
+      "2528": { "name": "Heroic Spirit Apex: Morgan" },
+      "2529": { "name": "Heroic Spirit Apex: Koyanskaya of Dark" },
+      "2530": { "name": "Heroic Spirit Apex: Leonardo da Vinci" },
+      "2531": { "name": "Heroic Spirit Apex: Lady Avalon" },
+      "2532": { "name": "Heroic Spirit Apex: Romulus=Quirinus" }
+    }
+  }
 };

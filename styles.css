@@ -332,6 +332,8 @@ body {
   border-radius: var(--radius-sm);
   transition: background 0.15s;
   min-width: 0;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .servant-slot:hover {
@@ -411,6 +413,16 @@ body {
 .servant-add-slot:hover {
   background: var(--accent-light);
   border: 1px dashed var(--accent);
+}
+
+.servant-slot.dragging {
+  opacity: 0.5;
+  border: 2px dashed var(--accent);
+}
+
+.servant-slot.drag-over {
+  border: 2px solid var(--accent);
+  background: var(--accent-light);
 }
 
 /* Craft Essences */
