@@ -159,6 +159,46 @@ const Calculator = {
   }
 };
 
+const TraitMatcher = {
+  matches(servantTraits, ce) {
+    if (ce.traitGroups.length > 0) {
+      return ce.traitGroups.every(group =>
+        group.some(t => servantTraits.includes(t))
+      );
+    }
+    if (ce.traits.length === 0) return true;
+    if (ce.matchAll) {
+      return ce.traits.every(t => servantTraits.includes(t));
+    }
+    return ce.traits.some(t => servantTraits.includes(t));
+  },
+
+  getAllTraitSets(servant) {
+    if (!servant.hasAscensions) return [{ key: "base", traits: servant.traits }];
+    const raw = servant.rawTraits;
+    const base = raw.base || [];
+    const keys = Object.keys(raw).filter(k => k !== "base");
+    if (keys.length === 0) return [{ key: "base", traits: base }];
+    return keys.map(k => ({ key: k, traits: [...base, ...(raw[k] || [])] }));
+  },
+
+  servantMatchesAnyAscension(servant, ce) {
+    const traitSets = this.getAllTraitSets(servant);
+    return traitSets.some(set => this.matches(set.traits, ce));
+  },
+
+  getMatchingAscensions(servant, ce) {
+    const sets = this.getAllTraitSets(servant);
+    const matched = [];
+    sets.forEach(set => {
+      if (this.matches(set.traits, ce)) {
+        matched.push(set.key);
+      }
+    });
+    return matched;
+  }
+};
+
 /* ============================================
    APPLICATION LAYER - State Manager
    ============================================ */
@@ -1358,6 +1398,385 @@ const CESubSelector = {
 };
 
 /* ============================================
+   CE FILTER PICKER
+   ============================================ */
+const CEFilterPicker = {
+  tempSelected: new Set(),
+
+  init() {
+    const modal = document.getElementById("ceFilterModal");
+    const closeBtn = document.getElementById("ceFilterModalClose");
+    const searchInput = document.getElementById("ceFilterSearch");
+    const confirmBtn = document.getElementById("cefilterConfirmBtn");
+
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => this.close());
+    }
+    if (modal) {
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) this.close();
+      });
+    }
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        this.filter(e.target.value);
+      });
+    }
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", () => this.confirm());
+    }
+  },
+
+  open() {
+    this.tempSelected = new Set(CEFilterApp.state.selectedCEs);
+    const modal = document.getElementById("ceFilterModal");
+    const searchInput = document.getElementById("ceFilterSearch");
+    this.renderGrid(CEList);
+    if (searchInput) searchInput.value = "";
+    if (modal) modal.classList.add("open");
+  },
+
+  close() {
+    const modal = document.getElementById("ceFilterModal");
+    if (modal) modal.classList.remove("open");
+    this.tempSelected = new Set();
+  },
+
+  confirm() {
+    CEFilterApp.state.selectedCEs = [...this.tempSelected];
+    CEFilterApp.saveState();
+    CEFilterApp.render();
+    this.close();
+  },
+
+  renderGrid(ces) {
+    const grid = document.getElementById("ceFilterPickerGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    ces.forEach(ce => {
+      const isSelected = this.tempSelected.has(ce.id);
+      const item = DOMFactory.el("div", "servant-picker-item ce-filter-picker-item" + (isSelected ? " selected" : ""));
+
+      const check = DOMFactory.el("div", "ce-filter-check");
+      check.textContent = "\u2713";
+      item.appendChild(check);
+
+      const img = DOMFactory.el("img", null, { src: ce.image, alt: ce.name });
+      DOMFactory.addSimpleFallback(img, "servant-slot-portrait-fallback", ce.id);
+      item.appendChild(img);
+
+      const name = DOMFactory.el("div", "servant-picker-name");
+      name.textContent = ce.name;
+      item.appendChild(name);
+
+      item.addEventListener("click", () => {
+        if (this.tempSelected.has(ce.id)) {
+          this.tempSelected.delete(ce.id);
+          item.classList.remove("selected");
+        } else {
+          this.tempSelected.add(ce.id);
+          item.classList.add("selected");
+        }
+      });
+
+      grid.appendChild(item);
+    });
+  },
+
+  filter(query) {
+    const q = query.toLowerCase().trim();
+    if (!q) {
+      this.renderGrid(CEList);
+      return;
+    }
+    const filtered = CEList.filter(c =>
+      c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
+    );
+    this.renderGrid(filtered);
+  }
+};
+
+/* ============================================
+   CE FILTER APP
+   ============================================ */
+const CEFILTER_STORAGE_KEY = "fgo_ce_filter_data";
+
+const CEFilterApp = {
+  state: {
+    selectedCEs: [],
+    mode: "all",
+    searchQuery: ""
+  },
+
+  init() {
+    this.loadState();
+
+    const addBtn = document.getElementById("cefilterAddBtn");
+    const modeSelect = document.getElementById("cefilterMode");
+    const searchInput = document.getElementById("cefilterSearch");
+
+    if (addBtn) {
+      addBtn.addEventListener("click", () => CEFilterPicker.open());
+    }
+
+    if (modeSelect) {
+      modeSelect.value = this.state.mode;
+      modeSelect.addEventListener("change", () => {
+        this.state.mode = modeSelect.value;
+        this.saveState();
+        this.renderResults();
+      });
+    }
+
+    if (searchInput) {
+      searchInput.value = this.state.searchQuery;
+      searchInput.addEventListener("input", (e) => {
+        this.state.searchQuery = e.target.value;
+        this.renderResults();
+      });
+    }
+
+    CEFilterPicker.init();
+    this.render();
+  },
+
+  render() {
+    this.renderChips();
+    this.renderResults();
+  },
+
+  renderChips() {
+    const container = document.getElementById("cefilterChips");
+    if (!container) return;
+    container.innerHTML = "";
+
+    if (this.state.selectedCEs.length === 0) {
+      const placeholder = DOMFactory.el("div", "servant-slot-placeholder");
+      placeholder.textContent = "No craft essences selected \u2014 click Add Craft Essence to begin";
+      container.appendChild(placeholder);
+      return;
+    }
+
+    this.state.selectedCEs.forEach(ceId => {
+      const ce = CEList.find(c => c.id === ceId);
+      if (!ce) return;
+
+      const chip = DOMFactory.el("div", "cefilter-chip");
+
+      const img = DOMFactory.el("img", null, { src: ce.image, alt: ce.name });
+      DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
+      chip.appendChild(img);
+
+      const nameSpan = DOMFactory.el("span");
+      nameSpan.textContent = ce.name;
+      chip.appendChild(nameSpan);
+
+      const removeBtn = DOMFactory.el("button", "cefilter-chip-remove", { type: "button" });
+      removeBtn.textContent = "\u2715";
+      removeBtn.addEventListener("click", () => {
+        this.state.selectedCEs = this.state.selectedCEs.filter(id => id !== ceId);
+        this.saveState();
+        this.render();
+      });
+      chip.appendChild(removeBtn);
+
+      container.appendChild(chip);
+    });
+  },
+
+  renderResults() {
+    const grid = document.getElementById("cefilterResults");
+    const countEl = document.getElementById("cefilterCount");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    const selectedCEObjs = this.state.selectedCEs
+      .map(id => CEList.find(c => c.id === id))
+      .filter(ce => ce != null);
+
+    if (selectedCEObjs.length === 0) {
+      if (countEl) countEl.textContent = "";
+      const hint = DOMFactory.el("div", "servant-slot-placeholder");
+      hint.style.gridColumn = "1 / -1";
+      hint.style.textAlign = "center";
+      hint.style.padding = "24px";
+      hint.textContent = "Select one or more craft essences above to see eligible servants";
+      grid.appendChild(hint);
+      return;
+    }
+
+    const matchedServants = this.computeMatches(selectedCEObjs);
+
+    const query = (this.state.searchQuery || "").toLowerCase().trim();
+    const filtered = query
+      ? matchedServants.filter(s =>
+          s.servant.id.toLowerCase().includes(query) ||
+          s.servant.name.toLowerCase().includes(query)
+        )
+      : matchedServants;
+
+    if (countEl) {
+      countEl.textContent = `${filtered.length} servant${filtered.length !== 1 ? "s" : ""} found`;
+    }
+
+    filtered.forEach(({ servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll }) => {
+      const card = DOMFactory.el("div", "cefilter-servant-card");
+
+      const imgAsc = (!baseMatchesAll && matchedAscensions.length > 0)
+        ? matchedAscensions[0]
+        : null;
+      const imgSrc = imgAsc
+        ? ServantData.getImageForAscension(servant.id, imgAsc)
+        : servant.hasAscensions
+          ? ServantData.getImageForAscension(servant.id, "000")
+          : servant.image;
+      const img = DOMFactory.el("img", "servant-slot-portrait", {
+        src: imgSrc,
+        alt: servant.name
+      });
+      DOMFactory.addAscensionFallback(img, servant.hasAscensions ? servant.image : null, servant.id);
+      card.appendChild(img);
+
+      if (matchingCEs.length > 0) {
+        const badges = DOMFactory.el("div", "cefilter-match-badges");
+        matchingCEs.forEach(ce => {
+          const badge = DOMFactory.el("img", "cefilter-match-badge", {
+            src: ce.image,
+            alt: ce.name,
+            title: ce.name
+          });
+          DOMFactory.addSimpleFallback(badge, "cefilter-match-badge-fallback", ce.id);
+          badges.appendChild(badge);
+        });
+        card.appendChild(badges);
+      }
+
+      const displayName = imgAsc
+        ? ServantData.getAscensionName(servant.id, imgAsc) || servant.name
+        : servant.name;
+      const nameEl = DOMFactory.el("div", "cefilter-servant-name");
+      nameEl.textContent = displayName;
+      card.appendChild(nameEl);
+
+      if (matchedAscensions && matchedAscensions.length > 0) {
+        matchedAscensions.forEach(k => {
+          const ascEl = DOMFactory.el("div", "cefilter-ascension-label");
+          ascEl.textContent = ServantData.getAscensionLabel(servant.id, k);
+          card.appendChild(ascEl);
+        });
+      }
+
+      if (allTraitNames.length > 0) {
+        const tags = DOMFactory.el("div", "cefilter-trait-tags");
+        const show = allTraitNames.slice(0, 4);
+        show.forEach(t => {
+          const tag = DOMFactory.el("span", "cefilter-trait-tag");
+          tag.textContent = t;
+          tags.appendChild(tag);
+        });
+        if (allTraitNames.length > 4) {
+          const more = DOMFactory.el("span", "cefilter-trait-tag");
+          more.textContent = `+${allTraitNames.length - 4} more`;
+          tags.appendChild(more);
+        }
+        card.appendChild(tags);
+      }
+
+      grid.appendChild(card);
+    });
+  },
+
+  computeMatches(selectedCEObjs) {
+    const results = [];
+    const relevantTraitIds = new Set();
+    selectedCEObjs.forEach(ce => {
+      ce.traits.forEach(t => relevantTraitIds.add(t));
+      ce.traitGroups.forEach(group => group.forEach(t => relevantTraitIds.add(t)));
+    });
+
+    ServantData.servants.forEach(servant => {
+      const matchingCEs = selectedCEObjs.filter(ce =>
+        TraitMatcher.servantMatchesAnyAscension(servant, ce)
+      );
+
+      const passes = this.state.mode === "all"
+        ? matchingCEs.length === selectedCEObjs.length
+        : matchingCEs.length > 0;
+
+      if (!passes) return;
+
+      // Check if base traits alone match all selected CEs
+      const baseTraits = servant.hasAscensions
+        ? (servant.rawTraits.base || [])
+        : servant.traits;
+      const baseMatchesAll = selectedCEObjs.every(ce =>
+        TraitMatcher.matches(baseTraits, ce)
+      );
+
+      // Collect ascensions that match ONLY because of ascension-added traits
+      const ascensionOnly = [];
+      if (servant.hasAscensions && !baseMatchesAll) {
+        const allKeys = Object.keys(servant.rawTraits).filter(k => k !== "base");
+        allKeys.forEach(k => {
+          const traits = [...(servant.rawTraits.base || []), ...(servant.rawTraits[k] || [])];
+          const matchesSome = selectedCEObjs.some(ce =>
+            !TraitMatcher.matches(baseTraits, ce) && TraitMatcher.matches(traits, ce)
+          );
+          if (matchesSome) ascensionOnly.push(k);
+        });
+      }
+      // Sort: standard ascensions (000, 001, 002) first, then custom keys
+      const stdOrder = ["000", "001", "002"];
+      ascensionOnly.sort((a, b) => {
+        const ai = stdOrder.indexOf(a);
+        const bi = stdOrder.indexOf(b);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
+        return a.localeCompare(b);
+      });
+      const matchedAscensions = ascensionOnly;
+
+      const allTraitSets = TraitMatcher.getAllTraitSets(servant);
+      const mergedTraits = [...new Set(allTraitSets.map(s => s.traits).flat())];
+      const relevantTraits = mergedTraits
+        .filter(t => relevantTraitIds.has(t))
+        .map(t => TraitNames[t] || t);
+
+      results.push({ servant, matchingCEs, allTraitNames: relevantTraits, matchedAscensions, baseMatchesAll });
+    });
+
+    return results;
+  },
+
+  saveState() {
+    try {
+      localStorage.setItem(CEFILTER_STORAGE_KEY, JSON.stringify({
+        selectedCEs: this.state.selectedCEs,
+        mode: this.state.mode
+      }));
+    } catch (e) { /* ignore */ }
+  },
+
+  loadState() {
+    try {
+      const raw = localStorage.getItem(CEFILTER_STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (data.selectedCEs && Array.isArray(data.selectedCEs)) {
+        this.state.selectedCEs = data.selectedCEs.filter(id =>
+          CEList.some(c => c.id === id)
+        );
+      }
+      if (data.mode === "all" || data.mode === "any") {
+        this.state.mode = data.mode;
+      }
+    } catch (e) { /* ignore */ }
+  }
+};
+
+/* ============================================
    BOND APP
    ============================================ */
 const BondApp = {
@@ -1906,21 +2325,7 @@ const BondApp = {
           }
         } else {
           // Normal CE: trait matching
-          let matched = false;
-          if (ce.traitGroups.length > 0) {
-            const allGroupsMatch = ce.traitGroups.every(group =>
-              group.some(t => servantTraits.includes(t))
-            );
-            if (allGroupsMatch) matched = true;
-          } else if (ce.traits.length === 0) {
-            matched = true;
-          } else if (ce.matchAll) {
-            const hasAll = ce.traits.every(t => servantTraits.includes(t));
-            if (hasAll) matched = true;
-          } else {
-            const hasTrait = ce.traits.some(t => servantTraits.includes(t));
-            if (hasTrait) matched = true;
-          }
+          const matched = TraitMatcher.matches(servantTraits, ce);
 
           if (matched) {
             ceBonusPercent += ce.bonus;
@@ -2136,6 +2541,7 @@ document.addEventListener("DOMContentLoaded", () => {
   TabNavigator.init();
   App.init();
   BondApp.init();
+  CEFilterApp.init();
 });
 
 })();
