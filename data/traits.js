@@ -28,6 +28,7 @@ var TRAIT_DATA = {
   "0304": "Evil Alignment",
   "0305": "Balanced Alignment",
   "0306": "Madness Alignment",
+  "0308": "Summer Alignment",
   "2654": "Modern Human",
   "2780": "Spiritron Dresses",
   "2821": "Beast Servants"
