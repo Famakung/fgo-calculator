@@ -93,7 +93,507 @@ body {
 }
 
 /* ============================================
-   4. HEADER
+   4. TAB NAVIGATION
+   ============================================ */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 4px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.tab-btn.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+.select-field {
+  flex: 1;
+  min-width: 0;
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.8rem;
+  color: var(--text);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  appearance: auto;
+}
+
+.select-field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.custom-quest-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Bond Results */
+.bond-result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.bond-result-row:last-child {
+  border-bottom: none;
+}
+
+.bond-result-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.bond-result-value {
+  font-family: "Space Mono", monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.bond-result-highlight {
+  font-size: 1.5rem;
+  color: var(--accent);
+}
+
+.bond-result-servant-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.bond-result-servant-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.bond-result-servant-card .servant-slot-portrait {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  object-fit: cover;
+  margin-bottom: 6px;
+}
+
+.bond-result-servant-card .servant-slot-portrait-fallback {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.bond-result-servant-card .servant-slot-name {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bond-result-bond-info {
+  font-family: "Space Mono", monospace;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.bond-result-runs {
+  font-family: "Space Mono", monospace;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.bond-result-maxbond-grid {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.bond-result-maxbond-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.bond-result-ce-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.bond-result-ce-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.bond-result-ce-maxbond-wrap {
+  position: relative;
+  width: 36px;
+  height: 36px;
+}
+
+.bond-result-ce-maxbond-icon {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.bond-result-ce-fallback {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* Servant Slots */
+.servant-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.servant-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 8px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+  min-width: 0;
+}
+
+.servant-slot:hover {
+  background: var(--border);
+}
+
+.servant-slot-portrait {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.servant-slot-portrait-fallback {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.servant-slot-info {
+  width: 100%;
+  text-align: center;
+  min-width: 0;
+}
+
+.servant-slot-name {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.servant-slot-placeholder {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.servant-remove-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--text-secondary);
+  border-radius: 50%;
+  font-size: 0.6rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+}
+
+.servant-remove-btn:hover {
+  background: rgba(220, 38, 38, 0.2);
+  color: var(--error);
+}
+
+.servant-slot {
+  position: relative;
+}
+
+.servant-add-slot:hover {
+  background: var(--accent-light);
+  border: 1px dashed var(--accent);
+}
+
+/* Craft Essences */
+.ce-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.ce-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 8px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+
+.ce-portrait {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.ce-portrait-fallback {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.ce-slot-name {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.ce-slot-bonus {
+  font-size: 0.65rem;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ce-add-slot {
+  cursor: pointer;
+}
+
+.ce-add-slot:hover {
+  background: var(--accent-light);
+  border: 1px dashed var(--accent);
+}
+
+.ce-add-area {
+  display: none;
+}
+
+/* Servant Modal */
+.servant-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.servant-modal.open {
+  display: flex;
+}
+
+.servant-modal-content {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  max-width: 480px;
+  width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.servant-modal-header {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.servant-search {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: white;
+}
+
+.servant-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.servant-modal-close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: var(--bg);
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.servant-modal-close:hover {
+  background: var(--border);
+}
+
+.servant-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.servant-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  min-width: 0;
+}
+
+.servant-picker-item:hover {
+  background: var(--bg);
+}
+
+.servant-picker-item img {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  margin-bottom: 4px;
+}
+
+.servant-picker-name {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
+   5. HEADER
    ============================================ */
 .header {
   text-align: center;
@@ -125,7 +625,7 @@ body {
 }
 
 /* ============================================
-   5. CARDS
+   6. CARDS
    ============================================ */
 .card {
   background: var(--card);
@@ -146,7 +646,7 @@ body {
 }
 
 /* ============================================
-   6. MATERIALS GRID
+   7. MATERIALS GRID
    ============================================ */
 .materials-grid {
   display: grid;
@@ -238,7 +738,7 @@ body {
 }
 
 /* ============================================
-   7. INPUTS
+   8. INPUTS
    ============================================ */
 .input-row {
   display: flex;
@@ -281,7 +781,7 @@ body {
 }
 
 /* ============================================
-   8. DROP RATES
+   9. DROP RATES
    ============================================ */
 .base-row {
   display: flex;
@@ -379,7 +879,7 @@ body {
 }
 
 /* ============================================
-   9. BUTTON
+   10. BUTTON
    ============================================ */
 .calculate-btn {
   width: 100%;
@@ -410,7 +910,7 @@ body {
 }
 
 /* ============================================
-   10. RESULTS
+   11. RESULTS
    ============================================ */
 .results {
   display: none;
@@ -523,7 +1023,7 @@ body {
 }
 
 /* ============================================
-   11. FOOTER
+   12. FOOTER
    ============================================ */
 .footer {
   text-align: center;
@@ -533,7 +1033,7 @@ body {
 }
 
 /* ============================================
-   12. RESPONSIVE
+   13. RESPONSIVE
    ============================================ */
 @media (max-width: 600px) {
   .container {
@@ -542,6 +1042,23 @@ body {
 
   .title {
     font-size: 1.5rem;
+  }
+
+  .tab-btn {
+    padding: 10px 12px;
+    font-size: 0.8rem;
+  }
+
+  .servant-picker-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .servant-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .bond-result-servant-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .materials-grid,

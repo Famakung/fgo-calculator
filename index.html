@@ -14,49 +14,116 @@
   <body>
     <div class="container">
       <header class="header">
-        <div class="badge">Event Shop Planner</div>
         <h1 class="title">FGO Calculator</h1>
-        <p class="subtitle">Optimize your event item farming</p>
+        <p class="subtitle">Optimize your farming runs</p>
       </header>
 
-      <main id="main-content">
-        <div class="card">
-          <div class="card-title">Shop Requirements</div>
-          <div class="materials-grid" id="materialsGrid"></div>
-        </div>
+      <nav class="tab-bar">
+        <button class="tab-btn active" data-tab="event">Event Shop</button>
+        <button class="tab-btn" data-tab="bond">Bond Calculator</button>
+      </nav>
 
-        <div class="card">
-          <div class="card-title">Drop Rates per Run</div>
-          <div class="base-row">
-            <div class="base-item">
-              <label class="base-label" for="baseDrop">Base</label>
-              <input type="number" class="input-field base-input" id="baseDrop" value="3" min="0" max="100" />
+      <main id="main-content">
+        <section class="tab-panel active" id="panel-event">
+          <div class="card">
+            <div class="card-title">Shop Requirements</div>
+            <div class="materials-grid" id="materialsGrid"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Drop Rates per Run</div>
+            <div class="base-row">
+              <div class="base-item">
+                <label class="base-label" for="baseDrop">Base</label>
+                <input type="number" class="input-field base-input" id="baseDrop" value="3" min="0" max="100" />
+              </div>
+              <div class="base-item">
+                <label class="base-label" for="primaryMultiplier">Primary %</label>
+                <input type="number" class="input-field base-input" id="primaryMultiplier" value="1500" min="100" max="100000" />
+              </div>
+              <div class="base-item">
+                <label class="base-label" for="secondaryMultiplier">Secondary %</label>
+                <input type="number" class="input-field base-input" id="secondaryMultiplier" value="225" min="100" max="100000" />
+              </div>
             </div>
-            <div class="base-item">
-              <label class="base-label" for="primaryMultiplier">Primary %</label>
-              <input type="number" class="input-field base-input" id="primaryMultiplier" value="1500" min="100" max="100000" />
-            </div>
-            <div class="base-item">
-              <label class="base-label" for="secondaryMultiplier">Secondary %</label>
-              <input type="number" class="input-field base-input" id="secondaryMultiplier" value="225" min="100" max="100000" />
+            <div class="quest-drops-grid" id="questDropsGrid"></div>
+          </div>
+
+          <button class="calculate-btn" id="calculateBtn" type="button">
+            Calculate Quest Runs
+          </button>
+
+          <div class="results" id="results">
+            <div class="card results-card">
+              <div class="card-title">Items Needed</div>
+              <div class="deficit-grid" id="deficitGrid"></div>
+
+              <div class="quest-results">
+                <div class="quest-title">Recommended Quest Runs</div>
+                <div class="quest-grid" id="questGrid"></div>
+              </div>
             </div>
           </div>
-          <div class="quest-drops-grid" id="questDropsGrid"></div>
+        </section>
+
+        <section class="tab-panel" id="panel-bond">
+          <div class="card">
+            <div class="card-title">Bond Points Requirements</div>
+            <div class="servant-grid" id="servantGrid"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Craft Essences Bonus</div>
+            <div class="ce-grid" id="ceGrid"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Select Quest</div>
+            <div class="input-row">
+              <label class="input-label" for="bondQuestSelect">Quest</label>
+              <select class="select-field" id="bondQuestSelect">
+                <option value="">-- Select a quest --</option>
+              </select>
+            </div>
+            <div id="customQuestSection" class="custom-quest-section">
+              <div class="input-row">
+                <label class="input-label" for="customBondPerRun">Bond/Run</label>
+                <input type="number" class="input-field" id="customBondPerRun" min="0" max="99999" value="0" disabled />
+              </div>
+            </div>
+          </div>
+
+          <button class="calculate-btn" id="bondCalculateBtn" type="button">
+            Calculate Runs
+          </button>
+
+          <div class="results" id="bondResults">
+            <div class="card results-card">
+              <div class="card-title">Results</div>
+              <div id="bondResultContent"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Servant Selector Modal -->
+        <div class="servant-modal" id="servantModal">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <input type="text" class="servant-search" id="servantSearch" placeholder="Search by ID or name..." />
+              <button class="servant-modal-close" id="servantModalClose" type="button">&#10005;</button>
+            </div>
+            <div class="servant-picker-grid" id="servantPickerGrid"></div>
+          </div>
         </div>
 
-        <button class="calculate-btn" id="calculateBtn" type="button">
-          Calculate Quest Runs
-        </button>
-
-        <div class="results" id="results">
-          <div class="card results-card">
-            <div class="card-title">Items Needed</div>
-            <div class="deficit-grid" id="deficitGrid"></div>
-
-            <div class="quest-results">
-              <div class="quest-title">Recommended Quest Runs</div>
-              <div class="quest-grid" id="questGrid"></div>
+        <!-- CE Selector Modal -->
+        <div class="servant-modal" id="ceModal">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <input type="text" class="servant-search" id="ceSearch" placeholder="Search by ID or name..." />
+              <button class="servant-modal-close" id="ceModalClose" type="button">&#10005;</button>
             </div>
+            <div class="servant-picker-grid" id="cePickerGrid"></div>
           </div>
         </div>
       </main>
@@ -64,6 +131,9 @@
       <footer class="footer">Fate/Grand Order Event Shop Calculator</footer>
     </div>
 
+    <script src="data/traits.js"></script>
+    <script src="data/servants.js"></script>
+    <script src="data/craft_essences.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

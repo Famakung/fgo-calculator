@@ -716,10 +716,955 @@ const App = {
 };
 
 /* ============================================
+   TAB NAVIGATION
+   ============================================ */
+const TabNavigator = {
+  init() {
+    const tabBar = document.querySelector(".tab-bar");
+    if (!tabBar) return;
+
+    // Restore active tab
+    try {
+      const savedTab = localStorage.getItem("fgo_active_tab");
+      if (savedTab) {
+        document.querySelectorAll(".tab-btn").forEach(btn => {
+          btn.classList.toggle("active", btn.dataset.tab === savedTab);
+        });
+        document.querySelectorAll(".tab-panel").forEach(panel => {
+          panel.classList.toggle("active", panel.id === "panel-" + savedTab);
+        });
+      }
+    } catch (e) { /* ignore */ }
+
+    tabBar.addEventListener("click", (e) => {
+      if (!e.target.classList.contains("tab-btn")) return;
+      const tab = e.target.dataset.tab;
+
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+
+      e.target.classList.add("active");
+      document.getElementById("panel-" + tab).classList.add("active");
+
+      try {
+        localStorage.setItem("fgo_active_tab", tab);
+      } catch (e) { /* ignore */ }
+    });
+  }
+};
+
+/* ============================================
+   BOND CALCULATOR
+   ============================================ */
+const BOND_QUESTS = [
+  { key: "fq83", name: "FreeQuest Lv.83", bond: 835 },
+  { key: "fq84", name: "FreeQuest Lv.84", bond: 855 },
+  { key: "gd100", name: "GrandDuel Lv.100\u2605\u2605\u2605", bond: 4748 }
+];
+const BOND_STORAGE_KEY = "fgo_bond_calculator_data";
+
+/* Trait names from traits/traits.js */
+const TraitNames = (typeof TRAIT_DATA !== "undefined") ? TRAIT_DATA : {};
+
+/* CE data from craft_essences/craft_essences.js */
+const CEList = (() => {
+  const map = (typeof CE_DATA !== "undefined") ? CE_DATA : {};
+  return Object.entries(map).map(([id, data]) => ({
+    id,
+    name: data.name || `CE ${id}`,
+    bonus: data.bonus || 0,
+    traits: Array.isArray(data.traits) ? data.traits : [],
+    matchAll: !!data.matchAll,
+    traitGroups: Array.isArray(data.traitGroups) ? data.traitGroups : [],
+    image: `craft_essences/${id}.webp`
+  }));
+})();
+
+/* ============================================
+   SERVANT DATA
+   ============================================ */
+const ServantData = {
+  servants: [],
+
+  load() {
+    const map = (typeof SERVANT_DATA !== "undefined") ? SERVANT_DATA : {};
+    this.servants = Object.entries(map)
+      .map(([id, data]) => {
+        const name = typeof data === "string" ? data : (data.name || "");
+        const traits = (typeof data === "object" && Array.isArray(data.traits)) ? data.traits : [];
+        return {
+          id,
+          name: name || `Servant ${id}`,
+          traits,
+          image: `servants/${id}_1.webp`
+        };
+      });
+  },
+
+  getServant(id) {
+    return this.servants.find(s => s.id === id) || null;
+  }
+};
+
+/* ============================================
+   SERVANT SELECTOR MODAL
+   ============================================ */
+const ServantSelector = {
+  activeSlotIndex: null,
+  pendingSlot: false,
+
+  init() {
+    const modal = document.getElementById("servantModal");
+    const closeBtn = document.getElementById("servantModalClose");
+    const searchInput = document.getElementById("servantSearch");
+
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => this.close());
+    }
+
+    if (modal) {
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) this.close();
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        this.filter(e.target.value);
+      });
+    }
+  },
+
+  open(slotIndex, pending = false) {
+    this.activeSlotIndex = slotIndex;
+    this.pendingSlot = pending;
+    const modal = document.getElementById("servantModal");
+    const searchInput = document.getElementById("servantSearch");
+
+    this.renderGrid(ServantData.servants);
+    if (searchInput) searchInput.value = "";
+    if (modal) modal.classList.add("open");
+  },
+
+  close() {
+    // If this was a pending add and no servant was picked, remove the slot
+    if (this.pendingSlot && this.activeSlotIndex !== null) {
+      BondApp.state.slots.splice(this.activeSlotIndex, 1);
+      BondApp.buildServantSlots();
+    }
+    const modal = document.getElementById("servantModal");
+    if (modal) modal.classList.remove("open");
+    this.activeSlotIndex = null;
+    this.pendingSlot = false;
+  },
+
+  renderGrid(servants) {
+    const grid = document.getElementById("servantPickerGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    servants.forEach(servant => {
+      const item = DOMFactory.el("div", "servant-picker-item");
+
+      const img = DOMFactory.el("img", null, {
+        src: servant.image,
+        alt: servant.name
+      });
+      img.onerror = () => {
+        const fallback = DOMFactory.el("div", "servant-slot-portrait-fallback");
+        fallback.textContent = servant.id;
+        img.replaceWith(fallback);
+      };
+
+      const name = DOMFactory.el("div", "servant-picker-name");
+      name.textContent = servant.name;
+
+      item.appendChild(img);
+      item.appendChild(name);
+
+      item.addEventListener("click", () => {
+        this.pendingSlot = false; // servant selected, don't remove on close
+        BondApp.setServant(this.activeSlotIndex, servant.id);
+        this.close();
+      });
+
+      grid.appendChild(item);
+    });
+  },
+
+  filter(query) {
+    const q = query.toLowerCase().trim();
+    if (!q) {
+      this.renderGrid(ServantData.servants);
+      return;
+    }
+    const filtered = ServantData.servants.filter(s =>
+      s.id.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+    );
+    this.renderGrid(filtered);
+  }
+};
+
+/* ============================================
+   CE SELECTOR MODAL
+   ============================================ */
+const CESelector = {
+  activeSlotIndex: null,
+  pendingSlot: false,
+
+  init() {
+    const modal = document.getElementById("ceModal");
+    const closeBtn = document.getElementById("ceModalClose");
+    const searchInput = document.getElementById("ceSearch");
+
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => this.close());
+    }
+
+    if (modal) {
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) this.close();
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        this.filter(e.target.value);
+      });
+    }
+  },
+
+  open(slotIndex, pending = false) {
+    this.activeSlotIndex = slotIndex;
+    this.pendingSlot = pending;
+    const modal = document.getElementById("ceModal");
+    const searchInput = document.getElementById("ceSearch");
+
+    this.renderGrid(CEList);
+    if (searchInput) searchInput.value = "";
+    if (modal) modal.classList.add("open");
+  },
+
+  close() {
+    if (this.pendingSlot && this.activeSlotIndex !== null) {
+      BondApp.state.ces.splice(this.activeSlotIndex, 1);
+      BondApp.buildCESlots();
+    }
+    const modal = document.getElementById("ceModal");
+    if (modal) modal.classList.remove("open");
+    this.activeSlotIndex = null;
+    this.pendingSlot = false;
+  },
+
+  renderGrid(ces) {
+    const grid = document.getElementById("cePickerGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    ces.forEach(ce => {
+      const item = DOMFactory.el("div", "servant-picker-item");
+
+      const img = DOMFactory.el("img", null, { src: ce.image, alt: ce.name });
+      img.onerror = () => {
+        const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
+        fb.textContent = ce.id;
+        img.replaceWith(fb);
+      };
+
+      const name = DOMFactory.el("div", "servant-picker-name");
+      name.textContent = ce.name;
+      item.appendChild(img);
+      item.appendChild(name);
+
+      item.addEventListener("click", () => {
+        this.pendingSlot = false;
+        BondApp.setCE(this.activeSlotIndex, ce.id);
+        this.close();
+      });
+
+      grid.appendChild(item);
+    });
+  },
+
+  filter(query) {
+    const q = query.toLowerCase().trim();
+    if (!q) {
+      this.renderGrid(CEList);
+      return;
+    }
+    const filtered = CEList.filter(c =>
+      c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
+    );
+    this.renderGrid(filtered);
+  }
+};
+
+/* ============================================
+   BOND APP
+   ============================================ */
+const BondApp = {
+  state: null,
+  elements: {},
+
+  init() {
+    const saved = this.loadState();
+    this.state = saved || {
+      slots: [],
+      selectedQuest: "",
+      customBond: 0,
+      ces: []
+    };
+
+    const select = document.getElementById("bondQuestSelect");
+    const customInput = document.getElementById("customBondPerRun");
+    const customSection = document.getElementById("customQuestSection");
+
+    // Populate presets
+    BOND_QUESTS.forEach(q => {
+      const opt = DOMFactory.el("option", null, { value: q.key });
+      opt.textContent = `${q.name} (${q.bond} pts)`;
+      select.appendChild(opt);
+    });
+
+    // Custom option
+    const customOpt = DOMFactory.el("option", null, { value: "custom" });
+    customOpt.textContent = "-- Custom --";
+    select.appendChild(customOpt);
+
+    // Build servant slots
+    this.buildServantSlots();
+
+    // Build CE slots
+    this.buildCESlots();
+
+    // Restore quest state
+    select.value = this.state.selectedQuest;
+    if (this.state.selectedQuest === "custom") {
+      customInput.disabled = false;
+      customInput.value = this.state.customBond;
+      customSection.style.display = "block";
+    } else if (this.state.selectedQuest) {
+      customInput.disabled = true;
+      customSection.style.display = "none";
+    } else {
+      customSection.style.display = "none";
+    }
+
+    // Quest select handler
+    select.addEventListener("change", () => {
+      const val = select.value;
+      if (val === "custom") {
+        customInput.disabled = false;
+        customSection.style.display = "block";
+      } else {
+        customInput.disabled = true;
+        customSection.style.display = "none";
+      }
+    });
+
+    // Calculate button
+    const calcBtn = document.getElementById("bondCalculateBtn");
+    if (calcBtn) {
+      calcBtn.addEventListener("click", () => this.calculate());
+    }
+
+    // Init servant selector
+    ServantSelector.init();
+
+    // Init CE selector
+    CESelector.init();
+  },
+
+  addSlot() {
+    if (this.state.slots.length >= SERVANT_MAX_SLOTS) return;
+    this.state.slots.push({ servantId: null, bondNeeded: 0 });
+    this.saveState();
+    this.buildServantSlots();
+  },
+
+  removeSlot(index) {
+    this.state.slots.splice(index, 1);
+    this.saveState();
+    this.buildServantSlots();
+  },
+
+  buildCESlots() {
+    const grid = document.getElementById("ceGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    const count = this.state.ces.length;
+
+    for (let i = 0; i < count; i++) {
+      const ceId = this.state.ces[i];
+      if (!ceId) continue; // skip pending null slots
+      const ce = CEList.find(c => c.id === ceId);
+
+      const slot = DOMFactory.el("div", "ce-slot");
+      slot.dataset.slotIndex = i;
+
+      // Portrait
+      const portraitArea = DOMFactory.el("div");
+      if (ce) {
+        const img = DOMFactory.el("img", "ce-portrait", { src: ce.image, alt: ce.name });
+        img.onerror = () => {
+          const fb = DOMFactory.el("div", "ce-portrait-fallback");
+          fb.textContent = ce.id;
+          img.replaceWith(fb);
+        };
+        portraitArea.appendChild(img);
+      } else {
+        const fb = DOMFactory.el("div", "ce-portrait-fallback");
+        fb.textContent = ceId;
+        portraitArea.appendChild(fb);
+      }
+      slot.appendChild(portraitArea);
+
+      // Name + bonus
+      const info = DOMFactory.el("div");
+      if (ce) {
+        const nameEl = DOMFactory.el("div", "ce-slot-name");
+        nameEl.textContent = ce.name;
+        info.appendChild(nameEl);
+        const bonusEl = DOMFactory.el("div", "ce-slot-bonus");
+        if (ce.traitGroups.length > 0) {
+          const groups = ce.traitGroups.map(group =>
+            group.map(t => TraitNames[t] || t).join(" or ")
+          ).join(" and ");
+          bonusEl.textContent = `+${ce.bonus}% ${groups}`;
+        } else if (ce.traits.length === 0) {
+          bonusEl.textContent = `+${ce.bonus}% All`;
+        } else {
+          const traitNames = ce.traits.map(t => TraitNames[t] || t);
+          const joiner = ce.matchAll ? " and " : " or ";
+          bonusEl.textContent = `+${ce.bonus}% ${traitNames.join(joiner)}`;
+        }
+        info.appendChild(bonusEl);
+      }
+      slot.appendChild(info);
+
+      // Remove button
+      const removeBtn = DOMFactory.el("button", "servant-remove-btn", { type: "button" });
+      removeBtn.textContent = "\u2715";
+      removeBtn.title = "Remove CE";
+      removeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.removeCE(i);
+      });
+      slot.appendChild(removeBtn);
+
+      grid.appendChild(slot);
+    }
+
+    // Add button
+    const addSlot = DOMFactory.el("div", ["ce-slot", "ce-add-slot"]);
+    const addPortrait = DOMFactory.el("div", "ce-portrait-fallback");
+    addPortrait.textContent = "+";
+    addSlot.appendChild(addPortrait);
+    const addInfo = DOMFactory.el("div");
+    const addLabel = DOMFactory.el("div", "ce-slot-name");
+    addLabel.textContent = "Add CE";
+    addInfo.appendChild(addLabel);
+    addSlot.appendChild(addInfo);
+    addSlot.addEventListener("click", () => {
+      this.state.ces.push(null);
+      this.buildCESlots();
+      CESelector.open(this.state.ces.length - 1, true);
+    });
+    grid.appendChild(addSlot);
+  },
+
+  setCE(slotIndex, ceId) {
+    if (slotIndex < 0 || slotIndex >= this.state.ces.length) return;
+    this.state.ces[slotIndex] = ceId;
+    this.saveState();
+    this.buildCESlots();
+  },
+
+  removeCE(index) {
+    this.state.ces.splice(index, 1);
+    this.saveState();
+    this.buildCESlots();
+  },
+
+  buildServantSlots() {
+    const grid = document.getElementById("servantGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    this.elements = {};
+
+    const count = this.state.slots.length;
+
+    for (let i = 0; i < count; i++) {
+      const slotData = this.state.slots[i];
+      if (!slotData.servantId) continue; // skip pending slots
+      const slot = DOMFactory.el("div", "servant-slot");
+      slot.dataset.slotIndex = i;
+
+      // Portrait area (clickable to open selector)
+      const portraitArea = DOMFactory.el("div", "servant-slot-select-btn");
+
+      if (slotData.servantId) {
+        const servant = ServantData.getServant(slotData.servantId);
+        if (servant) {
+          const img = DOMFactory.el("img", "servant-slot-portrait", {
+            src: servant.image,
+            alt: servant.name
+          });
+          img.onerror = () => {
+            const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
+            fb.textContent = servant.id;
+            img.replaceWith(fb);
+          };
+          portraitArea.appendChild(img);
+        } else {
+          const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
+          fb.textContent = slotData.servantId;
+          portraitArea.appendChild(fb);
+        }
+      } else {
+        const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
+        fb.textContent = "+";
+        portraitArea.appendChild(fb);
+      }
+
+      // Click portrait to open selector
+      portraitArea.addEventListener("click", () => {
+        ServantSelector.open(i);
+      });
+      portraitArea.style.cursor = "pointer";
+      slot.appendChild(portraitArea);
+
+      // Info area: name + type dropdown + bond input
+      const info = DOMFactory.el("div", "servant-slot-info");
+
+      if (slotData.servantId) {
+        const servant = ServantData.getServant(slotData.servantId);
+        const nameEl = DOMFactory.el("div", "servant-slot-name");
+        nameEl.textContent = servant ? servant.name : slotData.servantId;
+        info.appendChild(nameEl);
+      } else {
+        const placeholder = DOMFactory.el("div", "servant-slot-placeholder");
+        placeholder.textContent = "Tap to select";
+        info.appendChild(placeholder);
+      }
+
+      // Type dropdown
+      const typeRow = DOMFactory.el("div", "input-row");
+      const typeSelect = DOMFactory.el("select", "select-field", { id: `slotType_${i}` });
+      const typeOpts = [
+        { value: "normal", text: "Normal Servant" },
+        { value: "support", text: "Support Servant" },
+        { value: "maxbond", text: "Max Bond Servant" }
+      ];
+      typeOpts.forEach(opt => {
+        const o = DOMFactory.el("option", null, { value: opt.value });
+        o.textContent = opt.text;
+        if (opt.value === (slotData.type || "normal")) o.selected = true;
+        typeSelect.appendChild(o);
+      });
+      typeRow.appendChild(typeSelect);
+      info.appendChild(typeRow);
+
+      typeSelect.addEventListener("change", () => {
+        this.state.slots[i].type = typeSelect.value;
+        this.saveState();
+        this.buildServantSlots();
+      });
+
+      // Bond input row (only for normal)
+      const slotType = slotData.type || "normal";
+      if (slotType === "normal") {
+        const inputRow = DOMFactory.el("div", "input-row");
+        const inputLabel = DOMFactory.el("label", "input-label", { for: `slotBond_${i}` });
+        inputLabel.textContent = "Require";
+        const input = DOMFactory.el("input", "input-field", {
+          type: "number",
+          id: `slotBond_${i}`,
+          min: "0",
+          max: "9999999",
+          value: String(slotData.bondNeeded || 0)
+        });
+        inputRow.appendChild(inputLabel);
+        inputRow.appendChild(input);
+        info.appendChild(inputRow);
+
+        this.elements[`slotBond_${i}`] = input;
+      }
+
+      // Remove button
+      const removeBtn = DOMFactory.el("button", "servant-remove-btn", { type: "button" });
+      removeBtn.textContent = "\u2715";
+      removeBtn.title = "Remove servant";
+      removeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.removeSlot(i);
+      });
+      slot.appendChild(removeBtn);
+
+      slot.appendChild(info);
+      grid.appendChild(slot);
+    }
+
+    // Add button
+    const addSlot = DOMFactory.el("div", ["servant-slot", "servant-add-slot"]);
+      const addPortrait = DOMFactory.el("div", "servant-slot-portrait-fallback");
+      addPortrait.textContent = "+";
+      addSlot.appendChild(addPortrait);
+      const addInfo = DOMFactory.el("div", "servant-slot-info");
+      const addLabel = DOMFactory.el("div", "servant-slot-placeholder");
+      addLabel.textContent = "Add servant";
+      addInfo.appendChild(addLabel);
+      addSlot.appendChild(addInfo);
+      addSlot.addEventListener("click", () => {
+        // Add slot and open modal; if closed without picking, remove it
+        this.state.slots.push({ servantId: null, bondNeeded: 0, type: "normal" });
+        this.buildServantSlots();
+        const newIndex = this.state.slots.length - 1;
+        ServantSelector.open(newIndex, true); // pending = true
+      });
+      addSlot.style.cursor = "pointer";
+      grid.appendChild(addSlot);
+  },
+
+  setServant(slotIndex, servantId) {
+    if (slotIndex < 0 || slotIndex >= this.state.slots.length) return;
+    this.state.slots[slotIndex].servantId = servantId;
+    this.saveState();
+    this.buildServantSlots();
+  },
+
+  calculate() {
+    // Determine quest bond/run
+    const select = document.getElementById("bondQuestSelect");
+    const questKey = select.value;
+    let questName = "";
+    let bondPerRun = 0;
+
+    if (questKey && questKey !== "custom") {
+      const preset = BOND_QUESTS.find(q => q.key === questKey);
+      if (preset) {
+        questName = preset.name;
+        bondPerRun = preset.bond;
+      }
+    } else if (questKey === "custom") {
+      bondPerRun = Validator.clamp(
+        document.getElementById("customBondPerRun").value, 0, 99999
+      );
+      questName = "Custom Quest";
+    }
+
+    if (bondPerRun <= 0) {
+      alert("Please select a quest or enter bond points per run.");
+      return;
+    }
+
+    // Read all slot inputs
+    const count = this.state.slots.length;
+    for (let i = 0; i < count; i++) {
+      const input = this.elements[`slotBond_${i}`];
+      if (input) {
+        this.state.slots[i].bondNeeded = Validator.clamp(input.value, 0, 9999999);
+      }
+    }
+
+    // Collect max bond servants for +25% bonus
+    const maxBondServants = [];
+    for (let i = 0; i < count; i++) {
+      const slot = this.state.slots[i];
+      if (slot.servantId && (slot.type || "normal") === "maxbond") {
+        const servant = ServantData.getServant(slot.servantId);
+        maxBondServants.push({
+          servantId: slot.servantId,
+          name: servant ? servant.name : slot.servantId,
+          image: servant ? servant.image : null
+        });
+      }
+    }
+    const maxBondBonus = maxBondServants.length * 25;
+
+    // Collect frontline support servants for +4% bonus
+    const frontlineSupports = [];
+    for (let i = 0; i < Math.min(count, 3); i++) {
+      const slot = this.state.slots[i];
+      if (slot.servantId && (slot.type || "normal") === "support") {
+        const servant = ServantData.getServant(slot.servantId);
+        frontlineSupports.push({
+          servantId: slot.servantId,
+          name: servant ? servant.name : slot.servantId,
+          image: servant ? servant.image : null
+        });
+      }
+    }
+    const supportBonus = frontlineSupports.length * 4;
+
+    // Calculate for normal servants only
+    const slotResults = [];
+    for (let i = 0; i < count; i++) {
+      const slot = this.state.slots[i];
+      const slotType = slot.type || "normal";
+      if (slotType !== "normal") continue;
+      if (!slot.servantId) continue;
+
+      const bondNeeded = slot.bondNeeded || 0;
+      if (bondNeeded <= 0) continue;
+
+      const servantId = slot.servantId;
+      const servant = ServantData.getServant(servantId);
+
+      // Frontline bonus: first 3 slots get +20%
+      const isFrontline = i < 3;
+      const frontlineBonus = isFrontline ? 20 : 0;
+
+      // Max bond bonus: +25% per max bond servant
+      // Frontline support bonus: +4% per frontline support servant
+      let ceBonusPercent = frontlineBonus + maxBondBonus + supportBonus;
+      const appliedCEs = [];
+      if (isFrontline) {
+        appliedCEs.push({ id: "frontline", name: "Frontline", bonus: 20, image: "icons/bond_icon.webp" });
+      }
+      frontlineSupports.forEach(fs => {
+        appliedCEs.push({ id: "support_" + fs.servantId, name: fs.name, bonus: 4, image: fs.image, isSupport: true });
+      });
+      maxBondServants.forEach(mb => {
+        appliedCEs.push({ id: "maxbond_" + mb.servantId, name: mb.name, bonus: 25, image: mb.image, isMaxBond: true });
+      });
+
+      // CE trait matching
+      const servantTraits = servant ? servant.traits : [];
+      this.state.ces.forEach(ceId => {
+        const ce = CEList.find(c => c.id === ceId);
+        if (!ce) return;
+
+        let matched = false;
+        if (ce.traitGroups.length > 0) {
+          const allGroupsMatch = ce.traitGroups.every(group =>
+            group.some(t => servantTraits.includes(t))
+          );
+          if (allGroupsMatch) matched = true;
+        } else if (ce.traits.length === 0) {
+          matched = true;
+        } else if (ce.matchAll) {
+          const hasAll = ce.traits.every(t => servantTraits.includes(t));
+          if (hasAll) matched = true;
+        } else {
+          const hasTrait = ce.traits.some(t => servantTraits.includes(t));
+          if (hasTrait) matched = true;
+        }
+
+        if (matched) {
+          ceBonusPercent += ce.bonus;
+          appliedCEs.push(ce);
+        }
+      });
+
+      const effectiveBond = Math.round(bondPerRun * (1 + ceBonusPercent / 100));
+      slotResults.push({
+        index: i,
+        servantId,
+        name: servant ? servant.name : servantId,
+        image: servant ? servant.image : null,
+        bondNeeded,
+        effectiveBond,
+        runs: Math.ceil(bondNeeded / effectiveBond),
+        ceBonus: ceBonusPercent,
+        appliedCEs,
+        isFrontline
+      });
+    }
+
+    if (slotResults.length === 0) {
+      alert("Please select servants and enter bond points needed.");
+      return;
+    }
+
+    this.state.selectedQuest = questKey;
+    this.state.customBond = questKey === "custom" ? bondPerRun : 0;
+    this.saveState();
+
+    // Show results
+    const container = document.getElementById("bondResultContent");
+    container.innerHTML = "";
+
+    // Quest info
+    const questRow = DOMFactory.el("div", "bond-result-row");
+    const questLabel = DOMFactory.el("span", "bond-result-label");
+    questLabel.textContent = "Quest";
+    const questValue = DOMFactory.el("span", "bond-result-value");
+    questValue.textContent = `${questName} (${bondPerRun} pts/run)`;
+    questRow.appendChild(questLabel);
+    questRow.appendChild(questValue);
+    container.appendChild(questRow);
+
+    // Per-servant results grid
+    const resultGrid = DOMFactory.el("div", "bond-result-servant-grid");
+    slotResults.forEach(sr => {
+      const card = DOMFactory.el("div", "bond-result-servant-card");
+
+      // Portrait
+      if (sr.image) {
+        const img = DOMFactory.el("img", "servant-slot-portrait", {
+          src: sr.image,
+          alt: sr.name
+        });
+        card.appendChild(img);
+      } else {
+        const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
+        fb.textContent = sr.servantId;
+        card.appendChild(fb);
+      }
+
+      // Name
+      const nameEl = DOMFactory.el("div", "servant-slot-name");
+      nameEl.textContent = sr.name;
+      card.appendChild(nameEl);
+
+      // Applied CE images grid
+      if (sr.appliedCEs.length > 0) {
+        const ceImgGrid = DOMFactory.el("div", "bond-result-ce-grid");
+        sr.appliedCEs.forEach(ce => {
+          if (ce.isMaxBond) {
+            // Max bond: servant portrait with 00205 icon overlay
+            const wrap = DOMFactory.el("div", "bond-result-ce-maxbond-wrap");
+            const servantImg = DOMFactory.el("img", "bond-result-ce-img", {
+              src: ce.image,
+              alt: ce.name,
+              title: `${ce.name} +${ce.bonus}%`
+            });
+            servantImg.onerror = () => {
+              const fb = DOMFactory.el("div", "bond-result-ce-fallback");
+              fb.textContent = `+${ce.bonus}`;
+              servantImg.replaceWith(fb);
+            };
+            wrap.appendChild(servantImg);
+            const icon = DOMFactory.el("img", "bond-result-ce-maxbond-icon", {
+              src: "icons/bond_icon.webp",
+              alt: "Max Bond",
+              title: "Max Bond"
+            });
+            icon.onerror = () => { icon.style.display = "none"; };
+            wrap.appendChild(icon);
+            ceImgGrid.appendChild(wrap);
+          } else if (ce.isSupport) {
+            // Frontline support: servant portrait with FP icon overlay
+            const wrap = DOMFactory.el("div", "bond-result-ce-maxbond-wrap");
+            const servantImg = DOMFactory.el("img", "bond-result-ce-img", {
+              src: ce.image,
+              alt: ce.name,
+              title: `${ce.name} +${ce.bonus}%`
+            });
+            servantImg.onerror = () => {
+              const fb = DOMFactory.el("div", "bond-result-ce-fallback");
+              fb.textContent = `+${ce.bonus}`;
+              servantImg.replaceWith(fb);
+            };
+            wrap.appendChild(servantImg);
+            const icon = DOMFactory.el("img", "bond-result-ce-maxbond-icon", {
+              src: "icons/fp_icon.webp",
+              alt: "Support",
+              title: "Frontline Support"
+            });
+            icon.onerror = () => { icon.style.display = "none"; };
+            wrap.appendChild(icon);
+            ceImgGrid.appendChild(wrap);
+          } else {
+            const ceImg = DOMFactory.el("img", "bond-result-ce-img", {
+              src: ce.image,
+              alt: ce.name,
+              title: `${ce.name} +${ce.bonus}%`
+            });
+            ceImg.onerror = () => {
+              const fb = DOMFactory.el("div", "bond-result-ce-fallback");
+              fb.textContent = `+${ce.bonus}`;
+              ceImg.replaceWith(fb);
+            };
+            ceImgGrid.appendChild(ceImg);
+          }
+        });
+        card.appendChild(ceImgGrid);
+      }
+
+      // Bond breakdown
+      const baseBond = bondPerRun;
+      const bonusBond = sr.effectiveBond - baseBond;
+      const bondInfo = DOMFactory.el("div", "bond-result-bond-info");
+      bondInfo.textContent = bonusBond > 0
+        ? `${baseBond.toLocaleString()}(+${bonusBond.toLocaleString()})`
+        : `${baseBond.toLocaleString()}`;
+      card.appendChild(bondInfo);
+
+      // Runs count
+      const runsEl = DOMFactory.el("div", "bond-result-runs");
+      runsEl.textContent = `${sr.runs} runs`;
+      card.appendChild(runsEl);
+
+      resultGrid.appendChild(card);
+    });
+    container.appendChild(resultGrid);
+
+    const results = document.getElementById("bondResults");
+    results.classList.add("visible");
+
+    setTimeout(() => {
+      results.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  },
+
+  saveState() {
+    try {
+      localStorage.setItem(BOND_STORAGE_KEY, JSON.stringify(this.state));
+    } catch (e) { /* ignore */ }
+  },
+
+  loadState() {
+    try {
+      const raw = localStorage.getItem(BOND_STORAGE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== "object") return null;
+
+      // Migrate old format (single bondNeeded) to new slots format
+      let slots;
+      if (data.slots && Array.isArray(data.slots)) {
+        // Only keep slots that have a servant selected
+        slots = data.slots
+          .filter(s => s.servantId)
+          .map(s => ({
+            servantId: s.servantId || null,
+            bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, 9999999),
+            type: ["normal", "support", "maxbond"].includes(s.type) ? s.type : "normal"
+          }));
+      } else {
+        slots = [];
+        if (data.bondNeeded) {
+          slots.push({ servantId: null, bondNeeded: Validator.clamp(data.bondNeeded, 0, 9999999) });
+        }
+      }
+
+      return {
+        slots: slots.map(s => ({
+          servantId: s.servantId || null,
+          bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, 9999999),
+          type: s.type || "normal"
+        })),
+        selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",
+        customBond: Validator.clamp(data.customBond || 0, 0, 99999),
+        ces: Array.isArray(data.ces) ? data.ces.filter(id => typeof id === "string" && id) : []
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+};
+
+/* ============================================
    INITIALIZATION
    ============================================ */
 document.addEventListener("DOMContentLoaded", () => {
+  ServantData.load();
+  TabNavigator.init();
   App.init();
+  BondApp.init();
 });
 
 })();
