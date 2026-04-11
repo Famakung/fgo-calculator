@@ -1037,7 +1037,7 @@ body {
    ============================================ */
 @media (max-width: 600px) {
   .container {
-    padding: 24px 16px;
+    padding: 16px 12px;
   }
 
   .title {
@@ -1054,11 +1054,18 @@ body {
   }
 
   .servant-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .ce-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
   }
 
   .bond-result-servant-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
   }
 
   .materials-grid,
@@ -1074,6 +1081,41 @@ body {
   }
 
   .card {
-    padding: 20px;
+    padding: 16px;
+  }
+
+  .servant-slot-portrait,
+  .servant-slot-portrait-fallback {
+    width: 56px;
+    height: 56px;
+  }
+
+  .ce-portrait,
+  .ce-portrait-fallback {
+    width: 56px;
+    height: 56px;
+  }
+
+  .base-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .base-item {
+    justify-content: space-between;
+  }
+
+  .input-label {
+    min-width: 30px;
+  }
+
+  .input-field {
+    font-size: 0.75rem;
+    padding: 5px 6px;
+  }
+
+  .select-field {
+    font-size: 0.75rem;
   }
 }
