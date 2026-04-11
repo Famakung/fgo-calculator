@@ -1460,6 +1460,7 @@ const BondApp = {
   },
 
   removeSlot(index) {
+    this.flushInputsToState();
     this.state.slots.splice(index, 1);
     this.saveState();
     this.buildServantSlots();
@@ -1755,6 +1756,7 @@ const BondApp = {
       addSlot.appendChild(addInfo);
       addSlot.addEventListener("click", () => {
         // Add slot and open modal; if closed without picking, remove it
+        this.flushInputsToState();
         this.state.slots.push({ servantId: null, bondNeeded: 0, type: "normal", ascension: null });
         this.buildServantSlots();
         const newIndex = this.state.slots.length - 1;
@@ -1838,6 +1840,22 @@ const BondApp = {
       }
     }
     const supportBonus = frontlineSupports.length * 4;
+
+    // Check for normal servants with missing bond value
+    for (let i = 0; i < count; i++) {
+      const slot = this.state.slots[i];
+      const slotType = slot.type || "normal";
+      if (slotType !== "normal") continue;
+      if (!slot.servantId) continue;
+      const bondNeeded = slot.bondNeeded || 0;
+      if (bondNeeded <= 0) {
+        const servant = ServantData.getServant(slot.servantId);
+        const asc = slot.ascension || (servant && servant.hasAscensions ? "000" : null);
+        const name = servant ? ServantData.getAscensionName(slot.servantId, asc) : "";
+        alert(`Please enter required bond points for ${name || "servant in slot " + (i + 1)}.`);
+        return;
+      }
+    }
 
     // Calculate for normal servants only
     const slotResults = [];
