@@ -533,6 +533,24 @@ body {
   box-shadow: 0 0 0 3px var(--accent-light);
 }
 
+.ascension-modal-back {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: var(--bg);
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ascension-modal-back:hover {
+  background: var(--border);
+}
+
 .servant-modal-close {
   width: 36px;
   height: 36px;
@@ -549,6 +567,14 @@ body {
 
 .servant-modal-close:hover {
   background: var(--border);
+}
+
+.ascension-modal-title {
+  flex: 1;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 36px;
 }
 
 .servant-picker-grid {

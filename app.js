@@ -791,11 +791,20 @@ const ServantData = {
     this.servants = Object.entries(map)
       .map(([id, data]) => {
         const name = typeof data === "string" ? data : (data.name || "");
-        const traits = (typeof data === "object" && Array.isArray(data.traits)) ? data.traits : [];
+        const rawTraits = (typeof data === "object" && data.traits) ? data.traits : [];
+        const isArray = Array.isArray(rawTraits);
+        const traits = isArray ? rawTraits : (rawTraits.base || []);
+        const hasAscensions = !isArray && typeof rawTraits === "object";
+        const optionLabels = (typeof data === "object" && data.optionLabels) ? data.optionLabels : {};
+        const optionNames = (typeof data === "object" && data.optionNames) ? data.optionNames : {};
         return {
           id,
           name: name || `Servant ${id}`,
           traits,
+          rawTraits,
+          hasAscensions,
+          optionLabels,
+          optionNames,
           image: `servants/${id}.webp`
         };
       }).sort((a, b) => a.id.localeCompare(b.id));
@@ -803,6 +812,64 @@ const ServantData = {
 
   getServant(id) {
     return this.servants.find(s => s.id === id) || null;
+  },
+
+  getTraitsForAscension(id, ascension) {
+    const servant = this.getServant(id);
+    if (!servant) return [];
+    if (!servant.hasAscensions) return servant.traits;
+    const raw = servant.rawTraits;
+    const base = raw.base || [];
+    if (!ascension || !raw[ascension]) return base;
+    return [...base, ...raw[ascension]];
+  },
+
+  getImageForAscension(id, ascension) {
+    if (ascension) {
+      return `servants/${id}/${ascension}.webp`;
+    }
+    return `servants/${id}.webp`;
+  },
+
+  getAscensionOptions(id) {
+    const servant = this.getServant(id);
+    if (!servant || !servant.hasAscensions) return [];
+    const raw = servant.rawTraits;
+    // Always include all three standard ascensions, plus any custom keys
+    const standard = ["000", "001", "002"];
+    const custom = Object.keys(raw).filter(k => k !== "base" && !standard.includes(k));
+    return [...standard, ...custom];
+  },
+
+  getAscensionLabel(id, key) {
+    const LABELS = {"000": "1st Ascension", "001": "2nd Ascension", "002": "3rd Ascension"};
+    if (LABELS[key]) return LABELS[key];
+    const servant = this.getServant(id);
+    if (servant && servant.optionLabels && servant.optionLabels[key]) {
+      return servant.optionLabels[key];
+    }
+    return key;
+  },
+
+  getAscensionName(id, ascension) {
+    const servant = this.getServant(id);
+    if (!servant) return "";
+    if (ascension && servant.optionNames && servant.optionNames[ascension]) {
+      return servant.optionNames[ascension];
+    }
+    return servant.name;
+  },
+
+  getAllNames(id) {
+    const servant = this.getServant(id);
+    if (!servant) return [];
+    const names = [servant.name];
+    if (servant.optionNames) {
+      Object.values(servant.optionNames).forEach(n => {
+        if (!names.includes(n)) names.push(n);
+      });
+    }
+    return names;
   }
 };
 
@@ -866,14 +933,22 @@ const ServantSelector = {
     servants.forEach(servant => {
       const item = DOMFactory.el("div", "servant-picker-item");
 
+      const imgSrc = servant.hasAscensions
+        ? ServantData.getImageForAscension(servant.id, "000")
+        : servant.image;
       const img = DOMFactory.el("img", null, {
-        src: servant.image,
+        src: imgSrc,
         alt: servant.name
       });
       img.onerror = () => {
-        const fallback = DOMFactory.el("div", "servant-slot-portrait-fallback");
-        fallback.textContent = servant.id;
-        img.replaceWith(fallback);
+        if (servant.hasAscensions && !img.dataset.retriedFlat) {
+          img.dataset.retriedFlat = "1";
+          img.src = servant.image;
+        } else {
+          const fallback = DOMFactory.el("div", "servant-slot-portrait-fallback");
+          fallback.textContent = servant.id;
+          img.replaceWith(fallback);
+        }
       };
 
       const name = DOMFactory.el("div", "servant-picker-name");
@@ -884,8 +959,12 @@ const ServantSelector = {
 
       item.addEventListener("click", () => {
         this.pendingSlot = false; // servant selected, don't remove on close
-        BondApp.setServant(this.activeSlotIndex, servant.id);
-        this.close();
+        if (servant.hasAscensions) {
+          AscensionSelector.open(servant, this.activeSlotIndex);
+        } else {
+          BondApp.setServant(this.activeSlotIndex, servant.id, null);
+          this.close();
+        }
       });
 
       grid.appendChild(item);
@@ -899,9 +978,100 @@ const ServantSelector = {
       return;
     }
     const filtered = ServantData.servants.filter(s =>
-      s.id.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+      s.id.toLowerCase().includes(q) || ServantData.getAllNames(s.id).some(n => n.toLowerCase().includes(q))
     );
     this.renderGrid(filtered);
+  }
+};
+
+/* ============================================
+   ASCENSION SELECTOR MODAL
+   ============================================ */
+const AscensionSelector = {
+  servant: null,
+  slotIndex: null,
+
+  init() {
+    const modal = document.getElementById("ascensionModal");
+    const closeBtn = document.getElementById("ascensionModalClose");
+    const backBtn = document.getElementById("ascensionModalBack");
+
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => this.close());
+    }
+    if (backBtn) {
+      backBtn.addEventListener("click", () => this.back());
+    }
+    if (modal) {
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) this.back();
+      });
+    }
+  },
+
+  open(servant, slotIndex) {
+    this.servant = servant;
+    this.slotIndex = slotIndex;
+    const modal = document.getElementById("ascensionModal");
+    const title = document.getElementById("ascensionModalTitle");
+
+    if (title) title.textContent = servant.name;
+    this.renderGrid();
+    if (modal) modal.classList.add("open");
+  },
+
+  close() {
+    const modal = document.getElementById("ascensionModal");
+    if (modal) modal.classList.remove("open");
+    this.servant = null;
+    this.slotIndex = null;
+  },
+
+  back() {
+    const modal = document.getElementById("ascensionModal");
+    if (modal) modal.classList.remove("open");
+    const servantModal = document.getElementById("servantModal");
+    if (servantModal && !servantModal.classList.contains("open") && this.slotIndex !== null) {
+      ServantSelector.open(this.slotIndex);
+    }
+    this.servant = null;
+    this.slotIndex = null;
+  },
+
+  renderGrid() {
+    const grid = document.getElementById("ascensionPickerGrid");
+    if (!grid || !this.servant) return;
+    grid.innerHTML = "";
+
+    const options = ServantData.getAscensionOptions(this.servant.id);
+    options.forEach(asc => {
+      const item = DOMFactory.el("div", "servant-picker-item");
+
+      const imgSrc = ServantData.getImageForAscension(this.servant.id, asc);
+      const img = DOMFactory.el("img", null, {
+        src: imgSrc,
+        alt: ServantData.getAscensionLabel(this.servant.id, asc)
+      });
+      img.onerror = () => {
+        const fallback = DOMFactory.el("div", "servant-slot-portrait-fallback");
+        fallback.textContent = this.servant.id;
+        img.replaceWith(fallback);
+      };
+
+      const label = DOMFactory.el("div", "servant-picker-name");
+      label.textContent = ServantData.getAscensionLabel(this.servant.id, asc);
+
+      item.appendChild(img);
+      item.appendChild(label);
+
+      item.addEventListener("click", () => {
+        BondApp.setServant(this.slotIndex, this.servant.id, asc);
+        this.close();
+        ServantSelector.close();
+      });
+
+      grid.appendChild(item);
+    });
   }
 };
 
@@ -1071,13 +1241,16 @@ const BondApp = {
     // Init servant selector
     ServantSelector.init();
 
+    // Init ascension selector
+    AscensionSelector.init();
+
     // Init CE selector
     CESelector.init();
   },
 
   addSlot() {
     if (this.state.slots.length >= SERVANT_MAX_SLOTS) return;
-    this.state.slots.push({ servantId: null, bondNeeded: 0 });
+    this.state.slots.push({ servantId: null, bondNeeded: 0, type: "normal", ascension: null });
     this.saveState();
     this.buildServantSlots();
   },
@@ -1203,20 +1376,35 @@ const BondApp = {
 
       // Portrait area (clickable to open selector)
       const portraitArea = DOMFactory.el("div", "servant-slot-select-btn");
+      let servantHasAscensions = false;
 
       if (slotData.servantId) {
         const servant = ServantData.getServant(slotData.servantId);
         if (servant) {
+          servantHasAscensions = servant.hasAscensions;
+          const ascension = slotData.ascension || (servant.hasAscensions ? "000" : null);
+          const imgSrc = ServantData.getImageForAscension(servant.id, ascension);
           const img = DOMFactory.el("img", "servant-slot-portrait", {
-            src: servant.image,
+            src: imgSrc,
             alt: servant.name
           });
           img.onerror = () => {
-            const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
-            fb.textContent = servant.id;
-            img.replaceWith(fb);
+            if (ascension && !img.dataset.retriedFlat) {
+              img.dataset.retriedFlat = "1";
+              img.src = servant.image;
+            } else {
+              const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
+              fb.textContent = servant.id;
+              img.replaceWith(fb);
+            }
           };
           portraitArea.appendChild(img);
+          if (servant.hasAscensions) {
+            portraitArea.style.cursor = "pointer";
+            portraitArea.addEventListener("click", () => {
+              AscensionSelector.open(servant, i);
+            });
+          }
         } else {
           const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
           fb.textContent = slotData.servantId;
@@ -1228,11 +1416,13 @@ const BondApp = {
         portraitArea.appendChild(fb);
       }
 
-      // Click portrait to open selector
-      portraitArea.addEventListener("click", () => {
-        ServantSelector.open(i);
-      });
-      portraitArea.style.cursor = "pointer";
+      // Click portrait to open selector (non-ascension servants or empty slots)
+      if (!servantHasAscensions) {
+        portraitArea.addEventListener("click", () => {
+          ServantSelector.open(i);
+        });
+        portraitArea.style.cursor = "pointer";
+      }
       slot.appendChild(portraitArea);
 
       // Info area: name + type dropdown + bond input
@@ -1241,7 +1431,7 @@ const BondApp = {
       if (slotData.servantId) {
         const servant = ServantData.getServant(slotData.servantId);
         const nameEl = DOMFactory.el("div", "servant-slot-name");
-        nameEl.textContent = servant ? servant.name : slotData.servantId;
+        nameEl.textContent = servant ? ServantData.getAscensionName(servant.id, slotData.ascension) : slotData.servantId;
         info.appendChild(nameEl);
       } else {
         const placeholder = DOMFactory.el("div", "servant-slot-placeholder");
@@ -1318,7 +1508,7 @@ const BondApp = {
       addSlot.appendChild(addInfo);
       addSlot.addEventListener("click", () => {
         // Add slot and open modal; if closed without picking, remove it
-        this.state.slots.push({ servantId: null, bondNeeded: 0, type: "normal" });
+        this.state.slots.push({ servantId: null, bondNeeded: 0, type: "normal", ascension: null });
         this.buildServantSlots();
         const newIndex = this.state.slots.length - 1;
         ServantSelector.open(newIndex, true); // pending = true
@@ -1327,9 +1517,10 @@ const BondApp = {
       grid.appendChild(addSlot);
   },
 
-  setServant(slotIndex, servantId) {
+  setServant(slotIndex, servantId, ascension) {
     if (slotIndex < 0 || slotIndex >= this.state.slots.length) return;
     this.state.slots[slotIndex].servantId = servantId;
+    this.state.slots[slotIndex].ascension = ascension || null;
     this.saveState();
     this.buildServantSlots();
   },
@@ -1374,10 +1565,10 @@ const BondApp = {
       const slot = this.state.slots[i];
       if (slot.servantId && (slot.type || "normal") === "maxbond") {
         const servant = ServantData.getServant(slot.servantId);
+        const mbAsc = slot.ascension || (servant && servant.hasAscensions ? "000" : null);
         maxBondServants.push({
           servantId: slot.servantId,
-          name: servant ? servant.name : slot.servantId,
-          image: servant ? servant.image : null
+          name: servant ? ServantData.getAscensionName(slot.servantId, mbAsc) : slot.servantId,
         });
       }
     }
@@ -1389,10 +1580,10 @@ const BondApp = {
       const slot = this.state.slots[i];
       if (slot.servantId && (slot.type || "normal") === "support") {
         const servant = ServantData.getServant(slot.servantId);
+        const supAsc = slot.ascension || (servant && servant.hasAscensions ? "000" : null);
         frontlineSupports.push({
           servantId: slot.servantId,
-          name: servant ? servant.name : slot.servantId,
-          image: servant ? servant.image : null
+          name: servant ? ServantData.getAscensionName(slot.servantId, supAsc) : slot.servantId,
         });
       }
     }
@@ -1431,7 +1622,8 @@ const BondApp = {
       });
 
       // CE trait matching
-      const servantTraits = servant ? servant.traits : [];
+      const ascension = slot.ascension || (servant && servant.hasAscensions ? "000" : null);
+      const servantTraits = servant ? ServantData.getTraitsForAscension(servantId, ascension) : [];
       this.state.ces.forEach(ceId => {
         const ce = CEList.find(c => c.id === ceId);
         if (!ce) return;
@@ -1462,8 +1654,8 @@ const BondApp = {
       slotResults.push({
         index: i,
         servantId,
-        name: servant ? servant.name : servantId,
-        image: servant ? servant.image : null,
+        name: servant ? ServantData.getAscensionName(servantId, ascension) : servantId,
+        image: servant ? ServantData.getImageForAscension(servantId, ascension) : null,
         bondNeeded,
         effectiveBond,
         runs: Math.ceil(bondNeeded / effectiveBond),
@@ -1632,7 +1824,8 @@ const BondApp = {
           .map(s => ({
             servantId: s.servantId || null,
             bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, 9999999),
-            type: ["normal", "support", "maxbond"].includes(s.type) ? s.type : "normal"
+            type: ["normal", "support", "maxbond"].includes(s.type) ? s.type : "normal",
+            ascension: (typeof s.ascension === "string" && s.ascension) ? s.ascension : null
           }));
       } else {
         slots = [];
@@ -1645,7 +1838,8 @@ const BondApp = {
         slots: slots.map(s => ({
           servantId: s.servantId || null,
           bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, 9999999),
-          type: s.type || "normal"
+          type: s.type || "normal",
+          ascension: (typeof s.ascension === "string" && s.ascension) ? s.ascension : null
         })),
         selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",
         customBond: Validator.clamp(data.customBond || 0, 0, 99999),
