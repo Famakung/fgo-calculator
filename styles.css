@@ -662,23 +662,18 @@ body {
 .cefilter-match-count-filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-  align-items: center;
-}
-
-.cefilter-match-count-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 12px;
 }
 
 .cefilter-match-count-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  min-width: 40px;
+  height: 32px;
+  padding: 0 8px;
   border: 2px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
@@ -921,6 +916,10 @@ body {
 .ce-filter-picker-item.selected {
   background: var(--accent-light);
   border-radius: 8px;
+}
+
+.ce-filter-picker-item--no-match img {
+  filter: grayscale(100%);
 }
 
 /* Servant Modal */

@@ -1551,9 +1551,21 @@ const CEFilterPicker = {
     if (!grid) return;
     grid.replaceChildren();
 
+    // Build CE → entry index map (each entry = unique servant + ascension group)
+    const allMatches = CEFilterApp.computeAllCEMatches();
+    this._ceMatchEntries = {};
+    allMatches.forEach((entry, idx) => {
+      entry.matchingCEs.forEach(ce => {
+        if (!this._ceMatchEntries[ce.id]) this._ceMatchEntries[ce.id] = new Set();
+        this._ceMatchEntries[ce.id].add(idx);
+      });
+    });
+
     ces.forEach(ce => {
       const isSelected = this.tempSelected.has(ce.id);
-      const item = DOMFactory.el("div", "servant-picker-item ce-filter-picker-item" + (isSelected ? " selected" : ""));
+      const item = DOMFactory.el("div", "servant-picker-item ce-filter-picker-item" +
+        (isSelected ? " selected" : ""));
+      item.dataset.ceId = ce.id;
 
       const check = DOMFactory.el("div", "ce-filter-check");
       check.textContent = "\u2713";
@@ -1575,9 +1587,53 @@ const CEFilterPicker = {
           this.tempSelected.add(ce.id);
           item.classList.add("selected");
         }
+        this.updateNoMatchState();
       });
 
       grid.appendChild(item);
+    });
+
+    this.updateNoMatchState();
+  },
+
+  updateNoMatchState() {
+    const selectedIds = [...this.tempSelected];
+    const grid = document.getElementById("ceFilterPickerGrid");
+    if (!grid) return;
+
+    // Intersect entry indices across all selected CEs
+    let intersection = null;
+    if (selectedIds.length > 0) {
+      for (const selId of selectedIds) {
+        const set = this._ceMatchEntries[selId];
+        if (!set) { intersection = new Set(); break; }
+        if (!intersection) {
+          intersection = new Set(set);
+        } else {
+          for (const idx of intersection) {
+            if (!set.has(idx)) intersection.delete(idx);
+          }
+        }
+      }
+    }
+
+    grid.querySelectorAll(".ce-filter-picker-item").forEach(item => {
+      const ceId = item.dataset.ceId;
+      if (this.tempSelected.has(ceId)) {
+        item.classList.remove("ce-filter-picker-item--no-match");
+        return;
+      }
+      if (selectedIds.length === 0 || !intersection) {
+        item.classList.remove("ce-filter-picker-item--no-match");
+        return;
+      }
+      const entries = this._ceMatchEntries[ceId];
+      if (!entries) {
+        item.classList.add("ce-filter-picker-item--no-match");
+        return;
+      }
+      const hasOverlap = [...intersection].some(idx => entries.has(idx));
+      item.classList.toggle("ce-filter-picker-item--no-match", !hasOverlap);
     });
   },
 
@@ -1690,6 +1746,7 @@ const CEFilterApp = {
       classes.forEach(cls => {
         const btn = DOMFactory.el("div", "cefilter-class-btn" +
           (selected.has(cls.id) ? " active" : ""));
+        btn.dataset.traitId = cls.id;
         const img = DOMFactory.el("img", "", {
           src: `icons/classes/${cls.icon}.webp`,
           alt: cls.label,
@@ -1736,6 +1793,7 @@ const CEFilterApp = {
     rarities.forEach(rarity => {
       const btn = DOMFactory.el("div", "cefilter-rarity-btn" +
         (selected.has(rarity.id) ? " active" : ""));
+      btn.dataset.traitId = rarity.id;
       btn.textContent = rarity.label;
       btn.addEventListener("click", () => {
         if (selected.has(rarity.id)) {
@@ -1841,17 +1899,13 @@ const CEFilterApp = {
 
     container.replaceChildren();
 
-    const label = DOMFactory.el("span", "cefilter-match-count-label");
-    label.textContent = "Matching CEs:";
-    container.appendChild(label);
-
     const selected = new Set(this.state.matchCounts);
 
     for (let n = 1; n <= Math.max(...availableCounts); n++) {
       if (!availableCounts.has(n)) continue;
       const btn = DOMFactory.el("div", "cefilter-match-count-btn" +
         (selected.has(n) ? " active" : ""));
-      btn.textContent = n;
+      btn.textContent = n + " CE";
       btn.addEventListener("click", () => {
         if (selected.has(n)) {
           selected.delete(n);
@@ -1931,6 +1985,28 @@ const CEFilterApp = {
 
     const allMatches = this.computeAllCEMatches();
     let filtered = this.filterByCEs(allMatches);
+
+    // Hide class/rarity buttons not present in CE-filtered results
+    const availableClassIds = new Set();
+    const availableRarityIds = new Set();
+    filtered.forEach(({ servant }) => {
+      servant.traits.forEach(t => {
+        if (t.startsWith("01")) availableClassIds.add(t);
+        if (t.startsWith("04")) availableRarityIds.add(t);
+      });
+    });
+    document.querySelectorAll(".cefilter-class-btn").forEach(btn => {
+      const avail = availableClassIds.has(btn.dataset.traitId);
+      btn.style.display = avail ? "" : "none";
+      if (!avail) btn.classList.remove("active");
+    });
+    document.querySelectorAll(".cefilter-rarity-btn").forEach(btn => {
+      const avail = availableRarityIds.has(btn.dataset.traitId);
+      btn.style.display = avail ? "" : "none";
+      if (!avail) btn.classList.remove("active");
+    });
+    this.state.classFilters = this.state.classFilters.filter(id => availableClassIds.has(id));
+    this.state.rarityFilters = this.state.rarityFilters.filter(id => availableRarityIds.has(id));
 
     // Apply search query
     const query = (this.state.searchQuery || "").toLowerCase().trim();
