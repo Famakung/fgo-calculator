@@ -20,7 +20,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Craft Essence bonus system with trait-based matching
 - Frontline bonus (+20%) for first 3 slots
 - Frontline support bonus (+4%) when support is in frontline
-- Quest presets (FreeQuest Lv.83/84, GrandDuel Lv.100) or custom bond per run
+- Quest presets (Free Quest Lv.83/84, Grand Duel Lv.100) or custom bond per run
 - Per-servant results with bond breakdown and run count
 
 ### Bond Gain CE Filter
@@ -44,7 +44,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 3. For Normal servants, enter bond points needed
 4. Add Craft Essences for bonus traits
 5. Select a quest
-6. Click "Calculate Runs"
+6. Click "Calculate Quest Runs"
 
 ### CE Filter
 1. Click "Add Craft Essence" to select CEs
@@ -69,7 +69,7 @@ Craft Essences apply bonuses based on servant traits with four modes:
 fgo-calculator/
 ├── index.html              # Main HTML with tab panels and modals
 ├── styles.css              # CSS with custom properties and grid layouts
-├── app.js                  # All logic in single IIFE (~2649 lines)
+├── app.js                  # All logic in single IIFE (~2800 lines)
 ├── data/
 │   ├── traits.js           # Trait ID to display name mapping
 │   ├── servants.js         # Servant data with trait arrays
@@ -80,7 +80,7 @@ fgo-calculator/
     ├── bond_icon.webp
     ├── fp_icon.webp
     ├── materials/           # Material background/foreground icons
-    └── classes/             # Class icons
+    └── classes/             # Class icons (.webp)
 ```
 
 ## Architecture

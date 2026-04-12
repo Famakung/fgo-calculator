@@ -506,6 +506,7 @@ const UIBuilder = {
       count.textContent = "0";
 
       const label = DOMFactory.el("div", "quest-label");
+      label.id = `${tier}Label`;
       label.textContent = "runs";
 
       item.appendChild(name);
@@ -567,6 +568,8 @@ const ViewManager = {
 
       const runEl = document.getElementById(`${tier}Play`);
       if (runEl) runEl.textContent = runs[tier];
+      const labelEl = document.getElementById(`${tier}Label`);
+      if (labelEl) labelEl.textContent = runs[tier] === 1 ? "run" : "runs";
     });
 
     setTimeout(() => {
@@ -788,9 +791,9 @@ const TabNavigator = {
    BOND CALCULATOR
    ============================================ */
 const BOND_QUESTS = [
-  { key: "fq83", name: "FreeQuest Lv.83", bond: 835 },
-  { key: "fq84", name: "FreeQuest Lv.84", bond: 855 },
-  { key: "gd100", name: "GrandDuel Lv.100\u2605\u2605\u2605", bond: 4748 }
+  { key: "fq83", name: "Free Quest Lv.83", bond: 835 },
+  { key: "fq84", name: "Free Quest Lv.84", bond: 855 },
+  { key: "gd100", name: "Grand Duel Lv.100\u2605\u2605\u2605", bond: 4748 }
 ];
 
 /* Trait names from traits/traits.js */
@@ -1572,7 +1575,7 @@ const CEFilterApp = {
         const btn = DOMFactory.el("div", "cefilter-class-btn" +
           (selected.has(cls.id) ? " active" : ""));
         const img = DOMFactory.el("img", "", {
-          src: `icons/classes/${cls.icon}.png`,
+          src: `icons/classes/${cls.icon}.webp`,
           alt: cls.label,
           title: cls.label
         });
@@ -2175,7 +2178,7 @@ const BondApp = {
       addSlot.appendChild(addPortrait);
       const addInfo = DOMFactory.el("div");
       const addLabel = DOMFactory.el("div", "ce-slot-name");
-      addLabel.textContent = "Add CE";
+      addLabel.textContent = "Add Craft Essence";
       addInfo.appendChild(addLabel);
       addSlot.appendChild(addInfo);
       addSlot.addEventListener("click", () => {
@@ -2322,7 +2325,7 @@ const BondApp = {
         info.appendChild(nameEl);
       } else {
         const placeholder = DOMFactory.el("div", "servant-slot-placeholder");
-        placeholder.textContent = "Tap to select";
+        placeholder.textContent = "Click to select";
         info.appendChild(placeholder);
       }
 
@@ -2355,7 +2358,7 @@ const BondApp = {
       if (slotType === "normal") {
         const inputRow = DOMFactory.el("div", "input-row");
         const inputLabel = DOMFactory.el("label", "input-label", { for: `slotBond_${i}` });
-        inputLabel.textContent = "Require";
+        inputLabel.textContent = "Bond Needed";
         const input = DOMFactory.el("input", "input-field", {
           type: "number",
           id: `slotBond_${i}`,
@@ -2654,7 +2657,7 @@ const BondApp = {
               alt: ce.name,
               title: `${ce.name} +${ce.bonus}%`
             });
-            DOMFactory.addSimpleFallback(servantImg, "bond-result-ce-fallback", `+${ce.bonus}`);
+            DOMFactory.addSimpleFallback(servantImg, "bond-result-ce-fallback", `+${ce.bonus}%`);
             wrap.appendChild(servantImg);
             const icon = DOMFactory.el("img", "bond-result-ce-maxbond-icon", {
               src: "icons/bond_icon.webp",
@@ -2672,11 +2675,11 @@ const BondApp = {
               alt: ce.name,
               title: `${ce.name} +${ce.bonus}%`
             });
-            DOMFactory.addSimpleFallback(servantImg, "bond-result-ce-fallback", `+${ce.bonus}`);
+            DOMFactory.addSimpleFallback(servantImg, "bond-result-ce-fallback", `+${ce.bonus}%`);
             wrap.appendChild(servantImg);
             const icon = DOMFactory.el("img", "bond-result-ce-maxbond-icon", {
               src: "icons/fp_icon.webp",
-              alt: "Support",
+              alt: "Frontline Support",
               title: "Frontline Support"
             });
             icon.onerror = () => { icon.style.display = "none"; };
@@ -2688,7 +2691,7 @@ const BondApp = {
               alt: ce.name,
               title: `${ce.name} +${ce.flatBonus} pts`
             });
-            DOMFactory.addSimpleFallback(ceImg, "bond-result-ce-fallback", `+${ce.flatBonus}`);
+            DOMFactory.addSimpleFallback(ceImg, "bond-result-ce-fallback", `+${ce.flatBonus} pts`);
             ceImgGrid.appendChild(ceImg);
           } else {
             const ceImg = DOMFactory.el("img", "bond-result-ce-img", {
@@ -2696,7 +2699,7 @@ const BondApp = {
               alt: ce.name,
               title: `${ce.name} +${ce.bonus}%`
             });
-            DOMFactory.addSimpleFallback(ceImg, "bond-result-ce-fallback", `+${ce.bonus}`);
+            DOMFactory.addSimpleFallback(ceImg, "bond-result-ce-fallback", `+${ce.bonus}%`);
             ceImgGrid.appendChild(ceImg);
           }
         });
@@ -2712,7 +2715,7 @@ const BondApp = {
 
       // Runs count
       const runsEl = DOMFactory.el("div", "bond-result-runs");
-      runsEl.textContent = `${sr.runs} runs`;
+      runsEl.textContent = `${sr.runs} ${sr.runs === 1 ? "run" : "runs"}`;
       card.appendChild(runsEl);
 
       resultGrid.appendChild(card);

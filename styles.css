@@ -1,5 +1,5 @@
 /* ============================================
-   FGO Event Calculator - Clean Architecture
+   FGO Calculator - Clean Architecture
    styles.css
    ============================================ */
 
@@ -518,6 +518,8 @@ body {
   background: var(--bg);
   border-radius: var(--radius-sm);
   position: relative;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .ce-portrait {
@@ -558,6 +560,9 @@ body {
   font-size: 0.65rem;
   color: var(--accent);
   font-weight: 600;
+  text-align: center;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .ce-add-slot {
@@ -661,7 +666,7 @@ body {
 
 .cefilter-match-count-label {
   font-size: 0.75rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
