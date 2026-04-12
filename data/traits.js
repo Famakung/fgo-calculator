@@ -32,5 +32,6 @@ var TRAIT_DATA = {
   "0308": "Summer Alignment",
   "2654": "Modern Human",
   "2780": "Spiritron Dresses",
-  "2821": "Beast Servants"
+  "2821": "Beast Servants",
+  "2801200": "Solomon"
 };

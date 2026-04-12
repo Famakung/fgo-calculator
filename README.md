@@ -53,13 +53,14 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 
 ## CE Trait Matching
 
-Craft Essences apply bonuses based on servant traits with three modes:
+Craft Essences apply bonuses based on servant traits with four modes:
 
 | Mode | Field | Behavior |
 |------|-------|----------|
 | **OR** | `traits` array | Servant needs ANY matching trait |
 | **AND** | `traits` + `matchAll: true` | Servant must have ALL traits |
 | **AND/OR** | `traitGroups` | Each group OR-matched; ALL groups must match |
+| **Override** | `alsoMatch` array | Instant match if servant has any listed trait (e.g. servant-specific overrides) |
 
 ## File Structure
 
@@ -71,7 +72,7 @@ fgo-calculator/
 ├── data/
 │   ├── traits.js           # Trait ID to display name mapping
 │   ├── servants.js         # Servant data with trait arrays
-│   └── craft_essences.js   # CE data with traits/matchAll/traitGroups
+│   └── craft_essences.js   # CE data with traits/matchAll/traitGroups/alsoMatch
 ├── servants/               # Servant portraits ({ID}.webp, with ascension subdirs)
 ├── craft_essences/         # CE images ({ID}.webp)
 └── icons/                  # UI icons

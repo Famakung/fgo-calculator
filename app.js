@@ -162,6 +162,7 @@ const Calculator = {
 
 const TraitMatcher = {
   matches(servantTraits, ce) {
+    if (ce.alsoMatch && ce.alsoMatch.some(t => servantTraits.includes(t))) return true;
     if (ce.traitGroups.length > 0) {
       return ce.traitGroups.every(group =>
         group.some(t => servantTraits.includes(t))
@@ -178,25 +179,14 @@ const TraitMatcher = {
     if (!servant.hasAscensions) return [{ key: "base", traits: servant.traits }];
     const raw = servant.rawTraits;
     const base = raw.base || [];
-    const keys = Object.keys(raw).filter(k => k !== "base");
-    if (keys.length === 0) return [{ key: "base", traits: base }];
-    return keys.map(k => ({ key: k, traits: [...base, ...(raw[k] || [])] }));
-  },
-
-  servantMatchesAnyAscension(servant, ce) {
-    const traitSets = this.getAllTraitSets(servant);
-    return traitSets.some(set => this.matches(set.traits, ce));
-  },
-
-  getMatchingAscensions(servant, ce) {
-    const sets = this.getAllTraitSets(servant);
-    const matched = [];
-    sets.forEach(set => {
-      if (this.matches(set.traits, ce)) {
-        matched.push(set.key);
-      }
-    });
-    return matched;
+    const standard = ["000", "001", "002"];
+    const allKeys = Object.keys(raw).filter(k => k !== "base");
+    const custom = allKeys.filter(k => !standard.includes(k));
+    // Always include all three standard ascensions; missing ones get base-only traits
+    const sets = standard.map(k => ({ key: k, traits: [...base, ...(raw[k] || [])] }));
+    // Append custom keys (e.g. Spiritron Dress) after standard ones
+    custom.forEach(k => sets.push({ key: k, traits: [...base, ...(raw[k] || [])] }));
+    return sets;
   }
 };
 
@@ -818,6 +808,7 @@ const CEList = (() => {
       traits: Array.isArray(data.traits) ? data.traits : [],
       matchAll: !!data.matchAll,
       traitGroups: Array.isArray(data.traitGroups) ? data.traitGroups : [],
+      alsoMatch: Array.isArray(data.alsoMatch) ? data.alsoMatch : [],
       isGroup,
       flatBonus: isGroup ? (data.flatBonus || 0) : 0,
       image: `craft_essences/${id}.webp`

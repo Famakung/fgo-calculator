@@ -28,7 +28,7 @@ var CE_DATA = {
   "2209": { "name": "Needle of Sincerity", "bonus": 20, "traits": ["2780"] },
   "2233": { "name": "Blessed Bride", "bonus": 20, "traits": ["0300", "0002"], "matchAll": true },
   "2437": { "name": "Foreign God", "bonus": 20, "traits": ["0304", "0203"] },
-  "2509": { "name": "Those from Chaldea", "bonus": 20, "traitGroups": [["0301"], ["0100", "0101", "0102", "0103", "0104", "0105", "0106"]] },
+  "2509": { "name": "Those from Chaldea", "bonus": 20, "traitGroups": [["0301"], ["0100", "0101", "0102", "0103", "0104", "0105", "0106"]], "alsoMatch": ["2801200"] },
   "2583": { "name": "Great Library of Memories", "bonus": 20, "traits": ["0302"] },
   "2512": {
     "name": "Heroic Spirit Apex",
