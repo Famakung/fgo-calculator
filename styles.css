@@ -697,6 +697,17 @@ body {
   justify-content: space-between;
 }
 
+.cefilter-no-bonus-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .cefilter-count {
   font-size: 0.75rem;
   color: var(--accent);

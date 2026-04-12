@@ -29,6 +29,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Searchable results by servant ID or name
 - Shows matching CE badges and trait tags per servant
 - Clickable CE badges to add to selection
+- "No CE Bonus" section shows servants that don't match any trait-based CE
 
 ## Usage
 

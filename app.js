@@ -1711,21 +1711,22 @@ const CEFilterApp = {
       if (modeRow) modeRow.style.display = "none";
     }
 
-    let filtered = this.filterByCEs(this.computeAllCEMatches());
+    const allMatches = this.computeAllCEMatches();
+    let filtered = this.filterByCEs(allMatches);
 
     // Apply search query
     const query = (this.state.searchQuery || "").toLowerCase().trim();
+    const matchesSearch = (s) =>
+      s.id.toLowerCase().includes(query) ||
+      s.name.toLowerCase().includes(query) ||
+      ServantData.getAllNames(s.id).some(n => n.toLowerCase().includes(query));
     if (query) {
-      filtered = filtered.filter(s =>
-        s.servant.id.toLowerCase().includes(query) ||
-        s.servant.name.toLowerCase().includes(query) ||
-        ServantData.getAllNames(s.servant.id).some(n => n.toLowerCase().includes(query))
-      );
+      filtered = filtered.filter(s => matchesSearch(s.servant));
     }
 
     // Apply class filter
+    const classSet = new Set(this.state.classFilters);
     if (this.state.classFilters.length > 0) {
-      const classSet = new Set(this.state.classFilters);
       filtered = filtered.filter(s =>
         s.servant.traits.some(t => classSet.has(t))
       );
@@ -1813,6 +1814,57 @@ const CEFilterApp = {
 
       grid.appendChild(card);
     });
+
+    // --- No CE Bonus section ---
+    const noBonusGrid = document.getElementById("cefilterNoBonus");
+    const noBonusCountEl = document.getElementById("cefilterNoBonusCount");
+    const noBonusHeader = document.getElementById("cefilterNoBonusHeader");
+    if (!noBonusGrid) return;
+    noBonusGrid.replaceChildren();
+
+    const matchedIds = new Set(allMatches.map(r => r.servant.id));
+    let noMatchServants = ServantData.servants.filter(s => !matchedIds.has(s.id));
+
+    if (query) {
+      noMatchServants = noMatchServants.filter(s => matchesSearch(s));
+    }
+    if (this.state.classFilters.length > 0) {
+      noMatchServants = noMatchServants.filter(s =>
+        s.traits.some(t => classSet.has(t))
+      );
+    }
+
+    const hasCESelected = selectedCEObjs.length > 0;
+    const hasMatchCountFilter = this.state.matchCounts.length > 0;
+    const showNoBonus = !hasCESelected && !hasMatchCountFilter && noMatchServants.length > 0;
+    if (noBonusHeader) {
+      noBonusHeader.style.display = showNoBonus ? "" : "none";
+    }
+    if (noBonusGrid) {
+      noBonusGrid.style.display = showNoBonus ? "" : "none";
+    }
+    if (noBonusCountEl) {
+      noBonusCountEl.textContent = `${noMatchServants.length} servant${noMatchServants.length !== 1 ? "s" : ""}`;
+    }
+
+    if (showNoBonus) {
+      noMatchServants.forEach(servant => {
+        const card = DOMFactory.el("div", "cefilter-servant-card");
+
+        const img = DOMFactory.el("img", "servant-slot-portrait", {
+          src: servant.image,
+          alt: servant.name
+        });
+        DOMFactory.addAscensionFallback(img, servant.id);
+        card.appendChild(img);
+
+        const nameEl = DOMFactory.el("div", "cefilter-servant-name");
+        nameEl.textContent = servant.name;
+        card.appendChild(nameEl);
+
+        noBonusGrid.appendChild(card);
+      });
+    }
   },
 
   computeAllCEMatches() {
