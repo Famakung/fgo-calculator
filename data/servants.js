@@ -379,7 +379,7 @@ var SERVANT_DATA = {
   "385": {"name": "Aesc the Rain Witch", "traits": {"base": ["0002", "0104", "0201", "0300"], "000": ["0303"], "001": ["0305"], "002": ["0308"]}, "optionNames": {"000": "Aesc the Rain Witch", "001": "Aesc the Savior", "002": "Beach Queen Morgan"}},
   "386": {"name": "Altria Caster", "traits": ["0002", "0106", "0203", "0302", "0303"]},
   "387": {"name": "Suzuka Gozen (Summer Vacation)", "traits": ["0002", "0103", "0200", "0302", "0308"]},
-  "388": {"name": "Chloe von Einzbern", "traits": {"base": ["0002", "0110", "0202", "0301", "0303", "2654", "2780"], "002": ["2821"], "300": ["2821"]}, "optionLabels": {"300": "Serious Mode"}},
+  "388": {"name": "Chloe von Einzbern", "traits": {"base": ["0002", "0110", "0202", "0301", "0303", "2654", "2780"], "002": ["2821"]}, "optionLabels": {"300": "Serious Mode"}},
   "389": {"name": "Cnoc na Riabh Yaraan-doo", "traits": ["0002", "0117", "0201", "0301", "0304"]},
   "390": {"name": "Mélusine", "traits": ["0002", "0108", "0201", "0302", "0304", "2821"]},
   "391": {"name": "UDK-Barghest", "traits": ["0002", "0102", "0201", "0301", "0303", "2821"]},

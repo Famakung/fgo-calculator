@@ -388,16 +388,11 @@ const DOMFactory = {
     };
   },
 
-  addAscensionFallback(img, flatSrc, fallbackText) {
+  addAscensionFallback(img, _flatSrc, fallbackText) {
     img.onerror = () => {
-      if (flatSrc && !img.dataset.retriedFlat) {
-        img.dataset.retriedFlat = "1";
-        img.src = flatSrc;
-      } else {
-        const fb = this.el("div", "servant-slot-portrait-fallback");
-        fb.textContent = fallbackText;
-        img.replaceWith(fb);
-      }
+      const fb = this.el("div", "servant-slot-portrait-fallback");
+      fb.textContent = fallbackText;
+      img.replaceWith(fb);
     };
   }
 };
@@ -870,7 +865,7 @@ const ServantData = {
           hasAscensions,
           optionLabels,
           optionNames,
-          image: `servants/${id}.webp`
+          image: `servants/${id}/000.webp`
         };
       }).sort((a, b) => a.id.localeCompare(b.id));
   },
@@ -890,10 +885,7 @@ const ServantData = {
   },
 
   getImageForAscension(id, ascension) {
-    if (ascension) {
-      return `servants/${id}/${ascension}.webp`;
-    }
-    return `servants/${id}.webp`;
+    return `servants/${id}/${ascension || '000'}.webp`;
   },
 
   getAscensionOptions(id) {
@@ -1004,14 +996,11 @@ const ServantSelector = {
     servants.forEach(servant => {
       const item = DOMFactory.el("div", "servant-picker-item");
 
-      const imgSrc = servant.hasAscensions
-        ? ServantData.getImageForAscension(servant.id, "000")
-        : servant.image;
       const img = DOMFactory.el("img", null, {
-        src: imgSrc,
+        src: servant.image,
         alt: servant.name
       });
-      DOMFactory.addAscensionFallback(img, servant.hasAscensions ? servant.image : null, servant.id);
+      DOMFactory.addAscensionFallback(img, null, servant.id);
 
       const name = DOMFactory.el("div", "servant-picker-name");
       name.textContent = servant.name;
@@ -1431,7 +1420,7 @@ const CEFilterPicker = {
     this.tempSelected = new Set(CEFilterApp.state.selectedCEs);
     const modal = document.getElementById("ceFilterModal");
     const searchInput = document.getElementById("ceFilterSearch");
-    this.renderGrid(CEList);
+    this.renderGrid(CEList.filter(ce => ce.traits.length > 0 || ce.traitGroups.length > 0));
     if (searchInput) searchInput.value = "";
     if (modal) modal.classList.add("open");
   },
@@ -1486,11 +1475,12 @@ const CEFilterPicker = {
 
   filter(query) {
     const q = query.toLowerCase().trim();
+    const traitCEs = CEList.filter(ce => ce.traits.length > 0 || ce.traitGroups.length > 0);
     if (!q) {
-      this.renderGrid(CEList);
+      this.renderGrid(traitCEs);
       return;
     }
-    const filtered = CEList.filter(c =>
+    const filtered = traitCEs.filter(c =>
       c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
     );
     this.renderGrid(filtered);
@@ -1628,14 +1618,12 @@ const CEFilterApp = {
         : null;
       const imgSrc = imgAsc
         ? ServantData.getImageForAscension(servant.id, imgAsc)
-        : servant.hasAscensions
-          ? ServantData.getImageForAscension(servant.id, "000")
-          : servant.image;
+        : servant.image;
       const img = DOMFactory.el("img", "servant-slot-portrait", {
         src: imgSrc,
         alt: servant.name
       });
-      DOMFactory.addAscensionFallback(img, servant.hasAscensions ? servant.image : null, servant.id);
+      DOMFactory.addAscensionFallback(img, null, servant.id);
       card.appendChild(img);
 
       if (matchingCEs.length > 0) {
@@ -1696,13 +1684,22 @@ const CEFilterApp = {
     });
 
     ServantData.servants.forEach(servant => {
-      const matchingCEs = selectedCEObjs.filter(ce =>
-        TraitMatcher.servantMatchesAnyAscension(servant, ce)
-      );
+      const traitSets = TraitMatcher.getAllTraitSets(servant);
 
-      const passes = this.state.mode === "all"
-        ? matchingCEs.length === selectedCEObjs.length
-        : matchingCEs.length > 0;
+      let passes, matchingCEs;
+      if (this.state.mode === "all") {
+        // Match All: at least one trait set must satisfy ALL selected CEs
+        const anySetMatchesAll = traitSets.some(set =>
+          selectedCEObjs.every(ce => TraitMatcher.matches(set.traits, ce))
+        );
+        passes = anySetMatchesAll;
+        matchingCEs = passes ? [...selectedCEObjs] : [];
+      } else {
+        matchingCEs = selectedCEObjs.filter(ce =>
+          TraitMatcher.servantMatchesAnyAscension(servant, ce)
+        );
+        passes = matchingCEs.length > 0;
+      }
 
       if (!passes) return;
 
@@ -1714,16 +1711,22 @@ const CEFilterApp = {
         TraitMatcher.matches(baseTraits, ce)
       );
 
-      // Collect ascensions that match ONLY because of ascension-added traits
+      // Collect ascensions that satisfy all CEs (match-all) or any CE (match-any)
       const ascensionOnly = [];
       if (servant.hasAscensions && !baseMatchesAll) {
         const allKeys = Object.keys(servant.rawTraits).filter(k => k !== "base");
         allKeys.forEach(k => {
           const traits = [...(servant.rawTraits.base || []), ...(servant.rawTraits[k] || [])];
-          const matchesSome = selectedCEObjs.some(ce =>
-            !TraitMatcher.matches(baseTraits, ce) && TraitMatcher.matches(traits, ce)
-          );
-          if (matchesSome) ascensionOnly.push(k);
+          if (this.state.mode === "all") {
+            if (selectedCEObjs.every(ce => TraitMatcher.matches(traits, ce))) {
+              ascensionOnly.push(k);
+            }
+          } else {
+            const matchesSome = selectedCEObjs.some(ce =>
+              !TraitMatcher.matches(baseTraits, ce) && TraitMatcher.matches(traits, ce)
+            );
+            if (matchesSome) ascensionOnly.push(k);
+          }
         });
       }
       // Sort: standard ascensions (000, 001, 002) first, then custom keys
@@ -2039,7 +2042,7 @@ const BondApp = {
             alt: servant.name,
             draggable: "false"
           });
-          DOMFactory.addAscensionFallback(img, ascension ? servant.image : null, servant.id);
+          DOMFactory.addAscensionFallback(img, null, servant.id);
           portraitArea.appendChild(img);
           if (servant.hasAscensions) {
             portraitArea.style.cursor = "pointer";
