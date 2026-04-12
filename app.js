@@ -1497,7 +1497,8 @@ const CEFilterApp = {
     selectedCEs: [],
     mode: "all",
     searchQuery: "",
-    classFilters: []
+    classFilters: [],
+    matchCounts: []
   },
 
   init() {
@@ -1533,11 +1534,13 @@ const CEFilterApp = {
 
     CEFilterPicker.init();
     this.buildClassFilter();
+
     this.render();
   },
 
   render() {
     this.renderChips();
+    this.buildMatchCountFilter();
     this.renderResults();
   },
 
@@ -1601,6 +1604,63 @@ const CEFilterApp = {
     buildRow(extra);
   },
 
+  filterByCEs(results) {
+    const selectedCEObjs = this.state.selectedCEs
+      .map(id => CEList.find(c => c.id === id))
+      .filter(ce => ce != null);
+
+    if (selectedCEObjs.length === 0) return results;
+
+    const selectedIds = new Set(selectedCEObjs.map(c => c.id));
+    if (this.state.mode === "all") {
+      return results.filter(entry =>
+        selectedCEObjs.every(sel => entry.matchingCEs.some(m => m.id === sel.id))
+      );
+    }
+    return results.filter(entry =>
+      entry.matchingCEs.some(m => selectedIds.has(m.id))
+    );
+  },
+
+  buildMatchCountFilter() {
+    const container = document.getElementById("cefilterMatchCount");
+    if (!container) return;
+
+    const ceFiltered = this.filterByCEs(this.computeAllCEMatches());
+    const availableCounts = new Set(ceFiltered.map(r => r.matchingCEs.length));
+    if (availableCounts.size === 0) { container.replaceChildren(); return; }
+
+    // Remove stale selections
+    this.state.matchCounts = this.state.matchCounts.filter(n => availableCounts.has(n));
+
+    container.replaceChildren();
+
+    const label = DOMFactory.el("span", "cefilter-match-count-label");
+    label.textContent = "CE Matches:";
+    container.appendChild(label);
+
+    const selected = new Set(this.state.matchCounts);
+
+    for (let n = 1; n <= Math.max(...availableCounts); n++) {
+      if (!availableCounts.has(n)) continue;
+      const btn = DOMFactory.el("div", "cefilter-match-count-btn" +
+        (selected.has(n) ? " active" : ""));
+      btn.textContent = n;
+      btn.addEventListener("click", () => {
+        if (selected.has(n)) {
+          selected.delete(n);
+        } else {
+          selected.add(n);
+        }
+        this.state.matchCounts = [...selected];
+        this.saveState();
+        this.buildMatchCountFilter();
+        this.renderResults();
+      });
+      container.appendChild(btn);
+    }
+  },
+
   renderChips() {
     const container = document.getElementById("cefilterChips");
     if (!container) return;
@@ -1652,27 +1712,13 @@ const CEFilterApp = {
       .map(id => CEList.find(c => c.id === id))
       .filter(ce => ce != null);
 
-    // Always compute all CE matches
-    let allResults = this.computeAllCEMatches();
-
-    // Filter by selected CEs when present
-    let filtered;
     if (selectedCEObjs.length > 0) {
       if (modeRow) modeRow.style.display = "";
-      const selectedIds = new Set(selectedCEObjs.map(c => c.id));
-      filtered = allResults.filter(entry => {
-        if (this.state.mode === "all") {
-          return selectedCEObjs.every(sel =>
-            entry.matchingCEs.some(m => m.id === sel.id)
-          );
-        } else {
-          return entry.matchingCEs.some(m => selectedIds.has(m.id));
-        }
-      });
     } else {
       if (modeRow) modeRow.style.display = "none";
-      filtered = allResults;
     }
+
+    let filtered = this.filterByCEs(this.computeAllCEMatches());
 
     // Apply search query
     const query = (this.state.searchQuery || "").toLowerCase().trim();
@@ -1690,6 +1736,12 @@ const CEFilterApp = {
       filtered = filtered.filter(s =>
         s.servant.traits.some(t => classSet.has(t))
       );
+    }
+
+    // Apply match count filter
+    if (this.state.matchCounts.length > 0) {
+      const countSet = new Set(this.state.matchCounts);
+      filtered = filtered.filter(s => countSet.has(s.matchingCEs.length));
     }
 
     if (countEl) {
@@ -1852,7 +1904,8 @@ const CEFilterApp = {
       localStorage.setItem(CEFILTER_STORAGE_KEY, JSON.stringify({
         selectedCEs: this.state.selectedCEs,
         mode: this.state.mode,
-        classFilters: this.state.classFilters
+        classFilters: this.state.classFilters,
+        matchCounts: this.state.matchCounts
       }));
     } catch (e) { /* ignore */ }
   },
@@ -1872,6 +1925,9 @@ const CEFilterApp = {
       }
       if (Array.isArray(data.classFilters)) {
         this.state.classFilters = data.classFilters;
+      }
+      if (Array.isArray(data.matchCounts)) {
+        this.state.matchCounts = data.matchCounts;
       }
     } catch (e) { /* ignore */ }
   }
