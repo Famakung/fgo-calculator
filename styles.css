@@ -726,7 +726,7 @@ body {
 .cefilter-class-filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
   justify-content: center;
   margin-bottom: 12px;
 }
@@ -757,6 +757,35 @@ body {
   width: 32px;
   height: 32px;
   object-fit: contain;
+}
+
+.cefilter-rarity-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.cefilter-rarity-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 32px;
+  padding: 0 8px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: border-color 0.15s, background-color 0.15s;
+  background: var(--card);
+}
+
+.cefilter-rarity-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-light);
 }
 
 .cefilter-results-grid {
@@ -1006,6 +1035,35 @@ body {
   width: 32px;
   height: 32px;
   object-fit: contain;
+}
+
+.servant-rarity-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.servant-rarity-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 32px;
+  padding: 0 8px;
+  border: 2px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: border-color 0.15s, background-color 0.15s;
+  background: var(--card);
+}
+
+.servant-rarity-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-light);
 }
 
 .ascension-modal-title {
@@ -1509,7 +1567,8 @@ body {
     border-color: var(--accent);
   }
 
-  .cefilter-class-btn:hover {
+  .cefilter-class-btn:hover,
+  .cefilter-rarity-btn:hover {
     border-color: var(--accent);
   }
 
@@ -1526,7 +1585,8 @@ body {
     background: var(--border);
   }
 
-  .servant-class-btn:hover {
+  .servant-class-btn:hover,
+  .servant-rarity-btn:hover {
     border-color: var(--accent);
   }
 
@@ -1565,7 +1625,9 @@ body {
 }
 
 .servant-class-btn:active,
-.cefilter-class-btn:active {
+.servant-rarity-btn:active,
+.cefilter-class-btn:active,
+.cefilter-rarity-btn:active {
   border-color: var(--accent);
   background: var(--accent-light);
 }
@@ -1727,7 +1789,7 @@ body {
 /* 13f. Tablet and up (>=769px) */
 @media (min-width: 769px) {
   .container {
-    max-width: 780px;
+    max-width: 840px;
     padding: 48px 32px;
   }
 

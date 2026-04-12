@@ -849,7 +849,7 @@ const ServantData = {
         const rawTraits = (typeof data === "object" && data.traits) ? data.traits : [];
         const isArray = Array.isArray(rawTraits);
         const traits = isArray ? rawTraits : (rawTraits.base || []);
-        const hasAscensions = !isArray && typeof rawTraits === "object";
+        const hasAscensions = !isArray && typeof rawTraits === "object" && Object.keys(rawTraits).some(k => k !== "base");
         const optionLabels = (typeof data === "object" && data.optionLabels) ? data.optionLabels : {};
         const optionNames = (typeof data === "object" && data.optionNames) ? data.optionNames : {};
         return {
@@ -938,6 +938,7 @@ const ServantSelector = {
   activeSlotIndex: null,
   pendingSlot: false,
   classFilters: [],
+  rarityFilters: [],
 
   init() {
     const modal = document.getElementById("servantModal");
@@ -965,10 +966,12 @@ const ServantSelector = {
     this.activeSlotIndex = slotIndex;
     this.pendingSlot = pending;
     this.classFilters = [];
+    this.rarityFilters = [];
     const modal = document.getElementById("servantModal");
     const searchInput = document.getElementById("servantSearch");
 
     this.buildClassFilter();
+    this.buildRarityFilter();
     this.renderGrid(ServantData.servants);
     if (searchInput) searchInput.value = "";
     if (modal) modal.classList.add("open");
@@ -1039,6 +1042,10 @@ const ServantSelector = {
       const classSet = new Set(this.classFilters);
       result = result.filter(s => s.traits.some(t => classSet.has(t)));
     }
+    if (this.rarityFilters.length > 0) {
+      const raritySet = new Set(this.rarityFilters);
+      result = result.filter(s => s.traits.some(t => raritySet.has(t)));
+    }
     return result;
   },
 
@@ -1084,11 +1091,12 @@ const ServantSelector = {
         btn.addEventListener("click", () => {
           if (selected.has(cls.id)) {
             selected.delete(cls.id);
+            btn.classList.remove("active");
           } else {
             selected.add(cls.id);
+            btn.classList.add("active");
           }
           this.classFilters = [...selected];
-          this.buildClassFilter();
           this.filter();
         });
         row.appendChild(btn);
@@ -1098,6 +1106,41 @@ const ServantSelector = {
 
     buildRow(standard);
     buildRow(extra);
+  },
+
+  buildRarityFilter() {
+    const container = document.getElementById("servantRarityFilter");
+    if (!container) return;
+
+    const rarities = [
+      { id: "0400", label: "0 \u2605" },
+      { id: "0401", label: "1 \u2605" },
+      { id: "0402", label: "2 \u2605" },
+      { id: "0403", label: "3 \u2605" },
+      { id: "0404", label: "4 \u2605" },
+      { id: "0405", label: "5 \u2605" }
+    ];
+
+    container.replaceChildren();
+    const selected = new Set(this.rarityFilters);
+
+    rarities.forEach(rarity => {
+      const btn = DOMFactory.el("div", "servant-rarity-btn" +
+        (selected.has(rarity.id) ? " active" : ""));
+      btn.textContent = rarity.label;
+      btn.addEventListener("click", () => {
+        if (selected.has(rarity.id)) {
+          selected.delete(rarity.id);
+          btn.classList.remove("active");
+        } else {
+          selected.add(rarity.id);
+          btn.classList.add("active");
+        }
+        this.rarityFilters = [...selected];
+        this.filter();
+      });
+      container.appendChild(btn);
+    });
   }
 };
 
@@ -1563,6 +1606,7 @@ const CEFilterApp = {
     mode: "all",
     searchQuery: "",
     classFilters: [],
+    rarityFilters: [],
     matchCounts: [],
     matchCustomCounts: []
   },
@@ -1600,6 +1644,7 @@ const CEFilterApp = {
 
     CEFilterPicker.init();
     this.buildClassFilter();
+    this.buildRarityFilter();
 
     this.render();
   },
@@ -1654,12 +1699,13 @@ const CEFilterApp = {
         btn.addEventListener("click", () => {
           if (selected.has(cls.id)) {
             selected.delete(cls.id);
+            btn.classList.remove("active");
           } else {
             selected.add(cls.id);
+            btn.classList.add("active");
           }
           this.state.classFilters = [...selected];
           this.saveState();
-          this.buildClassFilter();
           this.renderResults();
         });
         row.appendChild(btn);
@@ -1669,6 +1715,42 @@ const CEFilterApp = {
 
     buildRow(standard);
     buildRow(extra);
+  },
+
+  buildRarityFilter() {
+    const container = document.getElementById("cefilterRarityFilter");
+    if (!container) return;
+
+    const rarities = [
+      { id: "0400", label: "0 \u2605" },
+      { id: "0401", label: "1 \u2605" },
+      { id: "0402", label: "2 \u2605" },
+      { id: "0403", label: "3 \u2605" },
+      { id: "0404", label: "4 \u2605" },
+      { id: "0405", label: "5 \u2605" }
+    ];
+
+    container.replaceChildren();
+    const selected = new Set(this.state.rarityFilters);
+
+    rarities.forEach(rarity => {
+      const btn = DOMFactory.el("div", "cefilter-rarity-btn" +
+        (selected.has(rarity.id) ? " active" : ""));
+      btn.textContent = rarity.label;
+      btn.addEventListener("click", () => {
+        if (selected.has(rarity.id)) {
+          selected.delete(rarity.id);
+          btn.classList.remove("active");
+        } else {
+          selected.add(rarity.id);
+          btn.classList.add("active");
+        }
+        this.state.rarityFilters = [...selected];
+        this.saveState();
+        this.renderResults();
+      });
+      container.appendChild(btn);
+    });
   },
 
   filterByCEs(results) {
@@ -1712,6 +1794,7 @@ const CEFilterApp = {
     if (!isCustom || ceCount < 2) {
       container.replaceChildren();
       container.classList.remove("visible");
+      this.state.matchCustomCounts = [];
       return;
     }
 
@@ -1835,10 +1918,15 @@ const CEFilterApp = {
       .map(id => CEList.find(c => c.id === id))
       .filter(ce => ce != null);
 
-    if (selectedCEObjs.length > 0) {
+    if (selectedCEObjs.length >= 2) {
       if (modeRow) modeRow.style.display = "";
     } else {
       if (modeRow) modeRow.style.display = "none";
+      if (this.state.mode !== "all") {
+        this.state.mode = "all";
+        if (modeSelect) modeSelect.value = "all";
+        this.saveState();
+      }
     }
 
     const allMatches = this.computeAllCEMatches();
@@ -1859,6 +1947,14 @@ const CEFilterApp = {
     if (this.state.classFilters.length > 0) {
       filtered = filtered.filter(s =>
         s.servant.traits.some(t => classSet.has(t))
+      );
+    }
+
+    // Apply rarity filter
+    const raritySet = new Set(this.state.rarityFilters);
+    if (this.state.rarityFilters.length > 0) {
+      filtered = filtered.filter(s =>
+        s.servant.traits.some(t => raritySet.has(t))
       );
     }
 
@@ -1961,6 +2057,11 @@ const CEFilterApp = {
     if (this.state.classFilters.length > 0) {
       noMatchServants = noMatchServants.filter(s =>
         s.traits.some(t => classSet.has(t))
+      );
+    }
+    if (this.state.rarityFilters.length > 0) {
+      noMatchServants = noMatchServants.filter(s =>
+        s.traits.some(t => raritySet.has(t))
       );
     }
 
@@ -2080,6 +2181,7 @@ const CEFilterApp = {
         selectedCEs: this.state.selectedCEs,
         mode: this.state.mode,
         classFilters: this.state.classFilters,
+        rarityFilters: this.state.rarityFilters,
         matchCounts: this.state.matchCounts,
         matchCustomCounts: this.state.matchCustomCounts
       }));
@@ -2103,6 +2205,9 @@ const CEFilterApp = {
       }
       if (Array.isArray(data.classFilters)) {
         this.state.classFilters = data.classFilters;
+      }
+      if (Array.isArray(data.rarityFilters)) {
+        this.state.rarityFilters = data.rarityFilters;
       }
       if (Array.isArray(data.matchCounts)) {
         this.state.matchCounts = data.matchCounts;
