@@ -1543,7 +1543,7 @@ const CEFilterApp = {
 
     if (this.state.selectedCEs.length === 0) {
       const placeholder = DOMFactory.el("div", "servant-slot-placeholder");
-      placeholder.textContent = "No craft essences selected \u2014 click Add Craft Essence to begin";
+      placeholder.textContent = "No craft essences selected \u2014 showing all servants. Add Craft Essence to filter.";
       container.appendChild(placeholder);
       return;
     }
@@ -1578,6 +1578,8 @@ const CEFilterApp = {
   renderResults() {
     const grid = document.getElementById("cefilterResults");
     const countEl = document.getElementById("cefilterCount");
+    const modeSelect = document.getElementById("cefilterMode");
+    const modeRow = document.querySelector(".cefilter-mode-row");
     if (!grid) return;
     grid.innerHTML = "";
 
@@ -1585,36 +1587,47 @@ const CEFilterApp = {
       .map(id => CEList.find(c => c.id === id))
       .filter(ce => ce != null);
 
-    if (selectedCEObjs.length === 0) {
-      if (countEl) countEl.textContent = "";
-      const hint = DOMFactory.el("div", "servant-slot-placeholder");
-      hint.style.gridColumn = "1 / -1";
-      hint.style.textAlign = "center";
-      hint.style.padding = "24px";
-      hint.textContent = "Select one or more craft essences above to see eligible servants";
-      grid.appendChild(hint);
-      return;
+    // Always compute all CE matches
+    let allResults = this.computeAllCEMatches();
+
+    // Filter by selected CEs when present
+    let filtered;
+    if (selectedCEObjs.length > 0) {
+      if (modeRow) modeRow.style.display = "";
+      const selectedIds = new Set(selectedCEObjs.map(c => c.id));
+      filtered = allResults.filter(entry => {
+        if (this.state.mode === "all") {
+          return selectedCEObjs.every(sel =>
+            entry.matchingCEs.some(m => m.id === sel.id)
+          );
+        } else {
+          return entry.matchingCEs.some(m => selectedIds.has(m.id));
+        }
+      });
+    } else {
+      if (modeRow) modeRow.style.display = "none";
+      filtered = allResults;
     }
 
-    const matchedServants = this.computeMatches(selectedCEObjs);
-
+    // Apply search query
     const query = (this.state.searchQuery || "").toLowerCase().trim();
-    const filtered = query
-      ? matchedServants.filter(s =>
-          s.servant.id.toLowerCase().includes(query) ||
-          s.servant.name.toLowerCase().includes(query)
-        )
-      : matchedServants;
+    if (query) {
+      filtered = filtered.filter(s =>
+        s.servant.id.toLowerCase().includes(query) ||
+        s.servant.name.toLowerCase().includes(query) ||
+        ServantData.getAllNames(s.servant.id).some(n => n.toLowerCase().includes(query))
+      );
+    }
 
     if (countEl) {
       countEl.textContent = `${filtered.length} servant${filtered.length !== 1 ? "s" : ""} found`;
     }
 
-    filtered.forEach(({ servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll }) => {
+    filtered.forEach(({ servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll, primaryAscension }) => {
       const card = DOMFactory.el("div", "cefilter-servant-card");
 
       const imgAsc = (!baseMatchesAll && matchedAscensions.length > 0)
-        ? matchedAscensions[0]
+        ? (primaryAscension || matchedAscensions[0])
         : null;
       const imgSrc = imgAsc
         ? ServantData.getImageForAscension(servant.id, imgAsc)
@@ -1748,6 +1761,83 @@ const CEFilterApp = {
         .map(t => TraitNames[t] || t);
 
       results.push({ servant, matchingCEs, allTraitNames: relevantTraits, matchedAscensions, baseMatchesAll });
+    });
+
+    return results;
+  },
+
+  computeAllCEMatches() {
+    const traitCEs = CEList.filter(ce => ce.traits.length > 0 || ce.traitGroups.length > 0);
+    const relevantTraitIds = new Set();
+    traitCEs.forEach(ce => {
+      ce.traits.forEach(t => relevantTraitIds.add(t));
+      ce.traitGroups.forEach(group => group.forEach(t => relevantTraitIds.add(t)));
+    });
+
+    const results = [];
+
+    ServantData.servants.forEach(servant => {
+      const traitSets = TraitMatcher.getAllTraitSets(servant);
+
+      if (!servant.hasAscensions) {
+        const matchingCEs = traitCEs.filter(ce => TraitMatcher.matches(servant.traits, ce));
+        if (matchingCEs.length === 0) return;
+
+        const relevantTraits = servant.traits
+          .filter(t => relevantTraitIds.has(t))
+          .map(t => TraitNames[t] || t);
+
+        results.push({
+          servant, matchingCEs, allTraitNames: relevantTraits,
+          matchedAscensions: [], baseMatchesAll: true
+        });
+      } else {
+        const ascResults = traitSets.map(set => ({
+          key: set.key,
+          traits: set.traits,
+          matchingCEs: traitCEs.filter(ce => TraitMatcher.matches(set.traits, ce))
+        }));
+
+        const groups = new Map();
+        ascResults.forEach(ar => {
+          const key = ar.matchingCEs.map(c => c.id).sort().join(',');
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(ar);
+        });
+
+        const nonEmptyGroups = [...groups.entries()]
+          .filter(([_, entries]) => entries[0].matchingCEs.length > 0);
+        if (nonEmptyGroups.length === 0) return;
+
+        if (nonEmptyGroups.length === 1) {
+          const entries = nonEmptyGroups[0][1];
+          const matchingCEs = entries[0].matchingCEs;
+          const mergedTraits = [...new Set(entries.flatMap(e => e.traits))];
+          const relevantTraits = mergedTraits
+            .filter(t => relevantTraitIds.has(t))
+            .map(t => TraitNames[t] || t);
+
+          results.push({
+            servant, matchingCEs, allTraitNames: relevantTraits,
+            matchedAscensions: [], baseMatchesAll: true
+          });
+        } else {
+          nonEmptyGroups.forEach(([_, entries]) => {
+            const matchingCEs = entries[0].matchingCEs;
+            const ascKeys = entries.map(e => e.key);
+            const mergedTraits = [...new Set(entries.flatMap(e => e.traits))];
+            const relevantTraits = mergedTraits
+              .filter(t => relevantTraitIds.has(t))
+              .map(t => TraitNames[t] || t);
+
+            results.push({
+              servant, matchingCEs, allTraitNames: relevantTraits,
+              matchedAscensions: ascKeys, baseMatchesAll: false,
+              primaryAscension: ascKeys[0]
+            });
+          });
+        }
+      }
     });
 
     return results;

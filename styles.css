@@ -614,8 +614,8 @@ body {
 
 .cefilter-servant-card img.servant-slot-portrait,
 .cefilter-servant-card .servant-slot-portrait-fallback {
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   border-radius: 10px;
   object-fit: cover;
   margin-bottom: 6px;
@@ -630,16 +630,16 @@ body {
 }
 
 .cefilter-match-badge {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
   object-fit: cover;
 }
 
 .cefilter-match-badge-fallback {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
   background: var(--accent-light);
   display: flex;
   align-items: center;
