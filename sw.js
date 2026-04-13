@@ -1,4 +1,4 @@
-const CACHE_NAME = "fgo-calc-v3";
+const CACHE_NAME = "fgo-calc-v4";
 
 // Compute base path from service worker location (works on GitHub Pages subdirs)
 const BASE = new URL(".", self.location.href).pathname;
@@ -13,6 +13,20 @@ const STATIC_ASSETS = [
   BASE + "data/craft_essences.js",
   BASE + "manifest.json"
 ];
+
+// Override GitHub Pages' 10-minute Cache-Control with a longer TTL
+function withCacheControl(response, maxAge, isImmutable) {
+  if (!response || !response.ok) return response;
+  const headers = new Headers(response.headers);
+  let cc = "public, max-age=" + maxAge;
+  if (isImmutable) cc += ", immutable";
+  headers.set("Cache-Control", cc);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: headers
+  });
+}
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
@@ -42,11 +56,13 @@ self.addEventListener("fetch", (e) => {
   ) {
     e.respondWith(
       caches.match(e.request).then((cached) => {
-        if (cached) return cached;
+        if (cached) return withCacheControl(cached, 31536000, true);
         return fetch(e.request).then((resp) => {
           if (resp.ok) {
-            const clone = resp.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+            caches.open(CACHE_NAME).then((cache) =>
+              cache.put(e.request, withCacheControl(resp.clone(), 31536000, true))
+            );
+            return withCacheControl(resp, 31536000, true);
           }
           return resp;
         });
@@ -62,13 +78,16 @@ self.addEventListener("fetch", (e) => {
         // Background fetch to update cache for next load
         const fetchPromise = fetch(e.request).then((resp) => {
           if (resp.ok) {
-            cache.put(e.request, resp.clone());
+            cache.put(e.request, withCacheControl(resp.clone(), 604800, false));
           }
           return resp;
-        }).catch(() => cached);
+        }).catch(() => null);
 
         // Return cached version immediately if available, else wait for network
-        return cached || fetchPromise;
+        if (cached) return withCacheControl(cached, 604800, false);
+        return fetchPromise.then((resp) =>
+          resp && resp.ok ? withCacheControl(resp, 604800, false) : resp
+        );
       });
     })
   );
