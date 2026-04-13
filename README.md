@@ -72,10 +72,13 @@ Craft Essences apply bonuses based on servant traits with four modes:
 
 ```
 fgo-calculator/
-├── index.html              # Main HTML with tab panels and modals
-├── styles.css              # CSS with custom properties and grid layouts (~1900 lines)
-├── app.js                  # All logic in single IIFE (~3300 lines)
-├── sw.js                   # Service Worker (cache-first for assets, network-first for code)
+├── index.html              # Main HTML with static grid elements, tab panels and modals
+├── styles.css              # CSS source (~1900 lines)
+├── styles.min.css          # Minified CSS (served to browser)
+├── app.js                  # All logic in single IIFE (~3200 lines, source)
+├── app.min.js              # Minified JS (served to browser)
+├── tab-init.js             # Sync <head> script to prevent tab flash on refresh
+├── sw.js                   # Service Worker (cache-first for assets, stale-while-revalidate for code)
 ├── register-sw.js          # SW registration (separate file for CSP compliance)
 ├── manifest.json           # PWA manifest
 ├── fonts/                  # Self-hosted web fonts (DM Sans, Space Mono — woff2)
@@ -100,7 +103,7 @@ The application follows a clean 3-layer architecture within a single IIFE:
 |-------|---------|---------|
 | **Domain** | Schema, Validator, Calculator, TraitMatcher | Pure business logic, no DOM |
 | **Application** | StateManager, Persistence, App, BondApp, CEFilterApp | State management and coordination |
-| **Presentation** | DOMFactory, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events |
+| **Presentation** | DOMFactory, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events. UIBuilder hydrates static HTML grids |
 
 ## Technical Details
 
@@ -113,5 +116,5 @@ The application follows a clean 3-layer architecture within a single IIFE:
 - Schema-based input validation with localStorage sanitization
 - Debounced input handlers (100ms)
 - Multi-ascension servant support with per-ascension traits and spiriton dress images
-- **PWA support** with Service Worker for offline caching and instant repeat visits
-- **Performance optimized**: DocumentFragment batching, lazy image loading, lazy tab initialization, computation caching, debounced filter renders, CSS layout containment, right-sized material icons (2x render dimensions), font preloading for all 6 web fonts, CSS preload for `styles.css`
+- **PWA support** with Service Worker (stale-while-revalidate caching) for offline access and instant repeat visits
+- **Performance optimized**: Static HTML grids (zero CLS), CSS/JS minification, tab flash prevention via `tab-init.js`, DocumentFragment batching, lazy image loading, lazy tab initialization, computation caching, debounced filter renders, CSS layout containment, right-sized material icons (2x render dimensions), font preloading, CSS preload

@@ -12,20 +12,57 @@
       content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; font-src 'self';"
     />
     <title>FGO Calculator</title>
-    <link rel="preload" href="styles.css" as="style" />
-    <link rel="stylesheet" href="styles.css" />
-    <link rel="preload" href="fonts/dm-sans-400.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/dm-sans-500.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/dm-sans-600.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/dm-sans-700.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/space-mono-400.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="fonts/space-mono-700.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="styles.min.css" as="style" />
+    <link rel="stylesheet" href="styles.min.css" />
+    <link
+      rel="preload"
+      href="fonts/dm-sans-400.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="fonts/dm-sans-500.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="fonts/dm-sans-600.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="fonts/dm-sans-700.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="fonts/space-mono-400.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="fonts/space-mono-700.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
     <link rel="manifest" href="manifest.json" />
     <script defer src="data/traits.js"></script>
     <script defer src="data/servants.js"></script>
     <script defer src="data/craft_essences.js"></script>
-    <script defer src="app.js"></script>
+    <script defer src="app.min.js"></script>
     <script defer src="register-sw.js"></script>
+    <script src="tab-init.js"></script>
   </head>
   <body>
     <div class="container">
@@ -44,7 +81,158 @@
         <section class="tab-panel active" id="panel-event">
           <div class="card">
             <div class="card-title">Shop Requirements</div>
-            <div class="materials-grid" id="materialsGrid"></div>
+            <div class="materials-grid" id="materialsGrid">
+              <div class="material-card" data-tier="bronze">
+                <div class="material-icon-wrapper">
+                  <div class="material-icon" id="bronzeIcon">
+                    <img
+                      class="bg-layer"
+                      src="icons/materials/bronze_bg.webp"
+                      alt=""
+                    />
+                    <img
+                      class="fg-layer"
+                      src="icons/materials/bronze_fg.webp"
+                      alt="Bronze material icon"
+                    />
+                  </div>
+                </div>
+                <div class="material-name">Bronze</div>
+                <div class="input-row">
+                  <label class="input-label" for="bronzeNeed">Need</label>
+                  <input
+                    type="number"
+                    class="input-field"
+                    id="bronzeNeed"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="input-row">
+                  <label class="input-label" for="bronzeHave">Have</label>
+                  <input
+                    type="number"
+                    class="input-field"
+                    id="bronzeHave"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="input-row">
+                  <label class="input-label" for="bronzeBonus">Bonus</label>
+                  <input
+                    type="number"
+                    class="input-field"
+                    id="bronzeBonus"
+                    min="0"
+                    max="1000"
+                    value="0"
+                  />
+                </div>
+              </div>
+              <div class="material-card" data-tier="silver">
+                <div class="material-icon-wrapper">
+                  <div class="material-icon" id="silverIcon">
+                    <img
+                      class="bg-layer"
+                      src="icons/materials/silver_bg.webp"
+                      alt=""
+                    />
+                    <img
+                      class="fg-layer"
+                      src="icons/materials/silver_fg.webp"
+                      alt="Silver material icon"
+                    />
+                  </div>
+                </div>
+                <div class="material-name">Silver</div>
+                <div class="input-row">
+                  <label class="input-label" for="silverNeed">Need</label>
+                  <input
+                    type="number"
+                    class="input-field"
+                    id="silverNeed"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="input-row">
+                  <label class="input-label" for="silverHave">Have</label>
+                  <input
+                    type="number"
+                    class="input-field"
+                    id="silverHave"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="input-row">
+                  <label class="input-label" for="silverBonus">Bonus</label>
+                  <input
+                    type="number"
+                    class="input-field"
+                    id="silverBonus"
+                    min="0"
+                    max="1000"
+                    value="0"
+                  />
+                </div>
+              </div>
+              <div class="material-card" data-tier="gold">
+                <div class="material-icon-wrapper">
+                  <div class="material-icon" id="goldIcon">
+                    <img
+                      class="bg-layer"
+                      src="icons/materials/gold_bg.webp"
+                      alt=""
+                    />
+                    <img
+                      class="fg-layer"
+                      src="icons/materials/gold_fg.webp"
+                      alt="Gold material icon"
+                    />
+                  </div>
+                </div>
+                <div class="material-name">Gold</div>
+                <div class="input-row">
+                  <label class="input-label" for="goldNeed">Need</label>
+                  <input
+                    type="number"
+                    class="input-field"
+                    id="goldNeed"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="input-row">
+                  <label class="input-label" for="goldHave">Have</label>
+                  <input
+                    type="number"
+                    class="input-field"
+                    id="goldHave"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="input-row">
+                  <label class="input-label" for="goldBonus">Bonus</label>
+                  <input
+                    type="number"
+                    class="input-field"
+                    id="goldBonus"
+                    min="0"
+                    max="1000"
+                    value="0"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="card">
@@ -88,7 +276,125 @@
                 />
               </div>
             </div>
-            <div class="quest-drops-grid" id="questDropsGrid"></div>
+            <div class="quest-drops-grid" id="questDropsGrid">
+              <div class="quest-drops-item" data-tier="bronze">
+                <div class="quest-drops-title">Bronze Quest</div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="bronzeQuest_bronze_icon">
+                    <img
+                      class="bg-layer"
+                      src="icons/materials/bronze_bg.webp"
+                      alt=""
+                    />
+                    <img
+                      class="fg-layer"
+                      src="icons/materials/bronze_fg.webp"
+                      alt="Bronze material icon"
+                    />
+                  </span>
+                  <span class="drop-material" id="bronzeQuest_bronze_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="bronzeQuest_bronze">0</span>
+                </div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="bronzeQuest_silver_icon">
+                    <img
+                      class="bg-layer"
+                      src="icons/materials/silver_bg.webp"
+                      alt=""
+                    />
+                    <img
+                      class="fg-layer"
+                      src="icons/materials/silver_fg.webp"
+                      alt="Silver material icon"
+                    />
+                  </span>
+                  <span class="drop-material" id="bronzeQuest_silver_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="bronzeQuest_silver">0</span>
+                </div>
+              </div>
+              <div class="quest-drops-item" data-tier="silver">
+                <div class="quest-drops-title">Silver Quest</div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="silverQuest_silver_icon">
+                    <img
+                      class="bg-layer"
+                      src="icons/materials/silver_bg.webp"
+                      alt=""
+                    />
+                    <img
+                      class="fg-layer"
+                      src="icons/materials/silver_fg.webp"
+                      alt="Silver material icon"
+                    />
+                  </span>
+                  <span class="drop-material" id="silverQuest_silver_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="silverQuest_silver">0</span>
+                </div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="silverQuest_gold_icon">
+                    <img
+                      class="bg-layer"
+                      src="icons/materials/gold_bg.webp"
+                      alt=""
+                    />
+                    <img
+                      class="fg-layer"
+                      src="icons/materials/gold_fg.webp"
+                      alt="Gold material icon"
+                    />
+                  </span>
+                  <span class="drop-material" id="silverQuest_gold_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="silverQuest_gold">0</span>
+                </div>
+              </div>
+              <div class="quest-drops-item" data-tier="gold">
+                <div class="quest-drops-title">Gold Quest</div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="goldQuest_gold_icon">
+                    <img
+                      class="bg-layer"
+                      src="icons/materials/gold_bg.webp"
+                      alt=""
+                    />
+                    <img
+                      class="fg-layer"
+                      src="icons/materials/gold_fg.webp"
+                      alt="Gold material icon"
+                    />
+                  </span>
+                  <span class="drop-material" id="goldQuest_gold_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="goldQuest_gold">0</span>
+                </div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="goldQuest_bronze_icon">
+                    <img
+                      class="bg-layer"
+                      src="icons/materials/bronze_bg.webp"
+                      alt=""
+                    />
+                    <img
+                      class="fg-layer"
+                      src="icons/materials/bronze_fg.webp"
+                      alt="Bronze material icon"
+                    />
+                  </span>
+                  <span class="drop-material" id="goldQuest_bronze_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="goldQuest_bronze">0</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <button class="calculate-btn" id="calculateBtn" type="button">
@@ -98,11 +404,40 @@
           <div class="results" id="results">
             <div class="card results-card">
               <div class="card-title">Items Needed</div>
-              <div class="deficit-grid" id="deficitGrid"></div>
+              <div class="deficit-grid" id="deficitGrid">
+                <div class="deficit-item" data-tier="bronze">
+                  <div class="deficit-label">Bronze</div>
+                  <div class="deficit-value" id="bronzeDeficit">0</div>
+                </div>
+                <div class="deficit-item" data-tier="silver">
+                  <div class="deficit-label">Silver</div>
+                  <div class="deficit-value" id="silverDeficit">0</div>
+                </div>
+                <div class="deficit-item" data-tier="gold">
+                  <div class="deficit-label">Gold</div>
+                  <div class="deficit-value" id="goldDeficit">0</div>
+                </div>
+              </div>
 
               <div class="quest-results">
                 <div class="quest-title">Recommended Quest Runs</div>
-                <div class="quest-grid" id="questGrid"></div>
+                <div class="quest-grid" id="questGrid">
+                  <div class="quest-item" data-tier="bronze">
+                    <div class="quest-name">Bronze Quest</div>
+                    <div class="quest-count" id="bronzePlay">0</div>
+                    <div class="quest-label" id="bronzeLabel">runs</div>
+                  </div>
+                  <div class="quest-item" data-tier="silver">
+                    <div class="quest-name">Silver Quest</div>
+                    <div class="quest-count" id="silverPlay">0</div>
+                    <div class="quest-label" id="silverLabel">runs</div>
+                  </div>
+                  <div class="quest-item" data-tier="gold">
+                    <div class="quest-name">Gold Quest</div>
+                    <div class="quest-count" id="goldPlay">0</div>
+                    <div class="quest-label" id="goldLabel">runs</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -344,10 +679,7 @@
         <div class="servant-modal" id="ceOverlapModal">
           <div class="servant-modal-content">
             <div class="servant-modal-header">
-              <span
-                class="ascension-modal-title"
-                id="ceOverlapTitle"
-              ></span>
+              <span class="ascension-modal-title" id="ceOverlapTitle"></span>
               <button
                 class="servant-modal-close"
                 id="ceOverlapClose"

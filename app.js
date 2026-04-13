@@ -403,133 +403,62 @@ const UIBuilder = {
   elements: {},
 
   buildMaterialsGrid(container, state) {
-    container.replaceChildren();
-
+    // Elements already exist in HTML — cache input refs and add icon error handlers
     TIERS.forEach(tier => {
-      const card = DOMFactory.el("div", "material-card", {
-        dataset: { tier }
-      });
-
-      // Icon
-      const iconWrapper = DOMFactory.el("div", "material-icon-wrapper");
-      const icon = DOMFactory.createIcon(tier);
-      iconWrapper.appendChild(icon);
-      card.appendChild(iconWrapper);
-
-      // Name
-      const name = DOMFactory.el("div", "material-name");
-      name.textContent = DOMFactory.capitalize(tier);
-      card.appendChild(name);
-
-      // Inputs
       TIER_FIELDS.forEach(field => {
         const id = `${tier}${field}`;
-        const max = field === "Bonus" ? 1000 : 999999;
-        const { row, input } = DOMFactory.createInput(
-          id,
-          field,
-          state.tiers[tier][field.toLowerCase()],
-          0,
-          max
-        );
-        this.elements[id] = input;
-        card.appendChild(row);
+        this.elements[id] = document.getElementById(id);
       });
 
-      container.appendChild(card);
+      // Add icon error handlers
+      const card = container.querySelector(`[data-tier="${tier}"]`);
+      if (card) {
+        const bgImg = card.querySelector(".bg-layer");
+        const fgImg = card.querySelector(".fg-layer");
+        if (bgImg) bgImg.onerror = () => { bgImg.style.display = "none"; };
+        if (fgImg) {
+          fgImg.onerror = () => {
+            const fallback = document.createElement("div");
+            fallback.className = "icon-fallback";
+            fallback.style.background = TIER_COLORS[tier];
+            fallback.textContent = DOMFactory.capitalize(tier).charAt(0);
+            fgImg.replaceWith(fallback);
+          };
+        }
+      }
     });
   },
 
   buildQuestDropsGrid(container) {
-    container.replaceChildren();
-
-    Object.entries(QUEST_DROPS).forEach(([questTier, drops]) => {
-      const item = DOMFactory.el("div", "quest-drops-item", {
-        dataset: { tier: questTier }
-      });
-
-      const title = DOMFactory.el("div", "quest-drops-title");
-      title.textContent = `${DOMFactory.capitalize(questTier)} Quest`;
-      item.appendChild(title);
-
-      [drops.primary, drops.secondary].forEach(material => {
-        const line = DOMFactory.el("div", "drop-line");
-
-        const miniIcon = DOMFactory.el("span", "mini-icon");
-        miniIcon.id = `${questTier}Quest_${material}_icon`;
-        line.appendChild(miniIcon);
-
-        const label = DOMFactory.el("span", "drop-material");
-        label.id = `${questTier}Quest_${material}_label`;
-        label.textContent = "3(+0)";
-        line.appendChild(label);
-
-        const value = DOMFactory.el("span", "drop-value");
-        value.id = `${questTier}Quest_${material}`;
-        value.textContent = "0";
-        line.appendChild(value);
-
-        item.appendChild(line);
-      });
-
-      container.appendChild(item);
-    });
+    // Elements already exist in HTML — no-op
   },
 
   buildDeficitGrid(container) {
-    container.replaceChildren();
-
-    TIERS.forEach(tier => {
-      const item = DOMFactory.el("div", "deficit-item", {
-        dataset: { tier }
-      });
-
-      const label = DOMFactory.el("div", "deficit-label");
-      label.textContent = DOMFactory.capitalize(tier);
-
-      const value = DOMFactory.el("div", "deficit-value");
-      value.id = `${tier}Deficit`;
-      value.textContent = "0";
-
-      item.appendChild(label);
-      item.appendChild(value);
-      container.appendChild(item);
-    });
+    // Elements already exist in HTML — no-op
   },
 
   buildQuestGrid(container) {
-    container.replaceChildren();
-
-    TIERS.forEach(tier => {
-      const item = DOMFactory.el("div", "quest-item", {
-        dataset: { tier }
-      });
-
-      const name = DOMFactory.el("div", "quest-name");
-      name.textContent = `${DOMFactory.capitalize(tier)} Quest`;
-
-      const count = DOMFactory.el("div", "quest-count");
-      count.id = `${tier}Play`;
-      count.textContent = "0";
-
-      const label = DOMFactory.el("div", "quest-label");
-      label.id = `${tier}Label`;
-      label.textContent = "runs";
-
-      item.appendChild(name);
-      item.appendChild(count);
-      item.appendChild(label);
-      container.appendChild(item);
-    });
+    // Elements already exist in HTML — no-op
   },
 
   loadQuestIcons() {
+    // Add error handlers to existing quest drop icons in HTML
     Object.entries(QUEST_DROPS).forEach(([quest, drops]) => {
       [drops.primary, drops.secondary].forEach(material => {
         const container = document.getElementById(`${quest}Quest_${material}_icon`);
         if (container) {
-          const icon = DOMFactory.createIcon(material, "mini");
-          container.appendChild(icon);
+          const bgImg = container.querySelector(".bg-layer");
+          const fgImg = container.querySelector(".fg-layer");
+          if (bgImg) bgImg.onerror = () => { bgImg.style.display = "none"; };
+          if (fgImg) {
+            fgImg.onerror = () => {
+              const fallback = document.createElement("div");
+              fallback.className = "icon-fallback";
+              fallback.style.background = TIER_COLORS[material];
+              fallback.textContent = DOMFactory.capitalize(material).charAt(0);
+              fgImg.replaceWith(fallback);
+            };
+          }
         }
       });
     });
@@ -776,6 +705,9 @@ const TabNavigator = {
         });
       }
     } catch (e) { /* ignore */ }
+
+    // Remove CSS-only tab override — JS now controls tab state
+    document.documentElement.removeAttribute("data-tab");
 
     tabBar.addEventListener("click", (e) => {
       if (!e.target.classList.contains("tab-btn")) return;

@@ -189,6 +189,31 @@ body {
   display: block;
 }
 
+/* Tab state overrides (set by tab-init.js in <head> before paint) */
+html[data-tab="bond"] .tab-btn.active,
+html[data-tab="cefilter"] .tab-btn.active {
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+html[data-tab="bond"] .tab-btn[data-tab="bond"],
+html[data-tab="cefilter"] .tab-btn[data-tab="cefilter"] {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+html[data-tab="bond"] #panel-event.active,
+html[data-tab="cefilter"] #panel-event.active {
+  display: none;
+}
+
+html[data-tab="bond"] #panel-bond,
+html[data-tab="cefilter"] #panel-cefilter {
+  display: block;
+}
+
 .select-field {
   flex: 1;
   min-width: 0;
