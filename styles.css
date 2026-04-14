@@ -10,42 +10,42 @@
   font-family: "DM Sans";
   font-style: normal;
   font-weight: 400;
-  font-display: swap;
+  font-display: optional;
   src: url("fonts/dm-sans-400.woff2") format("woff2");
 }
 @font-face {
   font-family: "DM Sans";
   font-style: normal;
   font-weight: 500;
-  font-display: swap;
+  font-display: optional;
   src: url("fonts/dm-sans-500.woff2") format("woff2");
 }
 @font-face {
   font-family: "DM Sans";
   font-style: normal;
   font-weight: 600;
-  font-display: swap;
+  font-display: optional;
   src: url("fonts/dm-sans-600.woff2") format("woff2");
 }
 @font-face {
   font-family: "DM Sans";
   font-style: normal;
   font-weight: 700;
-  font-display: swap;
+  font-display: optional;
   src: url("fonts/dm-sans-700.woff2") format("woff2");
 }
 @font-face {
   font-family: "Space Mono";
   font-style: normal;
   font-weight: 400;
-  font-display: swap;
+  font-display: optional;
   src: url("fonts/space-mono-400.woff2") format("woff2");
 }
 @font-face {
   font-family: "Space Mono";
   font-style: normal;
   font-weight: 700;
-  font-display: swap;
+  font-display: optional;
   src: url("fonts/space-mono-700.woff2") format("woff2");
 }
 
@@ -790,6 +790,7 @@ html[data-tab="event"] #panel-event {
   gap: 4px;
   justify-content: center;
   margin-bottom: 12px;
+  min-height: 84px;
 }
 
 .cefilter-class-row {
@@ -826,6 +827,7 @@ html[data-tab="event"] #panel-event {
   gap: 4px;
   justify-content: center;
   margin-bottom: 12px;
+  min-height: 32px;
 }
 
 .cefilter-rarity-btn {
@@ -2097,6 +2099,10 @@ html[data-tab="event"] #panel-event {
   .ceoverlap-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .cefilter-class-filter {
+    min-height: 128px;
+  }
 }
 
 /* 13f. Tablet and up (>=769px) */
@@ -2112,5 +2118,9 @@ html[data-tab="event"] #panel-event {
 
   .servant-picker-grid {
     grid-template-columns: repeat(5, 1fr);
+  }
+
+  .cefilter-class-filter {
+    min-height: 40px;
   }
 }

@@ -1774,7 +1774,7 @@ const CEServantOverlap = {
     container.appendChild(filterDiv);
   },
 
-  _getFilteredEntries() {
+  _getFilteredEntries(options) {
     let filtered = this._allEntries;
 
     if (this._selectedCEFilter.size > 0) {
@@ -1794,26 +1794,29 @@ const CEServantOverlap = {
       );
     }
 
-    if (this._classFilters.length > 0) {
-      const classSet = new Set(this._classFilters);
-      filtered = filtered.filter(({ entry }) =>
-        entry.servant.traits.some(t => classSet.has(t))
-      );
-    }
+    if (!options?.skipClassRarity) {
+      if (this._classFilters.length > 0) {
+        const classSet = new Set(this._classFilters);
+        filtered = filtered.filter(({ entry }) =>
+          entry.servant.traits.some(t => classSet.has(t))
+        );
+      }
 
-    if (this._rarityFilters.length > 0) {
-      const raritySet = new Set(this._rarityFilters);
-      filtered = filtered.filter(({ entry }) =>
-        entry.servant.traits.some(t => raritySet.has(t))
-      );
+      if (this._rarityFilters.length > 0) {
+        const raritySet = new Set(this._rarityFilters);
+        filtered = filtered.filter(({ entry }) =>
+          entry.servant.traits.some(t => raritySet.has(t))
+        );
+      }
     }
 
     return filtered;
   },
 
   updateFilters() {
+    const forVisibility = this._getFilteredEntries({ skipClassRarity: true });
     const preFiltered = this._getFilteredEntries();
-    this._updateClassRarityVisibility(preFiltered);
+    this._updateClassRarityVisibility(forVisibility);
     this._rebuildCountFilter(preFiltered);
     this.renderGrid(preFiltered);
   },
