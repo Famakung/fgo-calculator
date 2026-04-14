@@ -191,26 +191,30 @@ body {
 
 /* Tab state overrides (set by tab-init.js in <head> before paint) */
 html[data-tab="bond"] .tab-btn.active,
-html[data-tab="cefilter"] .tab-btn.active {
+html[data-tab="cefilter"] .tab-btn.active,
+html[data-tab="event"] .tab-btn.active {
   background: transparent;
   color: var(--text-secondary);
   font-weight: 500;
 }
 
 html[data-tab="bond"] .tab-btn[data-tab="bond"],
-html[data-tab="cefilter"] .tab-btn[data-tab="cefilter"] {
+html[data-tab="cefilter"] .tab-btn[data-tab="cefilter"],
+html[data-tab="event"] .tab-btn[data-tab="event"] {
   background: var(--accent);
   color: #fff;
   font-weight: 600;
 }
 
-html[data-tab="bond"] #panel-event.active,
-html[data-tab="cefilter"] #panel-event.active {
+html[data-tab="bond"] #panel-cefilter.active,
+html[data-tab="cefilter"] #panel-cefilter.active,
+html[data-tab="event"] #panel-cefilter.active {
   display: none;
 }
 
 html[data-tab="bond"] #panel-bond,
-html[data-tab="cefilter"] #panel-cefilter {
+html[data-tab="cefilter"] #panel-cefilter,
+html[data-tab="event"] #panel-event {
   display: block;
 }
 
@@ -952,18 +956,6 @@ html[data-tab="cefilter"] #panel-cefilter {
   font-weight: 500;
 }
 
-.cefilter-modal-footer {
-  padding-top: 12px;
-  border-top: 2px solid var(--border);
-  margin-top: 8px;
-}
-
-.cefilter-confirm-btn {
-  width: 100%;
-  padding: 10px 20px;
-  font-size: 0.85rem;
-}
-
 .ce-filter-picker-item {
   position: relative;
 }
@@ -1040,16 +1032,9 @@ html[data-tab="cefilter"] #panel-cefilter {
   border-radius: 4px;
 }
 
-.ceoverlap-groups {
+.ceoverlap-scroll {
   overflow-y: auto;
   flex: 1;
-}
-
-.ceoverlap-sticky {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--card);
 }
 
 .ceoverlap-grid {
@@ -1077,13 +1062,6 @@ html[data-tab="cefilter"] #panel-cefilter {
 
 .ceoverlap-search {
   width: 100%;
-  margin-bottom: 6px;
-}
-
-.ceoverlap-collapsible-content > .ceoverlap-class-filter,
-.ceoverlap-collapsible-content > .ceoverlap-rarity-filter,
-.ceoverlap-collapsible-content > .ceoverlap-filter-row {
-  margin-bottom: 6px;
 }
 
 .ceoverlap-collapsible {
@@ -1121,7 +1099,9 @@ html[data-tab="cefilter"] #panel-cefilter {
 }
 
 .ceoverlap-collapsible-content {
-  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .ceoverlap-class-filter {
@@ -1270,7 +1250,6 @@ html[data-tab="cefilter"] #panel-cefilter {
   flex-wrap: wrap;
   gap: 4px;
   justify-content: center;
-  margin-bottom: 6px;
 }
 
 .servant-class-row {
@@ -1306,7 +1285,6 @@ html[data-tab="cefilter"] #panel-cefilter {
   flex-wrap: wrap;
   gap: 4px;
   justify-content: center;
-  margin-bottom: 6px;
 }
 
 .servant-rarity-btn {

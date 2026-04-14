@@ -410,6 +410,26 @@ const CollapsibleFactory = {
     wrapper.appendChild(header);
     wrapper.appendChild(content);
     return wrapper;
+  },
+
+  createSearchInput(query, onSearch) {
+    const searchInput = DOMFactory.el("input", "servant-search ceoverlap-search");
+    searchInput.type = "text";
+    searchInput.placeholder = "Search by ID or name...";
+    searchInput.value = query;
+    const debouncedSearch = EventHandler.debounce(onSearch, DEBOUNCE_MS);
+    searchInput.addEventListener("input", (e) => {
+      debouncedSearch(e.target.value);
+    });
+    return searchInput;
+  },
+
+  populateFilterArea(container, query, onSearch, buildExtra) {
+    container.replaceChildren();
+    const content = DOMFactory.el("div", "ceoverlap-collapsible-content");
+    content.appendChild(CollapsibleFactory.createSearchInput(query, onSearch));
+    if (buildExtra) buildExtra(content);
+    container.appendChild(CollapsibleFactory.build("Filters", content));
   }
 };
 
@@ -1005,27 +1025,10 @@ const ServantSelector = {
   buildFilterArea() {
     const container = document.getElementById("servantFilterArea");
     if (!container) return;
-    container.replaceChildren();
-
-    const content = DOMFactory.el("div", "ceoverlap-collapsible-content");
-
-    const searchInput = DOMFactory.el("input", "servant-search ceoverlap-search");
-    searchInput.type = "text";
-    searchInput.placeholder = "Search by ID or name...";
-    searchInput.value = this._searchQuery;
-    const debouncedSearch = EventHandler.debounce((query) => {
-      this._searchQuery = query;
-      this.filter();
-    }, DEBOUNCE_MS);
-    searchInput.addEventListener("input", (e) => {
-      debouncedSearch(e.target.value);
-    });
-    content.appendChild(searchInput);
-
-    this._buildClassFilter(content);
-    this._buildRarityFilter(content);
-
-    container.appendChild(CollapsibleFactory.build("Filters", content));
+    CollapsibleFactory.populateFilterArea(container, this._searchQuery,
+      (query) => { this._searchQuery = query; this.filter(); },
+      (content) => { this._buildClassFilter(content); this._buildRarityFilter(content); }
+    );
   },
 
   _buildClassFilter(container) {
@@ -1387,24 +1390,9 @@ const CESelector = {
   buildFilterArea() {
     const container = document.getElementById("ceFilterArea");
     if (!container) return;
-    container.replaceChildren();
-
-    const content = DOMFactory.el("div", "ceoverlap-collapsible-content");
-
-    const searchInput = DOMFactory.el("input", "servant-search ceoverlap-search");
-    searchInput.type = "text";
-    searchInput.placeholder = "Search by ID or name...";
-    searchInput.value = this._searchQuery;
-    const debouncedSearch = EventHandler.debounce((query) => {
-      this._searchQuery = query;
-      this.filter();
-    }, DEBOUNCE_MS);
-    searchInput.addEventListener("input", (e) => {
-      debouncedSearch(e.target.value);
-    });
-    content.appendChild(searchInput);
-
-    container.appendChild(CollapsibleFactory.build("Filters", content));
+    CollapsibleFactory.populateFilterArea(container, this._searchQuery,
+      (query) => { this._searchQuery = query; this.filter(); }
+    );
   }
 };
 
@@ -1506,7 +1494,6 @@ const CEFilterPicker = {
   init() {
     const modal = document.getElementById("ceFilterModal");
     const closeBtn = document.getElementById("ceFilterModalClose");
-    const confirmBtn = document.getElementById("cefilterConfirmBtn");
 
     if (closeBtn) {
       closeBtn.addEventListener("click", () => this.close());
@@ -1515,9 +1502,6 @@ const CEFilterPicker = {
       modal.addEventListener("click", (e) => {
         if (e.target === modal) this.close();
       });
-    }
-    if (confirmBtn) {
-      confirmBtn.addEventListener("click", () => this.confirm());
     }
   },
 
@@ -1533,16 +1517,12 @@ const CEFilterPicker = {
   },
 
   close() {
-    const modal = document.getElementById("ceFilterModal");
-    if (modal) modal.classList.remove("open");
-    this.tempSelected = new Set();
-  },
-
-  confirm() {
     CEFilterApp.state.selectedCEs = [...this.tempSelected];
     CEFilterApp.saveState();
     CEFilterApp.render();
-    this.close();
+    const modal = document.getElementById("ceFilterModal");
+    if (modal) modal.classList.remove("open");
+    this.tempSelected = new Set();
   },
 
   renderGrid(ces) {
@@ -1654,24 +1634,9 @@ const CEFilterPicker = {
   buildFilterArea() {
     const container = document.getElementById("ceFilterPickerArea");
     if (!container) return;
-    container.replaceChildren();
-
-    const content = DOMFactory.el("div", "ceoverlap-collapsible-content");
-
-    const searchInput = DOMFactory.el("input", "servant-search ceoverlap-search");
-    searchInput.type = "text";
-    searchInput.placeholder = "Search by ID or name...";
-    searchInput.value = this._searchQuery;
-    const debouncedSearch = EventHandler.debounce((query) => {
-      this._searchQuery = query;
-      this.filter();
-    }, DEBOUNCE_MS);
-    searchInput.addEventListener("input", (e) => {
-      debouncedSearch(e.target.value);
-    });
-    content.appendChild(searchInput);
-
-    container.appendChild(CollapsibleFactory.build("Filters", content));
+    CollapsibleFactory.populateFilterArea(container, this._searchQuery,
+      (query) => { this._searchQuery = query; this.filter(); }
+    );
   }
 };
 
@@ -1734,7 +1699,7 @@ const CEServantOverlap = {
       }
     });
 
-    this.buildCountFilter();
+    this.buildFilterArea();
     this._modal.classList.add("open");
   },
 
@@ -1744,8 +1709,8 @@ const CEServantOverlap = {
     }
   },
 
-  buildCountFilter() {
-    const container = document.getElementById("ceOverlapGroups");
+  buildFilterArea() {
+    const container = document.getElementById("ceOverlapFilterArea");
     if (!container) return;
     container.replaceChildren();
 
@@ -1756,24 +1721,14 @@ const CEServantOverlap = {
       return;
     }
 
-    const stickyWrap = DOMFactory.el("div", "ceoverlap-sticky");
-
-    this._buildCEFilter(stickyWrap);
+    this._buildCEFilter(container);
 
     const content = DOMFactory.el("div", "ceoverlap-collapsible-content");
 
-    const searchInput = DOMFactory.el("input", "servant-search ceoverlap-search");
-    searchInput.type = "text";
-    searchInput.placeholder = "Search by ID or name...";
-    searchInput.value = this._searchQuery;
-    const debouncedSearch = EventHandler.debounce((query) => {
+    content.appendChild(CollapsibleFactory.createSearchInput(this._searchQuery, (query) => {
       this._searchQuery = query;
       this.updateFilters();
-    }, DEBOUNCE_MS);
-    searchInput.addEventListener("input", (e) => {
-      debouncedSearch(e.target.value);
-    });
-    content.appendChild(searchInput);
+    }));
 
     const availableClassIds = new Set();
     const availableRarityIds = new Set();
@@ -1787,11 +1742,7 @@ const CEServantOverlap = {
     this._buildRarityFilter(content, availableRarityIds);
 
     this._buildCountFilter(content);
-    stickyWrap.appendChild(CollapsibleFactory.build("Filters", content));
-    container.appendChild(stickyWrap);
-
-    const grid = DOMFactory.el("div", "ceoverlap-grid");
-    container.appendChild(grid);
+    container.appendChild(CollapsibleFactory.build("Filters", content));
     this.renderGrid();
   },
 
@@ -1883,7 +1834,7 @@ const CEServantOverlap = {
       });
     });
 
-    const container = document.getElementById("ceOverlapGroups");
+    const container = document.getElementById("ceOverlapFilterArea");
     if (!container) return;
     container.querySelectorAll(".ceoverlap-class-btn").forEach(btn => {
       const avail = availableClassIds.has(btn.dataset.traitId);
@@ -1933,18 +1884,16 @@ const CEServantOverlap = {
   },
 
   _rebuildCountFilter() {
-    const container = document.getElementById("ceOverlapGroups");
+    const container = document.getElementById("ceOverlapFilterArea");
     if (!container) return;
 
     const content = container.querySelector(".ceoverlap-collapsible-content");
     const oldRow = (content || container).querySelector(".ceoverlap-filter-row");
-    const oldGrid = container.querySelector(".ceoverlap-grid");
     if (oldRow) oldRow.remove();
-    if (oldGrid) oldGrid.remove();
 
     this._buildCountFilter(content || container);
-    const grid = DOMFactory.el("div", "ceoverlap-grid");
-    container.appendChild(grid);
+    const grid = document.getElementById("ceOverlapGrid");
+    if (grid) grid.replaceChildren();
   },
 
   _buildClassFilter(container, availableClassIds) {
@@ -2043,9 +1992,7 @@ const CEServantOverlap = {
   },
 
   renderGrid() {
-    const container = document.getElementById("ceOverlapGroups");
-    if (!container) return;
-    const grid = container.querySelector(".ceoverlap-grid");
+    const grid = document.getElementById("ceOverlapGrid");
     if (!grid) return;
     grid.replaceChildren();
 
@@ -3598,9 +3545,9 @@ document.addEventListener("DOMContentLoaded", () => {
   BondApp.init();
 
   // Lazy-init CEFilterApp: only if saved tab is cefilter
-  let activeTab = "event";
+  let activeTab = "cefilter";
   try {
-    activeTab = localStorage.getItem("fgo_active_tab") || "event";
+    activeTab = localStorage.getItem("fgo_active_tab") || "cefilter";
   } catch (e) { /* ignore */ }
   if (activeTab === "cefilter") CEFilterApp.init();
 });

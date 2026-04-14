@@ -10,7 +10,7 @@
     />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self'; style-src 'self' 'sha256-l7/2yxC1OQKrOrFpdU01Yn2Yr2PIm5W/EzXrpylA6dA=' 'unsafe-inline'; script-src 'self' 'sha256-AUKqUZD5rXhIrUTs0OnKNc3OngYspsKVYAGE81T8KkA=' 'sha256-CEDT8fWAZFQfP7UOevHTxafYwDZMEcKYobb7uCOp9bM=' 'unsafe-inline'; font-src 'self'; require-trusted-types-for 'script';"
+      content="default-src 'self'; img-src 'self'; style-src 'self' 'sha256-l7/2yxC1OQKrOrFpdU01Yn2Yr2PIm5W/EzXrpylA6dA=' 'unsafe-inline'; script-src 'self' 'sha256-JGHX5zasjt1ALhGemGOCR6cYXbabewWYbyUZ8htDTPw=' 'sha256-CEDT8fWAZFQfP7UOevHTxafYwDZMEcKYobb7uCOp9bM=' 'unsafe-inline'; font-src 'self'; require-trusted-types-for 'script';"
     />
     <title>FGO Calculator</title>
     <style id="critical-css">*{margin:0;padding:0;box-sizing:border-box}@font-face{font-family:"DM Sans";font-style:normal;font-weight:400;font-display:swap;src:url("fonts/dm-sans-400.woff2") format("woff2")}@font-face{font-family:"DM Sans";font-style:normal;font-weight:700;font-display:swap;src:url("fonts/dm-sans-700.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:400;font-display:swap;src:url("fonts/space-mono-400.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:700;font-display:swap;src:url("fonts/space-mono-700.woff2") format("woff2")}:root{--bg:#f8f9fc;--card:#ffffff;--text:#1a1a2e;--text-secondary:#4b5563;--border:#e5e7eb;--shadow:0 4px 24px rgba(0,0,0,0.06);--radius:16px;--radius-sm:10px;--portrait-lg:72px}body{min-height:100vh;background:var(--bg);font-family:"DM Sans",sans-serif;color:var(--text);line-height:1.5;-webkit-text-size-adjust:100%}.container{max-width:720px;margin:0 auto;padding:40px 20px}.header{text-align:center;margin-bottom:40px}.title{font-size:2rem;font-weight:700;color:var(--text);margin-bottom:8px}.subtitle{font-size:1rem;color:var(--text-secondary)}</style>
@@ -66,7 +66,7 @@
     <script defer src="data/craft_essences.js"></script>
     <script defer src="app.min.js"></script>
     <script defer src="register-sw.js"></script>
-    <script>(function(){var t="event";try{var s=localStorage.getItem("fgo_active_tab");if(s)t=s}catch(e){}if(t!=="event")document.documentElement.setAttribute("data-tab",t);})();</script>
+    <script>(function(){var t="cefilter";try{var s=localStorage.getItem("fgo_active_tab");if(s)t=s}catch(e){}if(t!=="cefilter")document.documentElement.setAttribute("data-tab",t);})();</script>
   </head>
   <body>
     <div class="container">
@@ -76,13 +76,13 @@
       </header>
 
       <nav class="tab-bar">
-        <button class="tab-btn active" data-tab="event">Event Shop</button>
+        <button class="tab-btn active" data-tab="cefilter">Bond Gain CE Filter</button>
         <button class="tab-btn" data-tab="bond">Bond Calculator</button>
-        <button class="tab-btn" data-tab="cefilter">Bond Gain CE Filter</button>
+        <button class="tab-btn" data-tab="event">Event Shop</button>
       </nav>
 
       <main id="main-content">
-        <section class="tab-panel active" id="panel-event">
+        <section class="tab-panel" id="panel-event">
           <div class="card">
             <div class="card-title">Shop Requirements</div>
             <div class="materials-grid" id="materialsGrid">
@@ -496,7 +496,7 @@
           </div>
         </section>
 
-        <section class="tab-panel" id="panel-cefilter">
+        <section class="tab-panel active" id="panel-cefilter">
           <div class="card">
             <div class="card-title">Bond Gain Craft Essences</div>
             <div class="cefilter-controls">
@@ -653,15 +653,6 @@
             </div>
             <div id="ceFilterPickerArea"></div>
             <div class="servant-picker-grid" id="ceFilterPickerGrid"></div>
-            <div class="cefilter-modal-footer">
-              <button
-                class="calculate-btn cefilter-confirm-btn"
-                id="cefilterConfirmBtn"
-                type="button"
-              >
-                Confirm Selection
-              </button>
-            </div>
           </div>
         </div>
 
@@ -678,7 +669,10 @@
                 &#10005;
               </button>
             </div>
-            <div class="ceoverlap-groups" id="ceOverlapGroups"></div>
+            <div id="ceOverlapFilterArea"></div>
+            <div class="ceoverlap-scroll">
+              <div class="ceoverlap-grid" id="ceOverlapGrid"></div>
+            </div>
           </div>
         </div>
       </main>
