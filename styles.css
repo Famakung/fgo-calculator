@@ -1777,7 +1777,7 @@ html[data-tab="event"] #panel-event {
    ============================================ */
 .footer {
   text-align: center;
-  margin-top: 32px;
+  margin-top: auto;
   color: var(--text-secondary);
   font-size: 0.8rem;
 }

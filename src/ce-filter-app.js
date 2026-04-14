@@ -319,14 +319,17 @@ export const CEFilterApp = {
   renderChips() {
     const container = document.getElementById("cefilterChips");
     if (!container) return;
-    container.replaceChildren();
 
     if (this.state.selectedCEs.length === 0) {
+      if (container.querySelector(".servant-slot-placeholder")) return;
+      container.replaceChildren();
       const placeholder = DOMFactory.el("div", "servant-slot-placeholder");
       placeholder.textContent = "No craft essences selected \u2014 showing all servants. Add Craft Essence to filter.";
       container.appendChild(placeholder);
       return;
     }
+
+    container.replaceChildren();
 
     this.state.selectedCEs.forEach(ceId => {
       const ce = CEById.get(ceId);
