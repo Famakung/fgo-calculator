@@ -10,10 +10,10 @@
     />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self'; style-src 'self' 'sha256-fFEd78zGVTXUFEOX9K1/rLNu2uNoLCsitVYuoUL5+sc=' 'unsafe-inline'; script-src 'self' 'sha256-JGHX5zasjt1ALhGemGOCR6cYXbabewWYbyUZ8htDTPw=' 'sha256-CEDT8fWAZFQfP7UOevHTxafYwDZMEcKYobb7uCOp9bM=' 'unsafe-inline'; font-src 'self'; require-trusted-types-for 'script';"
+      content="default-src 'self'; img-src 'self'; style-src 'self' 'sha256-/AXCTRIdyYLDjo1WKefpWhOFcr4ZzXMKAPncASevjkc=' 'unsafe-inline'; script-src 'self' 'sha256-JGHX5zasjt1ALhGemGOCR6cYXbabewWYbyUZ8htDTPw=' 'sha256-CEDT8fWAZFQfP7UOevHTxafYwDZMEcKYobb7uCOp9bM=' 'unsafe-inline'; font-src 'self'; require-trusted-types-for 'script';"
     />
     <title>FGO Calculator</title>
-    <style id="critical-css">*{margin:0;padding:0;box-sizing:border-box}@font-face{font-family:"DM Sans";font-style:normal;font-weight:400;font-display:optional;src:url("fonts/dm-sans-400.woff2") format("woff2")}@font-face{font-family:"DM Sans";font-style:normal;font-weight:700;font-display:optional;src:url("fonts/dm-sans-700.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:400;font-display:optional;src:url("fonts/space-mono-400.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:700;font-display:optional;src:url("fonts/space-mono-700.woff2") format("woff2")}:root{--bg:#f8f9fc;--card:#ffffff;--text:#1a1a2e;--text-secondary:#4b5563;--border:#e5e7eb;--shadow:0 4px 24px rgba(0,0,0,0.06);--radius:16px;--radius-sm:10px;--portrait-lg:64px;--accent:#4338ca;--shadow-sm:0 2px 8px rgba(0,0,0,0.04)}body{min-height:100vh;background:var(--bg);font-family:"DM Sans",sans-serif;color:var(--text);line-height:1.5;-webkit-text-size-adjust:100%}.container{max-width:720px;margin:0 auto;padding:40px 20px;min-height:100vh;display:flex;flex-direction:column}.header{text-align:center;margin-bottom:40px}.title{font-size:2rem;font-weight:700;color:var(--text);margin-bottom:8px}.subtitle{font-size:1rem;color:var(--text-secondary)}#main-content{flex:1}.tab-panel{display:none}.tab-panel.active{display:block}html[data-tab="bond"] #panel-cefilter.active{display:none}html[data-tab="bond"] #panel-bond{display:block}html[data-tab="event"] #panel-cefilter.active{display:none}html[data-tab="event"] #panel-event{display:block}.cefilter-class-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px;min-height:84px}.cefilter-rarity-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px;min-height:32px}.cefilter-match-count-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px;min-height:32px}.cefilter-pagination{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:8px 0;min-height:52px}</style>
+    <style id="critical-css">*{margin:0;padding:0;box-sizing:border-box}@font-face{font-family:"DM Sans";font-style:normal;font-weight:400;font-display:optional;src:url("fonts/dm-sans-400.woff2") format("woff2")}@font-face{font-family:"DM Sans";font-style:normal;font-weight:700;font-display:optional;src:url("fonts/dm-sans-700.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:400;font-display:optional;src:url("fonts/space-mono-400.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:700;font-display:optional;src:url("fonts/space-mono-700.woff2") format("woff2")}:root{--bg:#f8f9fc;--card:#ffffff;--text:#1a1a2e;--text-secondary:#4b5563;--border:#e5e7eb;--shadow:0 4px 24px rgba(0,0,0,0.06);--radius:16px;--radius-sm:10px;--portrait-lg:64px;--accent:#4338ca;--shadow-sm:0 2px 8px rgba(0,0,0,0.04)}body{min-height:100vh;background:var(--bg);font-family:"DM Sans",sans-serif;color:var(--text);line-height:1.5;-webkit-text-size-adjust:100%}.container{max-width:720px;margin:0 auto;padding:40px 20px;min-height:100vh;display:flex;flex-direction:column}.navbar{display:flex;align-items:center;gap:8px;background:var(--card);border-radius:var(--radius);padding:8px 16px;margin-bottom:24px;box-shadow:var(--shadow-sm);border:2px solid var(--border);position:relative}.navbar-title{font-size:1.25rem;font-weight:700;color:var(--text);white-space:nowrap}.navbar-tabs{display:flex;gap:4px;margin-left:auto}.navbar-hamburger{display:none}.navbar-dropdown{display:none}#main-content{flex:1}.tab-panel{display:none}.tab-panel.active{display:block}html[data-tab="bond"] #panel-cefilter.active{display:none}html[data-tab="bond"] #panel-bond{display:block}html[data-tab="event"] #panel-cefilter.active{display:none}html[data-tab="event"] #panel-event{display:block}.cefilter-class-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px}.cefilter-rarity-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px}.cefilter-match-count-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px}.cefilter-pagination{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:8px 0;min-height:52px}</style>
     <link rel="preload" href="styles.min.css" as="style" />
     <link rel="stylesheet" href="styles.min.css" />
     <link
@@ -67,15 +67,21 @@
   </head>
   <body>
     <div class="container">
-      <header class="header">
-        <h1 class="title">FGO Calculator</h1>
-        <p class="subtitle">Optimize your farming runs</p>
-      </header>
-
-      <nav class="tab-bar">
-        <button class="tab-btn active" data-tab="cefilter">Bond Gain CE Filter</button>
-        <button class="tab-btn" data-tab="bond">Bond Calculator</button>
-        <button class="tab-btn" data-tab="event">Event Shop</button>
+      <nav class="navbar">
+        <span class="navbar-title">FGO Calculator</span>
+        <div class="navbar-tabs">
+          <button class="tab-btn active" data-tab="cefilter">CE Filter</button>
+          <button class="tab-btn" data-tab="bond">Bond Calculator</button>
+          <button class="tab-btn" data-tab="event">Event Shop</button>
+        </div>
+        <button class="navbar-hamburger" type="button" aria-label="Menu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="navbar-dropdown" aria-hidden="true">
+          <button class="navbar-dropdown-item active" data-tab="cefilter">CE Filter</button>
+          <button class="navbar-dropdown-item" data-tab="bond">Bond Calculator</button>
+          <button class="navbar-dropdown-item" data-tab="event">Event Shop</button>
+        </div>
       </nav>
 
       <main id="main-content">
@@ -526,18 +532,7 @@
             <div class="card-title cefilter-results-header">
               <span>Servants</span>
             </div>
-            <input
-              type="text"
-              class="servant-search ce-filter-search"
-              id="cefilterSearch"
-              placeholder="Search by ID or name..."
-            />
-            <div class="cefilter-class-filter" id="cefilterClassFilter"></div>
-            <div class="cefilter-rarity-filter" id="cefilterRarityFilter"></div>
-            <div
-              class="cefilter-match-count-filter"
-              id="cefilterMatchCount"
-            ></div>
+            <div id="cefilterFilterArea"></div>
             <div class="cefilter-pagination" id="cefilterPaginationTop"></div>
             <div class="cefilter-results-grid" id="cefilterResults"></div>
             <div class="cefilter-pagination" id="cefilterPaginationBottom"></div>

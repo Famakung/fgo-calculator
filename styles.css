@@ -148,36 +148,128 @@ body {
 }
 
 /* ============================================
-   4. TAB NAVIGATION
+   4. NAVBAR
    ============================================ */
-.tab-bar {
+.navbar {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
   background: var(--card);
   border-radius: var(--radius);
-  padding: 4px;
+  padding: 8px 16px;
   margin-bottom: 24px;
   box-shadow: var(--shadow-sm);
   border: 2px solid var(--border);
+  position: relative;
+}
+
+.navbar-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.navbar-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
 }
 
 .tab-btn {
-  flex: 1;
-  padding: 12px 16px;
+  padding: 8px 14px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   font-family: "DM Sans", sans-serif;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 500;
   border-radius: 12px;
   cursor: pointer;
+  white-space: nowrap;
   transition: all 0.2s ease;
 }
 
 .tab-btn.active {
   background: var(--accent);
   color: #fff;
+  font-weight: 600;
+}
+
+/* Hamburger button (hidden on desktop, shown on mobile) */
+.navbar-hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 36px;
+  height: 36px;
+  padding: 6px;
+  margin-left: auto;
+  background: transparent;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.navbar-hamburger span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--text);
+  border-radius: 1px;
+  transition: all 0.3s ease;
+}
+
+.navbar-hamburger.open span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.navbar-hamburger.open span:nth-child(2) {
+  opacity: 0;
+}
+
+.navbar-hamburger.open span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+/* Dropdown menu (mobile only) */
+.navbar-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.navbar-dropdown.open {
+  display: block;
+}
+
+.navbar-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.navbar-dropdown-item.active {
+  background: var(--accent-light);
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -189,7 +281,7 @@ body {
   display: block;
 }
 
-/* Tab state overrides (set by tab-init.js in <head> before paint) */
+/* Tab state overrides (set by tab-init script in <head> before paint) */
 html[data-tab="bond"] .tab-btn.active,
 html[data-tab="cefilter"] .tab-btn.active,
 html[data-tab="event"] .tab-btn.active {
@@ -691,7 +783,6 @@ html[data-tab="event"] #panel-event {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  min-height: 28px;
 }
 
 .cefilter-chip {
@@ -735,6 +826,11 @@ html[data-tab="event"] #panel-event {
   gap: 4px;
   justify-content: center;
   margin-bottom: 12px;
+}
+
+#cefilterFilterArea {
+  min-height: 34px;
+  margin-bottom: 2px;
 }
 
 .cefilter-match-count-btn {
@@ -783,7 +879,6 @@ html[data-tab="event"] #panel-event {
   gap: 4px;
   justify-content: center;
   margin-bottom: 12px;
-  min-height: 84px;
 }
 
 .cefilter-class-row {
@@ -820,7 +915,6 @@ html[data-tab="event"] #panel-event {
   gap: 4px;
   justify-content: center;
   margin-bottom: 12px;
-  min-height: 32px;
 }
 
 .cefilter-rarity-btn {
@@ -1363,27 +1457,7 @@ html[data-tab="event"] #panel-event {
 }
 
 /* ============================================
-   5. HEADER
-   ============================================ */
-.header {
-  text-align: center;
-  margin-bottom: 40px;
-}
-
-.title {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 8px;
-}
-
-.subtitle {
-  font-size: 1rem;
-  color: var(--text-secondary);
-}
-
-/* ============================================
-   6. CARDS
+   5. CARDS
    ============================================ */
 .card {
   background: var(--card);
@@ -1783,6 +1857,14 @@ html[data-tab="event"] #panel-event {
     background: var(--border);
   }
 
+  .navbar-hamburger:hover {
+    background: var(--border);
+  }
+
+  .navbar-dropdown-item:hover {
+    background: var(--border);
+  }
+
   .servant-slot:hover {
     background: var(--border);
   }
@@ -1891,6 +1973,14 @@ html[data-tab="event"] #panel-event {
   background: var(--bg);
 }
 
+.navbar-hamburger:active {
+  background: var(--bg);
+}
+
+.navbar-dropdown-item:active {
+  background: var(--bg);
+}
+
 .servant-remove-btn:active {
   background: rgba(220, 38, 38, 0.3);
   color: var(--error);
@@ -1935,13 +2025,16 @@ html[data-tab="event"] #panel-event {
     padding: 16px 12px;
   }
 
-  .title {
-    font-size: 1.5rem;
+  .navbar-tabs {
+    display: none;
   }
 
-  .tab-btn {
-    padding: 10px 12px;
-    font-size: 0.8rem;
+  .navbar-hamburger {
+    display: flex;
+  }
+
+  .navbar-title {
+    font-size: 1.1rem;
   }
 
   .servant-picker-grid {
@@ -2014,23 +2107,6 @@ html[data-tab="event"] #panel-event {
 /* 13d. Small phones (<=480px) — overrides 600px */
 @media (max-width: 480px) {
 
-  .tab-bar {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .tab-bar::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tab-btn {
-    flex-shrink: 0;
-    white-space: nowrap;
-    padding: 10px 12px;
-    font-size: 0.78rem;
-  }
-
   .servant-modal-content {
     width: 95%;
     max-width: none;
@@ -2044,9 +2120,8 @@ html[data-tab="event"] #panel-event {
     padding: 12px 8px;
   }
 
-  .tab-btn {
-    padding: 8px 10px;
-    font-size: 0.72rem;
+  .navbar-title {
+    font-size: 1rem;
   }
 
   .servant-modal-content {
@@ -2068,10 +2143,6 @@ html[data-tab="event"] #panel-event {
   .ceoverlap-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-
-  .cefilter-class-filter {
-    min-height: 128px;
-  }
 }
 
 /* 13f. Tablet and up (>=769px) */
@@ -2087,9 +2158,5 @@ html[data-tab="event"] #panel-event {
 
   .servant-picker-grid {
     grid-template-columns: repeat(5, 1fr);
-  }
-
-  .cefilter-class-filter {
-    min-height: 40px;
   }
 }

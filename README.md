@@ -27,6 +27,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ### Bond Gain CE Filter
 - Reverse lookup: select CEs to find matching servants
 - Match modes: All (AND), Any (OR), and Custom Match (filter by exact CE match count)
+- Collapsible filter panel with search, class filter, rarity filter, and CE match count buttons
 - CE match count buttons ("1 CE", "2 CE", etc.) filter by number of matching CEs
 - CE picker shows grayscale indicator for CEs with no ascension-level overlap with selected CEs
 - Class and rarity filter buttons hide when no servant with that trait exists in results
@@ -75,7 +76,7 @@ Craft Essences apply bonuses based on servant traits with four modes:
 fgo-calculator/
 ├── index.html              # Main HTML with static grid elements, tab panels and modals
 ├── favicon.svg             # SVG favicon
-├── styles.css              # CSS source (~2060 lines)
+├── styles.css              # CSS source (~2160 lines)
 ├── styles.min.css          # Minified CSS (served to browser)
 ├── app.js                  # All logic in single IIFE (~3200 lines, source)
 ├── app.min.js              # Minified JS (served to browser)
@@ -99,7 +100,7 @@ fgo-calculator/
 
 ## Architecture
 
-The application follows a clean 3-layer architecture within a single IIFE:
+The application follows a clean 3-layer architecture using ES modules bundled by esbuild:
 
 | Layer | Modules | Purpose |
 |-------|---------|---------|
@@ -114,9 +115,9 @@ The application follows a clean 3-layer architecture within a single IIFE:
 - All images in WebP format
 - Content Security Policy (CSP) restricting all resources to `'self'` with Trusted Types enforcement
 - All DOM elements created safely with `createElement()` (no innerHTML)
-- Data files use `var` globals via `<script defer>` tags in `<head>` for `file://` compatibility
+- Data files use `export const` imported by `src/data.js` and bundled inline by esbuild into `app.min.js`
 - Schema-based input validation with localStorage sanitization
 - Debounced input handlers (100ms)
 - Multi-ascension servant support with per-ascension traits and spiriton dress images
 - **PWA support** with Service Worker (cache-first for assets with Cache-Control override, stale-while-revalidate for code, security header injection for HSTS/COOP/XFO/frame-ancestors) for offline access and instant repeat visits
-- **Performance optimized**: Static HTML grids (zero CLS on load), CSS/JS minification, tab flash prevention via inline `<head>` script, DocumentFragment batching, lazy image loading, lazy tab initialization, computation caching, debounced filter renders, CSS layout containment, right-sized material icons (2x render dimensions), font preloading with `fetchpriority="high"` on LCP-critical font, CSS preload, inline critical CSS for LCP optimization, CLS prevention with `min-width` and `tabular-nums` on dynamic numeric elements, `font-display: optional` to eliminate font-swap reflow, `min-height` on JS-populated filter containers
+- **Performance optimized**: Unified navbar with responsive hamburger menu, collapsible filter panel, static HTML grids (zero CLS on load), CSS/JS minification, tab flash prevention via inline `<head>` script, DocumentFragment batching, lazy image loading, lazy tab initialization, computation caching, debounced filter renders, CSS layout containment, right-sized material icons (2x render dimensions), font preloading with `fetchpriority="high"` on LCP-critical font, CSS preload, inline critical CSS for LCP optimization, CLS prevention with `min-width`, `tabular-nums`, and `min-height` on dynamic elements, `font-display: optional` to eliminate font-swap reflow

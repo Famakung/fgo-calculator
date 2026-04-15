@@ -1,7 +1,7 @@
 import { DEBOUNCE_MS, CE_PAGE_SIZE, CEFILTER_STORAGE_KEY } from "./constants.js";
 import { TraitMatcher } from "./domain.js";
 import { ServantData, CEList, CEById, TraitCEs, TraitNames } from "./data.js";
-import { DOMFactory, debounce } from "./presentation.js";
+import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
 
 export const CEFilterApp = {
   state: {
@@ -30,7 +30,6 @@ export const CEFilterApp = {
 
     const addBtn = document.getElementById("cefilterAddBtn");
     const modeSelect = document.getElementById("cefilterMode");
-    const searchInput = document.getElementById("cefilterSearch");
 
     if (addBtn) {
       addBtn.addEventListener("click", () => {
@@ -48,20 +47,36 @@ export const CEFilterApp = {
       });
     }
 
-    if (searchInput) {
-      searchInput.value = this.state.searchQuery;
-      const debouncedSearch = debounce((query) => {
-        this.state.searchQuery = query;
-        this.state.currentPage = 1;
-        this.render();
-      }, DEBOUNCE_MS);
-      searchInput.addEventListener("input", (e) => {
-        debouncedSearch(e.target.value);
-      });
-    }
-
     if (this._callbacks.initFilterPicker) this._callbacks.initFilterPicker();
     if (this._callbacks.initOverlap) this._callbacks.initOverlap();
+
+    // Build collapsible filter area with search, class, rarity, CE count
+    const filterArea = document.getElementById("cefilterFilterArea");
+    if (filterArea) {
+      CollapsibleFactory.populateFilterArea(
+        filterArea,
+        this.state.searchQuery,
+        (query) => {
+          this.state.searchQuery = query;
+          this.state.currentPage = 1;
+          this.render();
+        },
+        (content) => {
+          const classDiv = DOMFactory.el("div", "cefilter-class-filter");
+          classDiv.id = "cefilterClassFilter";
+          content.appendChild(classDiv);
+
+          const rarityDiv = DOMFactory.el("div", "cefilter-rarity-filter");
+          rarityDiv.id = "cefilterRarityFilter";
+          content.appendChild(rarityDiv);
+
+          const countDiv = DOMFactory.el("div", "cefilter-match-count-filter");
+          countDiv.id = "cefilterMatchCount";
+          content.appendChild(countDiv);
+        }
+      );
+    }
+
     this.buildClassFilter();
     this.buildRarityFilter();
 
@@ -375,8 +390,6 @@ export const CEFilterApp = {
     }
 
     let base = ceFiltered || this._lastCEFiltered || [];
-
-    base.sort((a, b) => parseInt(a.servant.id, 10) - parseInt(b.servant.id, 10));
 
     // Hide class/rarity buttons not present in CE-filtered results
     const availableClassIds = new Set();
