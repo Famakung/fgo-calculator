@@ -47,6 +47,9 @@ export const TabNavigator = {
     }
 
     function closeDropdown() {
+      if (dropdown.contains(document.activeElement)) {
+        hamburger.focus();
+      }
       hamburger.classList.remove("open");
       dropdown.classList.remove("open");
       hamburger.setAttribute("aria-expanded", "false");

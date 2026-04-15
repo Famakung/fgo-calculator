@@ -3,6 +3,61 @@ import { TraitMatcher } from "./domain.js";
 import { ServantData, CEList, CEById, TraitCEs, TraitNames } from "./data.js";
 import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
 
+/* === Worker setup for off-thread CE match computation === */
+let _worker = null;
+let _workerResolve = null;
+
+function getWorker() {
+  if (_worker) return _worker;
+  try {
+    _worker = new Worker("ce-match-worker.min.js");
+  } catch (e) {
+    console.warn("Worker creation failed:", e);
+    return null;
+  }
+  _worker.onerror = function(e) {
+    console.warn("Worker error:", e.message);
+    if (_workerResolve) {
+      const resolve = _workerResolve;
+      _workerResolve = null;
+      resolve(null);
+    }
+  };
+  _worker.onmessage = function(e) {
+    if (e.data.type === "result" && _workerResolve) {
+      const resolve = _workerResolve;
+      _workerResolve = null;
+      resolve(e.data);
+    } else if (e.data.type === "error" && _workerResolve) {
+      console.warn("Worker computation error:", e.data.message);
+      const resolve = _workerResolve;
+      _workerResolve = null;
+      resolve(null);
+    }
+  };
+  return _worker;
+}
+
+function initWorker() {
+  const worker = getWorker();
+  if (!worker) return;
+  worker.postMessage({
+    type: "init",
+    servants: ServantData.servants,
+    traitCEs: TraitCEs,
+    traitNames: TraitNames
+  });
+}
+
+function computeWorker() {
+  const worker = getWorker();
+  if (!worker) return Promise.resolve(null);
+  return new Promise(resolve => {
+    _workerResolve = resolve;
+    worker.postMessage({ type: "compute" });
+  });
+}
+
 export const CEFilterApp = {
   state: {
     selectedCEs: [],
@@ -91,13 +146,55 @@ export const CEFilterApp = {
     this.buildClassFilter();
     this.buildRarityFilter();
 
-    this.render();
+    initWorker();
+
+    // Double-rAF: ensures browser paints placeholder before heavy work
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        this.render();
+      });
+    });
   },
 
   render() {
     this.renderChips();
     this.buildCustomCountFilter();
-    const ceFiltered = this.filterByCEs(this.computeAllCEMatches());
+
+    if (this._allCEMatchesCache) {
+      // Cached: render synchronously
+      this._finishRender(this._allCEMatchesCache);
+    } else if (!_worker) {
+      // First render: use worker to avoid blocking main thread
+      computeWorker().then(data => {
+        if (data) {
+          this._processWorkerResults(data);
+          this._finishRender(this._allCEMatchesCache);
+        } else {
+          // Worker failed — fall back to synchronous computation
+          this._finishRender(this.computeAllCEMatches());
+        }
+      });
+    } else {
+      // Subsequent render before cache ready: use sync fallback
+      this._finishRender(this.computeAllCEMatches());
+    }
+  },
+
+  _processWorkerResults(data) {
+    // Rebuild matchingCEIds as Sets and CE match index
+    const { results, index } = data;
+    results.forEach(entry => {
+      entry.matchingCEIds = new Set(entry.matchingCEIds);
+    });
+    this._allCEMatchesCache = results;
+    this._ceMatchEntriesIndex = {};
+    for (const ceId in index) {
+      this._ceMatchEntriesIndex[ceId] = new Set(index[ceId]);
+    }
+  },
+
+  _finishRender(allMatches) {
+    const ceFiltered = this.filterByCEs(allMatches);
     this._lastCEFiltered = ceFiltered;
     const preFiltered = this._applySearchClassRarity(ceFiltered);
     this.buildMatchCountFilter(preFiltered);
@@ -364,7 +461,7 @@ export const CEFilterApp = {
       .filter(ce => ce != null);
 
     if (selectedCEObjs.length >= 2) {
-      if (modeRow) modeRow.style.display = "";
+      if (modeRow) modeRow.style.display = "flex";
     } else {
       if (modeRow) modeRow.style.display = "none";
       if (this.state.mode !== "all") {
@@ -416,74 +513,91 @@ export const CEFilterApp = {
     const pageSlice = filtered.slice(pageStart, pageStart + pageSize);
 
     const frag = document.createDocumentFragment();
+    const isFirstPage = this.state.currentPage === 1;
+    const eagerAttrs = isFirstPage ? { loading: "eager", fetchpriority: "high" } : {};
+    const firstPageImages = isFirstPage ? [] : null;
 
     pageSlice.forEach(({ servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll, primaryAscension }) => {
-      const card = DOMFactory.el("div", "cefilter-servant-card");
-
-      const imgAsc = (!baseMatchesAll && matchedAscensions.length > 0)
-        ? (primaryAscension || matchedAscensions[0])
-        : null;
-      const imgSrc = imgAsc
-        ? ServantData.getImageForAscension(servant.id, imgAsc)
-        : servant.image;
-      const img = DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", {
-        alt: servant.name
-      });
-      DOMFactory.addAscensionFallback(img, servant.id);
-      if (matchingCEs.length > 0) {
-        img.style.cursor = "pointer";
-        img.addEventListener("click", () => {
-          if (this._callbacks.openOverlap) {
-            this._callbacks.openOverlap({ servant, matchingCEs, allTraitNames,
-              matchedAscensions, baseMatchesAll, primaryAscension });
-          }
-        });
-      }
-      card.appendChild(img);
-
-      const displayName = imgAsc
-        ? ServantData.getAscensionName(servant.id, imgAsc) || servant.name
-        : servant.name;
-      const nameEl = DOMFactory.el("div", "cefilter-servant-name");
-      nameEl.textContent = displayName;
-      card.appendChild(nameEl);
-
-      if (!baseMatchesAll && matchedAscensions.length > 0) {
-        const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
-        ascLabel.textContent = matchedAscensions
-          .map(key => ServantData.getAscensionLabel(servant.id, key))
-          .join("\n");
-        card.appendChild(ascLabel);
-      }
-
-      if (matchingCEs.length > 0) {
-        const badges = DOMFactory.el("div", "cefilter-match-badges");
-        matchingCEs.forEach(ce => {
-          const badge = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-match-badge", {
-            alt: ce.name,
-            title: ce.name
-          });
-          DOMFactory.addSimpleFallback(badge, "cefilter-match-badge-fallback", ce.id);
-          badge.style.cursor = "pointer";
-          badge.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (!this.state.selectedCEs.includes(ce.id)) {
-              this.state.selectedCEs.push(ce.id);
-              this.saveState();
-              this.state.currentPage = 1;
-              this.render();
-            }
-          });
-          badges.appendChild(badge);
-        });
-        card.appendChild(badges);
-      }
-
-      frag.appendChild(card);
+      frag.appendChild(this._buildCard({ servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll, primaryAscension }, eagerAttrs, firstPageImages));
     });
+
+    if (firstPageImages && firstPageImages.length > 0) {
+      try {
+        localStorage.setItem("fgo_ce_first_page_imgs", JSON.stringify(firstPageImages));
+      } catch (e) { /* ignore */ }
+    }
 
     grid.replaceChildren(frag);
     this._renderPagination(totalPages);
+  },
+
+  _buildCard({ servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll, primaryAscension }, eagerAttrs, firstPageImages) {
+    const card = DOMFactory.el("div", "cefilter-servant-card");
+
+    const imgAsc = (!baseMatchesAll && matchedAscensions.length > 0)
+      ? (primaryAscension || matchedAscensions[0])
+      : null;
+    const imgSrc = imgAsc
+      ? ServantData.getImageForAscension(servant.id, imgAsc)
+      : servant.image;
+    if (firstPageImages) firstPageImages.push(imgSrc);
+    const img = DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", {
+      alt: servant.name,
+      ...eagerAttrs
+    });
+    DOMFactory.addAscensionFallback(img, servant.id);
+    if (matchingCEs.length > 0) {
+      img.style.cursor = "pointer";
+      img.addEventListener("click", () => {
+        if (this._callbacks.openOverlap) {
+          this._callbacks.openOverlap({ servant, matchingCEs, allTraitNames,
+            matchedAscensions, baseMatchesAll, primaryAscension });
+        }
+      });
+    }
+    card.appendChild(img);
+
+    const displayName = imgAsc
+      ? ServantData.getAscensionName(servant.id, imgAsc) || servant.name
+      : servant.name;
+    const nameEl = DOMFactory.el("div", "cefilter-servant-name");
+    nameEl.textContent = displayName;
+    card.appendChild(nameEl);
+
+    if (!baseMatchesAll && matchedAscensions.length > 0) {
+      const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
+      ascLabel.textContent = matchedAscensions
+        .map(key => ServantData.getAscensionLabel(servant.id, key))
+        .join("\n");
+      card.appendChild(ascLabel);
+    }
+
+    if (matchingCEs.length > 0) {
+      const badges = DOMFactory.el("div", "cefilter-match-badges");
+      matchingCEs.forEach(ce => {
+        if (firstPageImages) firstPageImages.push(ce.thumbImage);
+        const badge = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-match-badge", {
+          alt: ce.name,
+          title: ce.name,
+          ...eagerAttrs
+        });
+        DOMFactory.addSimpleFallback(badge, "cefilter-match-badge-fallback", ce.id);
+        badge.style.cursor = "pointer";
+        badge.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (!this.state.selectedCEs.includes(ce.id)) {
+            this.state.selectedCEs.push(ce.id);
+            this.saveState();
+            this.state.currentPage = 1;
+            this.render();
+          }
+        });
+        badges.appendChild(badge);
+      });
+      card.appendChild(badges);
+    }
+
+    return card;
   },
 
   _renderPagination(totalPages) {

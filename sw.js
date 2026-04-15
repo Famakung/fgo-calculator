@@ -9,6 +9,7 @@ const STATIC_ASSETS = [
   BASE + "favicon.svg",
   BASE + "styles.min.css",
   BASE + "app.min.js",
+  BASE + "ce-match-worker.min.js",
   BASE + "manifest.json"
 ];
 

@@ -144,6 +144,7 @@ body {
 .container {
   margin: 0 auto;
   padding: 40px 20px;
+  max-width: 1200px;
 }
 
 /* ============================================
@@ -761,7 +762,7 @@ html[data-tab="event"] #panel-event {
 }
 
 .cefilter-mode-row {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
@@ -1077,12 +1078,14 @@ html[data-tab="event"] #panel-event {
 
 .ce-filter-picker-item {
   position: relative;
+  width: 100px;
+  height: 100px;
 }
 
 .ce-filter-picker-item .ce-filter-check {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 0;
+  right: 8px;
   width: 18px;
   height: 18px;
   border-radius: 50%;
@@ -1118,8 +1121,8 @@ html[data-tab="event"] #panel-event {
 }
 
 .ceoverlap-ce-filter {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, 100px);
   gap: 8px;
   justify-content: center;
   margin-bottom: 12px;
@@ -1127,15 +1130,6 @@ html[data-tab="event"] #panel-event {
 
 .ceoverlap-ce-filter .servant-picker-item {
   position: relative;
-  padding: 8px 8px;
-}
-
-.ceoverlap-ce-filter .servant-picker-item img {
-  margin-bottom: 0;
-}
-
-.ceoverlap-ce-filter .servant-picker-item.selected {
-  background: #dbeafe;
 }
 
 .ceoverlap-scroll {
@@ -1426,10 +1420,11 @@ html[data-tab="event"] #panel-event {
 
 .servant-picker-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, 100px);
   gap: 8px;
   overflow-y: auto;
   flex: 1;
+  justify-content: center;
 }
 
 .servant-picker-item {
@@ -1441,6 +1436,8 @@ html[data-tab="event"] #panel-event {
   cursor: pointer;
   transition: background 0.15s;
   min-width: 0;
+  width: 100px;
+  height: 100px;
 }
 
 .servant-picker-item img {
@@ -2050,10 +2047,6 @@ html[data-tab="event"] #panel-event {
     font-size: 1.1rem;
   }
 
-  .servant-picker-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
   .bond-result-ce-grid {
     gap: 3px;
   }
@@ -2131,11 +2124,6 @@ html[data-tab="event"] #panel-event {
     max-height: 95vh;
   }
 
-  .servant-picker-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
-  }
-
   .bond-result-ce-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 2px;
@@ -2147,20 +2135,12 @@ html[data-tab="event"] #panel-event {
   .card {
     padding: 32px;
   }
-
-  .servant-picker-grid {
-    grid-template-columns: repeat(5, 1fr);
-  }
 }
 
 /* 13h. Small desktop (>=960px) */
 @media (min-width: 960px) {
   .servant-modal-content {
     max-width: 720px;
-  }
-
-  .servant-picker-grid {
-    grid-template-columns: repeat(6, 1fr);
   }
 }
 
@@ -2169,15 +2149,5 @@ html[data-tab="event"] #panel-event {
   .servant-modal-content {
     max-width: 900px;
   }
-
-  .servant-picker-grid {
-    grid-template-columns: repeat(7, 1fr);
-  }
 }
 
-/* 13j. Large desktop (>=1440px) */
-@media (min-width: 1440px) {
-  .servant-picker-grid {
-    grid-template-columns: repeat(8, 1fr);
-  }
-}

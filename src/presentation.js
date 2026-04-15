@@ -24,7 +24,9 @@ export const DOMFactory = {
 
   createLazyImg(src, className, attrs = {}) {
     const img = this.el("img", className, { src, ...attrs });
-    img.loading = "lazy";
+    if (!attrs.loading) {
+      img.loading = "lazy";
+    }
     img.decoding = "async";
     return img;
   },

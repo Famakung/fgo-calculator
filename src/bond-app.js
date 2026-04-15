@@ -300,6 +300,8 @@ export const BondApp = {
     this.elements = {};
 
     const frag = document.createDocumentFragment();
+    const bondTabActive = document.documentElement.getAttribute("data-tab") === "bond";
+    let firstPortraitCreated = false;
 
     for (let i = 0; i < SERVANT_MAX_SLOTS; i++) {
       const slotData = this.state.slots[i] || { servantId: null, bondNeeded: 0, type: "normal", ascension: null };
@@ -360,9 +362,12 @@ export const BondApp = {
           servantHasAscensions = servant.hasAscensions;
           const ascension = ServantData.getDefaultAscension(slotData.servantId, slotData.ascension);
           const imgSrc = ServantData.getImageForAscension(servant.id, ascension);
+          const isFirstPortrait = bondTabActive && !firstPortraitCreated;
+          if (isFirstPortrait) firstPortraitCreated = true;
           const img = DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", {
             alt: servant.name,
-            draggable: "false"
+            draggable: "false",
+            ...(isFirstPortrait ? { loading: "eager", fetchpriority: "high" } : {})
           });
           DOMFactory.addAscensionFallback(img, servant.id);
           portraitArea.appendChild(img);

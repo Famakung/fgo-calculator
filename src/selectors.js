@@ -832,9 +832,13 @@ export const CEServantOverlap = {
       const btn = DOMFactory.el("div", "servant-picker-item ce-filter-picker-item" +
         (selected.has(ce.id) ? " selected" : ""));
       DOMFactory.appendCheckMark(btn);
-      const img = DOMFactory.createLazyImg(ce.image, "", { alt: ce.name, title: ce.name });
-      DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
+      const img = DOMFactory.createLazyImg(ce.image, null, { alt: ce.name });
+      DOMFactory.addSimpleFallback(img, "servant-slot-portrait-fallback", ce.id);
       btn.appendChild(img);
+
+      const name = DOMFactory.el("div", "servant-picker-name");
+      name.textContent = ce.name;
+      btn.appendChild(name);
       btn.addEventListener("click", () => {
         if (selected.has(ce.id)) {
           selected.delete(ce.id);

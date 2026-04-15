@@ -10,33 +10,12 @@
     />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self'; style-src 'self' 'sha256-n3FdivsnZs9jHbzs9r0t122xJ0zIwMGENsSagBvq1oQ=' 'unsafe-inline'; script-src 'self' 'sha256-JGHX5zasjt1ALhGemGOCR6cYXbabewWYbyUZ8htDTPw=' 'sha256-CEDT8fWAZFQfP7UOevHTxafYwDZMEcKYobb7uCOp9bM=' 'unsafe-inline'; font-src 'self'; require-trusted-types-for 'script';"
+      content="default-src 'self'; img-src 'self'; style-src 'self' 'sha256-k2eomxM0itcTOgOelEIpJy90dqInpm/wt5Y+HfaDEyc=' 'unsafe-inline'; script-src 'self' 'sha256-38XyieXudIcSbU3dntjzcC6s0ZiXfopkRZ4zr+Y8ezU=' 'sha256-CEDT8fWAZFQfP7UOevHTxafYwDZMEcKYobb7uCOp9bM=' 'unsafe-inline'; font-src 'self'; require-trusted-types-for 'script';"
     />
     <title>FGO Calculator</title>
-    <style id="critical-css">*{margin:0;padding:0;box-sizing:border-box}@font-face{font-family:"DM Sans";font-style:normal;font-weight:400;font-display:optional;src:url("fonts/dm-sans-400.woff2") format("woff2")}@font-face{font-family:"DM Sans";font-style:normal;font-weight:700;font-display:optional;src:url("fonts/dm-sans-700.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:400;font-display:optional;src:url("fonts/space-mono-400.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:700;font-display:optional;src:url("fonts/space-mono-700.woff2") format("woff2")}:root{--bg:#f8f9fc;--card:#ffffff;--text:#1a1a2e;--text-secondary:#4b5563;--border:#e5e7eb;--shadow:0 4px 24px rgba(0,0,0,0.06);--radius:16px;--radius-sm:10px;--portrait-lg:64px;--accent:#4338ca;--shadow-sm:0 2px 8px rgba(0,0,0,0.04)}body{min-height:100vh;background:var(--bg);font-family:"DM Sans",sans-serif;color:var(--text);line-height:1.5;-webkit-text-size-adjust:100%}.container{margin:0 auto;padding:40px 20px;min-height:100vh;display:flex;flex-direction:column}.navbar{display:flex;align-items:center;gap:8px;background:var(--card);border-radius:var(--radius);padding:8px 16px;margin-bottom:24px;box-shadow:var(--shadow-sm);border:2px solid var(--border);position:relative}.navbar-title{font-size:1.25rem;font-weight:700;color:var(--text);white-space:nowrap}.navbar-tabs{display:flex;gap:4px;margin-left:auto}.navbar-hamburger{display:none}.navbar-dropdown{display:none}#main-content{flex:1}.tab-panel{display:none}.tab-panel.active{display:block}html[data-tab="bond"] #panel-cefilter.active{display:none}html[data-tab="bond"] #panel-bond{display:block}html[data-tab="event"] #panel-cefilter.active{display:none}html[data-tab="event"] #panel-event{display:block}.cefilter-class-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px}.cefilter-rarity-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px}.cefilter-match-count-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px}.cefilter-pagination{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:8px 0;min-height:52px}</style>
+    <style id="critical-css">*{margin:0;padding:0;box-sizing:border-box}@font-face{font-family:"DM Sans";font-style:normal;font-weight:400;font-display:optional;src:url("fonts/dm-sans-400.woff2") format("woff2")}@font-face{font-family:"DM Sans";font-style:normal;font-weight:700;font-display:optional;src:url("fonts/dm-sans-700.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:400;font-display:optional;src:url("fonts/space-mono-400.woff2") format("woff2")}@font-face{font-family:"Space Mono";font-style:normal;font-weight:700;font-display:optional;src:url("fonts/space-mono-700.woff2") format("woff2")}:root{--bg:#f8f9fc;--card:#ffffff;--text:#1a1a2e;--text-secondary:#4b5563;--border:#e5e7eb;--shadow:0 4px 24px rgba(0,0,0,0.06);--radius:16px;--radius-sm:10px;--portrait-lg:64px;--accent:#4338ca;--shadow-sm:0 2px 8px rgba(0,0,0,0.04)}body{min-height:100vh;background:var(--bg);font-family:"DM Sans",sans-serif;color:var(--text);line-height:1.5;-webkit-text-size-adjust:100%}.container{margin:0 auto;padding:40px 20px;min-height:100vh;display:flex;flex-direction:column}.navbar{display:flex;align-items:center;gap:8px;background:var(--card);border-radius:var(--radius);padding:8px 16px;margin-bottom:24px;box-shadow:var(--shadow-sm);border:2px solid var(--border);position:relative}.navbar-title{font-size:1.25rem;font-weight:700;color:var(--text);white-space:nowrap}.navbar-tabs{display:flex;gap:4px;margin-left:auto}.navbar-hamburger{display:none}.navbar-dropdown{display:none}#main-content{flex:1}.tab-panel{display:none}.tab-panel.active{display:block}html[data-tab="bond"] #panel-cefilter.active{display:none}html[data-tab="bond"] #panel-bond{display:block}html[data-tab="event"] #panel-cefilter.active{display:none}html[data-tab="event"] #panel-event{display:block}.cefilter-class-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px}.cefilter-rarity-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px}.cefilter-match-count-filter{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:12px}.cefilter-pagination{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:8px 0;min-height:52px}#cefilterFilterArea{min-height:34px;margin-bottom:2px}</style>
     <link rel="preload" href="styles.min.css" as="style" />
     <link rel="stylesheet" href="styles.min.css" />
-    <link
-      rel="preload"
-      href="fonts/dm-sans-400.woff2"
-      as="font"
-      type="font/woff2"
-      crossorigin
-    />
-    <link
-      rel="preload"
-      href="fonts/dm-sans-500.woff2"
-      as="font"
-      type="font/woff2"
-      crossorigin
-    />
-    <link
-      rel="preload"
-      href="fonts/dm-sans-600.woff2"
-      as="font"
-      type="font/woff2"
-      crossorigin
-    />
     <link
       rel="preload"
       href="fonts/dm-sans-700.woff2"
@@ -45,25 +24,11 @@
       crossorigin
       fetchpriority="high"
     />
-    <link
-      rel="preload"
-      href="fonts/space-mono-400.woff2"
-      as="font"
-      type="font/woff2"
-      crossorigin
-    />
-    <link
-      rel="preload"
-      href="fonts/space-mono-700.woff2"
-      as="font"
-      type="font/woff2"
-      crossorigin
-    />
     <link rel="manifest" href="manifest.json" />
     <script>if(window.trustedTypes&&trustedTypes.createPolicy){trustedTypes.createPolicy('default',{createHTML:function(s){return s},createScriptURL:function(s){return s},createScript:function(s){return s}})}</script>
     <script defer src="app.min.js"></script>
     <script defer src="register-sw.js"></script>
-    <script>(function(){var t="cefilter";try{var s=localStorage.getItem("fgo_active_tab");if(s)t=s}catch(e){}if(t!=="cefilter")document.documentElement.setAttribute("data-tab",t);})();</script>
+    <script>(function(){var t="cefilter";try{var s=localStorage.getItem("fgo_active_tab");if(s)t=s}catch(e){}if(t!=="cefilter")document.documentElement.setAttribute("data-tab",t);function p(h){var l=document.createElement("link");l.rel="preload";l.as="image";l.fetchPriority="high";l.href=h;document.head.appendChild(l)}if(t==="bond"){try{var b=JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));if(b&&Array.isArray(b.slots)){for(var i=0;i<b.slots.length;i++){if(b.slots[i]&&b.slots[i].servantId){p("servants/"+b.slots[i].servantId+"/"+(b.slots[i].ascension||"000")+".webp");break}}}}catch(e){}}if(t==="cefilter"){try{var c=localStorage.getItem("fgo_ce_first_page_imgs");if(c){var a=JSON.parse(c);for(var j=0;j<a.length;j++){p(a[j])}}}catch(e){}}})();</script>
   </head>
   <body>
     <div class="container">

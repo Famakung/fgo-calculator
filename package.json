@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "build": "esbuild src/main.js --bundle --outfile=app.min.js --minify",
+    "build": "esbuild src/main.js --bundle --outfile=app.min.js --minify && esbuild src/ce-match-worker.js --bundle --outfile=ce-match-worker.min.js --minify",
     "dev": "esbuild src/main.js --bundle --outfile=app.bundle.js --sourcemap --watch"
   },
   "devDependencies": {

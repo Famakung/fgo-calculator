@@ -12,14 +12,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // Load servant/CE data
   ServantData.load();
 
-  // Initialize Event Shop tab
-  App.init();
-
-  // Wire BondApp with selector references (avoids circular imports)
-  BondApp.configure({
-    ServantSelector, AscensionSelector, CESelector, CESubSelector, ServantDrag
-  });
-  BondApp.init();
+  // Determine active tab before initializing apps
+  let activeTab = "cefilter";
+  try {
+    activeTab = localStorage.getItem("fgo_active_tab") || "cefilter";
+  } catch (e) { /* ignore */ }
 
   // CEFilterApp lazy-init callback for TabNavigator
   const initCEFilter = () => {
@@ -41,12 +38,29 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
+  // BondApp init (configure + init in one function)
+  const initBond = () => {
+    BondApp.configure({
+      ServantSelector, AscensionSelector, CESelector, CESubSelector, ServantDrag
+    });
+    BondApp.init();
+  };
+
   TabNavigator.init(initCEFilter);
 
-  // Lazy-init CEFilterApp if saved tab is cefilter
-  let activeTab = "cefilter";
-  try {
-    activeTab = localStorage.getItem("fgo_active_tab") || "cefilter";
-  } catch (e) { /* ignore */ }
-  if (activeTab === "cefilter") initCEFilter();
+  // Eagerly init ONLY the active tab
+  if (activeTab === "event") {
+    App.init();
+  } else if (activeTab === "bond") {
+    initBond();
+  } else {
+    initCEFilter();
+  }
+
+  // Defer non-active tabs to idle time
+  const rIC = window.requestIdleCallback || (cb => setTimeout(cb, 1));
+  rIC(() => {
+    if (activeTab !== "event") App.init();
+    if (activeTab !== "bond") initBond();
+  });
 });

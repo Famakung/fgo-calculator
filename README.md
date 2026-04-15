@@ -78,9 +78,9 @@ fgo-calculator/
 ├── favicon.svg             # SVG favicon
 ├── styles.css              # CSS source (~2160 lines)
 ├── styles.min.css          # Minified CSS (served to browser)
-├── app.js                  # All logic in single IIFE (~3200 lines, source)
-├── app.min.js              # Minified JS (served to browser)
-├── tab-init.js             # (Removed; logic inlined in index.html <head> to eliminate render-blocking request)
+├── app.js                  # All logic in single IIFE (~3200 lines, legacy, no longer served)
+├── app.min.js              # Bundled JS via esbuild (served to browser)
+├── ce-match-worker.min.js  # Web Worker for CE trait matching (bundled via esbuild)
 ├── sw.js                   # Service Worker (cache-first for assets, stale-while-revalidate for code)
 ├── register-sw.js          # SW registration (separate file for CSP compliance)
 ├── manifest.json           # PWA manifest
@@ -120,4 +120,4 @@ The application follows a clean 3-layer architecture using ES modules bundled by
 - Debounced input handlers (100ms)
 - Multi-ascension servant support with per-ascension traits and spiriton dress images
 - **PWA support** with Service Worker (cache-first for assets with Cache-Control override, stale-while-revalidate for code, security header injection for HSTS/COOP/XFO/frame-ancestors) for offline access and instant repeat visits
-- **Performance optimized**: Unified navbar with responsive hamburger menu, collapsible filter panel, static HTML grids (zero CLS on load), CSS/JS minification, tab flash prevention via inline `<head>` script, DocumentFragment batching, lazy image loading, lazy tab initialization, computation caching, debounced filter renders, CSS layout containment, right-sized material icons (2x render dimensions), font preloading with `fetchpriority="high"` on LCP-critical font, CSS preload, inline critical CSS for LCP optimization, CLS prevention with `min-width`, `tabular-nums`, and `min-height` on dynamic elements, `font-display: optional` to eliminate font-swap reflow
+- **Performance optimized**: Web Worker for first CE trait matching computation (offloads heavy O(servants × CEs) work off main thread), double-rAF yield before initial render, unified navbar with responsive hamburger menu, collapsible filter panel, static HTML grids (zero CLS on load), CSS/JS minification, tab flash prevention via inline `<head>` script, DocumentFragment batching, lazy image loading, lazy tab initialization, computation caching, debounced filter renders, CSS layout containment, right-sized material icons (2x render dimensions), only LCP-critical font preloaded (DM Sans 700 with `fetchpriority="high"`), CSS preload, inline critical CSS for LCP optimization, CLS prevention with `min-width`, `tabular-nums`, `min-height`, and `display: none` defaults on dynamic elements, `font-display: optional` to eliminate font-swap reflow
