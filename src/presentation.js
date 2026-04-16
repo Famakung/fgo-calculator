@@ -78,6 +78,13 @@ export const CollapsibleFactory = {
     header.appendChild(arrow);
     header.addEventListener("click", () => {
       wrapper.classList.toggle("collapsed");
+      // On first open, promote data-src → src for deferred images
+      if (!wrapper.classList.contains("collapsed")) {
+        content.querySelectorAll("img[data-src]").forEach((img) => {
+          img.src = img.dataset.src;
+          img.removeAttribute("data-src");
+        });
+      }
     });
     wrapper.appendChild(header);
     wrapper.appendChild(content);

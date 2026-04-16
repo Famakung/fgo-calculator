@@ -202,10 +202,9 @@ export const CEFilterApp = {
         const btn = DOMFactory.el("div", "class-btn" + (selected.has(cls.id) ? " active" : ""));
         btn.dataset.traitId = cls.id;
         const img = DOMFactory.el("img", "", {
-          src: `icons/classes/${cls.icon}.webp`,
+          dataset: { src: `icons/classes/${cls.icon}.webp` },
           alt: cls.label,
           title: cls.label,
-          loading: "lazy",
         });
         btn.appendChild(img);
         btn.addEventListener("click", () => {
