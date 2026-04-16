@@ -147,6 +147,7 @@ export const ServantSelector = {
           src: "icons/classes/" + cls.icon + ".webp",
           alt: cls.label,
           title: cls.label,
+          loading: "lazy",
         });
         btn.appendChild(img);
         btn.addEventListener("click", () => {
@@ -992,6 +993,7 @@ export const CEServantOverlap = {
           src: "icons/classes/" + cls.icon + ".webp",
           alt: cls.label,
           title: cls.label,
+          loading: "lazy",
         });
         btn.appendChild(img);
         btn.addEventListener("click", () => {
