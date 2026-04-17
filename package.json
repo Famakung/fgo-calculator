@@ -2,16 +2,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:css": "npx -y clean-css-cli styles/base.css styles/modal.css -o styles.min.css && npx -y clean-css-cli styles/event-shop.css -o styles-event-shop.min.css && npx -y clean-css-cli styles/bond.css -o styles-bond.min.css && npx -y clean-css-cli styles/ce-filter.css -o styles-ce-filter.min.css",
-    "build:js": "esbuild src/main.js --bundle --splitting --format=esm --outdir=. --minify --entry-names=app --chunk-names=chunks/[name]-[hash] && esbuild src/ce-match-worker.js --bundle --outfile=ce-match-worker.min.js --minify",
-    "build": "npm run build:css && npm run build:js",
-    "dev": "npm run build:css && esbuild src/main.js --bundle --splitting --format=esm --outdir=. --sourcemap --entry-names=app --chunk-names=chunks/[name]-[hash] --watch",
+    "build": "esbuild src/main.js --bundle --outfile=app.min.js --minify && esbuild src/ce-match-worker.js --bundle --outfile=ce-match-worker.min.js --minify",
+    "dev": "esbuild src/main.js --bundle --outfile=app.bundle.js --sourcemap --watch",
     "lint": "npm run lint:js && npm run lint:css && npm run lint:html",
     "lint:js": "eslint src/ data/",
-    "lint:css": "stylelint styles/*.css",
+    "lint:css": "stylelint styles.css",
     "lint:html": "htmlhint index.html",
-    "format": "prettier --write \"src/**/*.js\" \"data/**/*.js\" \"styles/*.css\" \"*.js\" && stylelint --fix styles/*.css",
-    "format:check": "prettier --check \"src/**/*.js\" \"data/**/*.js\" \"styles/*.css\" \"*.js\""
+    "format": "prettier --write \"src/**/*.js\" \"data/**/*.js\" \"styles.css\" \"*.js\" && stylelint --fix styles.css",
+    "format:check": "prettier --check \"src/**/*.js\" \"data/**/*.js\" \"styles.css\" \"*.js\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -11,5 +11,5 @@
       { "ignorePseudoClasses": ["global"] }
     ]
   },
-  "ignoreFiles": ["styles.min.css", "styles-*.min.css"]
+  "ignoreFiles": ["styles.min.css"]
 }

@@ -60,6 +60,6 @@ export default [
     },
   },
   {
-    ignores: ["app.min.js", "app.bundle.js", "app.js", "ce-match-worker.min.js", "chunks/**"],
+    ignores: ["app.min.js", "app.bundle.js", "ce-match-worker.min.js", "app.js"],
   },
 ];

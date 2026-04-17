@@ -36,7 +36,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Clickable CE badges to add to selection
 - Click servant portrait to see other servants sharing the same CEs (overlap modal with CE image filter, search, class/rarity filters, and count filter)
 - "No Matching CE" section shows servants that don't match any trait-based CE
-- Paginated results (dynamic page size based on viewport) with prev/next navigation
+- Paginated results (30 servants per page) with prev/next navigation, page state persists on refresh
 
 ## Usage
 
@@ -76,20 +76,12 @@ Craft Essences apply bonuses based on servant traits with four modes:
 fgo-calculator/
 ├── index.html              # Main HTML with static grid elements, tab panels and modals
 ├── favicon.svg             # SVG favicon
-├── app.js                  # ES module entry (~3.5 KB, loads chunks/)
-├── chunks/                 # Code-split JS chunks (~107 KB total, 8 files)
-├── ce-match-worker.min.js  # Web Worker for CE trait matching
-├── styles/                 # CSS source files
-│   ├── base.css            # Shared: fonts, reset, navbar, grid utilities, breakpoints
-│   ├── modal.css           # Modal/picker styles
-│   ├── event-shop.css      # Event Shop tab
-│   ├── bond.css            # Bond Calculator tab
-│   └── ce-filter.css       # CE Filter tab
-├── styles.min.css          # Minified base+modal (~10.8 KB, always loaded)
-├── styles-event-shop.min.css # Minified (~4.5 KB, lazy-loaded)
-├── styles-bond.min.css     # Minified (~5.5 KB, lazy-loaded)
-├── styles-ce-filter.min.css # Minified (~6.3 KB, lazy-loaded)
-├── sw.js                   # Service Worker (v21)
+├── styles.css              # CSS source (~2160 lines)
+├── styles.min.css          # Minified CSS (served to browser)
+├── app.js                  # All logic in single IIFE (~3200 lines, legacy, no longer served)
+├── app.min.js              # Bundled JS via esbuild (served to browser)
+├── ce-match-worker.min.js  # Web Worker for CE trait matching (bundled via esbuild)
+├── sw.js                   # Service Worker (cache-first for assets, stale-while-revalidate for code)
 ├── register-sw.js          # SW registration (separate file for CSP compliance)
 ├── manifest.json           # PWA manifest
 ├── fonts/                  # Self-hosted web fonts (DM Sans, Space Mono — woff2)
@@ -108,17 +100,13 @@ fgo-calculator/
 
 ## Architecture
 
-The application follows a clean 3-layer architecture using ES modules bundled by esbuild with code splitting:
+The application follows a clean 3-layer architecture using ES modules bundled by esbuild:
 
 | Layer | Modules | Purpose |
 |-------|---------|---------|
 | **Domain** | Schema, Validator, Calculator, TraitMatcher | Pure business logic, no DOM |
 | **Application** | StateManager, Persistence, App, BondApp, CEFilterApp | State management and coordination |
 | **Presentation** | DOMFactory, CollapsibleFactory, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events. UIBuilder hydrates static HTML grids |
-
-**Code splitting**: `src/main.js` uses dynamic `import()` for tab-specific modules. esbuild `--splitting --format=esm` produces `app.js` entry + `chunks/` directory. Active tab loaded eagerly; inactive tabs on first visit.
-
-**CSS lazy loading**: Active tab CSS loaded via `document.write()` (parser-inserted, render-blocking). Inactive tab CSS via `<link rel="preload" as="style">`, converted to stylesheet on tab switch.
 
 ## Technical Details
 
@@ -127,9 +115,9 @@ The application follows a clean 3-layer architecture using ES modules bundled by
 - All images in WebP format
 - Content Security Policy (CSP) restricting all resources to `'self'` with Trusted Types enforcement
 - All DOM elements created safely with `createElement()` (no innerHTML)
-- Data files use `export const` imported by `src/data.js` and bundled inline by esbuild
+- Data files use `export const` imported by `src/data.js` and bundled inline by esbuild into `app.min.js`
 - Schema-based input validation with localStorage sanitization
 - Debounced input handlers (100ms)
 - Multi-ascension servant support with per-ascension traits and spiriton dress images
-- **PWA support** with Service Worker v21 (cache-first for assets with Cache-Control override, stale-while-revalidate for code, security header injection for HSTS/COOP/XFO/frame-ancestors) for offline access and instant repeat visits
-- **Performance optimized**: Tab-level CSS/JS code splitting with lazy loading, Web Worker for first CE trait matching computation (offloads heavy O(servants × CEs) work off main thread), double-rAF yield before initial render, unified navbar with responsive hamburger menu, collapsible filter panel, static HTML grids (zero CLS on load), CSS/JS minification, tab flash prevention via inline `<head>` script with `document.write()`, DocumentFragment batching, lazy image loading, lazy tab initialization, computation caching, debounced filter renders, CSS layout containment, right-sized material icons (2x render dimensions), only LCP-critical font preloaded (DM Sans 700 with `fetchpriority="high"`), CSS preload, inline critical CSS for LCP optimization, CLS prevention with `min-width`, `tabular-nums`, `min-height`, and `display: none` defaults on dynamic elements, `font-display: optional` to eliminate font-swap reflow
+- **PWA support** with Service Worker (cache-first for assets with Cache-Control override, stale-while-revalidate for code, security header injection for HSTS/COOP/XFO/frame-ancestors) for offline access and instant repeat visits
+- **Performance optimized**: Web Worker for first CE trait matching computation (offloads heavy O(servants × CEs) work off main thread), double-rAF yield before initial render, unified navbar with responsive hamburger menu, collapsible filter panel, static HTML grids (zero CLS on load), CSS/JS minification, tab flash prevention via inline `<head>` script, DocumentFragment batching, lazy image loading, lazy tab initialization, computation caching, debounced filter renders, CSS layout containment, right-sized material icons (2x render dimensions), only LCP-critical font preloaded (DM Sans 700 with `fetchpriority="high"`), CSS preload, inline critical CSS for LCP optimization, CLS prevention with `min-width`, `tabular-nums`, `min-height`, and `display: none` defaults on dynamic elements, `font-display: optional` to eliminate font-swap reflow
