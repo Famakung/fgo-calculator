@@ -72,10 +72,12 @@ if (criticalCssMatch) {
   const cspHash = `sha256-${hash}`;
   console.log(`CSP style hash: ${cspHash}`);
   
-  // Update CLAUDE.md with new hash
-  let claudeMd = fs.readFileSync(".claude/CLAUDE.md", "utf8");
-  claudeMd = claudeMd.replace(/sha256-[A-Za-z0-9+/]+= \(critical CSS\)/, `${cspHash} (critical CSS)`);
-  fs.writeFileSync(".claude/CLAUDE.md", claudeMd);
+  // Update CLAUDE.md with new hash (if it exists — skipped in CI)
+  try {
+    let claudeMd = fs.readFileSync(".claude/CLAUDE.md", "utf8");
+    claudeMd = claudeMd.replace(/sha256-[A-Za-z0-9+/]+= \(critical CSS\)/, `${cspHash} (critical CSS)`);
+    fs.writeFileSync(".claude/CLAUDE.md", claudeMd);
+  } catch { /* .claude/CLAUDE.md not present in CI */ }
 }
 
 // Set SW cache version from git commit (or timestamp in CI)
