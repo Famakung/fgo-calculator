@@ -587,4 +587,5 @@ export const SERVANT_DATA = {
   "467-1": { name: "François Prélat", traits: { base: ["0001", "0104", "0200", "0301", "0304", "0405"] } },
   "467-2": { name: "Francesca Prélat", traits: { base: ["0002", "0104", "0200", "0301", "0304", "0405"] } },
   468: { name: "Hippolyte", traits: { base: ["0002", "0103", "0201", "0300", "0303", "0404"] } },
+  469: { name: "John Lackland", traits: { base: ["0001", "0110", "0202", "0302", "0304", "0405"] } },
 };
