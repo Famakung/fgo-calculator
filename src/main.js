@@ -1,17 +1,7 @@
 import { ServantData } from "./data.js";
-import { App } from "./event-shop.js";
-import { BondApp } from "./bond-app.js";
 import { CEFilterApp } from "./ce-filter-app.js";
 import { TabNavigator } from "./tab-navigator.js";
-import {
-  ServantSelector,
-  AscensionSelector,
-  ServantDrag,
-  CESelector,
-  CESubSelector,
-  CEFilterPicker,
-  CEServantOverlap,
-} from "./selectors.js";
+import { CEFilterPicker, CEServantOverlap } from "./selectors.js";
 
 document.addEventListener("DOMContentLoaded", () => {
   // Load servant/CE data
@@ -25,7 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ignore */
   }
 
-  // CEFilterApp lazy-init callback for TabNavigator
+  // CEFilterApp init — default tab, loaded eagerly
   const initCEFilter = () => {
     CEFilterApp.init({
       openFilterPicker: () =>
@@ -45,23 +35,29 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
-  // BondApp init (configure + init in one function)
-  const initBond = () => {
-    BondApp.configure({
-      ServantSelector,
-      AscensionSelector,
-      CESelector,
-      CESubSelector,
-      ServantDrag,
-    });
-    BondApp.init();
+  // Lazy-load bond tab (selectors + bond-app ≈ 66KB, ~13KB gzipped)
+  let _bondModule = null;
+  const initBond = async () => {
+    if (!_bondModule) {
+      _bondModule = await import("./bond-lazy.js");
+    }
+    _bondModule.initBond();
+  };
+
+  // Lazy-load event shop (~9KB, ~2KB gzipped)
+  let _eventModule = null;
+  const initEvent = async () => {
+    if (!_eventModule) {
+      _eventModule = await import("./event-lazy.js");
+    }
+    _eventModule.initEvent();
   };
 
   TabNavigator.init(initCEFilter, initBond);
 
   // Eagerly init ONLY the active tab
   if (activeTab === "event") {
-    App.init();
+    initEvent();
   } else if (activeTab === "bond") {
     initBond();
   } else {
@@ -71,6 +67,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // Defer Event Shop to idle (hydrates static HTML only — no image fetches)
   const rIC = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
   rIC(() => {
-    if (activeTab !== "event") App.init();
+    if (activeTab !== "event") initEvent();
   });
 });

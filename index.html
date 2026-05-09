@@ -41,7 +41,7 @@
     />
     <link rel="manifest" href="manifest.json" />
     <script>if(window.trustedTypes&&trustedTypes.createPolicy){trustedTypes.createPolicy('default',{createHTML:function(s){return s},createScriptURL:function(s){return s},createScript:function(s){return s}})}</script>
-    <script defer src="app.min.js"></script>
+    <script type="module" defer src="app.min.js"></script>
     <script defer src="register-sw.js"></script>
     <script>(function(){var t="cefilter";try{var s=localStorage.getItem("fgo_active_tab");if(s)t=s}catch(e){}if(t!=="cefilter")document.documentElement.setAttribute("data-tab",t);function p(h){var l=document.createElement("link");l.rel="preload";l.as="image";l.fetchPriority="high";l.href=h;return l}if(t==="bond"){try{var b=JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));if(b&&Array.isArray(b.slots)){for(var i=0;i<b.slots.length;i++){if(b.slots[i]&&b.slots[i].servantId){document.head.appendChild(p("servants/"+b.slots[i].servantId+"/"+(b.slots[i].ascension||"000")+".webp"));break}}}}catch(e){}}if(t==="cefilter"){var mq=window.matchMedia;var cols=mq("(min-width:1120px)").matches?6:mq("(min-width:940px)").matches?5:mq("(min-width:760px)").matches?4:mq("(min-width:580px)").matches?3:2;var count=cols*5;var f=document.createDocumentFragment();for(var i=1;i<=count;i++){var id=i<10?"00"+i:"0"+i;f.appendChild(p("servants/"+id+"/000.webp"))}var ce=["2020","2052","2209","2233","2437","2509","2583"];if(cols>=3)ce.push("1949");if(cols>=5)ce.push("2142");for(var j=0;j<ce.length;j++){f.appendChild(p("craft_essences/64/"+ce[j]+".webp"))}document.head.appendChild(f)}})();</script>
   </head>

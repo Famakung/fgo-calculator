@@ -2,7 +2,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --outfile=app.min.js --minify && esbuild src/ce-match-worker.js --bundle --outfile=ce-match-worker.min.js --minify",
+    "build": "node build.cjs",
     "dev": "esbuild src/main.js --bundle --outfile=app.bundle.js --sourcemap --watch",
     "lint": "npm run lint:js && npm run lint:css && npm run lint:html",
     "lint:js": "eslint src/ data/",
