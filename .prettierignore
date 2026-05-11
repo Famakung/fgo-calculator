@@ -1,7 +1,3 @@
-# Generated build outputs
-app.min.js
-app.js
-ce-match-worker.min.js
-styles.min.css
-chunks/
+dist/
 node_modules/
+.astro/

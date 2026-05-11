@@ -29,23 +29,17 @@ jobs:
 
       - run: npm run build
 
-      # Verify all expected outputs exist
       - name: Verify build outputs
         run: |
-          for f in app.min.js ce-match-worker.min.js styles.min.css; do
-            if [ ! -f "$f" ]; then
-              echo "ERROR: $f not found after build"
-              exit 1
-            fi
-          done
+          if [ ! -f "dist/index.html" ]; then
+            echo "ERROR: dist/index.html not found after build"
+            exit 1
+          fi
           echo "Build outputs verified"
-
-      - name: Bundle SW cache version
-        run: grep -oP 'fgo-calc-v\d+' sw.js | head -1
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist
 
   deploy:
     needs: build

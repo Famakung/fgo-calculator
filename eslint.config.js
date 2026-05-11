@@ -3,7 +3,7 @@ import eslint from "@eslint/js";
 export default [
   eslint.configs.recommended,
   {
-    files: ["src/**/*.js", "data/**/*.js"],
+    files: ["src/scripts/**/*.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
@@ -15,8 +15,6 @@ export default [
         Worker: "readonly",
         fetch: "readonly",
         self: "readonly",
-        caches: "readonly",
-        clients: "readonly",
         DOMParser: "readonly",
         Image: "readonly",
         HTMLElement: "readonly",
@@ -47,7 +45,6 @@ export default [
         Date: "readonly",
         RegExp: "readonly",
         DocumentFragment: "readonly",
-        FileReader: "readonly",
         ResizeObserver: "readonly",
         alert: "readonly",
       },
@@ -60,6 +57,6 @@ export default [
     },
   },
   {
-    ignores: ["app.min.js", "app.bundle.js", "ce-match-worker.min.js", "app.js"],
+    ignores: ["dist/", "node_modules/", ".astro/"],
   },
 ];

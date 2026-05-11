@@ -1,6 +1,6 @@
-import { TRAIT_DATA } from "../data/traits.js";
-import { SERVANT_DATA } from "../data/servants.js";
-import { CE_DATA } from "../data/craft_essences.js";
+import { TRAIT_DATA } from "./data/traits.js";
+import { SERVANT_DATA } from "./data/servants.js";
+import { CE_DATA } from "./data/craft_essences.js";
 
 /* Trait names lookup */
 export const TraitNames = TRAIT_DATA || {};
