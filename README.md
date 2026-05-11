@@ -38,6 +38,14 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - "No Matching CE" section shows servants that don't match any trait-based CE
 - Paginated results (30 servants per page) with prev/next navigation, page state persists on refresh
 
+## Tech Stack
+
+- **Astro** (static output) — builds single-page app with code splitting and optimized chunks
+- **Vanilla JavaScript** — ES modules, no framework dependencies
+- **Self-hosted fonts** — DM Sans + Space Mono (woff2, font-display: swap)
+- **All images WebP** — servant portraits, CE thumbnails, UI icons
+- **Lighthouse 100/100/100/100** — Performance, Accessibility, Best Practices, SEO
+
 ## Usage
 
 ### Event Shop
@@ -74,50 +82,94 @@ Craft Essences apply bonuses based on servant traits with four modes:
 
 ```
 fgo-calculator/
-├── index.html              # Main HTML with static grid elements, tab panels and modals
-├── favicon.svg             # SVG favicon
-├── styles.css              # CSS source (~2160 lines)
-├── styles.min.css          # Minified CSS (served to browser)
-├── app.js                  # All logic in single IIFE (~3200 lines, legacy, no longer served)
-├── app.min.js              # Bundled JS via esbuild (served to browser)
-├── ce-match-worker.min.js  # Web Worker for CE trait matching (bundled via esbuild)
-├── sw.js                   # Service Worker (cache-first for assets, stale-while-revalidate for code)
-├── register-sw.js          # SW registration (separate file for CSP compliance)
-├── manifest.json           # PWA manifest
-├── fonts/                  # Self-hosted web fonts (DM Sans, Space Mono — woff2)
-├── data/
-│   ├── traits.js           # Trait ID to display name mapping
-│   ├── servants.js         # Servant data with trait arrays
-│   └── craft_essences.js   # CE data with traits/matchAll/traitGroups/alsoMatch
-├── servants/               # Servant portraits ({ID}.webp, with ascension subdirs)
-├── craft_essences/         # CE images: 128/{ID}.webp (full) + 64/{ID}.webp (thumb)
-└── icons/                  # UI icons
-    ├── bond_icon.webp
-    ├── fp_icon.webp
-    ├── materials/           # Material background/foreground icons
-    └── classes/             # Class icons (.webp)
+├── astro.config.mjs          # Astro config: static output, base path, Vite chunk splitting
+├── tsconfig.json              # TypeScript config (Astro strict)
+├── package.json               # Dependencies: astro (dev), lighthouse + puppeteer (devDeps)
+│
+├── src/
+│   ├── layouts/
+│   │   └── BaseLayout.astro   # HTML shell, inline CSS, font preloads, Trusted Types, manifest
+│   ├── pages/
+│   │   └── index.astro        # Main page: tab panels, UI structure, imports all JS modules
+│   ├── scripts/
+│   │   ├── main.js            # Entry: DOMContentLoaded → lazy tab init (dynamic import())
+│   │   ├── bond-lazy.js       # Lazy entry: BondApp + selectors (on Bond tab switch)
+│   │   ├── event-lazy.js      # Lazy entry: EventShop init (on Event tab switch)
+│   │   ├── ce-filter-app.js   # CEFilterApp (Worker, no localStorage)
+│   │   ├── ce-match-worker.js # Worker entry (TraitMatcher inlined)
+│   │   ├── constants.js       # All constants
+│   │   ├── domain.js           # Schema, Validator, Calculator, TraitMatcher
+│   │   ├── data.js             # ServantData, TraitNames, CEList, CEById, TraitCEs
+│   │   ├── state.js            # StateManager, Persistence
+│   │   ├── presentation.js     # DOMFactory, CollapsibleFactory, debounce
+│   │   ├── selectors.js        # ServantSelector, AscensionSelector, CESelector, etc.
+│   │   ├── bond-app.js         # BondApp (configure() for refs, _initialized guard)
+│   │   ├── event-shop.js       # UIBuilder, ViewManager, EventHandler, App
+│   │   ├── tab-navigator.js    # TabNavigator (lazy init callbacks)
+│   │   └── data/
+│   │       ├── servants.js      # SERVANT_DATA
+│   │       ├── craft_essences.js # CE_DATA
+│   │       └── traits.js        # TRAIT_DATA
+│   └── styles/
+│       ├── critical.css        # Above-fold CSS (inlined by Astro)
+│       └── global.css          # Full styles (loaded by Astro)
+│
+├── public/                     # Static assets (served as-is by Astro)
+│   ├── manifest.json           # PWA manifest (start_url: ".", standalone)
+│   ├── robots.txt              # Allow all
+│   ├── .nojekyll               # Prevent Jekyll processing on GitHub Pages
+│   ├── favicon.svg             # SVG favicon
+│   ├── fonts/                  # Self-hosted web fonts (DM Sans, Space Mono — woff2)
+│   ├── servants/               # Servant portraits ({ID}/{ascension}.webp)
+│   ├── craft_essences/         # CE images: 128/{ID}.webp (full) + 64/{ID}.webp (thumb)
+│   └── icons/                  # UI icons (classes, materials, PWA)
+│
+└── .github/workflows/
+    └── deploy.yml              # GitHub Actions: Astro build + deploy to Pages on push to main
 ```
 
 ## Architecture
 
-The application follows a clean 3-layer architecture using ES modules bundled by esbuild:
+The application follows a 3-layer architecture using ES modules bundled by Astro:
 
 | Layer | Modules | Purpose |
 |-------|---------|---------|
 | **Domain** | Schema, Validator, Calculator, TraitMatcher | Pure business logic, no DOM |
 | **Application** | StateManager, Persistence, App, BondApp, CEFilterApp | State management and coordination |
-| **Presentation** | DOMFactory, CollapsibleFactory, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events. UIBuilder hydrates static HTML grids |
+| **Presentation** | DOMFactory, CollapsibleFactory, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events |
+
+## Build
+
+```bash
+npm install          # Install dependencies
+npm run build       # Build with Astro (output: dist/)
+npm run preview      # Local preview server
+```
+
+Astro produces optimized chunks via Vite:
+- Eager: `main-entry`, `data-chunk`, `ce-filter-chunk`, `tab-navigator-chunk`, `selectors-chunk`
+- Lazy: `bond-lazy` (Bond tab), `event-lazy` (Event tab)
+- Worker: `ce-match-worker` (TraitMatcher, offloaded from main thread)
 
 ## Technical Details
 
-- Vanilla JavaScript with no external dependencies
-- Self-hosted fonts (DM Sans, Space Mono) via `@font-face` with woff2
+- Vanilla JavaScript with no external runtime dependencies
+- Self-hosted fonts (DM Sans, Space Mono) via `@font-face` with woff2 and font-display: swap
 - All images in WebP format
-- Content Security Policy (CSP) restricting all resources to `'self'` with Trusted Types enforcement
+- Trusted Types policy (`default`) enforced via inline script in `<head>`
 - All DOM elements created safely with `createElement()` (no innerHTML)
-- Data files use `export const` imported by `src/data.js` and bundled inline by esbuild into `app.min.js`
+- Data files use `export const` imported by `src/scripts/data.js`, bundled by Vite
 - Schema-based input validation with localStorage sanitization
 - Debounced input handlers (100ms)
 - Multi-ascension servant support with per-ascension traits and spiriton dress images
-- **PWA support** with Service Worker (cache-first for assets with Cache-Control override, stale-while-revalidate for code, security header injection for HSTS/COOP/XFO/frame-ancestors) for offline access and instant repeat visits
-- **Performance optimized**: Web Worker for first CE trait matching computation (offloads heavy O(servants × CEs) work off main thread), double-rAF yield before initial render, unified navbar with responsive hamburger menu, collapsible filter panel, static HTML grids (zero CLS on load), CSS/JS minification, tab flash prevention via inline `<head>` script, DocumentFragment batching, lazy image loading, lazy tab initialization, computation caching, debounced filter renders, CSS layout containment, right-sized material icons (2x render dimensions), only LCP-critical font preloaded (DM Sans 700 with `fetchpriority="high"`), CSS preload, inline critical CSS for LCP optimization, CLS prevention with `min-width`, `tabular-nums`, `min-height`, and `display: none` defaults on dynamic elements, `font-display: optional` to eliminate font-swap reflow
+- PWA manifest with standalone display mode
+- Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, `font-display: optional`, critical CSS inlined, font preloads with `fetchpriority="high"`, CLS prevention with `min-width` and `tabular-nums`
+
+## Git
+
+- `main` — production (GitHub Pages deploys from this branch)
+- `develop` — integration
+- `feat/*` — features
+- Flow: feat → develop → main → push triggers GitHub Actions auto-build + deploy
+- GitHub Pages source: "GitHub Actions" (not branch-based)
+- `dist/` is gitignored — CI generates build output
