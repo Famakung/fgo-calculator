@@ -505,6 +505,23 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <span>Servants</span>
               </div>
               <div id="cefilter-filter-area"></div>
+              <div class="cefilter-sort-row">
+                <select class="select-field cefilter-sort-select" id="cefilterSortBy" aria-label="Sort by">
+                  <option value="id" selected>ID</option>
+                  <option value="rarity">Rarity</option>
+                  <option value="class">Class</option>
+                </select>
+                <button
+                  type="button"
+                  class="cefilter-sort-order-btn"
+                  id="cefilterSortOrderToggle"
+                  data-order="asc"
+                  aria-label="Sort ascending"
+                  title="Sort ascending"
+                >
+                  <span class="cefilter-sort-order-icon">&#9650;</span>
+                </button>
+              </div>
               <div class="cefilter-pagination" id="cefilterPaginationTop"></div>
               <div class="cefilter-results-grid grid" id="cefilterResults"></div>
               

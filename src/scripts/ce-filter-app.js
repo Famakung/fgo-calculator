@@ -49,6 +49,17 @@ function initWorker() {
   });
 }
 
+let _classOrderMap = null;
+function getClassOrderMap() {
+  if (!_classOrderMap) {
+    _classOrderMap = new Map();
+    [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].forEach((cls, idx) => {
+      _classOrderMap.set(cls.id, idx);
+    });
+  }
+  return _classOrderMap;
+}
+
 export const CEFilterApp = {
   state: {
     selectedCEs: [],
@@ -58,6 +69,8 @@ export const CEFilterApp = {
     rarityFilters: [],
     matchCounts: [],
     matchCustomCounts: [],
+    sortBy: "id",
+    sortOrder: "asc",
     currentPage: 1,
   },
 
@@ -81,6 +94,9 @@ export const CEFilterApp = {
 
     const addBtn = document.getElementById("cefilterAddBtn");
     const modeSelect = document.getElementById("cefilterMode");
+    const sortBySelect = document.getElementById("cefilterSortBy");
+    const sortOrderSelect = document.getElementById("cefilterSortOrder");
+    const sortOrderToggle = document.getElementById("cefilterSortOrderToggle");
 
     if (addBtn) {
       addBtn.addEventListener("click", () => {
@@ -93,7 +109,51 @@ export const CEFilterApp = {
       modeSelect.addEventListener("change", () => {
         this.state.mode = modeSelect.value;
         this.state.currentPage = 1;
+        modeSelect.blur();
         this.render();
+      });
+    }
+
+    if (sortBySelect) {
+      sortBySelect.value = this.state.sortBy;
+      sortBySelect.addEventListener("change", () => {
+        this.state.sortBy = sortBySelect.value;
+        this.state.currentPage = 1;
+        sortBySelect.blur();
+        this.renderResults(this._lastCEFiltered);
+      });
+    }
+
+    const updateSortOrderUI = () => {
+      const isDesc = this.state.sortOrder === "desc";
+      if (sortOrderSelect) sortOrderSelect.value = this.state.sortOrder;
+      if (sortOrderToggle) {
+        sortOrderToggle.dataset.order = this.state.sortOrder;
+        const label = isDesc ? "Sort descending" : "Sort ascending";
+        sortOrderToggle.setAttribute("aria-label", label);
+        sortOrderToggle.title = label;
+        const iconSpan = sortOrderToggle.querySelector(".cefilter-sort-order-icon");
+        if (iconSpan) iconSpan.textContent = isDesc ? "\u25BC" : "\u25B2";
+      }
+    };
+
+    if (sortOrderToggle) {
+      updateSortOrderUI();
+      sortOrderToggle.addEventListener("click", () => {
+        this.state.sortOrder = this.state.sortOrder === "asc" ? "desc" : "asc";
+        updateSortOrderUI();
+        this.state.currentPage = 1;
+        this.renderResults(this._lastCEFiltered);
+      });
+    }
+
+    if (sortOrderSelect) {
+      sortOrderSelect.value = this.state.sortOrder;
+      sortOrderSelect.addEventListener("change", () => {
+        this.state.sortOrder = sortOrderSelect.value;
+        updateSortOrderUI();
+        this.state.currentPage = 1;
+        this.renderResults(this._lastCEFiltered);
       });
     }
 
@@ -446,6 +506,9 @@ export const CEFilterApp = {
       filtered = filtered.filter((s) => countSet.has(s.matchingCEs.length));
     }
 
+    // Apply sorting
+    filtered = this._sortEntries(filtered);
+
     const pageSize = this._getPageSize();
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
     if (this.state.currentPage > totalPages) {
@@ -606,6 +669,55 @@ export const CEFilterApp = {
       frag.appendChild(nextBtn);
 
       container.replaceChildren(frag);
+    });
+  },
+
+  _getEntryRarity(entry) {
+    const traits = entry.primaryAscension
+      ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
+      : entry.servant.traits;
+    const r = (traits || entry.servant.traits).filter((t) => t.startsWith("04"));
+    return r.length > 0 ? Math.max(...r.map((t) => parseInt(t.slice(2), 10))) : 0;
+  },
+
+  _getEntryClassIndex(entry) {
+    const traits = entry.primaryAscension
+      ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
+      : entry.servant.traits;
+    const c = (traits || entry.servant.traits).find((t) => t.startsWith("01"));
+    const orderMap = getClassOrderMap();
+    return c && orderMap.has(c) ? orderMap.get(c) : 99;
+  },
+
+  _sortEntries(entries) {
+    const sortBy = this.state.sortBy || "id";
+    const sortOrder = this.state.sortOrder || "asc";
+    const isDesc = sortOrder === "desc";
+
+    return [...entries].sort((a, b) => {
+      let cmp;
+      if (sortBy === "rarity") {
+        const rarityA = this._getEntryRarity(a);
+        const rarityB = this._getEntryRarity(b);
+        cmp = rarityA - rarityB;
+      } else if (sortBy === "class") {
+        const classA = this._getEntryClassIndex(a);
+        const classB = this._getEntryClassIndex(b);
+        cmp = classA - classB;
+      } else {
+        const idA = parseInt(a.servant.id, 10) || 0;
+        const idB = parseInt(b.servant.id, 10) || 0;
+        cmp = idA - idB;
+      }
+
+      if (cmp !== 0) {
+        return isDesc ? -cmp : cmp;
+      }
+
+      const idA = parseInt(a.servant.id, 10) || 0;
+      const idB = parseInt(b.servant.id, 10) || 0;
+      const idCmp = idA !== idB ? idA - idB : a.servant.id.localeCompare(b.servant.id);
+      return isDesc ? -idCmp : idCmp;
     });
   },
 

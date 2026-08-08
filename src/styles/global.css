@@ -333,6 +333,10 @@ html[data-tab="event"] #panel-event {
 
 .select-field:focus {
   outline: none;
+}
+
+.select-field:focus-visible {
+  outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-light);
 }
@@ -841,6 +845,68 @@ html[data-tab="event"] #panel-event {
 
 #cefilter-filter-area {
   min-height: 36px;
+}
+
+.cefilter-sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.cefilter-sort-select {
+  height: 36px;
+  padding: 0 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  flex: initial;
+  min-width: 90px;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.cefilter-sort-order-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+  line-height: 1;
+}
+
+.cefilter-sort-order-btn:focus {
+  outline: none;
+}
+
+.cefilter-sort-order-btn:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.cefilter-sort-order-icon {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1;
 }
 
 .cefilter-results-header {
@@ -1740,7 +1806,9 @@ html[data-tab="event"] #panel-event {
     border-color: var(--accent);
   }
 
-  .cefilter-page-btn:not(:disabled):hover {
+  .cefilter-page-btn:not(:disabled):hover,
+  .cefilter-sort-select:hover,
+  .cefilter-sort-order-btn:hover {
     border-color: var(--accent);
     background: var(--accent-light);
   }
@@ -1834,6 +1902,10 @@ html[data-tab="event"] #panel-event {
 .cefilter-page-btn:not(:disabled):active {
   border-color: var(--accent);
   background: var(--accent-light);
+}
+
+.cefilter-sort-order-btn:active {
+  background: var(--bg);
 }
 
 .ascension-modal-back:active,
