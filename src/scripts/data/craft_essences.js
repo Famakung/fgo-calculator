@@ -35,6 +35,7 @@ export const CE_DATA = {
     alsoMatch: ["2801200"],
   },
   2583: { name: "Great Library of Memories", bonus: 20, traits: ["0302"] },
+  2607: { name: "Sword Saints of Wandering", bonus: 20, traits: ["0100"] },
   2512: {
     name: "Heroic Spirit Apex",
     isGroup: true,
