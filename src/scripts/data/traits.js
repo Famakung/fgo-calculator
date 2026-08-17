@@ -17,7 +17,7 @@ export const TRAIT_DATA = {
   "0117": "Class Foreigner",
   "0120": "Class Pretender",
   "0124": "Class Beast",
-  "0200": "Sky Attribute",
+  "0200": "Heaven Attribute",
   "0201": "Earth Attribute",
   "0202": "Human Attribute",
   "0203": "Star Attribute",
