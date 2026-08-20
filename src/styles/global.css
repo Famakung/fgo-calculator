@@ -869,9 +869,15 @@ html[data-tab="event"] #panel-event {
   flex: initial;
   min-width: 90px;
   box-sizing: border-box;
+  overflow: hidden;
+  scrollbar-width: none;
   transition:
     border-color 0.15s ease,
     background-color 0.15s ease;
+}
+
+.cefilter-sort-select::-webkit-scrollbar {
+  display: none;
 }
 
 .cefilter-sort-order-btn {
