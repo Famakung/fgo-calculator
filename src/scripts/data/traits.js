@@ -36,8 +36,8 @@ export const TRAIT_DATA = {
   "0403": "Three Star Servant",
   "0404": "Four Star Servant",
   "0405": "Five Star Servant",
-  2654: "Modern Human",
-  2780: "Spiritron Dresses",
-  2821: "Beast Servants",
-  2801200: "Solomon",
+  "2654": "Modern Human",
+  "2780": "Spiritron Dresses",
+  "2821": "Beast Servants",
+  "2801200": "Solomon",
 };
