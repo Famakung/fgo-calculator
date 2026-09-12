@@ -21,7 +21,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Craft Essence bonus system with trait-based matching
 - Frontline bonus (×1.2 multiplier + flat 20% of base) for first 3 slots
 - Frontline support bonus (+4% as multiplier and flat per support) applies to all calculated servants
-- Max Bond & Bond ≥15 checkboxes: "Max Bond" removes the bond needed input, while "Bond ≥15" grants a +25% party bond bonus (usable even while leveling up to Bond 16)
+- Max Bond & Bond ≥15 checkboxes: "Max Bond" hides the bond required input, while "Bond ≥15" grants a +25% party bond bonus (usable even while leveling up to Bond 16)
 - Visual slot badges: Starting member slots display frontline bonus badges (+20% self for Normal, +4% All for Support); checking "Bond ≥15" displays a "Bond All +25%" badge in any slot (stacked below +self 20% when in starting member)
 - Quest presets (Free Quest Lv.83/84, Grand Duel Lv.100) or custom bond per run
 - Per-servant results with bond breakdown and run count
@@ -59,7 +59,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 1. Add servants and select from the portrait modal
 2. Choose servant type (Normal or Support)
 3. For Normal servants, toggle "Max Bond" (if already maxed) and/or "Bond ≥15" (+25% party bond bonus)
-4. For servants not at Max Bond, enter bond points needed
+4. For servants not at Max Bond, enter bond required
 5. Add Craft Essences for bonus traits
 6. Select a quest
 7. Click "Calculate Quest Runs"

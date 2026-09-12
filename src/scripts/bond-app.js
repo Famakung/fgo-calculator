@@ -497,39 +497,53 @@ export const BondApp = {
           this.buildServantSlots();
         });
 
-        // Controls for Normal Servant: checkboxes + bond needed input
-        if (slotType === "normal") {
-          // Checkboxes row: "Max Bond" and "Bond >=15"
-          const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
+        // Controls: checkboxes + bond required input
+        const isSupport = slotType === "support";
+        const isBondHidden = isSupport || !!slotData.maxBond;
 
-          // Max Bond checkbox
-          const maxBondLabel = DOMFactory.el("label", "bond-checkbox-label");
-          const maxBondCheckbox = DOMFactory.el("input", "bond-checkbox", {
-            type: "checkbox",
-            id: `slotMaxBond_${i}`,
-          });
-          if (slotData.maxBond) maxBondCheckbox.checked = true;
-          const maxBondText = DOMFactory.el("span");
-          maxBondText.textContent = "Max Bond";
-          maxBondLabel.appendChild(maxBondCheckbox);
-          maxBondLabel.appendChild(maxBondText);
-          checkboxRow.appendChild(maxBondLabel);
+        // Checkboxes row: "Max Bond" and "Bond >=15"
+        const checkboxRowClass = isSupport ? "bond-checkbox-row bond-checkbox-row--hidden" : "bond-checkbox-row";
+        const checkboxRow = DOMFactory.el("div", checkboxRowClass);
 
-          // Bond >=15 checkbox
-          const bond15Label = DOMFactory.el("label", "bond-checkbox-label");
-          const bond15Checkbox = DOMFactory.el("input", "bond-checkbox", {
-            type: "checkbox",
-            id: `slotBond15_${i}`,
-          });
-          if (slotData.bond15) bond15Checkbox.checked = true;
-          const bond15Text = DOMFactory.el("span");
-          bond15Text.textContent = "Bond \u226515";
-          bond15Label.appendChild(bond15Checkbox);
-          bond15Label.appendChild(bond15Text);
-          checkboxRow.appendChild(bond15Label);
+        // Max Bond checkbox
+        const maxBondLabel = DOMFactory.el("label", "bond-checkbox-label");
+        const maxBondAttrs = {
+          type: "checkbox",
+          id: `slotMaxBond_${i}`,
+        };
+        if (isSupport) {
+          maxBondAttrs.disabled = true;
+          maxBondAttrs.tabIndex = -1;
+        }
+        const maxBondCheckbox = DOMFactory.el("input", "bond-checkbox", maxBondAttrs);
+        if (slotData.maxBond) maxBondCheckbox.checked = true;
+        const maxBondText = DOMFactory.el("span");
+        maxBondText.textContent = "Max Bond";
+        maxBondLabel.appendChild(maxBondCheckbox);
+        maxBondLabel.appendChild(maxBondText);
+        checkboxRow.appendChild(maxBondLabel);
 
-          info.appendChild(checkboxRow);
+        // Bond >=15 checkbox
+        const bond15Label = DOMFactory.el("label", "bond-checkbox-label");
+        const bond15Attrs = {
+          type: "checkbox",
+          id: `slotBond15_${i}`,
+        };
+        if (isSupport) {
+          bond15Attrs.disabled = true;
+          bond15Attrs.tabIndex = -1;
+        }
+        const bond15Checkbox = DOMFactory.el("input", "bond-checkbox", bond15Attrs);
+        if (slotData.bond15) bond15Checkbox.checked = true;
+        const bond15Text = DOMFactory.el("span");
+        bond15Text.textContent = "Bond \u226515";
+        bond15Label.appendChild(bond15Checkbox);
+        bond15Label.appendChild(bond15Text);
+        checkboxRow.appendChild(bond15Label);
 
+        info.appendChild(checkboxRow);
+
+        if (!isSupport) {
           maxBondCheckbox.addEventListener("change", () => {
             this.flushInputsToState();
             slotData.maxBond = maxBondCheckbox.checked;
@@ -543,25 +557,31 @@ export const BondApp = {
             this.saveState();
             this.buildServantSlots();
           });
+        }
 
-          // Bond input box with border label (only if NOT max bond)
-          if (!slotData.maxBond) {
-            const inputBox = DOMFactory.el("div", "bond-input-box");
-            const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
-            inputLabel.textContent = "Bond Required";
-            const input = DOMFactory.el("input", "bond-input-box-field", {
-              type: "number",
-              id: `slotBond_${i}`,
-              min: "0",
-              max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
-              value: String(slotData.bondNeeded || 0),
-            });
-            inputBox.appendChild(inputLabel);
-            inputBox.appendChild(input);
-            info.appendChild(inputBox);
+        // Bond input box with border label (always created to preserve height, hidden if max bond or support)
+        const inputBoxClass = isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box";
+        const inputBox = DOMFactory.el("div", inputBoxClass);
+        const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
+        inputLabel.textContent = "Bond Required";
+        const inputAttrs = {
+          type: "number",
+          id: `slotBond_${i}`,
+          min: "0",
+          max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
+          value: String(slotData.bondNeeded || 0),
+        };
+        if (isBondHidden) {
+          inputAttrs.disabled = true;
+          inputAttrs.tabIndex = -1;
+        }
+        const input = DOMFactory.el("input", "bond-input-box-field", inputAttrs);
+        inputBox.appendChild(inputLabel);
+        inputBox.appendChild(input);
+        info.appendChild(inputBox);
 
-            this.elements[`slotBond_${i}`] = input;
-          }
+        if (!isBondHidden) {
+          this.elements[`slotBond_${i}`] = input;
         }
 
         // Remove button
@@ -589,6 +609,27 @@ export const BondApp = {
         const addLabel = DOMFactory.el("div", "servant-slot-placeholder");
         addLabel.textContent = "Add Servant";
         addInfo.appendChild(addLabel);
+
+        // Dummy hidden controls so empty slots maintain the exact same height as filled slots
+        const dummyTypeRow = DOMFactory.el("div", "input-row bond-checkbox-row--hidden");
+        const dummySelect = DOMFactory.el("select", "select-field", { disabled: true, tabIndex: -1 });
+        dummyTypeRow.appendChild(dummySelect);
+        addInfo.appendChild(dummyTypeRow);
+
+        const dummyCheckboxRow = DOMFactory.el("div", "bond-checkbox-row bond-checkbox-row--hidden");
+        const dummyCheckboxLabel = DOMFactory.el("label", "bond-checkbox-label");
+        dummyCheckboxLabel.textContent = "\u00a0";
+        dummyCheckboxRow.appendChild(dummyCheckboxLabel);
+        addInfo.appendChild(dummyCheckboxRow);
+
+        const dummyInputBox = DOMFactory.el("div", "bond-input-box bond-input-box--hidden");
+        const dummyInputLabel = DOMFactory.el("label", "bond-input-box-label");
+        dummyInputLabel.textContent = "Bond Required";
+        const dummyInput = DOMFactory.el("input", "bond-input-box-field", { disabled: true, tabIndex: -1 });
+        dummyInputBox.appendChild(dummyInputLabel);
+        dummyInputBox.appendChild(dummyInput);
+        addInfo.appendChild(dummyInputBox);
+
         slot.appendChild(addInfo);
 
         const selectorSlotIndex = i;
@@ -688,7 +729,7 @@ export const BondApp = {
         const servant = ServantData.getServant(slot.servantId);
         const asc = ServantData.getDefaultAscension(slot.servantId, slot.ascension);
         const name = servant ? ServantData.getAscensionName(slot.servantId, asc) : "";
-        alert(`Please enter required bond points for ${name || "servant in slot " + (i + 1)}.`);
+        alert(`Please enter bond required for ${name || "servant in slot " + (i + 1)}.`);
         return;
       }
     }
@@ -818,7 +859,7 @@ export const BondApp = {
     }
 
     if (slotResults.length === 0) {
-      alert("Please select servants and enter bond points needed.");
+      alert("Please select servants and enter bond required.");
       return;
     }
 

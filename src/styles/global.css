@@ -548,7 +548,7 @@ html[data-tab="event"] #panel-event {
   border-radius: var(--radius-sm);
   transition: background 0.15s;
   min-width: 0;
-  height: 200px;
+  height: 100%;
   user-select: none;
 }
 
@@ -1645,6 +1645,12 @@ html[data-tab="event"] #panel-event {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.bond-checkbox-row--hidden,
+.bond-input-box--hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* ============================================
