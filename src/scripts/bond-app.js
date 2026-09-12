@@ -17,7 +17,14 @@ export const BondApp = {
     return {
       onSelect: (_slotIdx, servantId, ascension) => this.setServant(slotIndex, servantId, ascension),
       onPendingRemove: () => {
-        this.state.slots[slotIndex] = { servantId: null, bondNeeded: 0, type: "normal", ascension: null };
+        this.state.slots[slotIndex] = {
+          servantId: null,
+          bondNeeded: 0,
+          type: "normal",
+          maxBond: false,
+          bond15: false,
+          ascension: null,
+        };
         this.saveState();
         this.buildServantSlots();
       },
@@ -62,6 +69,8 @@ export const BondApp = {
         servantId: null,
         bondNeeded: 0,
         type: "normal",
+        maxBond: false,
+        bond15: false,
         ascension: null,
       })),
       selectedQuest: "",
@@ -147,7 +156,14 @@ export const BondApp = {
 
   removeSlot(index) {
     this.flushInputsToState();
-    this.state.slots[index] = { servantId: null, bondNeeded: 0, type: "normal", ascension: null };
+    this.state.slots[index] = {
+      servantId: null,
+      bondNeeded: 0,
+      type: "normal",
+      maxBond: false,
+      bond15: false,
+      ascension: null,
+    };
     this.saveState();
     this.buildServantSlots();
   },
@@ -292,7 +308,7 @@ export const BondApp = {
   flushInputsToState() {
     this.state.slots.forEach((slot, i) => {
       const input = this.elements[`slotBond_${i}`];
-      if (input && (slot.type || "normal") === "normal") {
+      if (input && (slot.type || "normal") === "normal" && !slot.maxBond) {
         slot.bondNeeded = Validator.clamp(input.value, 0, BOND_CONSTANTS.MAX_BOND_NEEDED);
       }
     });
@@ -308,7 +324,14 @@ export const BondApp = {
     let firstPortraitCreated = false;
 
     for (let i = 0; i < SERVANT_MAX_SLOTS; i++) {
-      const slotData = this.state.slots[i] || { servantId: null, bondNeeded: 0, type: "normal", ascension: null };
+      const slotData = this.state.slots[i] || {
+        servantId: null,
+        bondNeeded: 0,
+        type: "normal",
+        maxBond: false,
+        bond15: false,
+        ascension: null,
+      };
 
       // Insert group labels before first slot of each group
       if (i === 0) {
@@ -330,29 +353,66 @@ export const BondApp = {
         // --- Filled slot ---
         slot.style.cursor = "grab";
 
-        // Frontline bonus badge
-        if (isFrontline) {
-          const slotType = slotData.type || "normal";
-          const badge = DOMFactory.el("div", "servant-slot-frontline-badge");
-          const badgeImg = DOMFactory.el("img", "", {
-            src: "icons/bond_icon.webp",
-            alt: "Frontline",
-            draggable: "false",
-          });
-          if (slotType === "support") {
+        // Badges: Frontline bonus and/or Bond >= 15 bonus
+        const slotType = slotData.type || "normal";
+        const hasFrontlineBadge = isFrontline;
+        const hasBond15Badge = slotType === "normal" && !!slotData.bond15;
+
+        if (hasFrontlineBadge || hasBond15Badge) {
+          const badgeContainer = DOMFactory.el("div", "servant-slot-frontline-badge");
+
+          // 1. Frontline bonus badge (Starting Member: +20% self for normal, +4% All for support)
+          if (hasFrontlineBadge) {
+            const item = DOMFactory.el("div", "servant-slot-badge-item");
+            const badgeImg = DOMFactory.el("img", "", {
+              src: "icons/bond_icon.webp",
+              alt: slotType === "support" ? "Support (+4% All)" : "Frontline (+20%)",
+              title:
+                slotType === "support"
+                  ? "Starting member support: +4% Bond (All)"
+                  : "Starting member: +20% Bond (Self)",
+              draggable: "false",
+            });
+            if (slotType === "support") {
+              const imgWrap = DOMFactory.el("div", "servant-slot-frontline-img");
+              imgWrap.appendChild(badgeImg);
+              const badgeOverlay = DOMFactory.el("span", "servant-slot-frontline-overlay");
+              badgeOverlay.textContent = "All";
+              imgWrap.appendChild(badgeOverlay);
+              item.appendChild(imgWrap);
+            } else {
+              item.appendChild(badgeImg);
+            }
+            const badgeText = DOMFactory.el("span", "servant-slot-badge-text");
+            badgeText.textContent = slotType === "support" ? "+4%" : "+20%";
+            item.appendChild(badgeText);
+            badgeContainer.appendChild(item);
+          }
+
+          // 2. Bond >= 15 bonus badge (+25% All)
+          // Always present in any slot if Bond >= 15 is checked; displayed below +self 20% when in starting member
+          if (hasBond15Badge) {
+            const item = DOMFactory.el("div", "servant-slot-badge-item");
+            const badgeImg = DOMFactory.el("img", "", {
+              src: "icons/bond_icon.webp",
+              alt: "Bond \u226515 (+25% All)",
+              title: "Bond \u226515: +25% Bond (All)",
+              draggable: "false",
+            });
             const imgWrap = DOMFactory.el("div", "servant-slot-frontline-img");
             imgWrap.appendChild(badgeImg);
             const badgeOverlay = DOMFactory.el("span", "servant-slot-frontline-overlay");
             badgeOverlay.textContent = "All";
             imgWrap.appendChild(badgeOverlay);
-            badge.appendChild(imgWrap);
-          } else {
-            badge.appendChild(badgeImg);
+            item.appendChild(imgWrap);
+
+            const badgeText = DOMFactory.el("span", "servant-slot-badge-text");
+            badgeText.textContent = "+25%";
+            item.appendChild(badgeText);
+            badgeContainer.appendChild(item);
           }
-          const badgeText = DOMFactory.el("span");
-          badgeText.textContent = slotType === "support" ? "+4%" : "+20%";
-          badge.appendChild(badgeText);
-          slot.appendChild(badge);
+
+          slot.appendChild(badgeContainer);
         }
 
         // Portrait area (clickable to open selector)
@@ -415,7 +475,6 @@ export const BondApp = {
         const typeOpts = [
           { value: "normal", text: "Normal Servant" },
           { value: "support", text: "Support Servant" },
-          { value: "maxbond", text: "Max Bond Servant" },
         ];
         typeOpts.forEach((opt) => {
           const o = DOMFactory.el("option", null, { value: opt.value });
@@ -430,28 +489,79 @@ export const BondApp = {
         typeSelect.addEventListener("change", () => {
           this.flushInputsToState();
           this.state.slots[typeSlotIndex].type = typeSelect.value;
+          if (typeSelect.value === "support") {
+            this.state.slots[typeSlotIndex].maxBond = false;
+            this.state.slots[typeSlotIndex].bond15 = false;
+          }
           this.saveState();
           this.buildServantSlots();
         });
 
-        // Bond input row (only for normal)
-        const slotType = slotData.type || "normal";
+        // Controls for Normal Servant: checkboxes + bond needed input
         if (slotType === "normal") {
-          const inputRow = DOMFactory.el("div", "input-row");
-          const inputLabel = DOMFactory.el("label", "input-label", { for: `slotBond_${i}` });
-          inputLabel.textContent = "Bond Needed";
-          const input = DOMFactory.el("input", "input-field", {
-            type: "number",
-            id: `slotBond_${i}`,
-            min: "0",
-            max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
-            value: String(slotData.bondNeeded || 0),
-          });
-          inputRow.appendChild(inputLabel);
-          inputRow.appendChild(input);
-          info.appendChild(inputRow);
+          // Checkboxes row: "Max Bond" and "Bond >=15"
+          const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
 
-          this.elements[`slotBond_${i}`] = input;
+          // Max Bond checkbox
+          const maxBondLabel = DOMFactory.el("label", "bond-checkbox-label");
+          const maxBondCheckbox = DOMFactory.el("input", "bond-checkbox", {
+            type: "checkbox",
+            id: `slotMaxBond_${i}`,
+          });
+          if (slotData.maxBond) maxBondCheckbox.checked = true;
+          const maxBondText = DOMFactory.el("span");
+          maxBondText.textContent = "Max Bond";
+          maxBondLabel.appendChild(maxBondCheckbox);
+          maxBondLabel.appendChild(maxBondText);
+          checkboxRow.appendChild(maxBondLabel);
+
+          // Bond >=15 checkbox
+          const bond15Label = DOMFactory.el("label", "bond-checkbox-label");
+          const bond15Checkbox = DOMFactory.el("input", "bond-checkbox", {
+            type: "checkbox",
+            id: `slotBond15_${i}`,
+          });
+          if (slotData.bond15) bond15Checkbox.checked = true;
+          const bond15Text = DOMFactory.el("span");
+          bond15Text.textContent = "Bond \u226515";
+          bond15Label.appendChild(bond15Checkbox);
+          bond15Label.appendChild(bond15Text);
+          checkboxRow.appendChild(bond15Label);
+
+          info.appendChild(checkboxRow);
+
+          maxBondCheckbox.addEventListener("change", () => {
+            this.flushInputsToState();
+            slotData.maxBond = maxBondCheckbox.checked;
+            this.saveState();
+            this.buildServantSlots();
+          });
+
+          bond15Checkbox.addEventListener("change", () => {
+            this.flushInputsToState();
+            slotData.bond15 = bond15Checkbox.checked;
+            this.saveState();
+            this.buildServantSlots();
+          });
+
+          // Bond input row (only if NOT max bond)
+          if (!slotData.maxBond) {
+            const inputRow = DOMFactory.el("div", "input-row");
+            const inputLabel = DOMFactory.el("label", "input-label", { for: `slotBond_${i}` });
+            inputLabel.textContent = "Bond Needed";
+            const input = DOMFactory.el("input", "input-field", {
+              type: "number",
+              id: `slotBond_${i}`,
+              min: "0",
+              max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
+              value: String(slotData.bondNeeded || 0),
+            });
+            inputRow.appendChild(inputLabel);
+            inputRow.appendChild(input);
+            info.appendChild(inputRow);
+
+            this.elements[`slotBond_${i}`] = input;
+          }
         }
 
         // Remove button
@@ -535,11 +645,11 @@ export const BondApp = {
       }
     }
 
-    // Collect max bond servants for +25% bonus
+    // Collect max bond / bond >= 15 servants for +25% bonus
     const maxBondServants = [];
     for (let i = 0; i < count; i++) {
       const slot = this.state.slots[i];
-      if (slot.servantId && (slot.type || "normal") === "maxbond") {
+      if (slot.servantId && (slot.bond15 || (slot.type || "normal") === "maxbond")) {
         const servant = ServantData.getServant(slot.servantId);
         const mbAsc = ServantData.getDefaultAscension(slot.servantId, slot.ascension);
         maxBondServants.push({
@@ -572,6 +682,7 @@ export const BondApp = {
       const slotType = slot.type || "normal";
       if (slotType !== "normal") continue;
       if (!slot.servantId) continue;
+      if (slot.maxBond) continue;
       const bondNeeded = slot.bondNeeded || 0;
       if (bondNeeded <= 0) {
         const servant = ServantData.getServant(slot.servantId);
@@ -589,6 +700,7 @@ export const BondApp = {
       const slotType = slot.type || "normal";
       if (slotType !== "normal") continue;
       if (!slot.servantId) continue;
+      if (slot.maxBond) continue;
 
       const bondNeeded = slot.bondNeeded || 0;
       if (bondNeeded <= 0) continue;
@@ -698,7 +810,7 @@ export const BondApp = {
         bondNeeded,
         effectiveBond,
         totalBonus,
-        runs: Math.ceil(bondNeeded / effectiveBond),
+        runs: effectiveBond > 0 ? Math.ceil(bondNeeded / effectiveBond) : 0,
         ceBonus: ceBonusPercent,
         appliedCEs,
         isFrontline,
@@ -754,8 +866,8 @@ export const BondApp = {
             wrap.appendChild(servantImg);
             const icon = DOMFactory.el("img", "bond-result-ce-maxbond-icon", {
               src: "icons/bond_icon.webp",
-              alt: "Max Bond",
-              title: "Max Bond",
+              alt: "Bond \u226515",
+              title: "Bond \u226515 (+25%)",
             });
             icon.onerror = () => {
               icon.style.display = "none";
@@ -846,7 +958,9 @@ export const BondApp = {
         slots = data.slots.map((s) => ({
           servantId: s.servantId || null,
           bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, BOND_CONSTANTS.MAX_BOND_NEEDED),
-          type: ["normal", "support", "maxbond"].includes(s.type) ? s.type : "normal",
+          type: s.type === "support" ? "support" : "normal",
+          maxBond: s.type === "maxbond" ? true : Boolean(s.maxBond),
+          bond15: s.type === "maxbond" ? true : Boolean(s.bond15),
           ascension: typeof s.ascension === "string" && s.ascension ? s.ascension : null,
         }));
       } else {
@@ -856,6 +970,8 @@ export const BondApp = {
             servantId: null,
             bondNeeded: Validator.clamp(data.bondNeeded, 0, BOND_CONSTANTS.MAX_BOND_NEEDED),
             type: "normal",
+            maxBond: false,
+            bond15: false,
             ascension: null,
           });
         }
@@ -863,14 +979,23 @@ export const BondApp = {
 
       // Pad to SERVANT_MAX_SLOTS
       while (slots.length < SERVANT_MAX_SLOTS) {
-        slots.push({ servantId: null, bondNeeded: 0, type: "normal", ascension: null });
+        slots.push({
+          servantId: null,
+          bondNeeded: 0,
+          type: "normal",
+          maxBond: false,
+          bond15: false,
+          ascension: null,
+        });
       }
 
       return {
         slots: slots.map((s) => ({
           servantId: s.servantId || null,
           bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, BOND_CONSTANTS.MAX_BOND_NEEDED),
-          type: s.type || "normal",
+          type: s.type === "support" ? "support" : "normal",
+          maxBond: Boolean(s.maxBond),
+          bond15: Boolean(s.bond15),
           ascension: typeof s.ascension === "string" && s.ascension ? s.ascension : null,
         })),
         selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",

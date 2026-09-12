@@ -548,7 +548,7 @@ html[data-tab="event"] #panel-event {
   border-radius: var(--radius-sm);
   transition: background 0.15s;
   min-width: 0;
-  height: 180px;
+  height: 200px;
   user-select: none;
 }
 
@@ -567,8 +567,16 @@ html[data-tab="event"] #panel-event {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
   z-index: 1;
+  pointer-events: none;
+}
+
+.servant-slot-badge-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
 }
 
 .servant-slot-frontline-badge img {
@@ -601,11 +609,13 @@ html[data-tab="event"] #panel-event {
   white-space: nowrap;
 }
 
-.servant-slot-frontline-badge > span {
+.servant-slot-frontline-badge > span,
+.servant-slot-badge-text {
   font-size: 0.6rem;
   font-weight: 700;
   color: #333;
   white-space: nowrap;
+  line-height: 1;
 }
 
 .servant-slot-portrait {
@@ -1544,6 +1554,38 @@ html[data-tab="event"] #panel-event {
   box-shadow: 0 0 0 3px var(--accent-light);
 }
 
+.bond-checkbox-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  width: 100%;
+}
+
+.bond-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+  line-height: 1;
+}
+
+.bond-checkbox {
+  appearance: auto;
+  width: 13px;
+  height: 13px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+  flex-shrink: 0;
+}
+
 /* ============================================
    9. DROP RATES
    ============================================ */
@@ -1783,6 +1825,10 @@ html[data-tab="event"] #panel-event {
 
   .servant-slot:hover {
     background: var(--border);
+  }
+
+  .bond-checkbox-label:hover {
+    color: var(--accent);
   }
 
   .servant-remove-btn:hover {

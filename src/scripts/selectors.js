@@ -303,9 +303,8 @@ export const ServantDrag = {
   },
 
   onHoldStart(e) {
-    // Don't interfere with inputs/selects
-    const tag = e.target.tagName;
-    if (tag === "INPUT" || tag === "SELECT" || tag === "OPTION") return;
+    // Don't interfere with inputs/selects/checkboxes/labels
+    if (e.target.closest("input, select, option, label")) return;
 
     const slot = e.target.closest(".servant-slot:not(.servant-add-slot)");
     if (!slot || slot.dataset.slotIndex === undefined) return;
