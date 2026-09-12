@@ -544,21 +544,21 @@ export const BondApp = {
             this.buildServantSlots();
           });
 
-          // Bond input row (only if NOT max bond)
+          // Bond input box with border label (only if NOT max bond)
           if (!slotData.maxBond) {
-            const inputRow = DOMFactory.el("div", "input-row");
-            const inputLabel = DOMFactory.el("label", "input-label", { for: `slotBond_${i}` });
-            inputLabel.textContent = "Bond Needed";
-            const input = DOMFactory.el("input", "input-field", {
+            const inputBox = DOMFactory.el("div", "bond-input-box");
+            const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
+            inputLabel.textContent = "Bond Required";
+            const input = DOMFactory.el("input", "bond-input-box-field", {
               type: "number",
               id: `slotBond_${i}`,
               min: "0",
               max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
               value: String(slotData.bondNeeded || 0),
             });
-            inputRow.appendChild(inputLabel);
-            inputRow.appendChild(input);
-            info.appendChild(inputRow);
+            inputBox.appendChild(inputLabel);
+            inputBox.appendChild(input);
+            info.appendChild(inputBox);
 
             this.elements[`slotBond_${i}`] = input;
           }

@@ -1586,6 +1586,67 @@ html[data-tab="event"] #panel-event {
   flex-shrink: 0;
 }
 
+.bond-input-box {
+  position: relative;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.bond-input-box-label {
+  position: absolute;
+  top: -6px;
+  left: 8px;
+  background: var(--bg);
+  padding: 0 4px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+  white-space: nowrap;
+  border-radius: 2px;
+  transition:
+    color 0.2s ease,
+    background-color 0.15s ease;
+}
+
+.bond-input-box:focus-within .bond-input-box-label {
+  color: var(--accent);
+}
+
+.servant-slot.drag-over .bond-input-box-label {
+  background: var(--accent-light);
+}
+
+.bond-input-box-field {
+  width: 100%;
+  box-sizing: border-box;
+  background: white;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-family: "Space Mono", monospace;
+  font-size: 0.8rem;
+  color: var(--text);
+  text-align: right;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.bond-input-box-field::-webkit-inner-spin-button,
+.bond-input-box-field::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.bond-input-box-field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
 /* ============================================
    9. DROP RATES
    ============================================ */
@@ -1824,6 +1885,10 @@ html[data-tab="event"] #panel-event {
   }
 
   .servant-slot:hover {
+    background: var(--border);
+  }
+
+  .servant-slot:hover .bond-input-box-label {
     background: var(--border);
   }
 
