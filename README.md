@@ -7,7 +7,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ## Features
 
 ### Event Shop Calculator
-- Input bronze, silver, and gold event items needed/owned
+- Full-width border-labeled input boxes for Required, Held, and Bonus amounts per material tier (Bronze, Silver, Gold)
 - Configure bonus drop amounts per material type
 - Adjust base drops and primary/secondary multipliers
 - Automatically calculates optimal quest runs
@@ -51,7 +51,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ## Usage
 
 ### Event Shop
-1. Enter shop requirements (items needed) and current holdings
+1. Enter shop requirements (Required) and current holdings (Held)
 2. Set bonus amounts and drop rate multipliers
 3. Click "Calculate Quest Runs"
 

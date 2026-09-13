@@ -1586,17 +1586,19 @@ html[data-tab="event"] #panel-event {
   flex-shrink: 0;
 }
 
-.bond-input-box {
+.bond-input-box,
+.material-input-box {
   position: relative;
   width: 100%;
   margin-top: 10px;
 }
 
-.bond-input-box-label {
+.bond-input-box-label,
+.material-input-box-label {
   position: absolute;
   top: -6px;
   left: 8px;
-  background: var(--bg);
+  background: var(--tier-bg, var(--bg));
   padding: 0 4px;
   font-size: 0.6rem;
   font-weight: 600;
@@ -1611,7 +1613,8 @@ html[data-tab="event"] #panel-event {
     background-color 0.15s ease;
 }
 
-.bond-input-box:focus-within .bond-input-box-label {
+.bond-input-box:focus-within .bond-input-box-label,
+.material-input-box:focus-within .material-input-box-label {
   color: var(--accent);
 }
 
@@ -1619,7 +1622,8 @@ html[data-tab="event"] #panel-event {
   background: var(--accent-light);
 }
 
-.bond-input-box-field {
+.bond-input-box-field,
+.material-input-box-field {
   width: 100%;
   box-sizing: border-box;
   background: white;
@@ -1636,12 +1640,15 @@ html[data-tab="event"] #panel-event {
 }
 
 .bond-input-box-field::-webkit-inner-spin-button,
-.bond-input-box-field::-webkit-outer-spin-button {
+.bond-input-box-field::-webkit-outer-spin-button,
+.material-input-box-field::-webkit-inner-spin-button,
+.material-input-box-field::-webkit-outer-spin-button {
   appearance: none;
   margin: 0;
 }
 
-.bond-input-box-field:focus {
+.bond-input-box-field:focus,
+.material-input-box-field:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-light);
