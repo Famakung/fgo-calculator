@@ -6,6 +6,7 @@ node_modules/
 docs/
 dist/
 .astro/
+scripts/
 
 # Old esbuild outputs (no longer generated)
 app.min.js

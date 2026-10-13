@@ -443,16 +443,18 @@ html[data-tab="event"] #panel-event {
 
 .bond-result-ce-img {
   width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 2px solid var(--border);
-  object-fit: cover;
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
+  border: none;
+  object-fit: contain;
 }
 
 .bond-result-ce-maxbond-wrap {
   position: relative;
   width: 32px;
-  height: 32px;
+  height: auto;
+  display: inline-flex;
 }
 
 .bond-result-ce-maxbond-icon {
@@ -467,8 +469,9 @@ html[data-tab="event"] #panel-event {
 
 .bond-result-ce-fallback {
   width: 32px;
-  height: 32px;
-  border-radius: 6px;
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
   background: var(--accent-light);
   display: flex;
   align-items: center;
@@ -729,17 +732,20 @@ html[data-tab="event"] #panel-event {
 }
 
 .ce-portrait {
-  width: var(--portrait-lg);
-  height: var(--portrait-lg);
-  border-radius: 10px;
-  object-fit: cover;
+  width: var(--servant-portrait-w);
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
+  border: none;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
 .ce-portrait-fallback {
-  width: var(--portrait-lg);
-  height: var(--portrait-lg);
-  border-radius: 10px;
+  width: var(--servant-portrait-w);
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
   background: var(--border);
   display: flex;
   align-items: center;
@@ -840,10 +846,11 @@ html[data-tab="event"] #panel-event {
 
 .cefilter-chip img {
   width: 32px;
-  height: 32px;
+  aspect-ratio: 142 / 155;
+  height: auto;
   border-radius: 4px;
-  border: 2px solid var(--border);
-  object-fit: cover;
+  border: none;
+  object-fit: contain;
 }
 
 .cefilter-chip-remove {
@@ -1037,10 +1044,11 @@ html[data-tab="event"] #panel-event {
 
 .cefilter-match-badge {
   width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  border: 2px solid var(--border);
-  object-fit: cover;
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
+  border: none;
+  object-fit: contain;
   cursor: pointer;
   transition:
     transform 0.15s ease,
@@ -1049,8 +1057,9 @@ html[data-tab="event"] #panel-event {
 
 .cefilter-match-badge-fallback {
   width: 32px;
-  height: 32px;
-  border-radius: 6px;
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
   background: var(--accent-light);
   display: flex;
   align-items: center;
@@ -1178,15 +1187,17 @@ html[data-tab="event"] #panel-event {
 .ceoverlap-ce-filter .servant-picker-item {
   position: relative;
   width: 64px;
-  height: 64px;
+  height: 72px;
   padding: 0;
   border: 2px solid var(--border);
 }
 
 .ceoverlap-ce-filter .servant-picker-item img {
-  width: 60px;
-  height: 60px;
+  width: 58px;
+  aspect-ratio: 142 / 155;
+  height: auto;
   border: none;
+  object-fit: contain;
   margin-bottom: 0;
 }
 
@@ -1391,13 +1402,15 @@ html[data-tab="event"] #panel-event {
   margin-bottom: 4px;
 }
 
-.servant-picker-grid--servant .servant-picker-item {
+.servant-picker-grid--servant .servant-picker-item,
+.servant-picker-grid--ce .servant-picker-item {
   width: 100px;
   height: 108px;
   padding: 6px 4px;
 }
 
-.servant-picker-grid--servant .servant-picker-item img {
+.servant-picker-grid--servant .servant-picker-item img,
+.servant-picker-grid--ce .servant-picker-item img {
   width: var(--servant-portrait-w);
   aspect-ratio: 142 / 155;
   height: auto;
@@ -2127,15 +2140,17 @@ html[data-tab="event"] #panel-event {
 
   .ceoverlap-ce-filter .servant-picker-item {
     width: 100px;
-    height: 100px;
-    padding: 8px 4px;
+    height: 108px;
+    padding: 6px 4px;
     border: none;
   }
 
   .ceoverlap-ce-filter .servant-picker-item img {
-    width: var(--portrait-lg);
-    height: var(--portrait-lg);
-    border: 2px solid var(--border);
+    width: var(--servant-portrait-w);
+    aspect-ratio: 142 / 155;
+    height: auto;
+    border: none;
+    object-fit: contain;
     margin-bottom: 4px;
   }
 
