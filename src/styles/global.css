@@ -442,7 +442,7 @@ html[data-tab="event"] #panel-event {
 }
 
 .bond-result-ce-img {
-  width: 32px;
+  width: 48px;
   aspect-ratio: 142 / 155;
   height: auto;
   border-radius: 4px;
@@ -452,7 +452,7 @@ html[data-tab="event"] #panel-event {
 
 .bond-result-ce-maxbond-wrap {
   position: relative;
-  width: 32px;
+  width: 48px;
   height: auto;
   display: inline-flex;
 }
@@ -461,14 +461,14 @@ html[data-tab="event"] #panel-event {
   position: absolute;
   top: -5px;
   right: -5px;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 3px;
   object-fit: cover;
 }
 
 .bond-result-ce-fallback {
-  width: 32px;
+  width: 48px;
   aspect-ratio: 142 / 155;
   height: auto;
   border-radius: 4px;
@@ -476,7 +476,7 @@ html[data-tab="event"] #panel-event {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.55rem;
+  font-size: 0.65rem;
   font-weight: 700;
   color: var(--accent);
 }
@@ -515,7 +515,7 @@ html[data-tab="event"] #panel-event {
 
 .grid-micro {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 32px));
+  grid-template-columns: repeat(auto-fit, minmax(0, 48px));
   gap: 4px;
   padding: 4px;
   justify-content: center;
@@ -1016,9 +1016,9 @@ html[data-tab="event"] #panel-event {
   flex-direction: column;
   align-items: center;
   padding: 10px 8px;
-  min-height: 156px;
+  min-height: 174px;
   content-visibility: auto;
-  contain-intrinsic-size: auto 156px;
+  contain-intrinsic-size: auto 174px;
   background: var(--bg);
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1043,7 +1043,7 @@ html[data-tab="event"] #panel-event {
 }
 
 .cefilter-match-badge {
-  width: 32px;
+  width: 48px;
   aspect-ratio: 142 / 155;
   height: auto;
   border-radius: 4px;
@@ -1056,7 +1056,7 @@ html[data-tab="event"] #panel-event {
 }
 
 .cefilter-match-badge-fallback {
-  width: 32px;
+  width: 48px;
   aspect-ratio: 142 / 155;
   height: auto;
   border-radius: 4px;
@@ -1064,7 +1064,7 @@ html[data-tab="event"] #panel-event {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.5rem;
+  font-size: 0.65rem;
   font-weight: 700;
   color: var(--accent);
 }
