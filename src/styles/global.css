@@ -99,8 +99,9 @@
 
   /* Responsive Sizing */
   --portrait-lg: 96px;
-  --servant-portrait-w: 106.5px;
-  --servant-portrait-h: 116.25px;
+  --servant-portrait-h: 96px;
+  --ce-badge-h: 48px;
+  --ce-badge-w: calc(var(--ce-badge-h) * 142 / 155);
 }
 
 /* Tier-based theming */
@@ -393,18 +394,18 @@ html[data-tab="event"] #panel-event {
 }
 
 .bond-result-servant-card .servant-slot-portrait {
-  width: var(--servant-portrait-w);
+  width: auto;
+  height: var(--servant-portrait-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   object-fit: contain;
   margin-bottom: 6px;
 }
 
 .bond-result-servant-card .servant-slot-portrait-fallback {
-  width: var(--servant-portrait-w);
+  width: auto;
+  height: var(--servant-portrait-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   background: var(--border);
   display: flex;
@@ -442,9 +443,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .bond-result-ce-img {
-  width: 48px;
+  width: auto;
+  height: var(--ce-badge-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   border: none;
   object-fit: contain;
@@ -452,8 +453,8 @@ html[data-tab="event"] #panel-event {
 
 .bond-result-ce-maxbond-wrap {
   position: relative;
-  width: 48px;
-  height: auto;
+  width: fit-content;
+  height: var(--ce-badge-h);
   display: inline-flex;
 }
 
@@ -468,9 +469,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .bond-result-ce-fallback {
-  width: 48px;
+  width: auto;
+  height: var(--ce-badge-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   background: var(--accent-light);
   display: flex;
@@ -515,7 +516,7 @@ html[data-tab="event"] #panel-event {
 
 .grid-micro {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 48px));
+  grid-template-columns: repeat(auto-fit, minmax(0, var(--ce-badge-w)));
   gap: 4px;
   padding: 4px;
   justify-content: center;
@@ -581,8 +582,8 @@ html[data-tab="event"] #panel-event {
 
 .servant-slot-badge-item {
   position: relative;
-  width: 27px;
-  height: 27px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -590,8 +591,8 @@ html[data-tab="event"] #panel-event {
 
 .servant-slot-frontline-badge img,
 .servant-slot-badge-item img {
-  width: 27px;
-  height: 27px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
   display: block;
 }
@@ -629,9 +630,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .servant-slot-portrait {
-  width: var(--servant-portrait-w);
+  width: auto;
+  height: var(--servant-portrait-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   border: none;
   object-fit: contain;
@@ -639,9 +640,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .servant-slot-portrait-fallback {
-  width: var(--servant-portrait-w);
+  width: auto;
+  height: var(--servant-portrait-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   background: var(--border);
   display: flex;
@@ -659,7 +660,7 @@ html[data-tab="event"] #panel-event {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--servant-portrait-w);
+  width: fit-content;
 }
 
 .servant-slot-info {
@@ -737,9 +738,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .ce-portrait {
-  width: var(--servant-portrait-w);
+  width: auto;
+  height: var(--servant-portrait-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   border: none;
   object-fit: contain;
@@ -747,9 +748,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .ce-portrait-fallback {
-  width: var(--servant-portrait-w);
+  width: auto;
+  height: var(--servant-portrait-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   background: var(--border);
   display: flex;
@@ -850,9 +851,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .cefilter-chip img {
-  width: 48px;
+  width: auto;
+  height: var(--ce-badge-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   border: none;
   object-fit: contain;
@@ -968,8 +969,8 @@ html[data-tab="event"] #panel-event {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 60px;
-  height: 60px;
+  width: 48px;
+  height: 48px;
   border: 2px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
@@ -985,8 +986,8 @@ html[data-tab="event"] #panel-event {
 }
 
 .class-btn img {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
 }
 
@@ -1021,9 +1022,9 @@ html[data-tab="event"] #panel-event {
   flex-direction: column;
   align-items: center;
   padding: 10px 8px;
-  min-height: 228px;
+  min-height: 208px;
   content-visibility: auto;
-  contain-intrinsic-size: auto 228px;
+  contain-intrinsic-size: auto 208px;
   background: var(--bg);
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1034,9 +1035,9 @@ html[data-tab="event"] #panel-event {
 
 .cefilter-servant-card img.servant-slot-portrait,
 .cefilter-servant-card .servant-slot-portrait-fallback {
-  width: var(--servant-portrait-w);
+  width: auto;
+  height: var(--servant-portrait-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   object-fit: contain;
   margin-bottom: 6px;
@@ -1048,9 +1049,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .cefilter-match-badge {
-  width: 48px;
+  width: auto;
+  height: var(--ce-badge-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   border: none;
   object-fit: contain;
@@ -1061,9 +1062,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .cefilter-match-badge-fallback {
-  width: 48px;
+  width: auto;
+  height: var(--ce-badge-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   background: var(--accent-light);
   display: flex;
@@ -1198,9 +1199,9 @@ html[data-tab="event"] #panel-event {
 }
 
 .ceoverlap-ce-filter .servant-picker-item img {
-  width: 87px;
+  width: auto;
+  height: var(--servant-portrait-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border: none;
   object-fit: contain;
   margin-bottom: 0;
@@ -1410,15 +1411,15 @@ html[data-tab="event"] #panel-event {
 .servant-picker-grid--servant .servant-picker-item,
 .servant-picker-grid--ce .servant-picker-item {
   width: 140px;
-  height: 156px;
+  height: 136px;
   padding: 8px 6px;
 }
 
 .servant-picker-grid--servant .servant-picker-item img,
 .servant-picker-grid--ce .servant-picker-item img {
-  width: var(--servant-portrait-w);
+  width: auto;
+  height: var(--servant-portrait-h);
   aspect-ratio: 142 / 155;
-  height: auto;
   border-radius: 4px;
   border: none;
   object-fit: contain;
@@ -1481,15 +1482,16 @@ html[data-tab="event"] #panel-event {
 }
 
 .material-icon-wrapper {
-  width: 84px;
-  height: 90px;
+  width: fit-content;
+  height: 96px;
   margin: 0 auto 10px;
   position: relative;
 }
 
 .material-icon {
-  width: 84px;
-  height: 90px;
+  width: auto;
+  height: 96px;
+  aspect-ratio: 112 / 120;
   border-radius: 6px;
   overflow: hidden;
   background: #e5e7eb;
@@ -1510,8 +1512,8 @@ html[data-tab="event"] #panel-event {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 75px;
-  height: 75px;
+  width: 80px;
+  height: 80px;
   transform: translate(-50%, -50%);
   object-fit: contain;
 }
@@ -1760,8 +1762,10 @@ html[data-tab="event"] #panel-event {
 }
 
 .mini-icon {
-  width: 42px;
-  height: 45px;
+  display: block;
+  width: auto;
+  height: 48px;
+  aspect-ratio: 112 / 120;
   flex-shrink: 0;
   position: relative;
 }
@@ -1770,8 +1774,8 @@ html[data-tab="event"] #panel-event {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   transform: translate(-50%, -50%);
   object-fit: contain;
 }
@@ -2145,15 +2149,15 @@ html[data-tab="event"] #panel-event {
 
   .ceoverlap-ce-filter .servant-picker-item {
     width: 140px;
-    height: 156px;
+    height: 136px;
     padding: 8px 6px;
     border: none;
   }
 
   .ceoverlap-ce-filter .servant-picker-item img {
-    width: var(--servant-portrait-w);
+    width: auto;
+    height: var(--servant-portrait-h);
     aspect-ratio: 142 / 155;
-    height: auto;
     border: none;
     object-fit: contain;
     margin-bottom: 4px;

@@ -55,8 +55,9 @@
   --radius: 16px;
   --radius-sm: 10px;
   --portrait-lg: 96px;
-  --servant-portrait-w: 106.5px;
-  --servant-portrait-h: 116.25px;
+  --servant-portrait-h: 96px;
+  --ce-badge-h: 48px;
+  --ce-badge-w: calc(var(--ce-badge-h) * 142 / 155);
   --accent: #4338ca;
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
