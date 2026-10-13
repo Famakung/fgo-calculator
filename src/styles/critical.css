@@ -55,6 +55,8 @@
   --radius: 16px;
   --radius-sm: 10px;
   --portrait-lg: 64px;
+  --servant-portrait-w: 71px;
+  --servant-portrait-h: 77.5px;
   --accent: #4338ca;
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
 }

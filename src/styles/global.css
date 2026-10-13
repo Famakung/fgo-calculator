@@ -99,6 +99,8 @@
 
   /* Responsive Sizing */
   --portrait-lg: 64px;
+  --servant-portrait-w: 71px;
+  --servant-portrait-h: 77.5px;
 }
 
 /* Tier-based theming */
@@ -391,17 +393,19 @@ html[data-tab="event"] #panel-event {
 }
 
 .bond-result-servant-card .servant-slot-portrait {
-  width: var(--portrait-lg);
-  height: var(--portrait-lg);
-  border-radius: 10px;
-  object-fit: cover;
+  width: var(--servant-portrait-w);
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
+  object-fit: contain;
   margin-bottom: 6px;
 }
 
 .bond-result-servant-card .servant-slot-portrait-fallback {
-  width: var(--portrait-lg);
-  height: var(--portrait-lg);
-  border-radius: 10px;
+  width: var(--servant-portrait-w);
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
   background: var(--border);
   display: flex;
   align-items: center;
@@ -619,18 +623,20 @@ html[data-tab="event"] #panel-event {
 }
 
 .servant-slot-portrait {
-  width: var(--portrait-lg);
-  height: var(--portrait-lg);
-  border-radius: 10px;
-  border: 2px solid var(--border);
-  object-fit: cover;
+  width: var(--servant-portrait-w);
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
+  border: none;
+  object-fit: contain;
   flex-shrink: 0;
 }
 
 .servant-slot-portrait-fallback {
-  width: var(--portrait-lg);
-  height: var(--portrait-lg);
-  border-radius: 10px;
+  width: var(--servant-portrait-w);
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
   background: var(--border);
   display: flex;
   align-items: center;
@@ -1003,9 +1009,9 @@ html[data-tab="event"] #panel-event {
   flex-direction: column;
   align-items: center;
   padding: 10px 8px;
-  min-height: 146px;
+  min-height: 156px;
   content-visibility: auto;
-  contain-intrinsic-size: auto 146px;
+  contain-intrinsic-size: auto 156px;
   background: var(--bg);
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1016,10 +1022,11 @@ html[data-tab="event"] #panel-event {
 
 .cefilter-servant-card img.servant-slot-portrait,
 .cefilter-servant-card .servant-slot-portrait-fallback {
-  width: var(--portrait-lg);
-  height: var(--portrait-lg);
-  border-radius: 10px;
-  object-fit: cover;
+  width: var(--servant-portrait-w);
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
+  object-fit: contain;
   margin-bottom: 6px;
 }
 
@@ -1381,6 +1388,22 @@ html[data-tab="event"] #panel-event {
   border-radius: 8px;
   border: 2px solid var(--border);
   object-fit: cover;
+  margin-bottom: 4px;
+}
+
+.servant-picker-grid--servant .servant-picker-item {
+  width: 100px;
+  height: 108px;
+  padding: 6px 4px;
+}
+
+.servant-picker-grid--servant .servant-picker-item img {
+  width: var(--servant-portrait-w);
+  aspect-ratio: 142 / 155;
+  height: auto;
+  border-radius: 4px;
+  border: none;
+  object-fit: contain;
   margin-bottom: 4px;
 }
 
