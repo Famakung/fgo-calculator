@@ -22,14 +22,14 @@ export const CEList = (() => {
         isGroup,
         flatBonus: isGroup ? data.flatBonus || 0 : 0,
         image: `craft_essences/128/${id}.webp`,
-        thumbImage: `craft_essences/64/${id}.webp`,
+        thumbImage: `craft_essences/128/${id}.webp`,
       };
       if (isGroup && data.options) {
         base.options = Object.entries(data.options).map(([optId, opt]) => ({
           id: optId,
           name: opt.name || `CE ${optId}`,
           image: `craft_essences/128/${optId}.webp`,
-          thumbImage: `craft_essences/64/${optId}.webp`,
+          thumbImage: `craft_essences/128/${optId}.webp`,
         }));
         const groupOpt = data.groupImage
           ? base.options.find((o) => o.id === data.groupImage)

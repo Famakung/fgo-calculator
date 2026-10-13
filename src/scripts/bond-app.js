@@ -353,68 +353,6 @@ export const BondApp = {
         // --- Filled slot ---
         slot.style.cursor = "grab";
 
-        // Badges: Frontline bonus and/or Bond >= 15 bonus
-        const slotType = slotData.type || "normal";
-        const hasFrontlineBadge = isFrontline;
-        const hasBond15Badge = slotType === "normal" && !!slotData.bond15;
-
-        if (hasFrontlineBadge || hasBond15Badge) {
-          const badgeContainer = DOMFactory.el("div", "servant-slot-frontline-badge");
-
-          // 1. Frontline bonus badge (Starting Member: +20% self for normal, +4% All for support)
-          if (hasFrontlineBadge) {
-            const item = DOMFactory.el("div", "servant-slot-badge-item");
-            const badgeImg = DOMFactory.el("img", "", {
-              src: "icons/bond_icon.webp",
-              alt: slotType === "support" ? "Support (+4% All)" : "Frontline (+20%)",
-              title:
-                slotType === "support"
-                  ? "Starting member support: +4% Bond (All)"
-                  : "Starting member: +20% Bond (Self)",
-              draggable: "false",
-            });
-            if (slotType === "support") {
-              const imgWrap = DOMFactory.el("div", "servant-slot-frontline-img");
-              imgWrap.appendChild(badgeImg);
-              const badgeOverlay = DOMFactory.el("span", "servant-slot-frontline-overlay");
-              badgeOverlay.textContent = "All";
-              imgWrap.appendChild(badgeOverlay);
-              item.appendChild(imgWrap);
-            } else {
-              item.appendChild(badgeImg);
-            }
-            const badgeText = DOMFactory.el("span", "servant-slot-badge-text");
-            badgeText.textContent = slotType === "support" ? "+4%" : "+20%";
-            item.appendChild(badgeText);
-            badgeContainer.appendChild(item);
-          }
-
-          // 2. Bond >= 15 bonus badge (+25% All)
-          // Always present in any slot if Bond >= 15 is checked; displayed below +self 20% when in starting member
-          if (hasBond15Badge) {
-            const item = DOMFactory.el("div", "servant-slot-badge-item");
-            const badgeImg = DOMFactory.el("img", "", {
-              src: "icons/bond_icon.webp",
-              alt: "Bond \u226515 (+25% All)",
-              title: "Bond \u226515: +25% Bond (All)",
-              draggable: "false",
-            });
-            const imgWrap = DOMFactory.el("div", "servant-slot-frontline-img");
-            imgWrap.appendChild(badgeImg);
-            const badgeOverlay = DOMFactory.el("span", "servant-slot-frontline-overlay");
-            badgeOverlay.textContent = "All";
-            imgWrap.appendChild(badgeOverlay);
-            item.appendChild(imgWrap);
-
-            const badgeText = DOMFactory.el("span", "servant-slot-badge-text");
-            badgeText.textContent = "+25%";
-            item.appendChild(badgeText);
-            badgeContainer.appendChild(item);
-          }
-
-          slot.appendChild(badgeContainer);
-        }
-
         // Portrait area (clickable to open selector)
         const portraitArea = DOMFactory.el("div", "servant-slot-select-btn");
         let servantHasAscensions = false;
@@ -458,6 +396,62 @@ export const BondApp = {
           });
           portraitArea.style.cursor = "pointer";
         }
+
+        // Badges: Frontline bonus and/or Bond >= 15 bonus (placed above servant icon in top right)
+        const slotType = slotData.type || "normal";
+        const hasFrontlineBadge = isFrontline;
+        const hasBond15Badge = slotType === "normal" && !!slotData.bond15;
+
+        if (hasFrontlineBadge || hasBond15Badge) {
+          const badgeContainer = DOMFactory.el("div", "servant-slot-frontline-badge");
+
+          const createBadge = (isAll, percentText, titleText, altText) => {
+            const item = DOMFactory.el("div", "servant-slot-badge-item");
+            const badgeImg = DOMFactory.el("img", "", {
+              src: "icons/bond_icon.webp",
+              alt: altText,
+              title: titleText,
+              draggable: "false",
+            });
+            item.appendChild(badgeImg);
+
+            const overlay = DOMFactory.el("div", "servant-slot-badge-overlay");
+            if (isAll) {
+              const scope = DOMFactory.el("span", "servant-slot-badge-scope");
+              scope.textContent = "All";
+              overlay.appendChild(scope);
+            }
+            const percent = DOMFactory.el(
+              "span",
+              isAll ? "servant-slot-badge-percent" : "servant-slot-badge-percent servant-slot-badge-percent--single",
+            );
+            percent.textContent = percentText;
+            overlay.appendChild(percent);
+
+            item.appendChild(overlay);
+            return item;
+          };
+
+          // 1. Frontline bonus badge (Starting Member: +20% self for normal, +4% All for support)
+          if (hasFrontlineBadge) {
+            const isAll = slotType === "support";
+            const percentText = isAll ? "+4%" : "+20%";
+            const titleText = isAll ? "Starting member support: +4% Bond (All)" : "Starting member: +20% Bond (Self)";
+            const altText = isAll ? "Support (+4% All)" : "Frontline (+20%)";
+            badgeContainer.appendChild(createBadge(isAll, percentText, titleText, altText));
+          }
+
+          // 2. Bond >= 15 bonus badge (+25% All)
+          // Always present in any slot if Bond >= 15 is checked; displayed below +self 20% when in starting member
+          if (hasBond15Badge) {
+            badgeContainer.appendChild(
+              createBadge(true, "+25%", "Bond \u226515: +25% Bond (All)", "Bond \u226515 (+25% All)"),
+            );
+          }
+
+          portraitArea.appendChild(badgeContainer);
+        }
+
         slot.appendChild(portraitArea);
 
         // Info area: name + type dropdown + bond input
