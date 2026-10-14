@@ -1005,9 +1005,9 @@ html[data-tab="event"] #panel-event {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
-  height: 32px;
-  padding: 0 8px;
+  width: 48px;
+  height: 36px;
+  padding: 0 4px;
   border: 2px solid var(--border);
   border-radius: 4px;
   cursor: pointer;
