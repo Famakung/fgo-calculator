@@ -421,6 +421,7 @@ html[data-tab="event"] #panel-event {
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--text);
+  margin-top: 0;
   margin-bottom: 4px;
   max-width: 100%;
   overflow: hidden;
@@ -494,7 +495,8 @@ html[data-tab="event"] #panel-event {
   gap: 8px;
 }
 
-.grid {
+.grid,
+.ce-grid {
   padding: 8px;
 }
 
@@ -570,13 +572,13 @@ html[data-tab="event"] #panel-event {
 
 .servant-slot-frontline-badge {
   position: absolute;
-  top: 5px;
-  right: 6px;
+  top: 4px;
+  left: 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
 }
 
@@ -648,7 +650,7 @@ html[data-tab="event"] #panel-event {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-secondary);
   flex-shrink: 0;
@@ -673,6 +675,9 @@ html[data-tab="event"] #panel-event {
   font-size: 0.7rem;
   font-weight: 600;
   color: var(--text);
+  text-align: center;
+  margin-top: 6px;
+  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -680,7 +685,11 @@ html[data-tab="event"] #panel-event {
 
 .servant-slot-placeholder {
   font-size: 0.7rem;
-  color: var(--text-secondary);
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  margin-top: 6px;
+  width: 100%;
 }
 
 .servant-remove-btn {
@@ -1961,7 +1970,15 @@ html[data-tab="event"] #panel-event {
 
   .servant-add-slot:hover {
     background: var(--accent-light);
-    border: 2px dashed var(--accent);
+    border-style: dashed;
+  }
+
+  .servant-add-slot.servant-slot--frontline:hover {
+    border-color: #e74c3c;
+  }
+
+  .servant-add-slot.servant-slot--backline:hover {
+    border-color: #3498db;
   }
 
   .ce-add-slot:hover {

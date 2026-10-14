@@ -397,7 +397,7 @@ export const BondApp = {
           portraitArea.style.cursor = "pointer";
         }
 
-        // Badges: Frontline bonus and/or Bond >= 15 bonus (placed above servant icon in top right)
+        // Badges: Frontline bonus and/or Bond >= 15 bonus (placed at top-left outside servant portrait)
         const slotType = slotData.type || "normal";
         const hasFrontlineBadge = isFrontline;
         const hasBond15Badge = slotType === "normal" && !!slotData.bond15;
@@ -449,7 +449,7 @@ export const BondApp = {
             );
           }
 
-          portraitArea.appendChild(badgeContainer);
+          slot.appendChild(badgeContainer);
         }
 
         slot.appendChild(portraitArea);
@@ -599,31 +599,10 @@ export const BondApp = {
         addPortrait.textContent = "+";
         slot.appendChild(addPortrait);
 
-        const addInfo = DOMFactory.el("div", "servant-slot-info");
-        const addLabel = DOMFactory.el("div", "servant-slot-placeholder");
+        const addInfo = DOMFactory.el("div");
+        const addLabel = DOMFactory.el("div", "servant-slot-name");
         addLabel.textContent = "Add Servant";
         addInfo.appendChild(addLabel);
-
-        // Dummy hidden controls so empty slots maintain the exact same height as filled slots
-        const dummyTypeRow = DOMFactory.el("div", "input-row bond-checkbox-row--hidden");
-        const dummySelect = DOMFactory.el("select", "select-field", { disabled: true, tabIndex: -1 });
-        dummyTypeRow.appendChild(dummySelect);
-        addInfo.appendChild(dummyTypeRow);
-
-        const dummyCheckboxRow = DOMFactory.el("div", "bond-checkbox-row bond-checkbox-row--hidden");
-        const dummyCheckboxLabel = DOMFactory.el("label", "bond-checkbox-label");
-        dummyCheckboxLabel.textContent = "\u00a0";
-        dummyCheckboxRow.appendChild(dummyCheckboxLabel);
-        addInfo.appendChild(dummyCheckboxRow);
-
-        const dummyInputBox = DOMFactory.el("div", "bond-input-box bond-input-box--hidden");
-        const dummyInputLabel = DOMFactory.el("label", "bond-input-box-label");
-        dummyInputLabel.textContent = "Bond Required";
-        const dummyInput = DOMFactory.el("input", "bond-input-box-field", { disabled: true, tabIndex: -1 });
-        dummyInputBox.appendChild(dummyInputLabel);
-        dummyInputBox.appendChild(dummyInput);
-        addInfo.appendChild(dummyInputBox);
-
         slot.appendChild(addInfo);
 
         const selectorSlotIndex = i;
