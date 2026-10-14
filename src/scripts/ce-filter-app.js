@@ -10,7 +10,7 @@ let _workerResolve = null;
 function getWorker() {
   if (_worker) return _worker;
   try {
-    _worker = new Worker("ce-match-worker.min.js");
+    _worker = new Worker(new URL("./ce-match-worker.js", import.meta.url), { type: "module" });
   } catch (e) {
     console.warn("Worker creation failed:", e);
     return null;
@@ -24,10 +24,13 @@ function getWorker() {
     }
   };
   _worker.onmessage = function (e) {
-    if (e.data.type === "result" && _workerResolve) {
-      const resolve = _workerResolve;
-      _workerResolve = null;
-      resolve(e.data);
+    if (e.data.type === "result") {
+      CEFilterApp._processWorkerResults(e.data);
+      if (_workerResolve) {
+        const resolve = _workerResolve;
+        _workerResolve = null;
+        resolve(e.data);
+      }
     } else if (e.data.type === "error" && _workerResolve) {
       console.warn("Worker computation error:", e.data.message);
       const resolve = _workerResolve;
@@ -47,6 +50,7 @@ function initWorker() {
     traitCEs: TraitCEs,
     traitNames: TraitNames,
   });
+  worker.postMessage({ type: "compute" });
 }
 
 let _classOrderMap = null;
