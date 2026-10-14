@@ -1,6 +1,7 @@
 import { TRAIT_DATA } from "./data/traits.js";
 import { SERVANT_DATA } from "./data/servants.js";
 import { CE_DATA } from "./data/craft_essences.js";
+import { IMAGE_VERSION } from "./constants.js";
 
 /* Trait names lookup */
 export const TraitNames = TRAIT_DATA || {};
@@ -21,15 +22,15 @@ export const CEList = (() => {
         alsoMatch: Array.isArray(data.alsoMatch) ? data.alsoMatch : [],
         isGroup,
         flatBonus: isGroup ? data.flatBonus || 0 : 0,
-        image: `craft_essences/128/${id}.webp`,
-        thumbImage: `craft_essences/128/${id}.webp`,
+        image: `craft_essences/128/${id}.webp?v=${IMAGE_VERSION}`,
+        thumbImage: `craft_essences/128/${id}.webp?v=${IMAGE_VERSION}`,
       };
       if (isGroup && data.options) {
         base.options = Object.entries(data.options).map(([optId, opt]) => ({
           id: optId,
           name: opt.name || `CE ${optId}`,
-          image: `craft_essences/128/${optId}.webp`,
-          thumbImage: `craft_essences/128/${optId}.webp`,
+          image: `craft_essences/128/${optId}.webp?v=${IMAGE_VERSION}`,
+          thumbImage: `craft_essences/128/${optId}.webp?v=${IMAGE_VERSION}`,
         }));
         const groupOpt = data.groupImage
           ? base.options.find((o) => o.id === data.groupImage)
@@ -89,7 +90,7 @@ export const ServantData = {
           hasAscensions,
           optionLabels,
           optionNames,
-          image: `servants/${id}/000.webp`,
+          image: `servants/${id}/000.webp?v=${IMAGE_VERSION}`,
         };
 
         // Pre-compute ascension trait sets (C3 optimization)
@@ -141,7 +142,7 @@ export const ServantData = {
   },
 
   getImageForAscension(id, ascension) {
-    return `servants/${id}/${ascension || "000"}.webp`;
+    return `servants/${id}/${ascension || "000"}.webp?v=${IMAGE_VERSION}`;
   },
 
   getAscensionOptions(id) {
