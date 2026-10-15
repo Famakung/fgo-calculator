@@ -142,7 +142,25 @@ html[data-tab="event"] #panel-event {
   padding: 8px 0;
   min-height: 52px;
 }
-#cefilter-filter-area {
-  min-height: 41px;
-  margin-bottom: 2px;
+.cefilter-search-container {
+  margin-bottom: 8px;
+}
+.cefilter-search-input {
+  width: 100%;
+}
+.cefilter-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-sizing: border-box;
 }

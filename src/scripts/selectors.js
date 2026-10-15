@@ -1,5 +1,5 @@
 import { ServantData, CEList, TraitCEs } from "./data.js";
-import { CLASS_FILTERS, RARITY_FILTERS } from "./constants.js";
+import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
 import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
 
 /* ============================================
@@ -582,6 +582,22 @@ export const CEFilterPicker = {
       modal.addEventListener("click", (e) => {
         if (e.target === modal) this.close();
       });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && modal.classList.contains("open")) {
+          this.close();
+        }
+      });
+    }
+
+    const searchInput = document.getElementById("ceFilterPickerSearch");
+    if (searchInput) {
+      const debouncedSearch = debounce((q) => {
+        this._searchQuery = q;
+        this.filter();
+      }, DEBOUNCE_MS);
+      searchInput.addEventListener("input", (e) => {
+        debouncedSearch(e.target.value);
+      });
     }
   },
 
@@ -590,7 +606,10 @@ export const CEFilterPicker = {
     this.tempSelected = new Set(callbacks?.getSelectedCEs?.() || []);
     this._searchQuery = "";
 
-    this.buildFilterArea();
+    const searchInput = document.getElementById("ceFilterPickerSearch");
+    if (searchInput) {
+      searchInput.value = "";
+    }
 
     const traitCEs = TraitCEs;
 
@@ -703,15 +722,6 @@ export const CEFilterPicker = {
     }
     const filtered = traitCEs.filter((c) => c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
     this.renderGrid(filtered);
-  },
-
-  buildFilterArea() {
-    const container = document.getElementById("ceFilterPickerArea");
-    if (!container) return;
-    CollapsibleFactory.populateFilterArea(container, this._searchQuery, (query) => {
-      this._searchQuery = query;
-      this.filter();
-    });
   },
 };
 

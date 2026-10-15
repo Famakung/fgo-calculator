@@ -504,8 +504,25 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="card-title cefilter-results-header">
                 <span>Servants</span>
               </div>
-              <div id="cefilter-filter-area"></div>
+              <div class="cefilter-search-container">
+                <input
+                  type="text"
+                  class="search-filter cefilter-search-input"
+                  id="cefilterSearchInput"
+                  placeholder="Search by ID or name..."
+                  autocomplete="off"
+                />
+              </div>
               <div class="cefilter-sort-row">
+                <button
+                  type="button"
+                  class="cefilter-filter-btn"
+                  id="cefilterFilterBtn"
+                  aria-haspopup="dialog"
+                  aria-label="Open filter settings modal"
+                >
+                  Filter
+                </button>
                 <select class="select-field cefilter-sort-select" id="cefilterSortBy" aria-label="Sort by">
                   <option value="id" selected>ID</option>
                   <option value="rarity">Rarity</option>
@@ -539,6 +556,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 class="servant-modal-close"
                 id="servantModalClose"
                 type="button"
+                aria-label="Close"
               >
                 &#10005;
               </button>
@@ -556,6 +574,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 class="ascension-modal-back"
                 id="ascensionModalBack"
                 type="button"
+                aria-label="Back"
               >
                 &#8592;
               </button>
@@ -567,6 +586,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 class="servant-modal-close"
                 id="ascensionModalClose"
                 type="button"
+                aria-label="Close"
               >
                 &#10005;
               </button>
@@ -584,6 +604,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 class="servant-modal-close"
                 id="ceModalClose"
                 type="button"
+                aria-label="Close"
               >
                 &#10005;
               </button>
@@ -601,6 +622,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 class="ascension-modal-back"
                 id="ceSubModalBack"
                 type="button"
+                aria-label="Back"
               >
                 &#8592;
               </button>
@@ -609,6 +631,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 class="servant-modal-close"
                 id="ceSubModalClose"
                 type="button"
+                aria-label="Close"
               >
                 &#10005;
               </button>
@@ -626,12 +649,43 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 class="servant-modal-close"
                 id="ceFilterModalClose"
                 type="button"
+                aria-label="Close"
               >
                 &#10005;
               </button>
             </div>
-            <div id="ceFilterPickerArea"></div>
+            <input
+              type="text"
+              class="search-filter"
+              id="ceFilterPickerSearch"
+              placeholder="Search by ID or name..."
+              autocomplete="off"
+            />
             <div class="servant-picker-grid grid-sm servant-picker-grid--ce" id="ceFilterPickerGrid"></div>
+          </div>
+        </div>
+
+        <!-- CE Filter Servants Filter Modal -->
+        <div class="servant-modal" id="cefilterFilterModal" role="dialog" aria-modal="true" aria-labelledby="cefilterFilterModalTitle">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <span class="ascension-modal-title" id="cefilterFilterModalTitle">Filter Settings</span>
+              <button
+                class="servant-modal-close"
+                id="cefilterFilterModalClose"
+                type="button"
+                aria-label="Close"
+              >
+                &#10005;
+              </button>
+            </div>
+            <div class="cefilter-modal-body">
+              <div class="filter-group">
+                <div class="class-filter" id="cefilterClassFilter"></div>
+                <div class="rarity-filter" id="cefilterRarityFilter"></div>
+                <div class="ce-count-filter" id="cefilterMatchCount"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -644,6 +698,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 class="servant-modal-close"
                 id="ceOverlapClose"
                 type="button"
+                aria-label="Close"
               >
                 &#10005;
               </button>

@@ -1,7 +1,7 @@
-import { CLASS_FILTERS, RARITY_FILTERS } from "./constants.js";
+import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
 import { TraitMatcher } from "./domain.js";
 import { ServantData, CEById, TraitCEs, TraitNames } from "./data.js";
-import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
+import { DOMFactory, debounce } from "./presentation.js";
 
 /* === Worker setup for off-thread CE match computation === */
 let _worker = null;
@@ -164,31 +164,48 @@ export const CEFilterApp = {
     if (this._callbacks.initFilterPicker) this._callbacks.initFilterPicker();
     if (this._callbacks.initOverlap) this._callbacks.initOverlap();
 
-    // Build collapsible filter area with search, class, rarity, CE count
-    const filterArea = document.getElementById("cefilter-filter-area");
-    if (filterArea) {
-      CollapsibleFactory.populateFilterArea(
-        filterArea,
-        this.state.searchQuery,
-        (query) => {
-          this.state.searchQuery = query;
-          this.state.currentPage = 1;
-          this.render();
-        },
-        (content) => {
-          const classDiv = DOMFactory.el("div", "class-filter");
-          classDiv.id = "cefilterClassFilter";
-          content.appendChild(classDiv);
+    // Search input
+    const searchInput = document.getElementById("cefilterSearchInput");
+    if (searchInput) {
+      searchInput.value = this.state.searchQuery || "";
+      const debouncedSearch = debounce((query) => {
+        this.state.searchQuery = query;
+        this.state.currentPage = 1;
+        this.render();
+      }, DEBOUNCE_MS);
+      searchInput.addEventListener("input", (e) => {
+        debouncedSearch(e.target.value);
+      });
+    }
 
-          const rarityDiv = DOMFactory.el("div", "rarity-filter");
-          rarityDiv.id = "cefilterRarityFilter";
-          content.appendChild(rarityDiv);
+    // Filter modal toggle
+    const filterBtn = document.getElementById("cefilterFilterBtn");
+    const filterModal = document.getElementById("cefilterFilterModal");
+    const filterModalClose = document.getElementById("cefilterFilterModalClose");
 
-          const countDiv = DOMFactory.el("div", "ce-count-filter");
-          countDiv.id = "cefilterMatchCount";
-          content.appendChild(countDiv);
-        },
-      );
+    if (filterBtn && filterModal) {
+      filterBtn.addEventListener("click", () => {
+        filterModal.classList.add("open");
+      });
+    }
+
+    if (filterModalClose && filterModal) {
+      filterModalClose.addEventListener("click", () => {
+        filterModal.classList.remove("open");
+      });
+    }
+
+    if (filterModal) {
+      filterModal.addEventListener("click", (e) => {
+        if (e.target === filterModal) {
+          filterModal.classList.remove("open");
+        }
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && filterModal.classList.contains("open")) {
+          filterModal.classList.remove("open");
+        }
+      });
     }
 
     this.buildClassFilter();
@@ -266,7 +283,7 @@ export const CEFilterApp = {
         const btn = DOMFactory.el("div", "class-btn" + (selected.has(cls.id) ? " active" : ""));
         btn.dataset.traitId = cls.id;
         const img = DOMFactory.el("img", "", {
-          dataset: { src: `icons/classes/${cls.icon}.webp` },
+          src: `icons/classes/${cls.icon}.webp`,
           alt: cls.label,
           title: cls.label,
         });

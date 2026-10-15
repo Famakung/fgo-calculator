@@ -29,7 +29,10 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ### Bond Gain CE Filter
 - Reverse lookup: select CEs to find matching servants
 - Match modes: All (AND), Any (OR), and Custom Match (filter by exact CE match count)
-- Collapsible filter panel with search, class filter, rarity filter, and CE match count buttons
+- Dedicated "Filter Settings" modal with class filter, rarity filter, and CE match count buttons
+- Direct servant search bar positioned statically above controls row
+- Direct search bar in "Add Craft Essence" modal
+- Mobile-optimized 2-per-row grid layout on narrow screens
 - CE match count buttons ("1 CE", "2 CE", etc.) filter by number of matching CEs
 - CE picker shows grayscale indicator for CEs with no ascension-level overlap with selected CEs
 - Class and rarity filter buttons hide when no servant with that trait exists in results
