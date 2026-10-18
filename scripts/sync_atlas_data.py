@@ -17,7 +17,7 @@ import shutil
 import sys
 import time
 import urllib.request
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 from PIL import Image
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -205,27 +205,32 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
     return base_traits, ascension_diffs, option_names
 
 
-def download_face_icon(short_id: str, long_id: int, stage_idx: int = 0, dest_filename: Optional[str] = None, force: bool = False, dry_run: bool = False) -> bool:
+def download_face_icon(short_id: str, long_id: int, stage: Union[int, str] = "000", dest_filename: Optional[str] = None, force: bool = False, dry_run: bool = False) -> bool:
     """Download bordered face icon from Atlas Academy CDN and save as 142x155 WebP."""
+    stage_str = str(stage).zfill(3) if str(stage).isdigit() else str(stage)
     dest_dir = os.path.join(PUBLIC_SERVANTS_DIR, short_id)
-    dest_file = os.path.join(dest_dir, dest_filename or f"{stage_idx:03d}.webp")
+    dest_file = os.path.join(dest_dir, dest_filename or f"{stage_str}.webp")
 
     if not force and os.path.exists(dest_file):
         return True
 
     if dry_run:
-        print(f"  [DRY-RUN] Would download face icon for {short_id} -> {dest_file}")
+        print(f"  [DRY-RUN] Would download face icon for {short_id}/{stage_str} -> {dest_file}")
         return True
 
     os.makedirs(dest_dir, exist_ok=True)
 
-    # Face filenames typically look like: f_{long_id}{stage}.png
-    # Atlas uses stage 0 for base
+    long_str = str(long_id)
+    base = long_str[:-2] if len(long_str) > 2 else long_str
+    stage_int = int(stage_str) if stage_str.isdigit() else 0
+
     candidate_urls = [
-        f"{STATIC_BASE}/JP/Faces/f_{long_id}{stage_idx}_bordered.png",
-        f"{STATIC_BASE}/JP/Faces/f_{long_id}{stage_idx}.png",
-        f"{STATIC_BASE}/JP/Faces/f_{long_id}0_bordered.png",
-        f"{STATIC_BASE}/JP/Faces/f_{long_id}0.png",
+        f"{STATIC_BASE}/JP/Faces/f_{base}{stage_str}_bordered.png",
+        f"{STATIC_BASE}/JP/Faces/f_{base}{stage_str}.png",
+        f"{STATIC_BASE}/JP/Faces/f_{long_str}{stage_int}_bordered.png",
+        f"{STATIC_BASE}/JP/Faces/f_{long_str}{stage_int}.png",
+        f"{STATIC_BASE}/JP/Faces/f_{long_str}0_bordered.png",
+        f"{STATIC_BASE}/JP/Faces/f_{long_str}0.png",
     ]
 
     for url in candidate_urls:
@@ -239,8 +244,54 @@ def download_face_icon(short_id: str, long_id: int, stage_idx: int = 0, dest_fil
         except Exception:
             continue
 
-    print(f"  [WARN] Failed to download face icon for {short_id} (long_id={long_id})", file=sys.stderr)
+    print(f"  [WARN] Failed to download face icon for {short_id}/{stage_str} (long_id={long_id})", file=sys.stderr)
     return False
+
+
+def load_all_servant_stages() -> Dict[str, List[str]]:
+    """Parse src/scripts/data/servants.js to find all expected ascension stages for each servant."""
+    stages_by_id = {}
+    if not os.path.exists(SERVANTS_JS):
+        return stages_by_id
+
+    with open(SERVANTS_JS, "r", encoding="utf-8") as f:
+        text = f.read()
+
+    m = re.search(r"export\s+const\s+SERVANT_DATA\s*=\s*\{([\s\S]*)\};?\s*$", text)
+    body = m.group(1) if m else text
+
+    entry_starts = list(re.finditer(r"""(?:^|\n)\s*["\x27]?([0-9a-zA-Z\-_]+)["\x27]?\s*:\s*\{""", body))
+
+    for match in entry_starts:
+        sid = match.group(1)
+        start_pos = match.end() - 1
+        depth = 0
+        end_pos = start_pos
+        for pos in range(start_pos, len(body)):
+            if body[pos] == "{":
+                depth += 1
+            elif body[pos] == "}":
+                depth -= 1
+                if depth == 0:
+                    end_pos = pos + 1
+                    break
+        entry_text = body[start_pos:end_pos]
+
+        # Check if multi-ascension
+        has_ascensions = bool(re.search(r"""traits\s*:\s*\{[^}]*?["\x27]?[0-9]{3}["\x27]?\s*:""", entry_text))
+        stages = set(["000"])
+        if has_ascensions:
+            stages.add("001")
+            stages.add("002")
+            for opt_field in ["traits", "optionLabels", "optionNames"]:
+                fm = re.search(r"""(?:""" + opt_field + r""")\s*:\s*\{([\s\S]*?)\}""", entry_text)
+                if fm:
+                    for st in re.findall(r"""["\x27]?([0-9]{3})["\x27]?\s*:""", fm.group(1)):
+                        if st != "base":
+                            stages.add(st)
+        stages_by_id[sid] = sorted(list(stages))
+
+    return stages_by_id
 
 
 def format_servant_js_entry(short_id: str, name: str, base_traits: List[str], ascension_diffs: Dict[str, List[str]], option_names: Dict[str, str]) -> str:
@@ -352,6 +403,9 @@ def main():
         if cno > 0:
             playable_by_cno[cno] = s
 
+    # Map all required stages per servant from dataset
+    servant_stages_map = load_all_servant_stages()
+
     # Determine targets
     if args.ids:
         target_cnos = [int(x) for x in args.ids if x.isdigit() and int(x) in playable_by_cno]
@@ -367,10 +421,18 @@ def main():
                 k == cno_str or k == cno_padded or k.startswith(f"{cno_str}-") or k.startswith(f"{cno_padded}-")
                 for k in existing_keys
             )
-            # Check if default face icon exists on disk (including split IDs like 467-1)
-            img_file = os.path.join(PUBLIC_SERVANTS_DIR, short_id, "000.webp")
-            split_img = os.path.join(PUBLIC_SERVANTS_DIR, f"{short_id}-1", "000.webp")
-            img_missing = not os.path.exists(img_file) and not os.path.exists(split_img)
+            # Check if all expected face icons exist on disk (including multi-ascensions and split IDs)
+            if cno == 467:
+                img_missing = (
+                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "467-1", "000.webp")) or
+                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "467-2", "000.webp"))
+                )
+            else:
+                expected_stages = servant_stages_map.get(short_id, ["000"])
+                img_missing = any(
+                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, short_id, f"{st}.webp"))
+                    for st in expected_stages
+                )
 
             if not has_existing or img_missing:
                 target_cnos.append(cno)
@@ -408,23 +470,23 @@ def main():
             name = svt_payload.get("name") or s_info.get("name", f"Servant {cno}")
             base_traits, asc_diffs, opt_names = extract_servant_traits(svt_payload)
 
-            download_face_icon(short_id, long_id, stage_idx=0, force=args.force, dry_run=args.dry_run)
+            download_face_icon(short_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
             for stage in asc_diffs.keys():
-                if stage in ("001", "002"):
-                    stage_idx = int(stage)
-                    download_face_icon(short_id, long_id, stage_idx=stage_idx, force=args.force, dry_run=args.dry_run)
+                download_face_icon(short_id, long_id, stage=stage, force=args.force, dry_run=args.dry_run)
 
             entry_code = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_names)
             new_entries[short_id] = entry_code
         else:
-            # Existing servant with missing image: download directly without API overhead
+            # Existing servant with missing images: download directly without API overhead
             if cno == 467:
                 # 467-1: François Prelati (long ID: 505600)
-                download_face_icon("467-1", 505600, stage_idx=0, dest_filename="000.webp", force=args.force, dry_run=args.dry_run)
+                download_face_icon("467-1", 505600, stage="000", force=args.force, dry_run=args.dry_run)
                 # 467-2: Francesca Prelati (long ID: 505700)
-                download_face_icon("467-2", 505700, stage_idx=0, dest_filename="000.webp", force=args.force, dry_run=args.dry_run)
+                download_face_icon("467-2", 505700, stage="000", force=args.force, dry_run=args.dry_run)
             else:
-                download_face_icon(short_id, long_id, stage_idx=0, force=args.force, dry_run=args.dry_run)
+                stages_to_fetch = servant_stages_map.get(short_id, ["000"])
+                for st in stages_to_fetch:
+                    download_face_icon(short_id, long_id, stage=st, force=args.force, dry_run=args.dry_run)
 
     if new_entries:
         update_servants_js(new_entries, dry_run=args.dry_run)

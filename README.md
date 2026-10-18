@@ -126,12 +126,17 @@ fgo-calculator/
 │   ├── .nojekyll               # Prevent Jekyll processing on GitHub Pages
 │   ├── favicon.svg             # SVG favicon
 │   ├── fonts/                  # Self-hosted web fonts (DM Sans, Space Mono — woff2)
-│   ├── servants/               # Servant portraits ({ID}/{ascension}.webp)
-│   ├── craft_essences/         # CE images: 128/{ID}.webp (full) + 64/{ID}.webp (thumb)
+│   ├── servants/               # Servant portraits ({ID}/{ascension}.webp) [build-cached]
+│   ├── craft_essences/         # CE images: {ID}.webp (unified 142×155 bordered WebP) [build-cached]
 │   └── icons/                  # UI icons (classes, materials, PWA)
 │
+├── scripts/                    # Build-time sync and validation engine
+│   ├── sync_atlas_data.py      # Incremental Atlas Academy sync (traits, face icons, multi-ascension)
+│   ├── validate_data.js        # Data integrity, schema, and image existence validator
+│   └── fetch_bordered_ces.py   # Craft Essence icon fetcher & WebP converter
+│
 └── .github/workflows/
-    └── deploy.yml              # GitHub Actions: Astro build + deploy to Pages on push to main
+    └── deploy.yml              # CI/CD: cache assets, sync data, validate, build & deploy to Pages
 ```
 
 ## Architecture
@@ -144,12 +149,16 @@ The application follows a 3-layer architecture using ES modules bundled by Astro
 | **Application** | StateManager, Persistence, App, BondApp, CEFilterApp | State management and coordination |
 | **Presentation** | DOMFactory, CollapsibleFactory, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events |
 
-## Build
+## Build & Data Commands
 
 ```bash
 npm install          # Install dependencies
-npm run build       # Build with Astro (output: dist/)
+npm run dev          # Astro dev server (localhost:3000)
+npm run build        # Build with Astro (output: dist/)
 npm run preview      # Local preview server
+npm run lint         # ESLint + Stylelint
+npm run data:sync    # Sync latest servant & CE data from Atlas Academy
+npm run data:validate # Validate data schema, traits format, and image existence
 ```
 
 Astro produces optimized chunks via Vite:
@@ -167,7 +176,9 @@ Astro produces optimized chunks via Vite:
 - Data files use `export const` imported by `src/scripts/data.js`, bundled by Vite
 - Schema-based input validation with localStorage sanitization
 - Debounced input handlers (100ms)
-- Multi-ascension servant support with per-ascension traits and spiriton dress images
+- Multi-ascension servant support with per-ascension traits, ascension stage face icons, and spiriton dress images
+- Automated build-time data sync pipeline (`scripts/sync_atlas_data.py`) with polite rate limiting (`0.1s`), automatic multi-ascension detection, and CE icon synchronization
+- Zero-commit binary assets architecture: servant and CE images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v4`), and synced at build time
 - PWA manifest with standalone display mode
 - Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, `font-display: optional`, critical CSS inlined, font preloads with `fetchpriority="high"`, CLS prevention with `min-width` and `tabular-nums`
 

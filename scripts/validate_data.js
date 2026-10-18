@@ -89,13 +89,19 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
   }
 
   // Check ascension images if multi-ascension
-  if (typeof rawTraits === 'object' && !Array.isArray(rawTraits)) {
-    for (const stage of Object.keys(rawTraits)) {
-      if (stage === 'base' || stage === '000') continue;
+  const hasAscensions = typeof rawTraits === 'object' && !Array.isArray(rawTraits) && Object.keys(rawTraits).some((k) => k !== 'base');
+  if (hasAscensions) {
+    const standard = ['001', '002'];
+    const custom = Object.keys(rawTraits).filter((k) => k !== 'base' && !standard.includes(k) && k !== '000');
+    if (svt.optionLabels) {
+      Object.keys(svt.optionLabels).forEach((k) => {
+        if (!standard.includes(k) && k !== '000' && !custom.includes(k)) custom.push(k);
+      });
+    }
+    for (const stage of [...standard, ...custom]) {
       const ascImg = path.join(ROOT_DIR, 'public', 'servants', String(id), `${stage}.webp`);
       if (!fs.existsSync(ascImg)) {
-        // Optional warning if specific ascension image is omitted (some inherit 000)
-        warnings.push(`${ctx}: Ascension stage "${stage}" image public/servants/${id}/${stage}.webp does not exist`);
+        errors.push(`${ctx}: Ascension stage "${stage}" image missing at public/servants/${id}/${stage}.webp`);
       }
     }
   }
