@@ -7,7 +7,7 @@ export const SERVANT_MAX_SLOTS = 6;
 export const STORAGE_KEY = "fgo_calculator_data";
 export const BOND_STORAGE_KEY = "fgo_bond_calculator_data";
 export const CEFILTER_STORAGE_KEY = "fgo_ce_filter_data";
-export const IMAGE_VERSION = "2";
+export const IMAGE_VERSION = "3";
 
 export const BOND_CONSTANTS = {
   MAX_BOND_NEEDED: 9999999,

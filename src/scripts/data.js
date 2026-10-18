@@ -151,6 +151,11 @@ export const ServantData = {
     const raw = servant.rawTraits;
     const standard = ["000", "001", "002"];
     const custom = Object.keys(raw).filter((k) => k !== "base" && !standard.includes(k));
+    if (servant.optionLabels) {
+      Object.keys(servant.optionLabels).forEach((k) => {
+        if (!standard.includes(k) && k !== "000" && !custom.includes(k)) custom.push(k);
+      });
+    }
     return [...standard, ...custom];
   },
 
