@@ -55,6 +55,7 @@ VALID_CLASS_IDS = {
 # Special trait mappings bridging Atlas internal identifiers with official in-game NA terminology
 # (e.g. Attribute 200 in official NA in-game status is "Heaven Attribute", not Atlas's internal "Sky")
 INTERNAL_TRAIT_OVERRIDES = {
+    "0200": "Heaven Attribute",
     "200": "Heaven Attribute",
     "2780": "Spiritron Dresses",
     "2883": "Fate/stay night",
@@ -89,6 +90,9 @@ def camel_to_words(s: str) -> str:
 
 def format_api_trait_name(tid_str: str, raw_name: str) -> str:
     """Transform Atlas Academy internal camelCase trait names into canonical in-game display names."""
+    norm_id = f"{int(tid_str):04d}" if tid_str.isdigit() and int(tid_str) < 1000 else tid_str
+    if norm_id in INTERNAL_TRAIT_OVERRIDES:
+        return INTERNAL_TRAIT_OVERRIDES[norm_id]
     if tid_str in INTERNAL_TRAIT_OVERRIDES:
         return INTERNAL_TRAIT_OVERRIDES[tid_str]
 
@@ -115,14 +119,11 @@ def format_api_trait_name(tid_str: str, raw_name: str) -> str:
 
 def normalize_trait_id(tid: int) -> Optional[str]:
     """Normalize Atlas Academy trait ID to FGO Calculator trait ID string."""
-    if tid in KNOWN_SPECIAL_TRAIT_IDS or str(tid) in INTERNAL_TRAIT_OVERRIDES:
-        return str(tid)
-
     for start, end in TRAIT_PREFIX_RANGES:
         if start <= tid <= end:
             return f"{tid:04d}"
 
-    if tid >= 1000:
+    if tid in KNOWN_SPECIAL_TRAIT_IDS or str(tid) in INTERNAL_TRAIT_OVERRIDES:
         return str(tid)
 
     return None
@@ -515,8 +516,11 @@ def sync_servants(args):
             base_traits, asc_diffs, opt_names = extract_servant_traits(svt_payload)
 
             download_face_icon(short_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
-            for stage in asc_diffs.keys():
-                download_face_icon(short_id, long_id, stage=stage, force=args.force, dry_run=args.dry_run)
+            if asc_diffs:
+                download_face_icon(short_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
+                download_face_icon(short_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
+                for stage in asc_diffs.keys():
+                    download_face_icon(short_id, long_id, stage=stage, force=args.force, dry_run=args.dry_run)
 
             entry_code = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_names)
             new_entries[short_id] = entry_code
