@@ -22,15 +22,15 @@ export const CEList = (() => {
         alsoMatch: Array.isArray(data.alsoMatch) ? data.alsoMatch : [],
         isGroup,
         flatBonus: isGroup ? data.flatBonus || 0 : 0,
-        image: `craft_essences/128/${id}.webp?v=${IMAGE_VERSION}`,
-        thumbImage: `craft_essences/128/${id}.webp?v=${IMAGE_VERSION}`,
+        image: `craft_essences/${id}.webp?v=${IMAGE_VERSION}`,
+        thumbImage: `craft_essences/${id}.webp?v=${IMAGE_VERSION}`,
       };
       if (isGroup && data.options) {
         base.options = Object.entries(data.options).map(([optId, opt]) => ({
           id: optId,
           name: opt.name || `CE ${optId}`,
-          image: `craft_essences/128/${optId}.webp?v=${IMAGE_VERSION}`,
-          thumbImage: `craft_essences/128/${optId}.webp?v=${IMAGE_VERSION}`,
+          image: `craft_essences/${optId}.webp?v=${IMAGE_VERSION}`,
+          thumbImage: `craft_essences/${optId}.webp?v=${IMAGE_VERSION}`,
         }));
         const groupOpt = data.groupImage
           ? base.options.find((o) => o.id === data.groupImage)

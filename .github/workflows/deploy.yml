@@ -3,7 +3,16 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
+  schedule:
+    # Daily run at 02:00 UTC to capture new JP/NA banners
+    - cron: '0 2 * * *'
   workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Force re-sync all servant data'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,12 +29,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install Pillow
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
       - run: npm ci
+
+      # Restore cached images and API payloads
+      - name: Restore Atlas Data & Asset Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/atlas/
+            public/servants/
+            public/craft_essences/
+          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py') }}
+          restore-keys: |
+            fgo-atlas-cache-${{ runner.os }}-
+
+      # Run sync: only downloads what is NOT in cache/repo
+      - name: Sync latest game data from Atlas Academy
+        run: |
+          FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
+          python3 scripts/sync_atlas_data.py $FORCE_FLAG
+
+      # Verify schema and image consistency
+      - name: Validate data integrity
+        run: node scripts/validate_data.js
 
       - run: npm run build
 

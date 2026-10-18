@@ -10,7 +10,9 @@
     "lint:js": "eslint src/scripts/",
     "lint:css": "stylelint src/styles/global.css",
     "format": "prettier --write \"src/scripts/**/*.js\" \"src/styles/*.css\" \"*.mjs\" && stylelint --fix src/styles/global.css",
-    "format:check": "prettier --check \"src/scripts/**/*.js\" \"src/styles/*.css\" \"*.mjs\""
+    "format:check": "prettier --check \"src/scripts/**/*.js\" \"src/styles/*.css\" \"*.mjs\"",
+    "data:sync": "python3 scripts/sync_atlas_data.py --clean-cache",
+    "data:validate": "node scripts/validate_data.js"
   },
   "dependencies": {
     "astro": "^5.18.1"
