@@ -71,11 +71,14 @@ CE_MAP = {
 }
 
 def download_and_convert(item):
-    ce_id, long_id, dry_run = item
+    ce_id, long_id, force, dry_run = item
     bordered_url = f"https://static.atlasacademy.io/JP/Faces/f_{long_id}_bordered.png"
     plain_url = f"https://static.atlasacademy.io/JP/Faces/f_{long_id}.png"
 
     dest_file = os.path.join(CE_DIR, f"{ce_id}.webp")
+
+    if not force and os.path.exists(dest_file):
+        return (ce_id, True, "EXISTS", bordered_url)
 
     if dry_run:
         return (ce_id, True, "DRY_RUN", bordered_url)
@@ -102,37 +105,48 @@ def download_and_convert(item):
 
     return (ce_id, False, str(last_err), bordered_url)
 
-def main():
-    parser = argparse.ArgumentParser(description="Fetch and convert CE icons to bordered WebP")
-    parser.add_argument("--ids", nargs="+", help="Specific CE IDs to process (e.g. 0330 0910)")
-    parser.add_argument("--workers", type=int, default=8, help="Parallel worker threads")
-    parser.add_argument("--dry-run", action="store_true", help="Print actions without modifying files")
-    args = parser.parse_args()
-
-    if args.ids:
-        items = [(cid, CE_MAP[cid], args.dry_run) for cid in args.ids if cid in CE_MAP]
+def sync_ces(ids=None, workers=8, force=False, dry_run=False):
+    """Sync CE icons from Atlas Academy, skipping existing files if force=False."""
+    if ids:
+        items = [(cid, CE_MAP[cid], force, dry_run) for cid in ids if cid in CE_MAP]
     else:
-        items = [(cid, lid, args.dry_run) for cid, lid in sorted(CE_MAP.items())]
+        items = [(cid, lid, force, dry_run) for cid, lid in sorted(CE_MAP.items())]
 
-    print(f"Processing {len(items)} Craft Essences ({len(items)} WebP files)...")
+    missing_or_target = [it for it in items if force or not os.path.exists(os.path.join(CE_DIR, f"{it[0]}.webp"))]
+    if not missing_or_target and not force:
+        print(f"All {len(items)} Craft Essence images exist on disk. No download needed.")
+        return True
+
+    print(f"Processing {len(missing_or_target)} Craft Essences ({len(missing_or_target)} WebP files)...")
     start_time = time.time()
     success_count = 0
     fail_count = 0
 
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(download_and_convert, item): item for item in items}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(download_and_convert, item): item for item in missing_or_target}
         for i, future in enumerate(as_completed(futures), 1):
             ce_id, success, detail, url = future.result()
             if success:
                 success_count += 1
-                if i % 10 == 0 or i == len(items):
-                    print(f"[{i}/{len(items)}] Done: {ce_id} ({detail})")
+                if i % 10 == 0 or i == len(missing_or_target):
+                    print(f"[{i}/{len(missing_or_target)}] Done: {ce_id} ({detail})")
             else:
                 fail_count += 1
-                print(f"[{i}/{len(items)}] FAILED: {ce_id} from {url} - {detail}", file=sys.stderr)
+                print(f"[{i}/{len(missing_or_target)}] FAILED: {ce_id} from {url} - {detail}", file=sys.stderr)
 
     elapsed = time.time() - start_time
-    print(f"\nFinished in {elapsed:.1f}s: {success_count} succeeded, {fail_count} failed.")
+    print(f"CE Sync finished in {elapsed:.1f}s: {success_count} succeeded, {fail_count} failed.")
+    return fail_count == 0
+
+def main():
+    parser = argparse.ArgumentParser(description="Fetch and convert CE icons to bordered WebP")
+    parser.add_argument("--ids", nargs="+", help="Specific CE IDs to process (e.g. 0330 0910)")
+    parser.add_argument("--workers", type=int, default=8, help="Parallel worker threads")
+    parser.add_argument("--force", action="store_true", help="Force re-download and overwrite existing files")
+    parser.add_argument("--dry-run", action="store_true", help="Print actions without modifying files")
+    args = parser.parse_args()
+
+    sync_ces(ids=args.ids, workers=args.workers, force=args.force, dry_run=args.dry_run)
 
 if __name__ == "__main__":
     main()

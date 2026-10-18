@@ -61,7 +61,7 @@ def normalize_trait_id(tid: int) -> Optional[str]:
 class PoliteRateLimiter:
     """Enforces minimum interval between consecutive network requests to prevent rate-limiting."""
 
-    def __init__(self, delay_seconds: float = 0.5):
+    def __init__(self, delay_seconds: float = 0.1):
         self.delay = delay_seconds
         self.last_request_time = 0.0
 
@@ -74,8 +74,8 @@ class PoliteRateLimiter:
         self.last_request_time = time.time()
 
 
-# Global rate limiter instance (defaults to 0.5s inter-request delay)
-rate_limiter = PoliteRateLimiter(delay_seconds=0.5)
+# Global rate limiter instance (defaults to 0.1s inter-request delay)
+rate_limiter = PoliteRateLimiter(delay_seconds=0.1)
 
 
 def fetch_url(url: str, timeout: int = 15, retries: int = 4) -> bytes:
@@ -312,11 +312,21 @@ def cleanup_cache_dir(cache_dir: str):
         print("Local cache cleaned.")
 
 
+def ensure_ce_images(force: bool = False, dry_run: bool = False):
+    """Ensure all craft essence face icons exist in public/craft_essences/."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from fetch_bordered_ces import sync_ces
+        sync_ces(force=force, dry_run=dry_run)
+    except Exception as e:
+        print(f"Warning: CE sync failed: {e}", file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Incremental Atlas Academy Data Sync for FGO Calculator")
     parser.add_argument("--cache-dir", default=os.path.join(BASE_DIR, ".cache", "atlas"), help="Path to cache directory")
     parser.add_argument("--ids", nargs="+", help="Specific collection numbers to process (e.g. 482 481)")
-    parser.add_argument("--delay", type=float, default=0.5, help="Polite delay between requests in seconds (default: 0.5s)")
+    parser.add_argument("--delay", type=float, default=0.1, help="Polite delay between requests in seconds (default: 0.1s)")
     parser.add_argument("--clean-cache", action="store_true", help="Remove cache directory on finish to keep local files clean")
     parser.add_argument("--force", action="store_true", help="Force re-fetching and overwriting assets")
     parser.add_argument("--dry-run", action="store_true", help="Perform dry run without writing files")
@@ -367,6 +377,7 @@ def main():
 
     if not target_cnos:
         print("Dataset is already 100% up-to-date with Atlas Academy. No new servants to sync.")
+        ensure_ce_images(force=args.force, dry_run=args.dry_run)
         if args.clean_cache:
             cleanup_cache_dir(args.cache_dir)
         sys.exit(0)
@@ -417,6 +428,8 @@ def main():
 
     if new_entries:
         update_servants_js(new_entries, dry_run=args.dry_run)
+
+    ensure_ce_images(force=args.force, dry_run=args.dry_run)
 
     if args.clean_cache:
         cleanup_cache_dir(args.cache_dir)

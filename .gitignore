@@ -9,6 +9,8 @@ dist/
 .cache/
 public/servants/
 public/craft_essences/
+__pycache__/
+*.pyc
 
 # Old esbuild outputs (no longer generated)
 app.min.js
