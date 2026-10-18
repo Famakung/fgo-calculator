@@ -34,6 +34,7 @@ PUBLIC_SERVANTS_DIR = os.path.join(BASE_DIR, "public", "servants")
 API_BASE = "https://api.atlasacademy.io"
 STATIC_BASE = "https://static.atlasacademy.io"
 EQUIP_EXPORT_URL = f"{API_BASE}/export/JP/nice_equip_lang_en.json"
+NA_NICE_TRAIT_URL = f"{API_BASE}/export/NA/nice_trait.json"
 
 # Trait ranges to recognize and format to 4-digit zero-padded strings
 TRAIT_PREFIX_RANGES = [
@@ -46,35 +47,83 @@ TRAIT_PREFIX_RANGES = [
 
 STANDARD_7_CLASSES = ["0100", "0101", "0102", "0103", "0104", "0105", "0106"]
 
-SPECIAL_TRAITS = {
-    2654: "Modern Human",
-    2780: "Spiritron Dresses",
-    2821: "Beast Servants",
-    2883: "Fate/stay night",
-    2801200: "Solomon",
+# Playable servant classes in FGO (maps to 0100 - 0124)
+VALID_CLASS_IDS = {
+    100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 115, 117, 120, 124
 }
+
+# Special trait mappings bridging Atlas internal identifiers with official in-game NA terminology
+# (e.g. Attribute 200 in official NA in-game status is "Heaven Attribute", not Atlas's internal "Sky")
+INTERNAL_TRAIT_OVERRIDES = {
+    "200": "Heaven Attribute",
+    "2780": "Spiritron Dresses",
+    "2883": "Fate/stay night",
+    "2801200": "Solomon",
+}
+
+KNOWN_SPECIAL_TRAIT_IDS = {2654, 2780, 2821, 2883, 2801200}
 
 SERIES_NAME_OVERRIDES = {
     "Twilight Portrait": "Heroic Spirit Encounter",
     "英霊逢魔": "Heroic Spirit Encounter",
 }
 
+# Unofficial English translations for JP-only CEs unreleased in NA
+UNOFFICIAL_JP_TRANSLATIONS = {
+    "2583": "Great Library of Memories",
+    "2607": "Sword Saints of Wandering",
+    "2701": "Gun Dealer",
+}
+
 CE_OVERRIDES = {
     "0910": {"bonus": 15},
-    "2583": {"name": "Great Library of Memories"},
-    "2607": {"name": "Sword Saints of Wandering"},
-    "2701": {"name": "Gun Dealer"},
 }
+
+
+def camel_to_words(s: str) -> str:
+    """Split camelCase or PascalCase into space-separated words."""
+    s = re.sub(r'([a-z])([A-Z])', r'\1 \2', s)
+    s = re.sub(r'([A-Z]+)([A-Z][a-z])', r'\1 \2', s)
+    return s.strip()
+
+
+def format_api_trait_name(tid_str: str, raw_name: str) -> str:
+    """Transform Atlas Academy internal camelCase trait names into canonical in-game display names."""
+    if tid_str in INTERNAL_TRAIT_OVERRIDES:
+        return INTERNAL_TRAIT_OVERRIDES[tid_str]
+
+    if raw_name.startswith("gender"):
+        return f"Gender {raw_name[6:].capitalize()}"
+
+    if raw_name.startswith("class"):
+        suffix = raw_name[5:]
+        if suffix.startswith("Beast"):
+            return "Class Beast"
+        return f"Class {camel_to_words(suffix)}"
+
+    if raw_name.startswith("attribute"):
+        return f"{camel_to_words(raw_name[9:])} Attribute"
+
+    if raw_name.startswith("alignment"):
+        return f"{camel_to_words(raw_name[9:])} Alignment"
+
+    if raw_name.endswith("StarServant"):
+        return camel_to_words(raw_name).title()
+
+    return camel_to_words(raw_name).title()
 
 
 def normalize_trait_id(tid: int) -> Optional[str]:
     """Normalize Atlas Academy trait ID to FGO Calculator trait ID string."""
-    if tid in SPECIAL_TRAITS:
+    if tid in KNOWN_SPECIAL_TRAIT_IDS or str(tid) in INTERNAL_TRAIT_OVERRIDES:
         return str(tid)
 
     for start, end in TRAIT_PREFIX_RANGES:
         if start <= tid <= end:
             return f"{tid:04d}"
+
+    if tid >= 1000:
+        return str(tid)
 
     return None
 
@@ -343,18 +392,20 @@ def format_servant_js_entry(short_id: str, name: str, base_traits: List[str], as
 def update_servants_js(new_entries: Dict[str, str], dry_run: bool = False):
     """Insert new servant entries into src/scripts/data/servants.js in sorted order."""
     if not os.path.exists(SERVANTS_JS):
-        print(f"[ERROR] {SERVANTS_JS} not found", file=sys.stderr)
-        return
+        header = "export const SERVANT_DATA = {\n"
+        body = ""
+        footer = "};\n"
+        content = header + footer
+    else:
+        with open(SERVANTS_JS, "r", encoding="utf-8") as f:
+            content = f.read()
 
-    with open(SERVANTS_JS, "r", encoding="utf-8") as f:
-        content = f.read()
+        match = re.search(r'(export\s+const\s+SERVANT_DATA\s*=\s*\{)(.*?)(\n\};)', content, re.DOTALL)
+        if not match:
+            print("[ERROR] Could not parse SERVANT_DATA in servants.js", file=sys.stderr)
+            return
 
-    match = re.search(r'(export\s+const\s+SERVANT_DATA\s*=\s*\{)(.*?)(\n\};)', content, re.DOTALL)
-    if not match:
-        print("[ERROR] Could not parse SERVANT_DATA in servants.js", file=sys.stderr)
-        return
-
-    header, body, footer = match.groups()
+        header, body, footer = match.groups()
 
     if dry_run:
         print(f"[DRY-RUN] Would append {len(new_entries)} new servants into servants.js:")
@@ -363,8 +414,12 @@ def update_servants_js(new_entries: Dict[str, str], dry_run: bool = False):
         return
 
     addition = "\n" + "\n".join(new_entries.values()) + "\n"
-    updated_content = header + body.rstrip() + addition + "};" + content[match.end():]
+    if body:
+        updated_content = header + body.rstrip() + addition + "};" + content[match.end():]
+    else:
+        updated_content = header + "\n".join(new_entries.values()) + "\n};\n"
 
+    os.makedirs(os.path.dirname(SERVANTS_JS), exist_ok=True)
     with open(SERVANTS_JS, "w", encoding="utf-8") as f:
         f.write(updated_content)
 
@@ -423,6 +478,15 @@ def sync_servants(args):
 
     print(f"Found {len(target_cnos)} servant(s) to synchronize: {target_cnos}")
 
+    bulk_svt_map = {}
+    if len(target_cnos) > 20:
+        print(f"Large batch detected ({len(target_cnos)} servants). Fetching bulk nice_servant_lang_en.json...")
+        try:
+            nice_servants = get_cached_json(args.cache_dir, "nice_servant_lang_en.json", f"{API_BASE}/export/JP/nice_servant_lang_en.json", force=args.force)
+            bulk_svt_map = {s.get("id"): s for s in nice_servants if s.get("id")}
+        except Exception as e:
+            print(f"Bulk download failed ({e}), will fall back to individual requests.", file=sys.stderr)
+
     new_entries = {}
     for cno in target_cnos:
         s_info = playable_by_cno[cno]
@@ -435,14 +499,17 @@ def sync_servants(args):
         )
 
         if not has_existing:
-            print(f"Fetching new Servant {short_id} (long ID: {long_id})...")
-            svt_url = f"{API_BASE}/nice/JP/svt/{long_id}?lore=false&lang=en"
-            svt_payload = get_cached_json(
-                os.path.join(args.cache_dir, "svt"),
-                f"{long_id}.json",
-                svt_url,
-                force=args.force
-            )
+            if long_id in bulk_svt_map:
+                svt_payload = bulk_svt_map[long_id]
+            else:
+                print(f"Fetching new Servant {short_id} (long ID: {long_id})...")
+                svt_url = f"{API_BASE}/nice/JP/svt/{long_id}?lore=false&lang=en"
+                svt_payload = get_cached_json(
+                    os.path.join(args.cache_dir, "svt"),
+                    f"{long_id}.json",
+                    svt_url,
+                    force=args.force
+                )
 
             name = svt_payload.get("name") or s_info.get("name", f"Servant {cno}")
             base_traits, asc_diffs, opt_names = extract_servant_traits(svt_payload)
@@ -470,7 +537,7 @@ def sync_servants(args):
 # Craft Essence Synchronization Engine
 # ==============================================================================
 
-def extract_bond_craft_essences(equips: List[dict]) -> List[dict]:
+def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str, str]] = None) -> List[dict]:
     """Extract permanent Bond Gain CEs, parse traits/bonuses, and auto-group same-effect campaign series."""
     parsed_ces = []
     for ce in equips:
@@ -528,7 +595,11 @@ def extract_bond_craft_essences(equips: List[dict]) -> List[dict]:
             traits = sorted([normalize_trait_id(tid) or f"{tid:04d}" for tid in raw_tids], key=lambda x: (len(x), x))
 
         raw_name = ce.get("name", "").strip()
-        if cid_str in CE_OVERRIDES and "name" in CE_OVERRIDES[cid_str]:
+        if na_names and cid_str in na_names and na_names[cid_str]:
+            raw_name = na_names[cid_str]
+        elif cid_str in UNOFFICIAL_JP_TRANSLATIONS:
+            raw_name = UNOFFICIAL_JP_TRANSLATIONS[cid_str]
+        elif cid_str in CE_OVERRIDES and "name" in CE_OVERRIDES[cid_str]:
             raw_name = CE_OVERRIDES[cid_str]["name"]
 
         prefix_match = re.match(r"^(.+?)(?:\s*[:：]\s*.+)?$", raw_name)
@@ -638,6 +709,114 @@ def extract_bond_craft_essences(equips: List[dict]) -> List[dict]:
     return result
 
 
+def extract_special_traits_from_ce_skills(cache_dir: str, equips: List[dict], force: bool = False) -> Dict[int, str]:
+    """Dynamically extract bracketed trait names from NA CE skills for traits > 1000."""
+    extracted = {}
+    for ce in equips:
+        long_id = ce.get("id")
+        for s in ce.get("skills", []):
+            for fn in s.get("functions", []):
+                if fn.get("funcType") == "servantFriendshipUp":
+                    ow = fn.get("script", {}).get("overwriteTvals") or fn.get("overWriteTvalsList")
+                    target_tids = []
+                    if ow:
+                        for g in ow:
+                            for t in g:
+                                tid = t.get("id") if isinstance(t, dict) else t
+                                if tid > 1000 and tid != 2858 and tid != 2801200:
+                                    target_tids.append(tid)
+                    else:
+                        for t in fn.get("functvals", []):
+                            tid = t.get("id") if isinstance(t, dict) else t
+                            if tid > 1000 and tid != 2858 and tid != 2801200:
+                                target_tids.append(tid)
+
+                    if target_tids and long_id:
+                        try:
+                            na_ce_url = f"{API_BASE}/nice/NA/equip/{long_id}"
+                            na_ce = get_cached_json(os.path.join(cache_dir, "equip"), f"{long_id}.json", na_ce_url, force=force)
+                            for ns in na_ce.get("skills", []):
+                                detail = ns.get("detail", "")
+                                matches = re.findall(r"\[([a-zA-Z\s]+?)(?:\s*\(.+?\))?\]", detail)
+                                for m in matches:
+                                    clean = m.strip()
+                                    if clean and clean.upper() != "MAX":
+                                        for tid in target_tids:
+                                            extracted[tid] = clean.title()
+                        except Exception:
+                            pass
+    return extracted
+
+
+def fetch_and_build_trait_data(cache_dir: str, equips: List[dict], force: bool = False) -> Dict[str, str]:
+    """Dynamically fetch traits from Atlas Academy API and extract bracketed names from CE skills."""
+    print("Fetching trait definitions from Atlas Academy API...")
+    try:
+        api_traits = get_cached_json(cache_dir, "na_nice_trait.json", NA_NICE_TRAIT_URL, force=force)
+    except Exception as e:
+        print(f"  [WARN] Failed to fetch na_nice_trait.json ({e}), using cached/fallback traits.", file=sys.stderr)
+        api_traits = {}
+
+    traits_map: Dict[str, str] = {}
+
+    # 1. Standard trait ranges from API (Gender, Class, Attribute, Alignment, Rarity)
+    for start, end in TRAIT_PREFIX_RANGES:
+        for tid in range(start, end + 1):
+            if start == 100 and tid not in VALID_CLASS_IDS:
+                continue
+            s_tid = str(tid)
+            raw = api_traits.get(s_tid, "")
+            norm_id = f"{tid:04d}"
+            if raw or s_tid in INTERNAL_TRAIT_OVERRIDES:
+                traits_map[norm_id] = format_api_trait_name(s_tid, raw)
+
+    # 2. Extract special traits (>1000) from NA CE skill text dynamically
+    ce_skill_special = extract_special_traits_from_ce_skills(cache_dir, equips, force=force)
+    for tid, name in ce_skill_special.items():
+        traits_map[str(tid)] = name
+
+    # 3. Add known internal traits (Spiritron Dresses, FSN, Solomon)
+    for tid_str, name in INTERNAL_TRAIT_OVERRIDES.items():
+        if len(tid_str) > 4 or int(tid_str) > 1000:
+            if tid_str not in traits_map:
+                traits_map[tid_str] = name
+
+    return traits_map
+
+
+def sync_traits_js(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), equips: Optional[List[dict]] = None, force: bool = False, dry_run: bool = False):
+    """Generate and write src/scripts/data/traits.js dynamically from API trait data."""
+    if equips is None:
+        equips = get_cached_json(cache_dir, "nice_equip_lang_en.json", EQUIP_EXPORT_URL, force=force)
+
+    traits_dict = fetch_and_build_trait_data(cache_dir, equips, force=force)
+
+    # Sort keys: 4-digit standard traits first, then special traits numerically
+    def sort_key(k: str):
+        if len(k) == 4 and k.isdigit():
+            return (0, int(k))
+        return (1, int(k) if k.isdigit() else 99999999)
+
+    sorted_keys = sorted(traits_dict.keys(), key=sort_key)
+
+    lines = ["export const TRAIT_DATA = {"]
+    for k in sorted_keys:
+        val = traits_dict[k]
+        lines.append(f'  "{k}": {json.dumps(val)},')
+    lines.append("};\n")
+
+    content = "\n".join(lines)
+
+    if dry_run:
+        print(f"[DRY-RUN] Would write {len(sorted_keys)} traits to {TRAITS_JS}")
+        return
+
+    os.makedirs(os.path.dirname(TRAITS_JS), exist_ok=True)
+    with open(TRAITS_JS, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"Successfully synchronized {len(sorted_keys)} traits into {TRAITS_JS}")
+
+
 def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
     """Write src/scripts/data/craft_essences.js with formatted CE entries."""
     lines = ["export const CE_DATA = {"]
@@ -682,6 +861,7 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
         print(f"[DRY-RUN] Would write {len(ce_entries)} CE entries to {CE_DATA_JS}")
         return
 
+    os.makedirs(os.path.dirname(CE_DATA_JS), exist_ok=True)
     with open(CE_DATA_JS, "w", encoding="utf-8") as f:
         f.write(content)
 
@@ -689,11 +869,22 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
 
 
 def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), force: bool = False, dry_run: bool = False):
-    """Synchronize all permanent Bond Gain Craft Essences and their icons."""
+    """Synchronize all permanent Bond Gain Craft Essences, trait registry, and their icons."""
     print("Checking Atlas Academy API for latest Craft Essence data...")
+    na_url = f"{API_BASE}/export/NA/basic_equip.json"
+    na_names = {}
+    try:
+        na_data = get_cached_json(cache_dir, "na_basic_equip.json", na_url, force=force)
+        na_names = {f"{eq.get('collectionNo', 0):04d}": eq.get("name", "").strip() for eq in na_data if eq.get("collectionNo")}
+    except Exception as e:
+        print(f"  [WARN] NA basic_equip fetch failed, falling back to JP names/overrides: {e}", file=sys.stderr)
+
     equip_data = get_cached_json(cache_dir, "nice_equip_lang_en.json", EQUIP_EXPORT_URL, force=force)
-    ce_entries = extract_bond_craft_essences(equip_data)
+    ce_entries = extract_bond_craft_essences(equip_data, na_names=na_names)
     update_craft_essences_js(ce_entries, dry_run=dry_run)
+
+    # Automatically fetch and generate traits from API & CE skills
+    sync_traits_js(cache_dir=cache_dir, equips=equip_data, force=force, dry_run=dry_run)
 
     # Dynamic face icon sync
     try:
@@ -727,6 +918,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Perform dry run without writing files")
     parser.add_argument("--skip-servants", action="store_true", help="Skip servant synchronization")
     parser.add_argument("--skip-ces", action="store_true", help="Skip Craft Essence synchronization")
+    parser.add_argument("--skip-traits", action="store_true", help="Skip trait synchronization")
     args = parser.parse_args()
 
     # Configure global rate limiter delay
@@ -738,9 +930,11 @@ def main():
     if not args.skip_servants:
         sync_servants(args)
 
-    # 2. Sync Craft Essences
+    # 2. Sync Craft Essences & Traits
     if not args.skip_ces:
         sync_craft_essences(cache_dir=args.cache_dir, force=args.force, dry_run=args.dry_run)
+    elif not args.skip_traits:
+        sync_traits_js(cache_dir=args.cache_dir, force=args.force, dry_run=args.dry_run)
 
     if args.clean_cache:
         cleanup_cache_dir(args.cache_dir)

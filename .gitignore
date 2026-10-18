@@ -9,6 +9,8 @@ dist/
 .cache/
 public/servants/
 public/craft_essences/
+src/scripts/data/*.js
+!src/scripts/data/.gitkeep
 __pycache__/
 *.pyc
 

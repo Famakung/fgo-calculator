@@ -52,6 +52,7 @@ jobs:
             .cache/atlas/
             public/servants/
             public/craft_essences/
+            src/scripts/data/
           key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py') }}
           restore-keys: |
             fgo-atlas-cache-${{ runner.os }}-
