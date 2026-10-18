@@ -3,12 +3,16 @@
 scripts/sync_atlas_data.py
 Incremental Build-Time Atlas Academy Data Sync Engine for FGO Calculator.
 
-Fetches data from Atlas Academy API, extracts servant traits/names/classes,
-downloads and converts bordered face WebP icons to public/servants/{id}/,
-and updates src/scripts/data/servants.js in-place.
+Fetches data from Atlas Academy API:
+  - Extracts servant traits/names/classes, downloads and converts bordered face WebP icons to public/servants/{id}/,
+    and updates src/scripts/data/servants.js in-place.
+  - Automatically discovers permanent bond Craft Essences (filtering event-only CEs), parses traits/bonuses,
+    auto-groups same-effect campaign series variants, formats src/scripts/data/craft_essences.js, and
+    downloads bordered face WebP icons to public/craft_essences/{id}.webp.
 """
 
 import argparse
+import gzip
 import io
 import json
 import os
@@ -24,10 +28,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "src", "scripts", "data")
 SERVANTS_JS = os.path.join(DATA_DIR, "servants.js")
 TRAITS_JS = os.path.join(DATA_DIR, "traits.js")
+CE_DATA_JS = os.path.join(DATA_DIR, "craft_essences.js")
 PUBLIC_SERVANTS_DIR = os.path.join(BASE_DIR, "public", "servants")
 
 API_BASE = "https://api.atlasacademy.io"
 STATIC_BASE = "https://static.atlasacademy.io"
+EQUIP_EXPORT_URL = f"{API_BASE}/export/JP/nice_equip_lang_en.json"
 
 # Trait ranges to recognize and format to 4-digit zero-padded strings
 TRAIT_PREFIX_RANGES = [
@@ -38,11 +44,26 @@ TRAIT_PREFIX_RANGES = [
     (400, 405),  # Rarity: 0400 - 0405
 ]
 
+STANDARD_7_CLASSES = ["0100", "0101", "0102", "0103", "0104", "0105", "0106"]
+
 SPECIAL_TRAITS = {
     2654: "Modern Human",
     2780: "Spiritron Dresses",
     2821: "Beast Servants",
+    2883: "Fate/stay night",
     2801200: "Solomon",
+}
+
+SERIES_NAME_OVERRIDES = {
+    "Twilight Portrait": "Heroic Spirit Encounter",
+    "英霊逢魔": "Heroic Spirit Encounter",
+}
+
+CE_OVERRIDES = {
+    "0910": {"bonus": 15},
+    "2583": {"name": "Great Library of Memories"},
+    "2607": {"name": "Sword Saints of Wandering"},
+    "2701": {"name": "Gun Dealer"},
 }
 
 
@@ -79,8 +100,11 @@ rate_limiter = PoliteRateLimiter(delay_seconds=0.1)
 
 
 def fetch_url(url: str, timeout: int = 15, retries: int = 4) -> bytes:
-    """Fetch URL with polite rate-limiting, retries, and HTTP 429 backoff."""
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)"}
+    """Fetch URL with polite rate-limiting, retries, gzip decompression, and HTTP 429 backoff."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)",
+        "Accept-Encoding": "gzip",
+    }
     req = urllib.request.Request(url, headers=headers)
     last_err = None
 
@@ -88,7 +112,10 @@ def fetch_url(url: str, timeout: int = 15, retries: int = 4) -> bytes:
         rate_limiter.wait()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.read()
+                data = resp.read()
+                if resp.headers.get("Content-Encoding") == "gzip":
+                    data = gzip.decompress(data)
+                return data
         except urllib.error.HTTPError as e:
             last_err = e
             if e.code == 429:
@@ -124,21 +151,21 @@ def get_cached_json(cache_dir: str, filename: str, url: str, force: bool = False
     return data
 
 
+# ==============================================================================
+# Servant Synchronization Engine
+# ==============================================================================
+
 def load_existing_servant_keys() -> Set[str]:
     """Parse existing servant keys from src/scripts/data/servants.js."""
     if not os.path.exists(SERVANTS_JS):
         return set()
     with open(SERVANTS_JS, "r", encoding="utf-8") as f:
         content = f.read()
-    # Matches keys like "001": or 458: or "467-1":
     return set(re.findall(r'^\s*["\']?([0-9a-zA-Z-]+)["\']?\s*:\s*\{', content, re.MULTILINE))
 
 
 def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[str]], Dict[str, str]]:
-    """
-    Extract base traits, multi-ascension diffs, and optionLabels/optionNames.
-    Returns: (base_traits, ascension_diffs, option_names)
-    """
+    """Extract base traits, multi-ascension diffs, and optionLabels/optionNames."""
     raw_traits = svt_data.get("traits", [])
     rarity = svt_data.get("rarity", 0)
     has_costumes = bool(svt_data.get("costumes"))
@@ -167,7 +194,6 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
     indiv_asc = asc_add.get("individuality", {}).get("ascension", {})
     name_asc = asc_add.get("overWriteServantName", {}).get("ascension", {})
 
-    # Check ascensions 0, 1, 2
     stage_keys = [("0", "000"), ("1", "001"), ("2", "002")]
     has_diff = False
     temp_stage_traits = {}
@@ -191,11 +217,9 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
     if has_diff:
         for _, stage_key in stage_keys:
             if stage_key in temp_stage_traits:
-                # Store diff from base
                 diff = temp_stage_traits[stage_key] - base_trait_set
                 ascension_diffs[stage_key] = sorted(list(diff), key=lambda x: (len(x), x))
 
-    # Check for alternate names
     for api_idx, stage_key in stage_keys:
         if api_idx in name_asc and name_asc[api_idx]:
             alt_name = name_asc[api_idx]
@@ -277,7 +301,6 @@ def load_all_servant_stages() -> Dict[str, List[str]]:
                     break
         entry_text = body[start_pos:end_pos]
 
-        # Check if multi-ascension
         has_ascensions = bool(re.search(r"""traits\s*:\s*\{[^}]*?["\x27]?[0-9]{3}["\x27]?\s*:""", entry_text))
         stages = set(["000"])
         if has_ascensions:
@@ -326,7 +349,6 @@ def update_servants_js(new_entries: Dict[str, str], dry_run: bool = False):
     with open(SERVANTS_JS, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Find the closing brace of SERVANT_DATA = { ... };
     match = re.search(r'(export\s+const\s+SERVANT_DATA\s*=\s*\{)(.*?)(\n\};)', content, re.DOTALL)
     if not match:
         print("[ERROR] Could not parse SERVANT_DATA in servants.js", file=sys.stderr)
@@ -340,7 +362,6 @@ def update_servants_js(new_entries: Dict[str, str], dry_run: bool = False):
             print(v)
         return
 
-    # Append new entries before closing brace
     addition = "\n" + "\n".join(new_entries.values()) + "\n"
     updated_content = header + body.rstrip() + addition + "};" + content[match.end():]
 
@@ -350,44 +371,8 @@ def update_servants_js(new_entries: Dict[str, str], dry_run: bool = False):
     print(f"Successfully added {len(new_entries)} new servants to {SERVANTS_JS}")
 
 
-def cleanup_cache_dir(cache_dir: str):
-    """Remove cache directory and any empty parent directory."""
-    if os.path.exists(cache_dir):
-        shutil.rmtree(cache_dir, ignore_errors=True)
-        parent = os.path.dirname(cache_dir)
-        try:
-            if os.path.exists(parent) and not os.listdir(parent):
-                os.rmdir(parent)
-        except Exception:
-            pass
-        print("Local cache cleaned.")
-
-
-def ensure_ce_images(force: bool = False, dry_run: bool = False):
-    """Ensure all craft essence face icons exist in public/craft_essences/."""
-    try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from fetch_bordered_ces import sync_ces
-        sync_ces(force=force, dry_run=dry_run)
-    except Exception as e:
-        print(f"Warning: CE sync failed: {e}", file=sys.stderr)
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Incremental Atlas Academy Data Sync for FGO Calculator")
-    parser.add_argument("--cache-dir", default=os.path.join(BASE_DIR, ".cache", "atlas"), help="Path to cache directory")
-    parser.add_argument("--ids", nargs="+", help="Specific collection numbers to process (e.g. 482 481)")
-    parser.add_argument("--delay", type=float, default=0.1, help="Polite delay between requests in seconds (default: 0.1s)")
-    parser.add_argument("--clean-cache", action="store_true", help="Remove cache directory on finish to keep local files clean")
-    parser.add_argument("--force", action="store_true", help="Force re-fetching and overwriting assets")
-    parser.add_argument("--dry-run", action="store_true", help="Perform dry run without writing files")
-    args = parser.parse_args()
-
-    # Configure global rate limiter delay
-    rate_limiter.delay = max(0.0, args.delay)
-    if rate_limiter.delay > 0:
-        print(f"Polite rate limiter active: minimum {rate_limiter.delay}s delay between requests.")
-
+def sync_servants(args):
+    """Check for new servants and sync traits and face icons."""
     print("Checking Atlas Academy API for latest servant data...")
     basic_url = f"{API_BASE}/export/JP/basic_servant.json"
     basic_data = get_cached_json(args.cache_dir, "basic_servant.json", basic_url, force=args.force)
@@ -395,7 +380,6 @@ def main():
     existing_keys = load_existing_servant_keys()
     print(f"Current local dataset contains {len(existing_keys)} servants.")
 
-    # Filter playable servants
     playable = [s for s in basic_data if s.get("type") in ("normal", "heroine")]
     playable_by_cno = {}
     for s in playable:
@@ -403,10 +387,8 @@ def main():
         if cno > 0:
             playable_by_cno[cno] = s
 
-    # Map all required stages per servant from dataset
     servant_stages_map = load_all_servant_stages()
 
-    # Determine targets
     if args.ids:
         target_cnos = [int(x) for x in args.ids if x.isdigit() and int(x) in playable_by_cno]
     else:
@@ -416,12 +398,10 @@ def main():
             cno_padded = cno_str.zfill(3)
             short_id = cno_padded if cno < 100 else cno_str
 
-            # Check if text entry exists in servants.js
             has_existing = any(
                 k == cno_str or k == cno_padded or k.startswith(f"{cno_str}-") or k.startswith(f"{cno_padded}-")
                 for k in existing_keys
             )
-            # Check if all expected face icons exist on disk (including multi-ascensions and split IDs)
             if cno == 467:
                 img_missing = (
                     not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "467-1", "000.webp")) or
@@ -438,11 +418,8 @@ def main():
                 target_cnos.append(cno)
 
     if not target_cnos:
-        print("Dataset is already 100% up-to-date with Atlas Academy. No new servants to sync.")
-        ensure_ce_images(force=args.force, dry_run=args.dry_run)
-        if args.clean_cache:
-            cleanup_cache_dir(args.cache_dir)
-        sys.exit(0)
+        print("Servant dataset is already 100% up-to-date with Atlas Academy.")
+        return
 
     print(f"Found {len(target_cnos)} servant(s) to synchronize: {target_cnos}")
 
@@ -477,11 +454,8 @@ def main():
             entry_code = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_names)
             new_entries[short_id] = entry_code
         else:
-            # Existing servant with missing images: download directly without API overhead
             if cno == 467:
-                # 467-1: François Prelati (long ID: 505600)
                 download_face_icon("467-1", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                # 467-2: Francesca Prelati (long ID: 505700)
                 download_face_icon("467-2", 505700, stage="000", force=args.force, dry_run=args.dry_run)
             else:
                 stages_to_fetch = servant_stages_map.get(short_id, ["000"])
@@ -491,12 +465,287 @@ def main():
     if new_entries:
         update_servants_js(new_entries, dry_run=args.dry_run)
 
-    ensure_ce_images(force=args.force, dry_run=args.dry_run)
+
+# ==============================================================================
+# Craft Essence Synchronization Engine
+# ==============================================================================
+
+def extract_bond_craft_essences(equips: List[dict]) -> List[dict]:
+    """Extract permanent Bond Gain CEs, parse traits/bonuses, and auto-group same-effect campaign series."""
+    parsed_ces = []
+    for ce in equips:
+        cid = ce.get("collectionNo", 0)
+        if cid <= 0:
+            continue
+
+        bond_funcs = []
+        for s in ce.get("skills", []):
+            for f in s.get("functions", []):
+                if f.get("funcType") == "servantFriendshipUp":
+                    if any(not sv.get("EventId") for sv in f.get("svals", [])):
+                        bond_funcs.append((s, f))
+        if not bond_funcs:
+            continue
+
+        last_skill, f = bond_funcs[-1]
+        max_rate = 0
+        max_add = 0
+        for sv in f.get("svals", []):
+            if not sv.get("EventId"):
+                if "RateCount" in sv:
+                    max_rate = max(max_rate, sv["RateCount"] // 10)
+                if "AddCount" in sv:
+                    max_add = max(max_add, sv["AddCount"])
+
+        cid_str = f"{cid:04d}"
+        if cid_str in CE_OVERRIDES and "bonus" in CE_OVERRIDES[cid_str]:
+            max_rate = CE_OVERRIDES[cid_str]["bonus"]
+
+        traits = []
+        match_all = False
+        trait_groups = []
+        also_match = []
+
+        overwrite = f.get("script", {}).get("overwriteTvals") or f.get("overWriteTvalsList")
+        if overwrite:
+            if len(overwrite) == 1:
+                raw_tids = [t.get("id") if isinstance(t, dict) else t for t in overwrite[0]]
+                traits = sorted([normalize_trait_id(tid) or f"{tid:04d}" for tid in raw_tids], key=lambda x: (len(x), x))
+                match_all = True
+            else:
+                for grp in overwrite:
+                    raw_tids = [t.get("id") if isinstance(t, dict) else t for t in grp]
+                    if len(raw_tids) == 1 and raw_tids[0] == 2801200:
+                        also_match.append("2801200")
+                    else:
+                        for tid in raw_tids:
+                            if tid == 2858:  # standardClassServant
+                                trait_groups.append(STANDARD_7_CLASSES)
+                            else:
+                                trait_groups.append([normalize_trait_id(tid) or f"{tid:04d}"])
+        else:
+            raw_tids = [t.get("id") for t in f.get("functvals", [])]
+            traits = sorted([normalize_trait_id(tid) or f"{tid:04d}" for tid in raw_tids], key=lambda x: (len(x), x))
+
+        raw_name = ce.get("name", "").strip()
+        if cid_str in CE_OVERRIDES and "name" in CE_OVERRIDES[cid_str]:
+            raw_name = CE_OVERRIDES[cid_str]["name"]
+
+        prefix_match = re.match(r"^(.+?)(?:\s*[:：]\s*.+)?$", raw_name)
+        base_title = prefix_match.group(1).strip() if prefix_match else raw_name
+
+        parsed_ces.append({
+            "cid": cid,
+            "cid_str": cid_str,
+            "name": raw_name,
+            "base_title": base_title,
+            "flag": ce.get("flag"),
+            "bonus": max_rate,
+            "flatBonus": max_add,
+            "traits": traits,
+            "matchAll": match_all,
+            "traitGroups": trait_groups,
+            "alsoMatch": also_match,
+        })
+
+    parsed_ces.sort(key=lambda x: x["cid"])
+
+    # Grouping: Consecutive CEs sharing identical effect signature and series identity
+    groups = []
+    curr = []
+    for ce in parsed_ces:
+        if not curr:
+            curr.append(ce)
+            continue
+        prev = curr[-1]
+        same_eff = (
+            ce["bonus"] == prev["bonus"]
+            and ce["flatBonus"] == prev["flatBonus"]
+            and ce["traits"] == prev["traits"]
+            and ce["matchAll"] == prev["matchAll"]
+            and ce["traitGroups"] == prev["traitGroups"]
+            and ce["alsoMatch"] == prev["alsoMatch"]
+        )
+        same_series = ce["base_title"] == prev["base_title"] and ce["cid"] == prev["cid"] + 1
+        is_campaign = ce["flag"] == "svtEquipCampaign" and prev["flag"] == "svtEquipCampaign" and ce["cid"] == prev["cid"] + 1
+
+        if same_eff and (same_series or is_campaign):
+            curr.append(ce)
+        else:
+            groups.append(curr)
+            curr = [ce]
+    if curr:
+        groups.append(curr)
+
+    result = []
+    for g in groups:
+        first = g[0]
+        if len(g) > 1:
+            last = g[-1]
+            base_title = first["base_title"]
+            group_name = SERIES_NAME_OVERRIDES.get(base_title, base_title)
+            options = {}
+            group_image = None
+            for opt in g:
+                opt_name = opt["name"]
+                if base_title in SERIES_NAME_OVERRIDES:
+                    opt_name = re.sub(r"^" + re.escape(base_title), group_name, opt_name)
+                options[opt["cid_str"]] = {"name": opt_name}
+                if "Mash" in opt_name:
+                    group_image = opt["cid_str"]
+
+            entry = {
+                "id": first["cid_str"],
+                "name": group_name,
+                "isGroup": True,
+                "folder": f"{first['cid_str']}-{last['cid_str']}",
+                "options": options,
+            }
+            if group_image:
+                entry["groupImage"] = group_image
+            if first["flatBonus"]:
+                entry["flatBonus"] = first["flatBonus"]
+            if first["bonus"]:
+                entry["bonus"] = first["bonus"]
+            if first["traits"]:
+                entry["traits"] = first["traits"]
+            if first["matchAll"]:
+                entry["matchAll"] = True
+            if first["traitGroups"]:
+                entry["traitGroups"] = first["traitGroups"]
+            if first["alsoMatch"]:
+                entry["alsoMatch"] = first["alsoMatch"]
+            result.append(entry)
+        else:
+            entry = {
+                "id": first["cid_str"],
+                "name": first["name"],
+            }
+            if first["bonus"]:
+                entry["bonus"] = first["bonus"]
+            if first["flatBonus"]:
+                entry["flatBonus"] = first["flatBonus"]
+            if first["traits"] is not None and not first["traitGroups"]:
+                entry["traits"] = first["traits"]
+            if first["matchAll"]:
+                entry["matchAll"] = True
+            if first["traitGroups"]:
+                entry["traitGroups"] = first["traitGroups"]
+            if first["alsoMatch"]:
+                entry["alsoMatch"] = first["alsoMatch"]
+            result.append(entry)
+
+    return result
+
+
+def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
+    """Write src/scripts/data/craft_essences.js with formatted CE entries."""
+    lines = ["export const CE_DATA = {"]
+    for entry in ce_entries:
+        key_repr = f'"{entry["id"]}"'
+        lines.append(f"  {key_repr}: {{")
+        lines.append(f'    name: {json.dumps(entry["name"])},')
+        if entry.get("isGroup"):
+            lines.append("    isGroup: true,")
+            if entry.get("flatBonus"):
+                lines.append(f'    flatBonus: {entry["flatBonus"]},')
+            if entry.get("bonus"):
+                lines.append(f'    bonus: {entry["bonus"]},')
+            if entry.get("traits"):
+                lines.append(f'    traits: {json.dumps(entry["traits"])},')
+            if entry.get("groupImage"):
+                lines.append(f'    groupImage: "{entry["groupImage"]}",')
+            if entry.get("folder"):
+                lines.append(f'    folder: "{entry["folder"]}",')
+            lines.append("    options: {")
+            for opt_id, opt in entry["options"].items():
+                lines.append(f'      "{opt_id}": {{ name: {json.dumps(opt["name"])} }},')
+            lines.append("    },")
+        else:
+            if entry.get("bonus"):
+                lines.append(f'    bonus: {entry["bonus"]},')
+            if entry.get("flatBonus"):
+                lines.append(f'    flatBonus: {entry["flatBonus"]},')
+            if entry.get("traits") is not None and not entry.get("traitGroups"):
+                lines.append(f'    traits: {json.dumps(entry["traits"])},')
+            if entry.get("matchAll"):
+                lines.append("    matchAll: true,")
+            if entry.get("traitGroups"):
+                lines.append(f'    traitGroups: {json.dumps(entry["traitGroups"])},')
+            if entry.get("alsoMatch"):
+                lines.append(f'    alsoMatch: {json.dumps(entry["alsoMatch"])},')
+        lines.append("  },")
+    lines.append("};\n")
+    content = "\n".join(lines)
+
+    if dry_run:
+        print(f"[DRY-RUN] Would write {len(ce_entries)} CE entries to {CE_DATA_JS}")
+        return
+
+    with open(CE_DATA_JS, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"Successfully synchronized {len(ce_entries)} Craft Essences into {CE_DATA_JS}")
+
+
+def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), force: bool = False, dry_run: bool = False):
+    """Synchronize all permanent Bond Gain Craft Essences and their icons."""
+    print("Checking Atlas Academy API for latest Craft Essence data...")
+    equip_data = get_cached_json(cache_dir, "nice_equip_lang_en.json", EQUIP_EXPORT_URL, force=force)
+    ce_entries = extract_bond_craft_essences(equip_data)
+    update_craft_essences_js(ce_entries, dry_run=dry_run)
+
+    # Dynamic face icon sync
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from fetch_bordered_ces import sync_ces
+        sync_ces(force=force, dry_run=dry_run, cache_dir=cache_dir)
+    except Exception as e:
+        print(f"Warning: CE icon sync failed: {e}", file=sys.stderr)
+
+
+def cleanup_cache_dir(cache_dir: str):
+    """Remove cache directory and any empty parent directory."""
+    if os.path.exists(cache_dir):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        parent = os.path.dirname(cache_dir)
+        try:
+            if os.path.exists(parent) and not os.listdir(parent):
+                os.rmdir(parent)
+        except Exception:
+            pass
+        print("Local cache cleaned.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Incremental Atlas Academy Data Sync for FGO Calculator")
+    parser.add_argument("--cache-dir", default=os.path.join(BASE_DIR, ".cache", "atlas"), help="Path to cache directory")
+    parser.add_argument("--ids", nargs="+", help="Specific collection numbers to process (e.g. 482 481)")
+    parser.add_argument("--delay", type=float, default=0.1, help="Polite delay between requests in seconds (default: 0.1s)")
+    parser.add_argument("--clean-cache", action="store_true", help="Remove cache directory on finish to keep local files clean")
+    parser.add_argument("--force", action="store_true", help="Force re-fetching and overwriting assets")
+    parser.add_argument("--dry-run", action="store_true", help="Perform dry run without writing files")
+    parser.add_argument("--skip-servants", action="store_true", help="Skip servant synchronization")
+    parser.add_argument("--skip-ces", action="store_true", help="Skip Craft Essence synchronization")
+    args = parser.parse_args()
+
+    # Configure global rate limiter delay
+    rate_limiter.delay = max(0.0, args.delay)
+    if rate_limiter.delay > 0:
+        print(f"Polite rate limiter active: minimum {rate_limiter.delay}s delay between requests.")
+
+    # 1. Sync Servants
+    if not args.skip_servants:
+        sync_servants(args)
+
+    # 2. Sync Craft Essences
+    if not args.skip_ces:
+        sync_craft_essences(cache_dir=args.cache_dir, force=args.force, dry_run=args.dry_run)
 
     if args.clean_cache:
         cleanup_cache_dir(args.cache_dir)
 
-    print("Sync completed successfully.")
+    print("Sync process completed.")
 
 
 if __name__ == "__main__":

@@ -4,11 +4,17 @@ Fetch and convert Atlas Academy bordered Craft Essence (CE) face icons to WebP.
 Source URL: https://static.atlasacademy.io/JP/Faces/f_{long_id}_bordered.png
 Outputs:
   - public/craft_essences/{ce_id}.webp (142x155 WebP, q80)
+
+Dynamic: Resolves 8-digit face IDs directly from Atlas Academy data (extraAssets.faces.equip),
+eliminating hardcoded ID mappings.
 """
 
 import argparse
+import gzip
 import io
+import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -17,58 +23,79 @@ from PIL import Image
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CE_DIR = os.path.join(BASE_DIR, "public", "craft_essences")
+CE_DATA_JS = os.path.join(BASE_DIR, "src", "scripts", "data", "craft_essences.js")
+DEFAULT_CACHE_DIR = os.path.join(BASE_DIR, ".cache", "atlas")
+EXPORT_URL = "https://api.atlasacademy.io/export/JP/nice_equip_lang_en.json"
 
-CE_MAP = {
-    # Heroic Portrait (0099–0108) — 4★
-    "0099": "94009700",
-    "0100": "94009800",
-    "0101": "94009900",
-    "0102": "94010000",
-    "0103": "94010100",
-    "0104": "94010200",
-    "0105": "94010300",
-    "0106": "94010400",
-    "0107": "94010500",
-    "0108": "94010600",
-    # Standalone CEs — 5★
-    "0330": "94019700",
-    "0910": "94035200",
-    "1080": "94039900",
-    "1949": "94074800",
-    "2020": "94077400",
-    "2052": "94078500",
-    "2124": "94080600",
-    "2142": "94082200",
-    "2209": "94083900",
-    "2233": "94085900",
-    "2437": "94088000",
-    "2509": "94089900",
-    "2583": "94092100",
-    "2607": "94093200",
-    "2701": "94094900",
-    # Heroic Spirit Apex (2512–2532) — 4★
-    "2512": "93113100",
-    "2513": "93113200",
-    "2514": "93113300",
-    "2515": "93113400",
-    "2516": "93113500",
-    "2517": "93113600",
-    "2518": "93113700",
-    "2519": "93113800",
-    "2520": "93113900",
-    "2521": "93114000",
-    "2522": "93114100",
-    "2523": "93114200",
-    "2524": "93114300",
-    "2525": "93114400",
-    "2526": "93114500",
-    "2527": "93114600",
-    "2528": "93114700",
-    "2529": "93114800",
-    "2530": "93114900",
-    "2531": "93115000",
-    "2532": "93115100",
-}
+
+def extract_face_id(equip: dict) -> str:
+    """Extract 8-digit face icon ID from equip extraAssets."""
+    faces = equip.get("extraAssets", {}).get("faces", {}).get("equip", {})
+    if not faces:
+        return ""
+    face_url = list(faces.values())[0] if isinstance(faces, dict) else str(faces)
+    match = re.search(r"f_(\d+)\.png", face_url)
+    return match.group(1) if match else ""
+
+
+def load_ce_face_map(cache_dir: str = DEFAULT_CACHE_DIR, force: bool = False) -> dict:
+    """Load or download nice_equip_lang_en.json and build a collectionNo -> face_id map."""
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_file = os.path.join(cache_dir, "nice_equip_lang_en.json")
+
+    if not force and os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = None
+    else:
+        data = None
+
+    if data is None:
+        print("Fetching latest Craft Essence catalog from Atlas Academy...")
+        req = urllib.request.Request(
+            EXPORT_URL,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)",
+                "Accept-Encoding": "gzip",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw_bytes = resp.read()
+            if resp.headers.get("Content-Encoding") == "gzip":
+                raw_bytes = gzip.decompress(raw_bytes)
+            data = json.loads(raw_bytes.decode("utf-8"))
+
+        with open(cache_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+
+    face_map = {}
+    for ce in data:
+        cid = ce.get("collectionNo", 0)
+        if cid > 0:
+            face_id = extract_face_id(ce)
+            if face_id:
+                face_map[f"{cid:04d}"] = face_id
+
+    return face_map
+
+
+def load_active_ce_ids() -> list:
+    """Parse active CE IDs from src/scripts/data/craft_essences.js (including grouped options)."""
+    if not os.path.exists(CE_DATA_JS):
+        return []
+
+    with open(CE_DATA_JS, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Matches keys: "0099": or 2512:
+    found_keys = re.findall(r'^\s*["\']?(\d{4})["\']?\s*:\s*\{', content, re.MULTILINE)
+    # Also find sub-option keys
+    opt_keys = re.findall(r'["\']?(\d{4})["\']?\s*:\s*\{\s*name:', content)
+    all_ids = sorted(list(set(found_keys + opt_keys)))
+    return all_ids
+
 
 def download_and_convert(item):
     ce_id, long_id, force, dry_run = item
@@ -89,13 +116,12 @@ def download_and_convert(item):
     for url in urls_to_try:
         for attempt in range(3):
             try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)"})
                 with urllib.request.urlopen(req, timeout=15) as resp:
                     img_data = resp.read()
 
                 img = Image.open(io.BytesIO(img_data)).convert("RGBA")
                 os.makedirs(CE_DIR, exist_ok=True)
-
                 img.save(dest_file, "WEBP", quality=80, method=6)
 
                 return (ce_id, True, f"{img.size[0]}x{img.size[1]}", url)
@@ -105,12 +131,18 @@ def download_and_convert(item):
 
     return (ce_id, False, str(last_err), bordered_url)
 
-def sync_ces(ids=None, workers=8, force=False, dry_run=False):
+
+def sync_ces(items_map=None, ids=None, workers=8, force=False, dry_run=False, cache_dir=DEFAULT_CACHE_DIR):
     """Sync CE icons from Atlas Academy, skipping existing files if force=False."""
+    if items_map is None:
+        face_map = load_ce_face_map(cache_dir=cache_dir, force=force)
+        target_ids = ids if ids else load_active_ce_ids()
+        items_map = {cid: face_map[cid] for cid in target_ids if cid in face_map}
+
     if ids:
-        items = [(cid, CE_MAP[cid], force, dry_run) for cid in ids if cid in CE_MAP]
+        items = [(cid, items_map[cid], force, dry_run) for cid in ids if cid in items_map]
     else:
-        items = [(cid, lid, force, dry_run) for cid, lid in sorted(CE_MAP.items())]
+        items = [(cid, lid, force, dry_run) for cid, lid in sorted(items_map.items())]
 
     missing_or_target = [it for it in items if force or not os.path.exists(os.path.join(CE_DIR, f"{it[0]}.webp"))]
     if not missing_or_target and not force:
@@ -138,15 +170,18 @@ def sync_ces(ids=None, workers=8, force=False, dry_run=False):
     print(f"CE Sync finished in {elapsed:.1f}s: {success_count} succeeded, {fail_count} failed.")
     return fail_count == 0
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Fetch and convert CE icons to bordered WebP")
+    parser = argparse.ArgumentParser(description="Fetch and convert CE icons to bordered WebP dynamically")
     parser.add_argument("--ids", nargs="+", help="Specific CE IDs to process (e.g. 0330 0910)")
     parser.add_argument("--workers", type=int, default=8, help="Parallel worker threads")
     parser.add_argument("--force", action="store_true", help="Force re-download and overwrite existing files")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without modifying files")
+    parser.add_argument("--cache-dir", default=DEFAULT_CACHE_DIR, help="Atlas API cache directory")
     args = parser.parse_args()
 
-    sync_ces(ids=args.ids, workers=args.workers, force=args.force, dry_run=args.dry_run)
+    sync_ces(ids=args.ids, workers=args.workers, force=args.force, dry_run=args.dry_run, cache_dir=args.cache_dir)
+
 
 if __name__ == "__main__":
     main()

@@ -40,4 +40,5 @@ export const TRAIT_DATA = {
   2780: "Spiritron Dresses",
   2821: "Beast Servants",
   2801200: "Solomon",
+  2883: "Fate/stay night",
 };
