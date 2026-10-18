@@ -695,7 +695,9 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
         for sv in f.get("svals", []):
             if not sv.get("EventId"):
                 if "RateCount" in sv:
-                    max_rate = max(max_rate, sv["RateCount"] // 10)
+                    val = sv["RateCount"] / 10
+                    rate_val = int(val) if val.is_integer() else val
+                    max_rate = max(max_rate, rate_val)
                 if "AddCount" in sv:
                     max_add = max(max_add, sv["AddCount"])
 
