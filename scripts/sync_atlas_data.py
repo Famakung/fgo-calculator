@@ -80,6 +80,20 @@ CE_OVERRIDES = {
     "0910": {"bonus": 15},
 }
 
+KNOWN_COSTUME_LABELS = {
+    "301330": "Piercing Bunny",
+    "102830": "Decapitating Bunny (First Ascension)",
+    "102840": "Decapitating Bunny (Second Ascension)",
+    "102850": "Decapitating Bunny (Third Ascension)",
+    "702830": "Mad Bunny",
+    "204330": "Bloody Bunny",
+    "1101630": "Serious Mode",
+    "4000130": "Earth President",
+    "2301130": "Incognito Glasses",
+}
+
+COSTUME_STAGE_KEYS = ["300", "400", "500"]
+
 
 def camel_to_words(s: str) -> str:
     """Split camelCase or PascalCase into space-separated words."""
@@ -119,6 +133,9 @@ def format_api_trait_name(tid_str: str, raw_name: str) -> str:
 
 def normalize_trait_id(tid: int) -> Optional[str]:
     """Normalize Atlas Academy trait ID to FGO Calculator trait ID string."""
+    if tid == 132:
+        return "0124"
+
     for start, end in TRAIT_PREFIX_RANGES:
         if start <= tid <= end:
             return f"{tid:04d}"
@@ -214,72 +231,145 @@ def load_existing_servant_keys() -> Set[str]:
     return set(re.findall(r'^\s*["\']?([0-9a-zA-Z-]+)["\']?\s*:\s*\{', content, re.MULTILINE))
 
 
-def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[str]], Dict[str, str]]:
-    """Extract base traits, multi-ascension diffs, and optionLabels/optionNames."""
+def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[str]], Dict[str, str], Dict[str, str], Dict[str, int]]:
+    """Extract base traits, multi-ascension diffs, optionLabels, optionNames, and costume battleCharaIds."""
     raw_traits = svt_data.get("traits", [])
     rarity = svt_data.get("rarity", 0)
-    has_costumes = bool(svt_data.get("costumes"))
+    cno = svt_data.get("collectionNo", 0)
+    has_costumes = bool(svt_data.get("costumes")) or bool(svt_data.get("profile", {}).get("costume"))
 
-    base_trait_set = set()
-    for t in raw_traits:
-        tid = t.get("id") if isinstance(t, dict) else t
-        norm = normalize_trait_id(tid)
-        if norm:
-            base_trait_set.add(norm)
+    # Helper to parse and normalize trait list
+    def parse_traits(tlist):
+        tset = set()
+        for t in tlist:
+            tid = t.get("id") if isinstance(t, dict) else t
+            norm = normalize_trait_id(tid)
+            if norm:
+                tset.add(norm)
+        if 0 <= rarity <= 5:
+            tset.add(f"{400 + rarity:04d}")
+        if has_costumes:
+            tset.add("2780")
+        if "0001" not in tset and "0002" not in tset:
+            tset.add("0003")
+        if cno == 238:
+            tset.add("2821")
+        if cno == 444:
+            tset.add("0124")
+        return tset
 
-    # Add rarity trait (e.g. 5★ -> "0405")
-    if 0 <= rarity <= 5:
-        base_trait_set.add(f"{400 + rarity:04d}")
-
-    # Add Spiritron Dresses trait if servant has costumes
-    if has_costumes:
-        base_trait_set.add("2780")
-
-    base_traits = sorted(list(base_trait_set), key=lambda x: (len(x), x))
-
-    ascension_diffs = {}
-    option_names = {}
+    default_set = parse_traits(raw_traits)
 
     asc_add = svt_data.get("ascensionAdd", {})
     indiv_asc = asc_add.get("individuality", {}).get("ascension", {})
     name_asc = asc_add.get("overWriteServantName", {}).get("ascension", {})
+    indiv_costume = asc_add.get("individuality", {}).get("costume", {})
+    costumes_profile = svt_data.get("profile", {}).get("costume", {})
 
-    stage_keys = [("0", "000"), ("1", "001"), ("2", "002")]
-    has_diff = False
-    temp_stage_traits = {}
+    # Build stage trait sets
+    stage_sets = {}
+    raw_0 = indiv_asc.get("0") or indiv_asc.get("1")
+    raw_1 = indiv_asc.get("2") or indiv_asc.get("1") or indiv_asc.get("0")
+    raw_2 = indiv_asc.get("3") or indiv_asc.get("4") or indiv_asc.get("2")
 
-    for api_idx, stage_key in stage_keys:
-        if api_idx in indiv_asc and indiv_asc[api_idx]:
-            stage_set = set()
-            for t in indiv_asc[api_idx]:
-                tid = t.get("id") if isinstance(t, dict) else t
-                norm = normalize_trait_id(tid)
-                if norm:
-                    stage_set.add(norm)
-            if 0 <= rarity <= 5:
-                stage_set.add(f"{400 + rarity:04d}")
-            if has_costumes:
-                stage_set.add("2780")
-            temp_stage_traits[stage_key] = stage_set
-            if stage_set != base_trait_set:
-                has_diff = True
+    stage_sets["000"] = parse_traits(raw_0) if raw_0 else set(default_set)
+    stage_sets["001"] = parse_traits(raw_1) if raw_1 else set(default_set)
+    stage_sets["002"] = parse_traits(raw_2) if raw_2 else set(default_set)
 
-    if has_diff:
-        for _, stage_key in stage_keys:
-            if stage_key in temp_stage_traits:
-                diff = temp_stage_traits[stage_key] - base_trait_set
-                ascension_diffs[stage_key] = sorted(list(diff), key=lambda x: (len(x), x))
+    # Costumes
+    sorted_cids = sorted(
+        indiv_costume.keys(),
+        key=lambda c: (
+            costumes_profile.get(str(c), {}).get("costumeCollectionNo", int(c) if str(c).isdigit() else 0)
+        )
+    )
 
-    for api_idx, stage_key in stage_keys:
-        if api_idx in name_asc and name_asc[api_idx]:
-            alt_name = name_asc[api_idx]
-            if alt_name and alt_name != svt_data.get("name"):
-                option_names[stage_key] = alt_name
+    costume_stages = {}
+    costume_labels = {}
+    costume_battle_ids = {}
+    costume_idx = 0
+    for cid in sorted_cids:
+        ctraits = indiv_costume[cid]
+        c_str = str(cid)
+        c_info = costumes_profile.get(c_str, {})
+        battle_chara_id = c_info.get("battleCharaId") or (int(cid) if str(cid).isdigit() else None)
+        label = KNOWN_COSTUME_LABELS.get(c_str) or c_info.get("shortName") or c_info.get("name")
 
-    return base_traits, ascension_diffs, option_names
+        if ctraits:
+            cset = parse_traits(ctraits)
+            if cset != default_set or c_str in KNOWN_COSTUME_LABELS:
+                st_key = COSTUME_STAGE_KEYS[costume_idx] if costume_idx < len(COSTUME_STAGE_KEYS) else f"{300 + costume_idx * 100}"
+                costume_idx += 1
+                costume_stages[st_key] = cset
+                if battle_chara_id:
+                    costume_battle_ids[st_key] = battle_chara_id
+                if label:
+                    costume_labels[st_key] = label
+
+    # Check if ascensions differ amongst themselves
+    has_asc_diff = (stage_sets["000"] != stage_sets["001"]) or (stage_sets["001"] != stage_sets["002"]) or (stage_sets["000"] != stage_sets["002"])
+    has_costume_diff = bool(costume_stages)
+
+    ascension_diffs = {}
+    option_labels = dict(costume_labels)
+    option_names = {}
+
+    if not has_asc_diff and not has_costume_diff:
+        if cno == 388:
+            option_labels["300"] = "Serious Mode"
+            costume_battle_ids["300"] = 1101630
+        base_traits = sorted(list(default_set), key=lambda x: (len(x), x))
+        return base_traits, ascension_diffs, option_labels, option_names, costume_battle_ids
+
+    if has_asc_diff:
+        if cno in (351, 385, 415, 416, 444, 448, 449, 465):
+            base_set = stage_sets["000"] & stage_sets["001"] & stage_sets["002"]
+            if costume_stages:
+                for cset in costume_stages.values():
+                    base_set = base_set & cset
+            for sk in ["000", "001", "002"]:
+                ascension_diffs[sk] = sorted(list(stage_sets[sk] - base_set), key=lambda x: (len(x), x))
+            for ck, cset in costume_stages.items():
+                ascension_diffs[ck] = sorted(list(cset - base_set), key=lambda x: (len(x), x))
+        else:
+            base_set = default_set
+            for sk in ["000", "001", "002"]:
+                diff = stage_sets[sk] - base_set
+                if diff:
+                    ascension_diffs[sk] = sorted(list(diff), key=lambda x: (len(x), x))
+            for ck, cset in costume_stages.items():
+                diff = cset - base_set
+                if diff:
+                    ascension_diffs[ck] = sorted(list(diff), key=lambda x: (len(x), x))
+    else:
+        base_set = default_set
+        for ck, cset in costume_stages.items():
+            diff = cset - base_set
+            if diff:
+                ascension_diffs[ck] = sorted(list(diff), key=lambda x: (len(x), x))
+
+    # Overwrite names
+    for api_idx, name_val in name_asc.items():
+        if not name_val or name_val == svt_data.get("name"):
+            continue
+        if api_idx in ("0",):
+            option_names["000"] = name_val
+        elif api_idx in ("1", "2"):
+            option_names["001"] = name_val
+        elif api_idx in ("3", "4"):
+            option_names["002"] = name_val
+
+    if cno == 388:
+        option_labels["300"] = "Serious Mode"
+        costume_battle_ids["300"] = 1101630
+    if cno == 448:
+        option_names["300"] = "Jade Rabbit"
+
+    base_traits = sorted(list(base_set), key=lambda x: (len(x), x))
+    return base_traits, ascension_diffs, option_labels, option_names, costume_battle_ids
 
 
-def download_face_icon(short_id: str, long_id: int, stage: Union[int, str] = "000", dest_filename: Optional[str] = None, force: bool = False, dry_run: bool = False) -> bool:
+def download_face_icon(short_id: str, long_id: int, stage: Union[int, str] = "000", dest_filename: Optional[str] = None, battle_chara_id: Optional[int] = None, force: bool = False, dry_run: bool = False) -> bool:
     """Download bordered face icon from Atlas Academy CDN and save as 142x155 WebP."""
     stage_str = str(stage).zfill(3) if str(stage).isdigit() else str(stage)
     dest_dir = os.path.join(PUBLIC_SERVANTS_DIR, short_id)
@@ -298,14 +388,22 @@ def download_face_icon(short_id: str, long_id: int, stage: Union[int, str] = "00
     base = long_str[:-2] if len(long_str) > 2 else long_str
     stage_int = int(stage_str) if stage_str.isdigit() else 0
 
-    candidate_urls = [
+    candidate_urls = []
+    if battle_chara_id:
+        candidate_urls.extend([
+            f"{STATIC_BASE}/JP/Faces/f_{battle_chara_id}0_bordered.png",
+            f"{STATIC_BASE}/JP/Faces/f_{battle_chara_id}_bordered.png",
+            f"{STATIC_BASE}/JP/Faces/f_{battle_chara_id}0.png",
+            f"{STATIC_BASE}/JP/Faces/f_{battle_chara_id}.png",
+        ])
+    candidate_urls.extend([
         f"{STATIC_BASE}/JP/Faces/f_{base}{stage_str}_bordered.png",
         f"{STATIC_BASE}/JP/Faces/f_{base}{stage_str}.png",
         f"{STATIC_BASE}/JP/Faces/f_{long_str}{stage_int}_bordered.png",
         f"{STATIC_BASE}/JP/Faces/f_{long_str}{stage_int}.png",
         f"{STATIC_BASE}/JP/Faces/f_{long_str}0_bordered.png",
         f"{STATIC_BASE}/JP/Faces/f_{long_str}0.png",
-    ]
+    ])
 
     for url in candidate_urls:
         try:
@@ -367,12 +465,19 @@ def load_all_servant_stages() -> Dict[str, List[str]]:
     return stages_by_id
 
 
-def format_servant_js_entry(short_id: str, name: str, base_traits: List[str], ascension_diffs: Dict[str, List[str]], option_names: Dict[str, str]) -> str:
+def format_servant_js_entry(
+    short_id: str,
+    name: str,
+    base_traits: List[str],
+    ascension_diffs: Dict[str, List[str]],
+    option_labels: Optional[Dict[str, str]] = None,
+    option_names: Optional[Dict[str, str]] = None,
+) -> str:
     """Format a servant JS entry matching code conventions."""
     key_repr = f'"{short_id}"' if (short_id.startswith("0") or "-" in short_id) else short_id
     escaped_name = name.replace('"', '\\"')
 
-    if not ascension_diffs:
+    if not ascension_diffs and not option_labels and not option_names:
         traits_json = json.dumps(base_traits)
         return f'  {key_repr}: {{ name: "{escaped_name}", traits: {{ base: {traits_json} }} }},'
 
@@ -381,11 +486,24 @@ def format_servant_js_entry(short_id: str, name: str, base_traits: List[str], as
     lines.append('    traits: {')
     lines.append(f'      base: {json.dumps(base_traits)},')
     for stage, diff in sorted(ascension_diffs.items()):
-        lines.append(f'      "{stage}": {json.dumps(diff)},')
+        stage_repr = stage if stage.isdigit() and int(stage) >= 300 else f'"{stage}"'
+        lines.append(f'      {stage_repr}: {json.dumps(diff)},')
     lines.append('    },')
+    if option_labels:
+        labels_parts = [f'{k}: {json.dumps(v)}' for k, v in sorted(option_labels.items())]
+        if len(labels_parts) > 1:
+            lines.append('    optionLabels: {')
+            for lp in labels_parts:
+                lines.append(f'      {lp},')
+            lines.append('    },')
+        else:
+            lines.append(f'    optionLabels: {{ {labels_parts[0]} }},')
     if option_names:
-        opt_str = json.dumps(option_names)
-        lines.append(f'    optionNames: {opt_str},')
+        names_parts = []
+        for k, v in sorted(option_names.items()):
+            k_repr = f'"{k}"' if k.startswith("0") else k
+            names_parts.append(f'{k_repr}: {json.dumps(v)}')
+        lines.append(f'    optionNames: {{ {", ".join(names_parts)} }},')
     lines.append('  },')
     return "\n".join(lines)
 
@@ -481,9 +599,9 @@ def sync_servants(args):
 
     bulk_svt_map = {}
     if len(target_cnos) > 20:
-        print(f"Large batch detected ({len(target_cnos)} servants). Fetching bulk nice_servant_lang_en.json...")
+        print(f"Large batch detected ({len(target_cnos)} servants). Fetching bulk nice_servant_lore_lang_en.json...")
         try:
-            nice_servants = get_cached_json(args.cache_dir, "nice_servant_lang_en.json", f"{API_BASE}/export/JP/nice_servant_lang_en.json", force=args.force)
+            nice_servants = get_cached_json(args.cache_dir, "nice_servant_lore_lang_en.json", f"{API_BASE}/export/JP/nice_servant_lore_lang_en.json", force=args.force)
             bulk_svt_map = {s.get("id"): s for s in nice_servants if s.get("id")}
         except Exception as e:
             print(f"Bulk download failed ({e}), will fall back to individual requests.", file=sys.stderr)
@@ -504,7 +622,7 @@ def sync_servants(args):
                 svt_payload = bulk_svt_map[long_id]
             else:
                 print(f"Fetching new Servant {short_id} (long ID: {long_id})...")
-                svt_url = f"{API_BASE}/nice/JP/svt/{long_id}?lore=false&lang=en"
+                svt_url = f"{API_BASE}/nice/JP/svt/{long_id}?lore=true&lang=en"
                 svt_payload = get_cached_json(
                     os.path.join(args.cache_dir, "svt"),
                     f"{long_id}.json",
@@ -513,16 +631,27 @@ def sync_servants(args):
                 )
 
             name = svt_payload.get("name") or s_info.get("name", f"Servant {cno}")
-            base_traits, asc_diffs, opt_names = extract_servant_traits(svt_payload)
+            base_traits, asc_diffs, opt_labels, opt_names, costume_battle_ids = extract_servant_traits(svt_payload)
+
+            if cno == 467:
+                # Handle François and Francesca Prélat split
+                download_face_icon("467-1", 505600, stage="000", force=args.force, dry_run=args.dry_run)
+                download_face_icon("467-2", 505700, stage="000", force=args.force, dry_run=args.dry_run)
+                t_m = sorted(list((set(base_traits) - {"0002", "0003"}) | {"0001"}))
+                t_f = sorted(list((set(base_traits) - {"0001", "0003"}) | {"0002"}))
+                new_entries["467-1"] = format_servant_js_entry("467-1", "François Prélat", t_m, {}, {}, {})
+                new_entries["467-2"] = format_servant_js_entry("467-2", "Francesca Prélat", t_f, {}, {}, {})
+                continue
 
             download_face_icon(short_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
             if asc_diffs:
                 download_face_icon(short_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
                 download_face_icon(short_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
                 for stage in asc_diffs.keys():
-                    download_face_icon(short_id, long_id, stage=stage, force=args.force, dry_run=args.dry_run)
+                    b_id = costume_battle_ids.get(stage)
+                    download_face_icon(short_id, long_id, stage=stage, battle_chara_id=b_id, force=args.force, dry_run=args.dry_run)
 
-            entry_code = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_names)
+            entry_code = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_labels, opt_names)
             new_entries[short_id] = entry_code
         else:
             if cno == 467:
