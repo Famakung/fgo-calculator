@@ -52,6 +52,11 @@ VALID_CLASS_IDS = {
     100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 115, 117, 120, 124
 }
 
+# Atlas Academy trait IDs for Beast class variants that map to 0124 (Class Beast)
+BEAST_CLASS_TRAIT_IDS = {
+    113, 114, 116, 118, 119, 121, 122, 124, 125, 126, 129, 132, 133, 135, 194
+}
+
 # Special trait mappings bridging Atlas internal identifiers with official in-game NA terminology
 # (e.g. Attribute 200 in official NA in-game status is "Heaven Attribute", not Atlas's internal "Sky")
 INTERNAL_TRAIT_OVERRIDES = {
@@ -133,7 +138,7 @@ def format_api_trait_name(tid_str: str, raw_name: str) -> str:
 
 def normalize_trait_id(tid: int) -> Optional[str]:
     """Normalize Atlas Academy trait ID to FGO Calculator trait ID string."""
-    if tid == 132:
+    if tid in BEAST_CLASS_TRAIT_IDS:
         return "0124"
 
     for start, end in TRAIT_PREFIX_RANGES:
@@ -254,7 +259,7 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
             tset.add("0003")
         if cno == 238:
             tset.add("2821")
-        if cno == 444:
+        if cno in (377, 417, 444):
             tset.add("0124")
         return tset
 
@@ -314,10 +319,24 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
     option_labels = dict(costume_labels)
     option_names = {}
 
+    # Overwrite names
+    for api_idx, name_val in name_asc.items():
+        if not name_val or name_val == svt_data.get("name"):
+            continue
+        if api_idx in ("0",):
+            option_names["000"] = name_val
+        elif api_idx in ("1", "2"):
+            option_names["001"] = name_val
+        elif api_idx in ("3", "4"):
+            option_names["002"] = name_val
+
+    if cno == 388:
+        option_labels["300"] = "Serious Mode"
+        costume_battle_ids["300"] = 1101630
+    if cno == 448:
+        option_names["300"] = "Jade Rabbit"
+
     if not has_asc_diff and not has_costume_diff:
-        if cno == 388:
-            option_labels["300"] = "Serious Mode"
-            costume_battle_ids["300"] = 1101630
         base_traits = sorted(list(default_set), key=lambda x: (len(x), x))
         return base_traits, ascension_diffs, option_labels, option_names, costume_battle_ids
 
@@ -347,23 +366,6 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
             diff = cset - base_set
             if diff:
                 ascension_diffs[ck] = sorted(list(diff), key=lambda x: (len(x), x))
-
-    # Overwrite names
-    for api_idx, name_val in name_asc.items():
-        if not name_val or name_val == svt_data.get("name"):
-            continue
-        if api_idx in ("0",):
-            option_names["000"] = name_val
-        elif api_idx in ("1", "2"):
-            option_names["001"] = name_val
-        elif api_idx in ("3", "4"):
-            option_names["002"] = name_val
-
-    if cno == 388:
-        option_labels["300"] = "Serious Mode"
-        costume_battle_ids["300"] = 1101630
-    if cno == 448:
-        option_names["300"] = "Jade Rabbit"
 
     base_traits = sorted(list(base_set), key=lambda x: (len(x), x))
     return base_traits, ascension_diffs, option_labels, option_names, costume_battle_ids
