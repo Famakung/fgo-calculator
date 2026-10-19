@@ -1105,6 +1105,13 @@ export const CEServantOverlap = {
         .map((key) => ServantData.getAscensionLabel(entry.servant.id, key))
         .join("\n");
       card.appendChild(ascLabel);
+    } else {
+      const spiritronLabel = ServantData.getSpiritronLabel(entry.servant.id, entry.matchingCEs);
+      if (spiritronLabel) {
+        const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
+        ascLabel.textContent = spiritronLabel;
+        card.appendChild(ascLabel);
+      }
     }
 
     if (entry.matchingCEs && entry.matchingCEs.length > 0) {

@@ -178,6 +178,19 @@ export const ServantData = {
     return servant.name;
   },
 
+  /* Spiritron CE (trait 2780) is in the base trait set, so it matches every
+     stage uniformly (baseMatchesAll) and never produces a matched-ascension
+     label. Surface the spiritron stage label explicitly when one matched. */
+  getSpiritronLabel(id, matchingCEs) {
+    const servant = this.byId.get(id);
+    if (!servant || !servant.optionLabels) return "";
+    const hasSpiritronCE = (matchingCEs || []).some(
+      (ce) => (ce.traits || []).includes("2780") || (ce.traitGroups || []).some((group) => group.includes("2780")),
+    );
+    if (!hasSpiritronCE) return "";
+    return Object.values(servant.optionLabels).join("\n");
+  },
+
   getAllNames(id) {
     const servant = this.byId.get(id);
     return servant ? servant.allNames : [];

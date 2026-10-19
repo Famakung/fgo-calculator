@@ -127,13 +127,18 @@ function computeAllCEMatches() {
         const matchingCEs = entries[0].matchingCEs;
         const mergedTraits = [...new Set(entries.flatMap((e) => e.traits))];
         const relevantTraits = mergedTraits.filter((t) => relevantTraitIds.has(t)).map((t) => _traitNames[t] || t);
+        // A single group can still be partial: e.g. a spiritron CE (2780 is in
+        // every base trait set) matches 000-002 but not the costume stage 300.
+        const ascKeys = entries.map((e) => e.key);
+        const partialMatch = traitSets.length > entries.length;
 
         results.push({
           servant,
           matchingCEs,
           allTraitNames: relevantTraits,
-          matchedAscensions: [],
-          baseMatchesAll: true,
+          matchedAscensions: partialMatch ? ascKeys : [],
+          baseMatchesAll: !partialMatch,
+          primaryAscension: partialMatch ? ascKeys[0] : undefined,
           matchingCEIds: [...matchingCEs.map((c) => c.id)],
         });
       } else {

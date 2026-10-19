@@ -622,6 +622,13 @@ export const CEFilterApp = {
       const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
       ascLabel.textContent = matchedAscensions.map((key) => ServantData.getAscensionLabel(servant.id, key)).join("\n");
       card.appendChild(ascLabel);
+    } else {
+      const spiritronLabel = ServantData.getSpiritronLabel(servant.id, matchingCEs);
+      if (spiritronLabel) {
+        const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
+        ascLabel.textContent = spiritronLabel;
+        card.appendChild(ascLabel);
+      }
     }
 
     if (matchingCEs.length > 0) {
@@ -804,13 +811,18 @@ export const CEFilterApp = {
           const matchingCEs = entries[0].matchingCEs;
           const mergedTraits = [...new Set(entries.flatMap((e) => e.traits))];
           const relevantTraits = mergedTraits.filter((t) => relevantTraitIds.has(t)).map((t) => TraitNames[t] || t);
+          // A single group can still be partial: e.g. a spiritron CE (2780 is in
+          // every base trait set) matches 000-002 but not the costume stage 300.
+          const ascKeys = entries.map((e) => e.key);
+          const partialMatch = traitSets.length > entries.length;
 
           results.push({
             servant,
             matchingCEs,
             allTraitNames: relevantTraits,
-            matchedAscensions: [],
-            baseMatchesAll: true,
+            matchedAscensions: partialMatch ? ascKeys : [],
+            baseMatchesAll: !partialMatch,
+            primaryAscension: partialMatch ? ascKeys[0] : undefined,
             matchingCEIds: new Set(matchingCEs.map((c) => c.id)),
           });
         } else {
