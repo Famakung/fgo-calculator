@@ -1099,19 +1099,20 @@ export const CEServantOverlap = {
     nameEl.textContent = displayName;
     card.appendChild(nameEl);
 
-    if (!entry.baseMatchesAll && entry.matchedAscensions && entry.matchedAscensions.length > 0) {
+    const spiritronLabel = ServantData.getSpiritronLabel(
+      entry.servant.id,
+      entry.matchingCEs,
+      entry.matchedAscensions,
+      entry.baseMatchesAll,
+    );
+    const labelParts = (entry.matchedAscensions || []).map((key) =>
+      ServantData.getAscensionLabel(entry.servant.id, key),
+    );
+    if (spiritronLabel) labelParts.push(spiritronLabel);
+    if (labelParts.length > 0) {
       const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
-      ascLabel.textContent = entry.matchedAscensions
-        .map((key) => ServantData.getAscensionLabel(entry.servant.id, key))
-        .join("\n");
+      ascLabel.textContent = labelParts.join("\n");
       card.appendChild(ascLabel);
-    } else {
-      const spiritronLabel = ServantData.getSpiritronLabel(entry.servant.id, entry.matchingCEs);
-      if (spiritronLabel) {
-        const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
-        ascLabel.textContent = spiritronLabel;
-        card.appendChild(ascLabel);
-      }
     }
 
     if (entry.matchingCEs && entry.matchingCEs.length > 0) {

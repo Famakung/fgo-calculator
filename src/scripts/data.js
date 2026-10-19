@@ -178,17 +178,26 @@ export const ServantData = {
     return servant.name;
   },
 
-  /* Spiritron CE (trait 2780) is in the base trait set, so it matches every
-     stage uniformly (baseMatchesAll) and never produces a matched-ascension
-     label. Surface the spiritron stage label explicitly when one matched. */
-  getSpiritronLabel(id, matchingCEs) {
+  /* A spiritron CE (trait 2780) sits in the base trait set, so it matches every
+     standard ascension uniformly and never surfaces via a matched-ascension label.
+     Append the spiritron costume name to the base group, but ONLY for costumes that
+     are not already a trait-diff stage — those (444 "Earth President", 091 bunnies)
+     render via their own stage group, so surfacing them again would duplicate.
+     388 "Serious Mode" is label-only (no trait diff), so it needs this. */
+  getSpiritronLabel(id, matchingCEs, matchedAscensions, baseMatchesAll) {
     const servant = this.byId.get(id);
     if (!servant || !servant.optionLabels) return "";
     const hasSpiritronCE = (matchingCEs || []).some(
       (ce) => (ce.traits || []).includes("2780") || (ce.traitGroups || []).some((group) => group.includes("2780")),
     );
     if (!hasSpiritronCE) return "";
-    return Object.values(servant.optionLabels).join("\n");
+    const ascKeys = matchedAscensions || [];
+    if (!(baseMatchesAll || ascKeys.includes("000"))) return "";
+    const stages = servant.rawTraits || {};
+    return Object.entries(servant.optionLabels)
+      .filter(([key]) => !stages[key])
+      .map(([, name]) => name)
+      .join("\n");
   },
 
   getAllNames(id) {

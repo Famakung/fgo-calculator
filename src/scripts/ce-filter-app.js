@@ -618,17 +618,13 @@ export const CEFilterApp = {
     nameEl.textContent = displayName;
     card.appendChild(nameEl);
 
-    if (!baseMatchesAll && matchedAscensions.length > 0) {
+    const spiritronLabel = ServantData.getSpiritronLabel(servant.id, matchingCEs, matchedAscensions, baseMatchesAll);
+    const labelParts = (matchedAscensions || []).map((key) => ServantData.getAscensionLabel(servant.id, key));
+    if (spiritronLabel) labelParts.push(spiritronLabel);
+    if (labelParts.length > 0) {
       const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
-      ascLabel.textContent = matchedAscensions.map((key) => ServantData.getAscensionLabel(servant.id, key)).join("\n");
+      ascLabel.textContent = labelParts.join("\n");
       card.appendChild(ascLabel);
-    } else {
-      const spiritronLabel = ServantData.getSpiritronLabel(servant.id, matchingCEs);
-      if (spiritronLabel) {
-        const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
-        ascLabel.textContent = spiritronLabel;
-        card.appendChild(ascLabel);
-      }
     }
 
     if (matchingCEs.length > 0) {
