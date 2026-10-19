@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
   schedule:
-    # Daily run at 02:00 UTC to capture new JP/NA banners
-    - cron: '0 2 * * *'
+    # Hourly poll: Atlas API is ETag-revalidated (304 = ~0 bytes) and the build
+    # is skipped when no data changed, so idle runs are near-free.
+    - cron: '13 * * * *'
   workflow_dispatch:
     inputs:
       force_sync:
@@ -63,13 +64,32 @@ jobs:
           rm -f src/scripts/data/*.js
           python3 scripts/sync_atlas_data.py $FORCE_FLAG
 
-      # Verify schema and image consistency
+      # Compare generated data hash vs last run; gate the build on it
+      - name: Check if generated data changed
+        id: data_change
+        run: |
+          HASH_FILE=".cache/atlas/data_hash.txt"
+          NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js | sha256sum | cut -d' ' -f1)
+          if [ -f "$HASH_FILE" ] && [ "$(cat "$HASH_FILE")" = "$NEW_HASH" ]; then
+            echo "DATA_DIRTY=false" >> "$GITHUB_OUTPUT"
+            echo "Generated data unchanged since last run."
+          else
+            echo "$NEW_HASH" > "$HASH_FILE"
+            echo "DATA_DIRTY=true" >> "$GITHUB_OUTPUT"
+            echo "Generated data changed (or first run)."
+          fi
+
+      # Verify schema and image consistency (only when building)
       - name: Validate data integrity
+        if: steps.data_change.outputs.DATA_DIRTY == 'true' || github.event_name != 'schedule'
         run: node scripts/validate_data.js
 
-      - run: npm run build
+      - name: Build
+        if: steps.data_change.outputs.DATA_DIRTY == 'true' || github.event_name != 'schedule'
+        run: npm run build
 
       - name: Verify build outputs
+        if: steps.data_change.outputs.DATA_DIRTY == 'true' || github.event_name != 'schedule'
         run: |
           if [ ! -f "dist/index.html" ]; then
             echo "ERROR: dist/index.html not found after build"
@@ -77,12 +97,15 @@ jobs:
           fi
           echo "Build outputs verified"
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Upload Pages artifact
+        if: steps.data_change.outputs.DATA_DIRTY == 'true' || github.event_name != 'schedule'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
     needs: build
+    if: needs.build.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -20,6 +20,7 @@ import re
 import shutil
 import sys
 import time
+import urllib.error
 import urllib.request
 from typing import Dict, List, Optional, Set, Tuple, Union
 from PIL import Image
@@ -171,12 +172,17 @@ class PoliteRateLimiter:
 rate_limiter = PoliteRateLimiter(delay_seconds=0.1)
 
 
-def fetch_url(url: str, timeout: int = 15, retries: int = 4) -> bytes:
-    """Fetch URL with polite rate-limiting, retries, gzip decompression, and HTTP 429 backoff."""
+def fetch_url(url: str, timeout: int = 15, retries: int = 4, if_none_match: Optional[str] = None) -> Tuple[Optional[bytes], Optional[str]]:
+    """Fetch URL with polite rate-limiting, retries, gzip decompression, and HTTP 429 backoff.
+
+    Returns (data, etag). On 304 (resource unchanged since if_none_match) returns (None, None).
+    """
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)",
         "Accept-Encoding": "gzip",
     }
+    if if_none_match:
+        headers["If-None-Match"] = if_none_match
     req = urllib.request.Request(url, headers=headers)
     last_err = None
 
@@ -187,8 +193,10 @@ def fetch_url(url: str, timeout: int = 15, retries: int = 4) -> bytes:
                 data = resp.read()
                 if resp.headers.get("Content-Encoding") == "gzip":
                     data = gzip.decompress(data)
-                return data
+                return data, resp.headers.get("ETag")
         except urllib.error.HTTPError as e:
+            if e.code == 304:
+                return None, None
             last_err = e
             if e.code == 429:
                 retry_after = e.headers.get("Retry-After")
@@ -204,22 +212,57 @@ def fetch_url(url: str, timeout: int = 15, retries: int = 4) -> bytes:
     raise RuntimeError(f"Failed to fetch {url} after {retries} retries: {last_err}")
 
 
+def _load_cached(cache_path: str) -> Optional[dict]:
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _stored_etag(cache_dir: str, filename: str) -> Optional[str]:
+    etag_path = os.path.join(cache_dir, filename + ".etag")
+    if os.path.exists(etag_path):
+        try:
+            with open(etag_path, "r", encoding="utf-8") as f:
+                return f.read().strip() or None
+        except Exception:
+            return None
+    return None
+
+
+def _save_etag(cache_dir: str, filename: str, etag: Optional[str]):
+    if etag:
+        with open(os.path.join(cache_dir, filename + ".etag"), "w", encoding="utf-8") as f:
+            f.write(etag)
+
+
 def get_cached_json(cache_dir: str, filename: str, url: str, force: bool = False) -> dict:
-    """Retrieve JSON payload, reading from cache if available."""
+    """Retrieve JSON payload, reading from cache with a conditional-GET revalidation."""
     os.makedirs(cache_dir, exist_ok=True)
     cache_path = os.path.join(cache_dir, filename)
 
-    if not force and os.path.exists(cache_path):
-        try:
-            with open(cache_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
+    if not force:
+        cached = _load_cached(cache_path)
+        if cached is not None:
+            raw_bytes, etag = fetch_url(url, if_none_match=_stored_etag(cache_dir, filename))
+            if raw_bytes is None:
+                return cached  # 304: server data unchanged
+            data = json.loads(raw_bytes.decode("utf-8"))
+            if data == cached:
+                # Body differs (e.g. encoding) but payload is identical.
+                _save_etag(cache_dir, filename, etag)
+                return data
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            _save_etag(cache_dir, filename, etag)
+            return data
 
-    raw_bytes = fetch_url(url)
+    raw_bytes, etag = fetch_url(url)
     data = json.loads(raw_bytes.decode("utf-8"))
     with open(cache_path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    _save_etag(cache_dir, filename, etag)
     return data
 
 
@@ -409,7 +452,7 @@ def download_face_icon(short_id: str, long_id: int, stage: Union[int, str] = "00
 
     for url in candidate_urls:
         try:
-            raw_data = fetch_url(url, timeout=10, retries=2)
+            raw_data, _ = fetch_url(url, timeout=10, retries=2)
             img = Image.open(io.BytesIO(raw_data)).convert("RGBA")
             if img.size != (142, 155):
                 img = img.resize((142, 155), Image.Resampling.LANCZOS)
@@ -547,6 +590,133 @@ def update_servants_js(new_entries: Dict[str, str], dry_run: bool = False):
     print(f"Successfully added {len(new_entries)} new servants to {SERVANTS_JS}")
 
 
+def update_servants_js_full(replace_entries: Dict[str, str], dry_run: bool = False):
+    """Rewrite servants.js, replacing the entries for the given keys and re-sorting.
+
+    Used when drifted (existing) servants must be updated in place — append-only
+    insert cannot replace a key. Unchanged entries keep their original text."""
+    if not os.path.exists(SERVANTS_JS):
+        print("[ERROR] update_servants_js_full called without existing servants.js", file=sys.stderr)
+        return
+
+    with open(SERVANTS_JS, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    match = re.search(r'(export\s+const\s+SERVANT_DATA\s*=\s*\{)([\s\S]*?)(\n\};)(.*)', content, re.DOTALL)
+    if not match:
+        print("[ERROR] Could not parse SERVANT_DATA in servants.js", file=sys.stderr)
+        return
+    header, body, footer, tail = match.groups()
+
+    entries = {}
+    # Top-level entries only (two-space indent). Key forms per format_servant_js_entry:
+    # quoted when zero-padded ("001":) or dashed ("467-1":), unquoted otherwise (200:).
+    for m in re.finditer(r"""(?:^|\n)  (?:"([0-9]+(?:-[0-9]+)?)":|([0-9]+):)(?=\s*\{)""", body):
+        key = m.group(1) or m.group(2)
+        start = body.index("{", m.end())  # position of the entry's "{"
+        depth = 0
+        end = start
+        for pos in range(start, len(body)):
+            if body[pos] == "{":
+                depth += 1
+            elif body[pos] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = pos + 1
+                    break
+        if end < len(body) and body[end] == ",":
+            end += 1
+        # Skip the leading newline consumed by the (?:^|\n) match anchor.
+        text_start = m.start() + 1 if body[m.start() : m.start() + 1] == "\n" else m.start()
+        entries[key] = body[text_start:end]
+
+    replaced = [k for k in replace_entries if k in entries]
+    for k, v in replace_entries.items():
+        entries[k] = v  # replace existing keys, add new ones
+
+    def _sort_key(k: str):
+        base, _, suffix = k.partition("-")
+        return (int(base), int(suffix) if suffix else 0)
+
+    new_body = "\n" + "\n".join(entries[k] for k in sorted(entries, key=_sort_key))
+
+    if dry_run:
+        print(f"[DRY-RUN] Would replace {len(replaced)} servant entries in servants.js: {replaced}")
+        return
+
+    with open(SERVANTS_JS, "w", encoding="utf-8") as f:
+        f.write(header + new_body + footer + tail)
+
+    print(f"Successfully replaced {len(replaced)} servant entries in {SERVANTS_JS}")
+
+
+def _parse_servant_entries() -> Dict[str, str]:
+    """Parse SERVANT_DATA into {key: entry text} (text includes the trailing comma).
+
+    Key forms per format_servant_js_entry: quoted when zero-padded ("001")
+    or dashed ("467-1"), unquoted otherwise (200). Only top-level (2-space
+    indent) entries match."""
+    if not os.path.exists(SERVANTS_JS):
+        return {}
+    with open(SERVANTS_JS, "r", encoding="utf-8") as f:
+        text = f.read()
+    m = re.search(r"export\s+const\s+SERVANT_DATA\s*=\s*\{([\s\S]*)\};?\s*$", text)
+    body = m.group(1) if m else text
+
+    entries = {}
+    for m in re.finditer(r"""(?:^|\n)  (?:"([0-9]+(?:-[0-9]+)?)":|([0-9]+):)(?=\s*\{)""", body):
+        key = m.group(1) or m.group(2)
+        start = body.index("{", m.end())  # position of the entry's "{"
+        depth = 0
+        end = start
+        for pos in range(start, len(body)):
+            if body[pos] == "{":
+                depth += 1
+            elif body[pos] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = pos + 1
+                    break
+        if end < len(body) and body[end] == ",":
+            end += 1
+        # Skip the leading newline consumed by the (?:^|\n) match anchor.
+        text_start = m.start() + 1 if body[m.start() : m.start() + 1] == "\n" else m.start()
+        entries[key] = body[text_start:end]
+    return entries
+
+
+def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: List[dict]) -> List[int]:
+    """Re-check existing servants against the bulk detail export.
+
+    Atlas can alter an existing servant without adding a new one: base-trait
+    changes, a new Spiritron Dress granting costume-stage traits (turning a
+    base-only servant into a multi-ascension entry), or label/name changes.
+    The basic export alone only reveals additions, so each stored entry is
+    reformatted via format_servant_js_entry and diffed against the current
+    file text. The bulk fetch is one conditional GET (304 = ~0 bytes idle).
+    Returns the collectionNos whose entry drifted (need a fresh entry)."""
+    existing = _parse_servant_entries()
+    if not existing:
+        return []
+
+    changed = []
+    for s in nice_servants:
+        cno = s.get("collectionNo", 0)
+        if cno <= 0 or cno not in playable_by_cno or cno == 467:
+            continue  # 467 is the François/Francesca split with fixed entry logic
+        key = f"{cno:03d}" if cno < 100 else str(cno)
+        if key not in existing:
+            continue
+        base, asc_diffs, opt_labels, opt_names, _ = extract_servant_traits(s)
+        fresh = format_servant_js_entry(key, s.get("name") or "", base, asc_diffs, opt_labels, opt_names)
+        if fresh != existing[key]:
+            print(f"  Entry change detected for servant {key} (traits/ascensions/labels differ)")
+            changed.append(cno)
+    if changed:
+        print(f"Trait revalidation: {len(changed)} servant(s) drifted, will re-sync: {changed}")
+    return changed
+
+
 def sync_servants(args):
     """Check for new servants and sync traits and face icons."""
     print("Checking Atlas Academy API for latest servant data...")
@@ -564,6 +734,17 @@ def sync_servants(args):
             playable_by_cno[cno] = s
 
     servant_stages_map = load_all_servant_stages()
+
+    # Bulk detail export: used for revalidating existing servants' traits and as
+    # the fast path for new servants. Cached with conditional GET (304 on idle).
+    nice_servants = []
+    bulk_svt_map = {}
+    if not args.dry_run:
+        try:
+            nice_servants = get_cached_json(args.cache_dir, "nice_servant_lore_lang_en.json", f"{API_BASE}/export/JP/nice_servant_lore_lang_en.json", force=args.force)
+            bulk_svt_map = {s.get("id"): s for s in nice_servants if s.get("id")}
+        except Exception as e:
+            print(f"Bulk nice_servant_lore_lang_en.json fetch failed ({e}), trait revalidation skipped.", file=sys.stderr)
 
     if args.ids:
         target_cnos = [int(x) for x in args.ids if x.isdigit() and int(x) in playable_by_cno]
@@ -593,22 +774,23 @@ def sync_servants(args):
             if not has_existing or img_missing:
                 target_cnos.append(cno)
 
+    # Re-check existing servants for trait drift (new costume traits, reworks).
+    # The basic-export scan above only reveals additions; this diff catches
+    # changes to existing servants using the cached bulk detail export.
+    drifted_cnos = set()
+    if not args.ids and nice_servants:
+        drifted_cnos = set(revalidate_servant_traits(playable_by_cno, nice_servants))
+        if drifted_cnos:
+            target_cnos = list(target_cnos) + sorted(drifted_cnos - set(target_cnos))
+
     if not target_cnos:
         print("Servant dataset is already 100% up-to-date with Atlas Academy.")
         return
 
     print(f"Found {len(target_cnos)} servant(s) to synchronize: {target_cnos}")
 
-    bulk_svt_map = {}
-    if len(target_cnos) > 20:
-        print(f"Large batch detected ({len(target_cnos)} servants). Fetching bulk nice_servant_lore_lang_en.json...")
-        try:
-            nice_servants = get_cached_json(args.cache_dir, "nice_servant_lore_lang_en.json", f"{API_BASE}/export/JP/nice_servant_lore_lang_en.json", force=args.force)
-            bulk_svt_map = {s.get("id"): s for s in nice_servants if s.get("id")}
-        except Exception as e:
-            print(f"Bulk download failed ({e}), will fall back to individual requests.", file=sys.stderr)
-
     new_entries = {}
+    full_replacement = False
     for cno in target_cnos:
         s_info = playable_by_cno[cno]
         long_id = s_info.get("id")
@@ -620,9 +802,8 @@ def sync_servants(args):
         )
 
         if not has_existing:
-            if long_id in bulk_svt_map:
-                svt_payload = bulk_svt_map[long_id]
-            else:
+            svt_payload = bulk_svt_map.get(long_id)
+            if svt_payload is None and not args.dry_run:
                 print(f"Fetching new Servant {short_id} (long ID: {long_id})...")
                 svt_url = f"{API_BASE}/nice/JP/svt/{long_id}?lore=true&lang=en"
                 svt_payload = get_cached_json(
@@ -631,6 +812,9 @@ def sync_servants(args):
                     svt_url,
                     force=args.force
                 )
+            if svt_payload is None:
+                print(f"  [DRY-RUN] Skipping new servant {short_id} (bulk detail unavailable)")
+                continue
 
             name = svt_payload.get("name") or s_info.get("name", f"Servant {cno}")
             base_traits, asc_diffs, opt_labels, opt_names, costume_battle_ids = extract_servant_traits(svt_payload)
@@ -656,7 +840,22 @@ def sync_servants(args):
             entry_code = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_labels, opt_names)
             new_entries[short_id] = entry_code
         else:
-            if cno == 467:
+            svt_payload = bulk_svt_map.get(long_id)
+            if svt_payload is not None and cno in drifted_cnos:
+                # Trait drift detected for this existing servant: replace its entry
+                # with fresh data (name, traits, option labels) and backfill images.
+                name = svt_payload.get("name") or s_info.get("name", f"Servant {cno}")
+                base_traits, asc_diffs, opt_labels, opt_names, costume_battle_ids = extract_servant_traits(svt_payload)
+                download_face_icon(short_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
+                if asc_diffs:
+                    download_face_icon(short_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
+                    download_face_icon(short_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
+                    for stage in asc_diffs.keys():
+                        b_id = costume_battle_ids.get(stage)
+                        download_face_icon(short_id, long_id, stage=stage, battle_chara_id=b_id, force=args.force, dry_run=args.dry_run)
+                new_entries[short_id] = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_labels, opt_names)
+                full_replacement = True
+            elif cno == 467:
                 download_face_icon("467-1", 505600, stage="000", force=args.force, dry_run=args.dry_run)
                 download_face_icon("467-2", 505700, stage="000", force=args.force, dry_run=args.dry_run)
             else:
@@ -665,7 +864,12 @@ def sync_servants(args):
                     download_face_icon(short_id, long_id, stage=st, force=args.force, dry_run=args.dry_run)
 
     if new_entries:
-        update_servants_js(new_entries, dry_run=args.dry_run)
+        if full_replacement:
+            # Drifted entries replace existing keys: rewrite the whole file so the
+            # updated entries land in sorted position (append-only insert cannot).
+            update_servants_js_full(new_entries, dry_run=args.dry_run)
+        else:
+            update_servants_js(new_entries, dry_run=args.dry_run)
 
 
 # ==============================================================================
