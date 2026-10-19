@@ -717,6 +717,16 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
     return changed
 
 
+def _extra_image_stages(asc_diffs: Dict[str, List[str]], costume_battle_ids: Dict[str, int], opt_labels: Dict[str, str]) -> List[str]:
+    """Stages needing face icons beyond standard 000-002 ascensions.
+
+    A spiritron dress stage can appear without a trait diff (e.g. 388 "Serious
+    Mode"), so it is not in asc_diffs — the validator still requires its image,
+    hence the union with costume_battle_ids and option_labels.
+    """
+    return sorted((set(asc_diffs) | set(costume_battle_ids) | set(opt_labels)) - {"000", "001", "002"})
+
+
 def sync_servants(args):
     """Check for new servants and sync traits and face icons."""
     print("Checking Atlas Academy API for latest servant data...")
@@ -833,9 +843,8 @@ def sync_servants(args):
             if asc_diffs:
                 download_face_icon(short_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
                 download_face_icon(short_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
-                for stage in asc_diffs.keys():
-                    b_id = costume_battle_ids.get(stage)
-                    download_face_icon(short_id, long_id, stage=stage, battle_chara_id=b_id, force=args.force, dry_run=args.dry_run)
+            for stage in _extra_image_stages(asc_diffs, costume_battle_ids, opt_labels):
+                download_face_icon(short_id, long_id, stage=stage, battle_chara_id=costume_battle_ids.get(stage), force=args.force, dry_run=args.dry_run)
 
             entry_code = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_labels, opt_names)
             new_entries[short_id] = entry_code
@@ -850,9 +859,8 @@ def sync_servants(args):
                 if asc_diffs:
                     download_face_icon(short_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
                     download_face_icon(short_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
-                    for stage in asc_diffs.keys():
-                        b_id = costume_battle_ids.get(stage)
-                        download_face_icon(short_id, long_id, stage=stage, battle_chara_id=b_id, force=args.force, dry_run=args.dry_run)
+                for stage in _extra_image_stages(asc_diffs, costume_battle_ids, opt_labels):
+                    download_face_icon(short_id, long_id, stage=stage, battle_chara_id=costume_battle_ids.get(stage), force=args.force, dry_run=args.dry_run)
                 new_entries[short_id] = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_labels, opt_names)
                 full_replacement = True
             elif cno == 467:
