@@ -53,9 +53,9 @@ jobs:
             .cache/atlas/
             public/servants/
             public/craft_essences/
+          # Primary key only (no restore-keys): when sync code changes we want a
+          # fully clean rebuild, not the previous script version's cache.
           key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py') }}
-          restore-keys: |
-            fgo-atlas-cache-${{ runner.os }}-
 
       # Run sync: regenerates game data from Atlas API (using cached images & raw JSON)
       - name: Sync latest game data from Atlas Academy
