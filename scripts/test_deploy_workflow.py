@@ -105,6 +105,21 @@ def main():
         assert would_run(cond, "workflow_dispatch", "CHANGED", "false", W, P), f"step {name!r} is blocked on a forced dispatch: if={cond!r}"
     n += 1
 
+    # 7. generated data dir is cached and NOT wiped, so the targeted drift path
+    #    (revalidate_servant_traits) runs in CI instead of a full regen; the
+    #    cache key must keep hashing sync_atlas_data.py so a format change
+    #    invalidates the data cache
+    spec = yaml.safe_load(open(os.path.normpath(WF), encoding="utf-8"))
+    steps = spec["jobs"]["build"]["steps"]
+    cache_step = next(s for s in steps if s.get("name") == "Restore Atlas Data & Asset Cache")
+    cache_path = cache_step["with"]["path"]
+    cache_key = cache_step["with"]["key"]
+    sync_run = next(s for s in steps if s.get("name") == "Sync latest game data from Atlas Academy")["run"]
+    assert "src/scripts/data/" in cache_path, "data dir not in cache path"
+    assert "rm -f" not in sync_run, "sync still wipes generated data"
+    assert "sync_atlas_data.py" in cache_key, "cache key must hash sync_atlas_data.py"
+    n += 1
+
     print(f"{n} tests passed")
 
 

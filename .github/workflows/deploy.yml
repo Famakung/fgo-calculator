@@ -5,9 +5,9 @@ on:
     branches: [main]
   schedule:
     # Poll every 10 min: a ~230-byte /info version check stops the run when
-    # JP.hash is unchanged; otherwise the Atlas API is ETag-revalidated
-    # (304 = ~0 bytes) and the build is skipped when no data changed, so idle
-    # runs are near-free.
+    # both JP and NA hashes are unchanged; otherwise the Atlas API is
+    # ETag-revalidated (304 = ~0 bytes) and the build is skipped when no data
+    # changed, so idle runs are near-free.
     - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
@@ -47,15 +47,20 @@ jobs:
             .cache/atlas/
             public/servants/
             public/craft_essences/
+            src/scripts/data/
           # Primary key only (no restore-keys): when sync OR version-gate code
           # changes we want a fully clean rebuild, not the previous script
           # version's cache. check_data_version.py is included because it writes
           # .cache/atlas/data_version.txt — without it, the cached blob predates
           # the gate and every run sees a stale/missing version (CHECK=CHANGED
           # forever) since a key hit means the cache is never re-saved.
+          # src/scripts/data/ is cached too: it holds the generated JS, so the
+          # pre-sync drift check (revalidate_servant_traits) can detect in-place
+          # changes instead of a full regen. A sync-script change rotates the
+          # key, so a format change in the generated files forces a clean regen.
           key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/check_data_version.py') }}
 
-      # ~230-byte GET /info vs cached JP.hash; idle schedule runs stop on UNCHANGED.
+      # ~230-byte GET /info vs cached JP + NA hashes; idle schedule/dispatch runs stop on UNCHANGED.
       # python3 is preinstalled on the runner; failures yield UNKNOWN and continue.
       - name: Check Atlas data version
         id: data_version
@@ -67,7 +72,7 @@ jobs:
       # is DEPLOY, computed separately in the data-change step.)
       #   - push:            always (a push to main is a real deploy)
       #   - schedule:        only if the Atlas version changed (idle poll stops)
-      #   - workflow_dispatch: only if force_sync is on (CHECK already reflects it)
+      #   - workflow_dispatch: only if force_sync is on OR the version changed (CHECK != UNCHANGED)
       # check_data_version.py is called with --force when force_sync is set, so
       # CHECK is CHANGED whenever work is wanted; DO_WORK therefore collapses to
       # (push) OR (CHECK != UNCHANGED). A single source of truth keeps every
@@ -105,12 +110,14 @@ jobs:
       - run: npm ci
         if: steps.do_work.outputs.DO_WORK == 'true'
 
-      # Run sync: regenerates game data from Atlas API (using cached images & raw JSON)
+      # Run sync: regenerates game data from Atlas API (using cached images & raw JSON).
+      # The generated JS is NOT wiped here: it survives in the cache, so the
+      # incremental path (append new / replace drifted entries) runs instead of a
+      # full regen. A sync-script format change rotates the cache key and starts clean.
       - name: Sync latest game data from Atlas Academy
         if: steps.do_work.outputs.DO_WORK == 'true'
         run: |
           FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
-          rm -f src/scripts/data/*.js
           python3 scripts/sync_atlas_data.py $FORCE_FLAG
 
       # Compare generated data hash vs last run; gate the build on it
