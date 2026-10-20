@@ -4,10 +4,11 @@ on:
   push:
     branches: [main]
   schedule:
-    # Hourly poll: a ~230-byte /info version check stops the run when JP.hash is
-    # unchanged; otherwise the Atlas API is ETag-revalidated (304 = ~0 bytes) and
-    # the build is skipped when no data changed, so idle runs are near-free.
-    - cron: '13 * * * *'
+    # Poll every 10 min: a ~230-byte /info version check stops the run when
+    # JP.hash is unchanged; otherwise the Atlas API is ETag-revalidated
+    # (304 = ~0 bytes) and the build is skipped when no data changed, so idle
+    # runs are near-free.
+    - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
       force_sync:
