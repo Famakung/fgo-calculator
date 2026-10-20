@@ -685,6 +685,21 @@ def _parse_servant_entries() -> Dict[str, str]:
     return entries
 
 
+def format_467_split(svt: dict) -> Dict[str, str]:
+    """Format the François/Francesca Prélat (cno 467) special-case split entry.
+
+    467 stores as two keys ("467-1" / "467-2") built from gender-flipped trait
+    sets, so it can't use format_servant_js_entry. Shared by the new-servant,
+    drift-replacement and revalidation paths so all three stay in sync."""
+    base, _diffs, _ol, _on, _cb = extract_servant_traits(svt)
+    t_m = sorted(list((set(base) - {"0002", "0003"}) | {"0001"}))
+    t_f = sorted(list((set(base) - {"0001", "0003"}) | {"0002"}))
+    return {
+        "467-1": format_servant_js_entry("467-1", "François Prélat", t_m, {}, {}, {}),
+        "467-2": format_servant_js_entry("467-2", "Francesca Prélat", t_f, {}, {}, {}),
+    }
+
+
 def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: List[dict]) -> List[int]:
     """Re-check existing servants against the bulk detail export.
 
@@ -692,9 +707,10 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
     changes, a new Spiritron Dress granting costume-stage traits (turning a
     base-only servant into a multi-ascension entry), or label/name changes.
     The basic export alone only reveals additions, so each stored entry is
-    reformatted via format_servant_js_entry and diffed against the current
-    file text. The bulk fetch is one conditional GET (304 = ~0 bytes idle).
-    Returns the collectionNos whose entry drifted (need a fresh entry)."""
+    reformatted and diffed against the current file text (467 via its split
+    entries, everyone else via format_servant_js_entry). The bulk fetch is one
+    conditional GET (304 = ~0 bytes idle). Returns the collectionNos whose
+    entry drifted (need a fresh entry)."""
     existing = _parse_servant_entries()
     if not existing:
         return []
@@ -702,8 +718,15 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
     changed = []
     for s in nice_servants:
         cno = s.get("collectionNo", 0)
-        if cno <= 0 or cno not in playable_by_cno or cno == 467:
-            continue  # 467 is the François/Francesca split with fixed entry logic
+        if cno <= 0 or cno not in playable_by_cno:
+            continue
+        if cno == 467:
+            # The split is two stored keys; it drifted if either entry changed.
+            fresh = format_467_split(s)
+            if any(k in existing and fresh[k] != existing[k] for k in fresh):
+                print(f"  Entry change detected for servant 467 (split traits differ)")
+                changed.append(cno)
+            continue
         key = f"{cno:03d}" if cno < 100 else str(cno)
         if key not in existing:
             continue
@@ -833,10 +856,7 @@ def sync_servants(args):
                 # Handle François and Francesca Prélat split
                 download_face_icon("467-1", 505600, stage="000", force=args.force, dry_run=args.dry_run)
                 download_face_icon("467-2", 505700, stage="000", force=args.force, dry_run=args.dry_run)
-                t_m = sorted(list((set(base_traits) - {"0002", "0003"}) | {"0001"}))
-                t_f = sorted(list((set(base_traits) - {"0001", "0003"}) | {"0002"}))
-                new_entries["467-1"] = format_servant_js_entry("467-1", "François Prélat", t_m, {}, {}, {})
-                new_entries["467-2"] = format_servant_js_entry("467-2", "Francesca Prélat", t_f, {}, {}, {})
+                new_entries.update(format_467_split(svt_payload))
                 continue
 
             download_face_icon(short_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
@@ -853,6 +873,14 @@ def sync_servants(args):
             if svt_payload is not None and cno in drifted_cnos:
                 # Trait drift detected for this existing servant: replace its entry
                 # with fresh data (name, traits, option labels) and backfill images.
+                if cno == 467:
+                    # The split stores as "467-1"/"467-2"; rebuild both (writing
+                    # short_id "467" would leave the split keys untouched).
+                    download_face_icon("467-1", 505600, stage="000", force=args.force, dry_run=args.dry_run)
+                    download_face_icon("467-2", 505700, stage="000", force=args.force, dry_run=args.dry_run)
+                    new_entries.update(format_467_split(svt_payload))
+                    full_replacement = True
+                    continue
                 name = svt_payload.get("name") or s_info.get("name", f"Servant {cno}")
                 base_traits, asc_diffs, opt_labels, opt_names, costume_battle_ids = extract_servant_traits(svt_payload)
                 download_face_icon(short_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
