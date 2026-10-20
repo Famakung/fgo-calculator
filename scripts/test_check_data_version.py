@@ -12,7 +12,7 @@ import check_data_version as m  # noqa: E402
 
 
 class Handler(BaseHTTPRequestHandler):
-    body = b'{"JP": {"hash": "abc123"}}'
+    body = b'{"JP": {"hash": "abc123"}, "NA": {"hash": "def456"}}'
 
     def do_GET(self):
         self.send_response(200)
@@ -56,13 +56,14 @@ def run_cli(url, version_file, force=False):
 def main():
     n = 0
 
-    # --- decide() truth table ---
-    assert m.decide(None, "x", False) == "UNKNOWN"
-    assert m.decide("a", "a", False) == "UNCHANGED"
-    assert m.decide("b", "a", False) == "CHANGED"
-    assert m.decide("a", None, False) == "CHANGED"
-    assert m.decide("a", "a", True) == "CHANGED"
-    assert m.decide(None, None, True) == "UNKNOWN"
+    # --- decide() truth table (jp, na) pair semantics ---
+    assert m.decide(("a", "b"), ("a", "b"), False) == "UNCHANGED"
+    assert m.decide(("b", "b"), ("a", "b"), False) == "CHANGED"   # JP-only change
+    assert m.decide(("a", "c"), ("a", "b"), False) == "CHANGED"   # NA-only change
+    assert m.decide(("a", None), ("a", "b"), False) == "UNKNOWN"  # NA fetch failed
+    assert m.decide(("a", "b"), (None, None), False) == "CHANGED" # first run / legacy file
+    assert m.decide(("a", "b"), ("a", "b"), True) == "CHANGED"    # force
+    assert m.decide((None, None), (None, None), True) == "UNKNOWN"
     n += 1
 
     server, url = start_server()
@@ -73,7 +74,7 @@ def main():
         # --- unchanged keeps file ---
         vf = os.path.join(tmpdir, "unchanged.txt")
         with open(vf, "w") as f:
-            f.write("abc123\n")
+            f.write("JP abc123\nNA def456\n")
         before = open(vf, "rb").read()
         rc, out = run_cli(url, vf)
         assert rc == 0, f"rc={rc}"
@@ -84,12 +85,12 @@ def main():
         # --- changed updates file ---
         vf = os.path.join(tmpdir, "changed.txt")
         with open(vf, "w") as f:
-            f.write("old999\n")
+            f.write("JP old999\nNA old888\n")
         rc, out = run_cli(url, vf)
         assert rc == 0, f"rc={rc}"
         assert "CHECK=CHANGED" in out, out
-        assert "DATA_VERSION=abc123" in out, out
-        assert open(vf).read() == "abc123\n", out
+        assert "DATA_VERSION=JP:abc123|NA:def456" in out, out
+        assert open(vf).read() == "JP abc123\nNA def456\n", out
         n += 1
 
         # --- missing file is changed + created ---
@@ -99,10 +100,20 @@ def main():
         rc, out = run_cli(url, vf)
         assert rc == 0, f"rc={rc}"
         assert "CHECK=CHANGED" in out, out
-        assert open(vf).read() == "abc123\n", out
+        assert open(vf).read() == "JP abc123\nNA def456\n", out
         n += 1
 
-        # --- malformed body / missing JP key ---
+        # --- legacy single-line file self-heals ---
+        vf = os.path.join(tmpdir, "legacy.txt")
+        with open(vf, "w") as f:
+            f.write("abc123\n")
+        rc, out = run_cli(url, vf)
+        assert rc == 0, f"rc={rc}"
+        assert "CHECK=CHANGED" in out, out
+        assert open(vf).read() == "JP abc123\nNA def456\n", out
+        n += 1
+
+        # --- malformed body / missing JP or NA key ---
         Handler.body = b"not json"
         vf = os.path.join(tmpdir, "malformed.txt")
         if os.path.exists(vf):
@@ -115,6 +126,10 @@ def main():
         assert rc == 0 and "CHECK=UNKNOWN" in out, out
         assert not os.path.exists(vf), "no file on UNKNOWN"
         Handler.body = b'{"JP": {"hash": "abc123"}}'
+        rc, out = run_cli(url, vf)
+        assert rc == 0 and "CHECK=UNKNOWN" in out, out
+        assert not os.path.exists(vf), "no file on UNKNOWN"
+        Handler.body = b'{"JP": {"hash": "abc123"}, "NA": {"hash": "def456"}}'
         n += 1
 
         # --- network error is unknown, no file ---
