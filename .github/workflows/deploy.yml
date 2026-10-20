@@ -27,6 +27,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      DEPLOY: ${{ steps.data_change.outputs.DEPLOY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -70,13 +72,20 @@ jobs:
         run: |
           HASH_FILE=".cache/atlas/data_hash.txt"
           NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js | sha256sum | cut -d' ' -f1)
+          DIRTY=true
           if [ -f "$HASH_FILE" ] && [ "$(cat "$HASH_FILE")" = "$NEW_HASH" ]; then
-            echo "DATA_DIRTY=false" >> "$GITHUB_OUTPUT"
+            DIRTY=false
             echo "Generated data unchanged since last run."
           else
             echo "$NEW_HASH" > "$HASH_FILE"
-            echo "DATA_DIRTY=true" >> "$GITHUB_OUTPUT"
             echo "Generated data changed (or first run)."
+          fi
+          echo "DATA_DIRTY=$DIRTY" >> "$GITHUB_OUTPUT"
+          # Deploy only when a Pages artifact will be uploaded (same gate as the build steps)
+          if [ "$GITHUB_EVENT_NAME" != "schedule" ] || [ "$DIRTY" = "true" ]; then
+            echo "DEPLOY=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "DEPLOY=false" >> "$GITHUB_OUTPUT"
           fi
 
       # Verify schema and image consistency (only when building)
@@ -105,7 +114,8 @@ jobs:
 
   deploy:
     needs: build
-    if: needs.build.result == 'success'
+    # Skip on clean schedule runs (no build, no artifact) — deploy-pages would fail
+    if: needs.build.result == 'success' && needs.build.outputs.DEPLOY == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
