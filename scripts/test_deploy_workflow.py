@@ -120,6 +120,17 @@ def main():
     assert "sync_atlas_data.py" in cache_key, "cache key must hash sync_atlas_data.py"
     n += 1
 
+    # 8. self-test job runs all three suites on every code change (push/dispatch)
+    #    but is skipped on the idle schedule, so polls stay near-free
+    assert "self-test" in spec["jobs"], "self-test job missing from deploy.yml"
+    st = spec["jobs"]["self-test"]
+    st_if = st.get("if") or ""
+    assert "schedule" in st_if, "self-test must be skipped on schedule"
+    st_runs = " ".join(s["run"] for s in st["steps"] if s.get("run"))
+    for script in ("test_check_data_version.py", "test_deploy_workflow.py", "test_drift.py"):
+        assert script in st_runs, f"self-test job does not run {script}"
+    n += 1
+
     print(f"{n} tests passed")
 
 

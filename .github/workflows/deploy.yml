@@ -188,3 +188,25 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # Runs the self-check suites (data-version gate, workflow gate model, and
+  # servant drift detection) so a broken config or logic lands red. Skipped on
+  # the idle 10-min schedule so polls stay near-free; push/dispatch are code
+  # changes, so they always run it. Independent of the build/deploy path — it
+  # gates nothing via `needs` (that would break schedule deploys on a skipped
+  # job); a red here flags the change while the build's validate_data.js still
+  # guards data integrity.
+  self-test:
+    if: ${{ github.event_name != 'schedule' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Run self-check suites
+        run: |
+          python3 scripts/test_check_data_version.py
+          python3 scripts/test_deploy_workflow.py
+          python3 scripts/test_drift.py
