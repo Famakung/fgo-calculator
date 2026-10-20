@@ -4,8 +4,9 @@ on:
   push:
     branches: [main]
   schedule:
-    # Hourly poll: Atlas API is ETag-revalidated (304 = ~0 bytes) and the build
-    # is skipped when no data changed, so idle runs are near-free.
+    # Hourly poll: a ~230-byte /info version check stops the run when JP.hash is
+    # unchanged; otherwise the Atlas API is ETag-revalidated (304 = ~0 bytes) and
+    # the build is skipped when no data changed, so idle runs are near-free.
     - cron: '13 * * * *'
   workflow_dispatch:
     inputs:
@@ -32,6 +33,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Restore cached images and API payloads
+      - name: Restore Atlas Data & Asset Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/atlas/
+            public/servants/
+            public/craft_essences/
+          # Primary key only (no restore-keys): when sync code changes we want a
+          # fully clean rebuild, not the previous script version's cache.
+          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py') }}
+
+      # ~230-byte GET /info vs cached JP.hash; idle schedule runs stop on UNCHANGED.
+      # python3 is preinstalled on the runner; failures yield UNKNOWN and continue.
+      - name: Check Atlas data version
+        id: data_version
+        run: |
+          FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
+          python3 scripts/check_data_version.py $FORCE_FLAG
+
+      - name: Stop if data unchanged
+        if: github.event_name == 'schedule' && steps.data_version.outputs.CHECK == 'UNCHANGED'
+        run: echo "Atlas data version unchanged. Nothing to do."
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -46,18 +71,6 @@ jobs:
           cache: npm
 
       - run: npm ci
-
-      # Restore cached images and API payloads
-      - name: Restore Atlas Data & Asset Cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/atlas/
-            public/servants/
-            public/craft_essences/
-          # Primary key only (no restore-keys): when sync code changes we want a
-          # fully clean rebuild, not the previous script version's cache.
-          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py') }}
 
       # Run sync: regenerates game data from Atlas API (using cached images & raw JSON)
       - name: Sync latest game data from Atlas Academy
