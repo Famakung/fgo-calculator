@@ -31,6 +31,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       DEPLOY: ${{ steps.data_change.outputs.DEPLOY }}
+      # Whether to run the SYNC at all (pre-decision); the post-sync DEPLOY
+      # (build/upload) is decided separately in the data-change step. Each is a
+      # single-source output so the decisions can't drift across steps (they
+      # historically could — see "actually stop idle schedule runs").
+      DO_WORK: ${{ steps.do_work.outputs.DO_WORK }}
     steps:
       - uses: actions/checkout@v4
 
@@ -58,33 +63,51 @@ jobs:
           FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
           python3 scripts/check_data_version.py $FORCE_FLAG
 
-      - name: Stop if data unchanged
-        if: github.event_name == 'schedule' && steps.data_version.outputs.CHECK == 'UNCHANGED'
-        run: echo "Atlas data version unchanged. Nothing to do."
+      # Decide once whether to run the SYNC. (The post-sync build/deploy decision
+      # is DEPLOY, computed separately in the data-change step.)
+      #   - push:            always (a push to main is a real deploy)
+      #   - schedule:        only if the Atlas version changed (idle poll stops)
+      #   - workflow_dispatch: only if force_sync is on (CHECK already reflects it)
+      # check_data_version.py is called with --force when force_sync is set, so
+      # CHECK is CHANGED whenever work is wanted; DO_WORK therefore collapses to
+      # (push) OR (CHECK != UNCHANGED). A single source of truth keeps every
+      # step's gate consistent — the decision can't drift between steps.
+      - name: Decide whether to do work
+        id: do_work
+        run: |
+          EVENT="${{ github.event_name }}"
+          CHECK="${{ steps.data_version.outputs.CHECK }}"
+          if [ "$EVENT" = "push" ] || [ "$CHECK" != "UNCHANGED" ]; then
+            echo "DO_WORK=true" >> "$GITHUB_OUTPUT"
+            echo "Doing work (event=$EVENT, check=$CHECK)."
+          else
+            echo "DO_WORK=false" >> "$GITHUB_OUTPUT"
+            echo "Atlas data unchanged and no force requested (event=$EVENT). Nothing to do."
+          fi
 
-      # Every step below is skipped on idle schedule runs (version unchanged)
+      # Every step below is skipped when DO_WORK=false (idle poll / no-force dispatch)
       - name: Set up Python
-        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
+        if: steps.do_work.outputs.DO_WORK == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install Python dependencies
-        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
+        if: steps.do_work.outputs.DO_WORK == 'true'
         run: pip install Pillow
 
       - uses: actions/setup-node@v4
-        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
+        if: steps.do_work.outputs.DO_WORK == 'true'
         with:
           node-version: 22
           cache: npm
 
       - run: npm ci
-        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
+        if: steps.do_work.outputs.DO_WORK == 'true'
 
       # Run sync: regenerates game data from Atlas API (using cached images & raw JSON)
       - name: Sync latest game data from Atlas Academy
-        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
+        if: steps.do_work.outputs.DO_WORK == 'true'
         run: |
           FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
           rm -f src/scripts/data/*.js
@@ -93,7 +116,7 @@ jobs:
       # Compare generated data hash vs last run; gate the build on it
       - name: Check if generated data changed
         id: data_change
-        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
+        if: steps.do_work.outputs.DO_WORK == 'true'
         run: |
           HASH_FILE=".cache/atlas/data_hash.txt"
           NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js | sha256sum | cut -d' ' -f1)
@@ -106,8 +129,17 @@ jobs:
             echo "Generated data changed (or first run)."
           fi
           echo "DATA_DIRTY=$DIRTY" >> "$GITHUB_OUTPUT"
-          # Deploy only when a Pages artifact will be uploaded (same gate as the build steps)
-          if [ "$GITHUB_EVENT_NAME" != "schedule" ] || [ "$DIRTY" = "true" ]; then
+          # Deploy when ANY of:
+          #   - push:          a push to main is a real ship, data or not
+          #   - force_sync:    an explicit manual "force a real build/deploy"
+          #   - data changed:  a schedule/dispatch run whose sync produced a diff
+          # This step only runs when DO_WORK is true (else the sync never
+          # happened), so the "version changed but data byte-identical" edge
+          # still skips. DEPLOY is computed ONCE here — the build/upload steps
+          # below just read it, so the decision can't drift between them.
+          if [ "${{ github.event_name }}" = "push" ] \
+             || [ "${{ github.event.inputs.force_sync }}" = "true" ] \
+             || [ "$DIRTY" = "true" ]; then
             echo "DEPLOY=true" >> "$GITHUB_OUTPUT"
           else
             echo "DEPLOY=false" >> "$GITHUB_OUTPUT"
@@ -115,15 +147,15 @@ jobs:
 
       # Verify schema and image consistency (only when building)
       - name: Validate data integrity
-        if: steps.data_change.outputs.DATA_DIRTY == 'true' || github.event_name != 'schedule'
+        if: steps.data_change.outputs.DEPLOY == 'true'
         run: node scripts/validate_data.js
 
       - name: Build
-        if: steps.data_change.outputs.DATA_DIRTY == 'true' || github.event_name != 'schedule'
+        if: steps.data_change.outputs.DEPLOY == 'true'
         run: npm run build
 
       - name: Verify build outputs
-        if: steps.data_change.outputs.DATA_DIRTY == 'true' || github.event_name != 'schedule'
+        if: steps.data_change.outputs.DEPLOY == 'true'
         run: |
           if [ ! -f "dist/index.html" ]; then
             echo "ERROR: dist/index.html not found after build"
@@ -132,7 +164,7 @@ jobs:
           echo "Build outputs verified"
 
       - name: Upload Pages artifact
-        if: steps.data_change.outputs.DATA_DIRTY == 'true' || github.event_name != 'schedule'
+        if: steps.data_change.outputs.DEPLOY == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
