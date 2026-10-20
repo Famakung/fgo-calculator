@@ -42,9 +42,13 @@ jobs:
             .cache/atlas/
             public/servants/
             public/craft_essences/
-          # Primary key only (no restore-keys): when sync code changes we want a
-          # fully clean rebuild, not the previous script version's cache.
-          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py') }}
+          # Primary key only (no restore-keys): when sync OR version-gate code
+          # changes we want a fully clean rebuild, not the previous script
+          # version's cache. check_data_version.py is included because it writes
+          # .cache/atlas/data_version.txt — without it, the cached blob predates
+          # the gate and every run sees a stale/missing version (CHECK=CHANGED
+          # forever) since a key hit means the cache is never re-saved.
+          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/check_data_version.py') }}
 
       # ~230-byte GET /info vs cached JP.hash; idle schedule runs stop on UNCHANGED.
       # python3 is preinstalled on the runner; failures yield UNKNOWN and continue.
