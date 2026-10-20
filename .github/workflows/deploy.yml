@@ -57,23 +57,29 @@ jobs:
         if: github.event_name == 'schedule' && steps.data_version.outputs.CHECK == 'UNCHANGED'
         run: echo "Atlas data version unchanged. Nothing to do."
 
+      # Every step below is skipped on idle schedule runs (version unchanged)
       - name: Set up Python
+        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Install Python dependencies
+        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
         run: pip install Pillow
 
       - uses: actions/setup-node@v4
+        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
         with:
           node-version: 22
           cache: npm
 
       - run: npm ci
+        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
 
       # Run sync: regenerates game data from Atlas API (using cached images & raw JSON)
       - name: Sync latest game data from Atlas Academy
+        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
         run: |
           FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
           rm -f src/scripts/data/*.js
@@ -82,6 +88,7 @@ jobs:
       # Compare generated data hash vs last run; gate the build on it
       - name: Check if generated data changed
         id: data_change
+        if: github.event_name != 'schedule' || steps.data_version.outputs.CHECK != 'UNCHANGED'
         run: |
           HASH_FILE=".cache/atlas/data_hash.txt"
           NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js | sha256sum | cut -d' ' -f1)
