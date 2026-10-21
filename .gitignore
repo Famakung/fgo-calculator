@@ -7,6 +7,7 @@ docs/
 dist/
 .astro/
 .cache/
+.ci-baselines/
 public/servants/
 public/craft_essences/
 src/scripts/data/*.js

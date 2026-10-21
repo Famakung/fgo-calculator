@@ -56,6 +56,10 @@ def run_cli(url, version_file, force=False):
 def main():
     n = 0
 
+    # the baseline lives outside .cache/atlas so it can persist across asset-cache hits
+    assert m.DEFAULT_VERSION_FILE == os.path.join(".ci-baselines", "data_version.txt")
+    n += 1
+
     # --- decide() truth table (jp, na) pair semantics ---
     assert m.decide(("a", "b"), ("a", "b"), False) == "UNCHANGED"
     assert m.decide(("b", "b"), ("a", "b"), False) == "CHANGED"   # JP-only change

@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 
 DEFAULT_URL = "https://api.atlasacademy.io/info"
-DEFAULT_VERSION_FILE = os.path.join(".cache", "atlas", "data_version.txt")
+DEFAULT_VERSION_FILE = os.path.join(".ci-baselines", "data_version.txt")
 TIMEOUT_SECONDS = 10
 ATTEMPTS = 2
 RETRY_DELAY_SECONDS = 3
