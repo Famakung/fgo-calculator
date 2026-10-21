@@ -1,13 +1,15 @@
 """Self-check for the /info gate wiring in .github/workflows/deploy.yml.
 
 Run: python3 scripts/test_deploy_workflow.py
-Pins six scenarios of the build job (DO_WORK/DEPLOY gates):
+Pins nine scenarios of the build job (DO_WORK/DEPLOY gates):
   1. idle schedule (CHECK=UNCHANGED)        -> only the decide step may run after the version check
   2. schedule, CHECK=CHANGED, data dirty    -> sync through upload all run
   3. schedule, CHECK=CHANGED, data clean    -> sync + hash check run, build/upload skip
   4. push (any CHECK)                       -> no step after the check may be blocked
   5. workflow_dispatch, no force, UNCHANGED -> only the decide step may run
   6. workflow_dispatch, force_sync (CHECK=CHANGED) -> every step after the check runs
+  7. generated data dir is cached and not wiped; asset-cache key hashes sync_atlas_data.py (structural)
+  8. self-test job runs all suites except on schedule (structural)
   9. baselines persist across asset-cache hits via a run-scoped
      cache/restore + cache/save pair (structural)
 """

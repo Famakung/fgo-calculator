@@ -62,15 +62,17 @@ jobs:
           key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py') }}
 
       # Baselines must persist even when the asset cache HITS, so they sit in a
-      # cache keyed on github.run_id: every run misses the primary key (the
-      # save below always writes) and restore-keys fetches the newest one.
-      # First run on a branch: no match → files missing → gate yields CHANGED →
-      # saved. Self-healing.
+      # cache keyed on github.run_id + run_attempt (unique per attempt: a
+      # re-run would otherwise collide with its own saved key, and cache/save
+      # hard-fails on an existing key): every run misses the primary key (the
+      # save step, when it runs, always writes) and restore-keys fetches the
+      # newest one. First run on a branch: no match → files missing → gate
+      # yields CHANGED → saved. Self-healing.
       - name: Restore version baselines
         uses: actions/cache/restore@v4
         with:
           path: .ci-baselines/
-          key: fgo-version-baseline-${{ github.run_id }}
+          key: fgo-version-baseline-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: fgo-version-baseline-
 
       # ~230-byte GET /info vs cached JP + NA hashes; idle schedule/dispatch runs stop on UNCHANGED.
@@ -166,16 +168,6 @@ jobs:
             echo "DEPLOY=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Bare-form `if` (no ${{ }} wrapper): matches every other gated step in
-      # this file, and scripts/test_deploy_workflow.py's would_run() evaluates
-      # the stored condition string as-is.
-      - name: Save version baselines
-        if: github.event_name == 'push' || steps.data_version.outputs.CHECK == 'CHANGED' || steps.data_change.outputs.DATA_DIRTY == 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .ci-baselines/
-          key: fgo-version-baseline-${{ github.run_id }}
-
       # Verify schema and image consistency (only when building)
       - name: Validate data integrity
         if: steps.data_change.outputs.DEPLOY == 'true'
@@ -199,6 +191,19 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+      # Last step: saving earlier would persist the baselines even when a later
+      # validate/build step fails, making every later schedule run skip an
+      # update that never shipped.
+      # Bare-form `if` (no ${{ }} wrapper): matches every other gated step in
+      # this file, and scripts/test_deploy_workflow.py's would_run() evaluates
+      # the stored condition string as-is.
+      - name: Save version baselines
+        if: github.event_name == 'push' || steps.data_version.outputs.CHECK == 'CHANGED' || steps.data_change.outputs.DATA_DIRTY == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ci-baselines/
+          key: fgo-version-baseline-${{ github.run_id }}-${{ github.run_attempt }}
 
   deploy:
     needs: build
