@@ -8,6 +8,8 @@ Pins six scenarios of the build job (DO_WORK/DEPLOY gates):
   4. push (any CHECK)                       -> no step after the check may be blocked
   5. workflow_dispatch, no force, UNCHANGED -> only the decide step may run
   6. workflow_dispatch, force_sync (CHECK=CHANGED) -> every step after the check runs
+  9. baselines persist across asset-cache hits via a run-scoped
+     cache/restore + cache/save pair (structural)
 """
 
 import os
@@ -129,6 +131,29 @@ def main():
     st_runs = " ".join(s["run"] for s in st["steps"] if s.get("run"))
     for script in ("test_check_data_version.py", "test_deploy_workflow.py", "test_drift.py"):
         assert script in st_runs, f"self-test job does not run {script}"
+    n += 1
+
+    # 9. the two baseline files live in .ci-baselines/ under their own
+    #    run-scoped cache: the github.run_id key makes every run a primary-key
+    #    miss (so cache/save always writes the newest state — a hit on the
+    #    script-keyed asset blob freezes anything inside it) and restore-keys
+    #    fetches it. The asset blob must no longer carry or key off them.
+    restores = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache/restore")]
+    saves = [s for s in steps if str(s.get("uses", "")).startswith("actions/cache/save")]
+    assert len(restores) == 1, "expected exactly one actions/cache/restore step"
+    assert len(saves) == 1, "expected exactly one actions/cache/save step"
+    rb, sv = restores[0], saves[0]
+    assert "github.run_id" in rb["with"]["key"], "baseline cache key must be run-scoped"
+    assert rb["with"]["restore-keys"] == "fgo-version-baseline-", "restore-keys must point at the newest baseline"
+    assert sv["with"]["key"] == rb["with"]["key"], "save must reuse the run's primary key"
+    assert rb["with"]["path"] == sv["with"]["path"] == ".ci-baselines/", "baselines must live in .ci-baselines/"
+    assert ".ci-baselines" not in cache_path, "asset blob must not carry the baselines"
+    assert "check_data_version.py" not in cache_key, "asset cache key must not hash the gate script"
+    data_change_run = next(s for s in steps if s.get("name") == "Check if generated data changed")["run"]
+    assert 'HASH_FILE=".ci-baselines/data_hash.txt"' in data_change_run, "data-hash baseline moved to .ci-baselines"
+    names = [s.get("name") for s in steps]
+    assert names.index("Restore version baselines") < names.index("Check Atlas data version"), "baselines must restore before the gate reads them"
+    assert names.index("Check if generated data changed") < names.index("Save version baselines"), "save must run after both baseline writers"
     n += 1
 
     print(f"{n} tests passed")

@@ -48,17 +48,30 @@ jobs:
             public/servants/
             public/craft_essences/
             src/scripts/data/
-          # Primary key only (no restore-keys): when sync OR version-gate code
-          # changes we want a fully clean rebuild, not the previous script
-          # version's cache. check_data_version.py is included because it writes
-          # .cache/atlas/data_version.txt — without it, the cached blob predates
-          # the gate and every run sees a stale/missing version (CHECK=CHANGED
-          # forever) since a key hit means the cache is never re-saved.
-          # src/scripts/data/ is cached too: it holds the generated JS, so the
-          # pre-sync drift check (revalidate_servant_traits) can detect in-place
-          # changes instead of a full regen. A sync-script change rotates the
-          # key, so a format change in the generated files forces a clean regen.
-          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/check_data_version.py') }}
+          # Primary key only (no restore-keys): when the sync script changes we
+          # want a fully clean rebuild, not the previous script version's blob.
+          # This blob holds regenerable bytes only: downloaded images, the raw
+          # API JSON + ETags under .cache/atlas/, and the generated
+          # src/scripts/data/ JS (so the drift path revalidates in place). The
+          # gate's comparison baselines do NOT live here: actions/cache never
+          # re-saves a blob on an exact-key hit, so state that changes with the
+          # game data would freeze at the value from the last miss — the
+          # "CHECK=CHANGED forever" failure that made runs #60/#61 (2026-10-20)
+          # redo the full sync. They live in .ci-baselines/, round-tripped by
+          # the run-scoped restore/save pair below.
+          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py') }}
+
+      # Baselines must persist even when the asset cache HITS, so they sit in a
+      # cache keyed on github.run_id: every run misses the primary key (the
+      # save below always writes) and restore-keys fetches the newest one.
+      # First run on a branch: no match → files missing → gate yields CHANGED →
+      # saved. Self-healing.
+      - name: Restore version baselines
+        uses: actions/cache/restore@v4
+        with:
+          path: .ci-baselines/
+          key: fgo-version-baseline-${{ github.run_id }}
+          restore-keys: fgo-version-baseline-
 
       # ~230-byte GET /info vs cached JP + NA hashes; idle schedule/dispatch runs stop on UNCHANGED.
       # python3 is preinstalled on the runner; failures yield UNKNOWN and continue.
@@ -125,7 +138,8 @@ jobs:
         id: data_change
         if: steps.do_work.outputs.DO_WORK == 'true'
         run: |
-          HASH_FILE=".cache/atlas/data_hash.txt"
+          mkdir -p .ci-baselines
+          HASH_FILE=".ci-baselines/data_hash.txt"
           NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js | sha256sum | cut -d' ' -f1)
           DIRTY=true
           if [ -f "$HASH_FILE" ] && [ "$(cat "$HASH_FILE")" = "$NEW_HASH" ]; then
@@ -151,6 +165,16 @@ jobs:
           else
             echo "DEPLOY=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Bare-form `if` (no ${{ }} wrapper): matches every other gated step in
+      # this file, and scripts/test_deploy_workflow.py's would_run() evaluates
+      # the stored condition string as-is.
+      - name: Save version baselines
+        if: github.event_name == 'push' || steps.data_version.outputs.CHECK == 'CHANGED' || steps.data_change.outputs.DATA_DIRTY == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ci-baselines/
+          key: fgo-version-baseline-${{ github.run_id }}
 
       # Verify schema and image consistency (only when building)
       - name: Validate data integrity
