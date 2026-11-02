@@ -12,6 +12,18 @@
     "selectors-chunk",
     "tab-navigator-chunk"
   ],
+  "chunkBytes": {
+    "bond-lazy": 17798,
+    "ce-filter-chunk": 17261,
+    "ce-match-worker": 2788,
+    "constants-chunk": 1548,
+    "data-chunk": 51633,
+    "event-lazy": 5222,
+    "index.astro_astro_type_script_index_0_lang": 33,
+    "main-entry": 2995,
+    "selectors-chunk": 21857,
+    "tab-navigator-chunk": 1709
+  },
   "chunkMinBytes": {
     "bond-lazy": 4449,
     "ce-filter-chunk": 4315,
@@ -24,6 +36,6 @@
     "selectors-chunk": 5464,
     "tab-navigator-chunk": 427
   },
-  "rawTextSha": "148949701a470dd2b67edbc09531fd343ead8e46504f37258e9cad1b3033135a",
+  "rawTextSha": "ba1228928e33d15e9d3c9b44f0c2df2f2004f6811ee769f54f3e6a936d4ca719",
   "normalisedTextSha": "54b80988a8a9e75893a69cb23d6e9026fe13783a62f60ef87661659a65ac78ce"
 }
