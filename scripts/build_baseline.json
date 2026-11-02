@@ -1,5 +1,5 @@
 {
-  "astroVersion": "5.18.2",
+  "astroVersion": "7.4.5",
   "chunks": [
     "bond-lazy",
     "ce-filter-chunk",
@@ -13,16 +13,16 @@
     "tab-navigator-chunk"
   ],
   "chunkMinBytes": {
-    "bond-lazy": 4543,
-    "ce-filter-chunk": 4243,
-    "ce-match-worker": 698,
-    "constants-chunk": 395,
-    "data-chunk": 12935,
-    "event-lazy": 1356,
-    "index.astro_astro_type_script_index_0_lang": 55,
-    "main-entry": 1180,
-    "selectors-chunk": 5130,
-    "tab-navigator-chunk": 433
+    "bond-lazy": 4449,
+    "ce-filter-chunk": 4315,
+    "ce-match-worker": 697,
+    "constants-chunk": 387,
+    "data-chunk": 12908,
+    "event-lazy": 1305,
+    "index.astro_astro_type_script_index_0_lang": 8,
+    "main-entry": 748,
+    "selectors-chunk": 5464,
+    "tab-navigator-chunk": 427
   },
   "rawTextSha": "148949701a470dd2b67edbc09531fd343ead8e46504f37258e9cad1b3033135a",
   "normalisedTextSha": "54b80988a8a9e75893a69cb23d6e9026fe13783a62f60ef87661659a65ac78ce"
