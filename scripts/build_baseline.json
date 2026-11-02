@@ -1,0 +1,41 @@
+{
+  "astroVersion": "7.4.5",
+  "chunks": [
+    "bond-lazy",
+    "ce-filter-chunk",
+    "ce-match-worker",
+    "constants-chunk",
+    "data-chunk",
+    "event-lazy",
+    "index.astro_astro_type_script_index_0_lang",
+    "main-entry",
+    "selectors-chunk",
+    "tab-navigator-chunk"
+  ],
+  "chunkBytes": {
+    "bond-lazy": 17798,
+    "ce-filter-chunk": 17261,
+    "ce-match-worker": 2788,
+    "constants-chunk": 1548,
+    "data-chunk": 51633,
+    "event-lazy": 5222,
+    "index.astro_astro_type_script_index_0_lang": 33,
+    "main-entry": 2995,
+    "selectors-chunk": 21857,
+    "tab-navigator-chunk": 1709
+  },
+  "chunkMinBytes": {
+    "bond-lazy": 4449,
+    "ce-filter-chunk": 4315,
+    "ce-match-worker": 697,
+    "constants-chunk": 387,
+    "data-chunk": 12908,
+    "event-lazy": 1305,
+    "index.astro_astro_type_script_index_0_lang": 8,
+    "main-entry": 748,
+    "selectors-chunk": 5464,
+    "tab-navigator-chunk": 427
+  },
+  "rawTextSha": "ba1228928e33d15e9d3c9b44f0c2df2f2004f6811ee769f54f3e6a936d4ca719",
+  "normalisedTextSha": "54b80988a8a9e75893a69cb23d6e9026fe13783a62f60ef87661659a65ac78ce"
+}

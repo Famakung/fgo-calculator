@@ -119,7 +119,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.do_work.outputs.DO_WORK == 'true'
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
@@ -176,6 +176,15 @@ jobs:
       - name: Build
         if: steps.data_change.outputs.DEPLOY == 'true'
         run: npm run build
+
+      # Chunk layout, <head> order and visible page text are asserted against
+      # scripts/build_baseline.json. The browser verifier (scripts/verify_render.js)
+      # is deliberately not here: it needs a Chromium download, and this workflow
+      # runs on a 10-minute schedule, so a flaky fetch would block deploys for a
+      # reason unrelated to the site. It is a local pre-merge gate instead.
+      - name: Check build output
+        if: steps.data_change.outputs.DEPLOY == 'true'
+        run: npm run check:build
 
       - name: Verify build outputs
         if: steps.data_change.outputs.DEPLOY == 'true'

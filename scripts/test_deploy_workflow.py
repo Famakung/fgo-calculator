@@ -69,7 +69,15 @@ def main():
 
     # 2. schedule, data changed, data dirty: sync through upload must all run
     W, P = scenario_values("schedule", "CHANGED", "false", "true")
-    for name in ("Sync latest game data from Atlas Academy", "Check if generated data changed", "Validate data integrity", "Build", "Verify build outputs", "Upload Pages artifact"):
+    for name in (
+        "Sync latest game data from Atlas Academy",
+        "Check if generated data changed",
+        "Validate data integrity",
+        "Build",
+        "Check build output",
+        "Verify build outputs",
+        "Upload Pages artifact",
+    ):
         cond = next(c for nm, c in steps_after_check() if nm == name)
         assert would_run(cond, "schedule", "CHANGED", "true", W, P), f"step {name!r} is blocked when data changed and dirty"
     n += 1
@@ -77,7 +85,7 @@ def main():
     # 3. schedule, data changed, data clean: sync + hash check run, build/upload skip
     W, P = scenario_values("schedule", "CHANGED", "false", "false")
     for name, cond in steps_after_check():
-        if name in ("Validate data integrity", "Build", "Verify build outputs", "Upload Pages artifact"):
+        if name in ("Validate data integrity", "Build", "Check build output", "Verify build outputs", "Upload Pages artifact"):
             assert not would_run(cond, "schedule", "CHANGED", "false", W, P), f"step {name!r} should skip when generated data is clean: if={cond!r}"
         else:
             assert would_run(cond, "schedule", "CHANGED", "false", W, P), f"step {name!r} should run when data changed (clean): if={cond!r}"
