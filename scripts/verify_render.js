@@ -43,9 +43,15 @@ try {
     };
   });
 
-  const lazyRequests = [];
-  page.on("request", (req) => {
-    if (/bond-lazy/.test(req.url())) lazyRequests.push(req.url());
+  // Lazy chunks are asserted by response status, not by request: a request still
+  // fires when the chunk 404s, which is precisely the failure being caught.
+  // event-lazy is also preloaded while idle, so it can be fetched before the tab
+  // is ever clicked — record it from page load instead of waiting on the click.
+  const eventFetched = new Promise((resolve) => {
+    page.on("response", (res) => {
+      if (/event-lazy/.test(res.url())) resolve(res.status());
+    });
+    setTimeout(() => resolve("never"), 20000).unref();
   });
 
   await page.goto(url, { waitUntil: "networkidle0" });
@@ -60,7 +66,10 @@ try {
   if (!hasPoller) errors.push("no inline script contains fgo_build_etag: stale-version prompt is gone");
 
   // Bond tab must pull its lazy module and render its slots.
-  await page.click('.tab-btn[data-tab="bond"]');
+  const [bondRes] = await Promise.all([
+    page.waitForResponse((r) => /bond-lazy/.test(r.url()), { timeout: 15000 }).catch(() => null),
+    page.click('.tab-btn[data-tab="bond"]'),
+  ]);
   let bondSlots = 0;
   try {
     await page.waitForFunction(() => document.querySelectorAll("#servantGrid > *").length > 0, { timeout: 15000 });
@@ -68,8 +77,18 @@ try {
   } catch {
     errors.push("bond tab: #servantGrid never rendered any children");
   }
-  if (bondSlots > 0) console.log(`NOTE: bond tab rendered ${bondSlots} grid children from ${lazyRequests.length} bond-lazy request(s)`);
-  if (lazyRequests.length === 0) errors.push("bond tab: no network request for bond-lazy — the lazy import never fired");
+  console.log(`NOTE: bond tab rendered ${bondSlots} grid children, bond-lazy responded ${bondRes ? bondRes.status() : "never"}`);
+  if (!bondRes || bondRes.status() !== 200) {
+    errors.push(`bond tab: bond-lazy was not fetched successfully (status ${bondRes ? bondRes.status() : "no request"})`);
+  }
+
+  // Event tab is lazily imported on first visit and preloaded while idle, so the
+  // chunk has to actually come back: a 404 request would still be a request.
+  await page.click(".tab-btn[data-tab=event]");
+  const eventStatus = await eventFetched;
+  const questRows = await page.evaluate(() => document.querySelectorAll("#questGrid > *").length);
+  console.log(`NOTE: event tab shows ${questRows} quest-grid node(s), event-lazy responded ${eventStatus}`);
+  if (eventStatus !== 200) errors.push(`event tab: event-lazy was not fetched successfully (status ${eventStatus})`);
 
   // CE Filter tab: the worker computes, the results grid fills.
   await page.click('.tab-btn[data-tab="cefilter"]');
