@@ -119,7 +119,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.do_work.outputs.DO_WORK == 'true'
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci

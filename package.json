@@ -1,6 +1,9 @@
 {
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.23.4"
+  },
   "scripts": {
     "predev": "node scripts/ensure_data.js",
     "prebuild": "node scripts/ensure_data.js",
@@ -17,7 +20,7 @@
     "data:validate": "node scripts/validate_data.js"
   },
   "dependencies": {
-    "astro": "^5.18.1"
+    "astro": "^5.18.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
