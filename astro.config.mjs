@@ -8,15 +8,21 @@ export default defineConfig({
       format: "es",
     },
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         output: {
-          manualChunks(id) {
-            if (id.includes("constants.js")) return "constants-chunk";
-            if (id.includes("data.js")) return "data-chunk";
-            if (id.includes("selectors.js")) return "selectors-chunk";
-            if (id.includes("tab-navigator.js")) return "tab-navigator-chunk";
-            if (id.includes("ce-filter-app.js")) return "ce-filter-chunk";
-            if (id.includes("main.js")) return "main-entry";
+          // Astro 7 = Vite 8 = Rolldown. The `manualChunks` function form is
+          // deprecated and silently drops rules: on 7.4.5 it kept only 2 of the
+          // 6 chunk names. `codeSplitting.groups` is Rolldown's replacement, and
+          // `priority` preserves the old function's first-match-wins order.
+          codeSplitting: {
+            groups: [
+              { name: "constants-chunk", test: /\/constants\.js$/, priority: 6 },
+              { name: "data-chunk", test: /\/data\.js$/, priority: 5 },
+              { name: "selectors-chunk", test: /\/selectors\.js$/, priority: 4 },
+              { name: "tab-navigator-chunk", test: /\/tab-navigator\.js$/, priority: 3 },
+              { name: "ce-filter-chunk", test: /\/ce-filter-app\.js$/, priority: 2 },
+              { name: "main-entry", test: /\/main\.js$/, priority: 1 },
+            ],
           },
         },
       },
