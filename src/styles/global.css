@@ -907,6 +907,28 @@ html[data-tab="event"] #panel-event {
     opacity 0.15s ease;
 }
 
+/* Badge per ascension group, with that group's label underneath it when the match is split */
+.cefilter-combo-servant-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  justify-content: center;
+}
+
+.cefilter-combo-servant {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: var(--ce-badge-w);
+  max-width: 96px;
+}
+
+.cefilter-combo-servant .cefilter-ascension-label {
+  font-size: 0.55rem;
+  line-height: 1.2;
+}
+
 .cefilter-combo-servant-badge {
   cursor: default;
   transition: none;

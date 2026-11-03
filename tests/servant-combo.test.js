@@ -8,6 +8,9 @@ import { ServantComboCalculator } from "../src/scripts/domain.js";
    059 Jeanne d'Arc, 373 Kukulcan, 444 U-Olga Marie. */
 const entry = (id, ceIds) => ({ servant: { id }, matchingCEIds: new Set(ceIds) });
 
+/* A row's members are the matching entries themselves, in servant-id order. */
+const ids = (group) => group.members.map((member) => member.servant.id);
+
 const MASH = ["0001", "0002", "0003", "0004"];
 const JEANNE = ["0002", "0003", "0004", "0005"];
 const KUKULCAN = ["0002", "0003", "0004", "0005"];
@@ -15,24 +18,52 @@ const OLGA = ["0001", "0002", "0003", "0004", "0005"];
 
 const fourServants = () => [entry("001", MASH), entry("059", JEANNE), entry("373", KUKULCAN), entry("444", OLGA)];
 
-test("union across ascension entries", () => {
-  // Neither entry alone, and not the last one, is the usable list: the union is.
+test("splits a servant whose ascensions match different CEs", () => {
+  // Mash's two forms each hold one of the pair, so no row may claim Mash uses both at once:
+  // the two rows are the split, the way Craft Essence Select gives each form its own card.
   const entries = [entry("001", ["0001"]), entry("001", ["0002"]), entry("059", ["0001", "0002"])];
   const { groups, unshared, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059"]);
 
-  assert.deepStrictEqual(groups, [{ ceIds: ["0001", "0002"], servantIds: ["001", "059"] }]);
+  assert.deepStrictEqual(
+    groups.map((g) => [g.ceIds, ids(g)]),
+    [
+      [["0001"], ["001", "059"]],
+      [["0002"], ["001", "059"]],
+    ],
+  );
   assert.deepStrictEqual(unshared, []);
   assert.equal(truncated, false);
 });
 
-test("collapses identical CE lists to the union of servants", () => {
+test("a split servant shows every form that can use the row", () => {
+  // The stage form's list is a superset, so both Mash entries qualify for the shared pair.
+  const base = entry("001", ["0001", "0002"]);
+  const stage = entry("001", ["0001", "0002", "0003"]);
+  const entries = [base, stage, entry("059", ["0001", "0002"])];
+  const { groups } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059"]);
+
+  assert.deepStrictEqual(groups[0].ceIds, ["0001", "0002"]);
+  assert.deepStrictEqual(groups[0].members, [base, stage, entries[2]], "both Mash forms, in entry order");
+});
+
+test("one servant split across forms is still not a combo", () => {
+  const { groups, unshared } = ServantComboCalculator.buildSharedCEGroups(
+    [entry("001", ["0001"]), entry("001", ["0002"])],
+    ["001"],
+  );
+
+  assert.deepStrictEqual(groups, []);
+  assert.deepStrictEqual(unshared, ["001"]);
+});
+
+test("collapses identical CE lists into one member group", () => {
   const entries = [entry("001", MASH), entry("059", JEANNE), entry("373", KUKULCAN)];
   const { groups } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059", "373"]);
 
   const collapsed = groups.find((g) => g.ceIds.join() === ["0002", "0003", "0004"].join());
   assert.ok(collapsed, "the shared 3-CE row is present");
-  assert.deepStrictEqual(collapsed.servantIds, ["001", "059", "373"]);
-  assert.equal(new Set(collapsed.servantIds).size, collapsed.servantIds.length, "no repeated servant");
+  assert.deepStrictEqual(ids(collapsed), ["001", "059", "373"]);
+  assert.equal(new Set(ids(collapsed)).size, ids(collapsed).length, "one entry per servant, so no repeats");
   assert.equal(groups.length, 2);
 });
 
@@ -64,7 +95,7 @@ test("sorts by CE count then servant count", () => {
   assert.equal(truncated, false);
   assert.deepStrictEqual(unshared, []);
   assert.deepStrictEqual(
-    groups.map((g) => [g.ceIds.length, g.servantIds.length]),
+    groups.map((g) => [g.ceIds.length, ids(g).length]),
     [
       [4, 3],
       [4, 2],
@@ -72,11 +103,11 @@ test("sorts by CE count then servant count", () => {
     ],
   );
   assert.deepStrictEqual(groups[0].ceIds, ["0002", "0003", "0004", "0005"]);
-  assert.deepStrictEqual(groups[0].servantIds, ["059", "373", "444"]);
+  assert.deepStrictEqual(ids(groups[0]), ["059", "373", "444"]);
   assert.deepStrictEqual(groups[1].ceIds, ["0001", "0002", "0003", "0004"]);
-  assert.deepStrictEqual(groups[1].servantIds, ["001", "444"]);
+  assert.deepStrictEqual(ids(groups[1]), ["001", "444"]);
   assert.deepStrictEqual(groups[2].ceIds, ["0002", "0003", "0004"]);
-  assert.deepStrictEqual(groups[2].servantIds, ["001", "059", "373", "444"]);
+  assert.deepStrictEqual(ids(groups[2]), ["001", "059", "373", "444"]);
 });
 
 test("maximal group expansion", () => {
@@ -89,7 +120,15 @@ test("maximal group expansion", () => {
   ];
   const { groups } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059", "444"]);
 
-  assert.deepStrictEqual(groups, [{ ceIds: ["0002", "0003"], servantIds: ["001", "059", "444"] }]);
+  assert.deepStrictEqual(
+    groups.map((g) => [g.ceIds, ids(g)]),
+    [
+      [
+        ["0002", "0003"],
+        ["001", "059", "444"],
+      ],
+    ],
+  );
 });
 
 test("truncated run makes no unshared claims", () => {

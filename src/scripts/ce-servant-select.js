@@ -158,20 +158,48 @@ export const ServantSelect = {
     });
     card.appendChild(ceRow);
 
-    const servantRow = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
-    group.servantIds.forEach((id) => {
-      const servant = ServantData.getServant(id);
-      if (!servant) return;
-      const img = DOMFactory.createLazyImg(servant.image, ["cefilter-match-badge", "cefilter-combo-servant-badge"], {
-        alt: servant.name,
-        title: servant.name,
-      });
-      DOMFactory.addAscensionFallback(img, id);
-      servantRow.appendChild(img);
+    const servantRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-servant-row"]);
+    const rowCEs = group.ceIds.map((ceId) => CEById.get(ceId)).filter(Boolean);
+    group.members.forEach((entry) => {
+      if (!entry || !entry.servant) return;
+      servantRow.appendChild(this._buildServantCell(entry, rowCEs));
     });
     card.appendChild(servantRow);
 
     return card;
+  },
+
+  /* One badge per ascension group, labelled and portraited like that group's own card in Craft
+     Essence Select, so a servant whose forms match different CEs shows both forms here. */
+  _buildServantCell(entry, rowCEs) {
+    const servant = entry.servant;
+    const matchedAscensions = entry.matchedAscensions || [];
+    const imgAsc =
+      !entry.baseMatchesAll && matchedAscensions.length > 0 ? entry.primaryAscension || matchedAscensions[0] : null;
+    const imgSrc = imgAsc ? ServantData.getImageForAscension(servant.id, imgAsc) : servant.image;
+
+    const labelParts = matchedAscensions.map((key) => ServantData.getAscensionLabel(servant.id, key));
+    const spiritronLabel = ServantData.getSpiritronLabel(servant.id, rowCEs, matchedAscensions, entry.baseMatchesAll);
+    if (spiritronLabel) labelParts.push(spiritronLabel);
+
+    const displayName = imgAsc ? ServantData.getAscensionName(servant.id, imgAsc) || servant.name : servant.name;
+    const name = labelParts.length > 0 ? `${displayName} (${labelParts.join(", ")})` : displayName;
+
+    const cell = DOMFactory.el("div", "cefilter-combo-servant");
+    const img = DOMFactory.createLazyImg(imgSrc, ["cefilter-match-badge", "cefilter-combo-servant-badge"], {
+      alt: name,
+      title: name,
+    });
+    DOMFactory.addAscensionFallback(img, servant.id);
+    cell.appendChild(img);
+
+    if (labelParts.length > 0) {
+      const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
+      ascLabel.textContent = labelParts.join("\n");
+      cell.appendChild(ascLabel);
+    }
+
+    return cell;
   },
 
   _paintNotes(groupCount, unshared, truncated) {

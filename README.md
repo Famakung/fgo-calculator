@@ -27,6 +27,9 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Per-servant results with bond breakdown and run count
 
 ### Bond Gain CE Filter
+- Two sub-tabs: **Craft Essence Select** (CEs → servants, default) and **Servant Select** (servants → shared CEs)
+- Servant Select: pick any number of servants, get one card per distinct shared CE list with every servant that can use it
+- Servant Select splits multi-ascension servants: when a servant's ascension groups match different CEs, each group shows its own portrait and ascension label, the same way Craft Essence Select cards it
 - Reverse lookup: select CEs to find matching servants
 - Match modes: All (AND), Any (OR), and Custom Match (filter by exact CE match count)
 - Dedicated "Filter Settings" modal with class filter, rarity filter, and CE match count buttons
@@ -73,6 +76,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 2. Choose match mode (Match All / Match Any OR / Custom Match)
 3. Browse matching servants in the results grid
 4. Search by servant ID or name to narrow results
+5. Or switch to the "Servant Select" sub-tab, click "Add Servant" and pick servants to see which CE lists they share
 
 ## CE Trait Matching
 
