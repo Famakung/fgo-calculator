@@ -469,6 +469,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </section>
 
         <section class="tab-panel active" id="panel-cefilter">
+          <div class="cefilter-subtabs" id="cefilterSubtabs" role="tablist">
+            <button type="button" class="cefilter-subtab-btn active" data-subtab="ce" role="tab" aria-selected="true">
+              Craft Essence Select
+            </button>
+            <button type="button" class="cefilter-subtab-btn" data-subtab="servant" role="tab" aria-selected="false">
+              Servant Select
+            </button>
+          </div>
+
+          <div class="cefilter-subpanel" id="cefilterSubCE" role="tabpanel">
           <div class="card">
             <div class="card-inner">
               <div class="card-title">Bond Gain Craft Essences</div>
@@ -543,6 +553,36 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="cefilter-results-grid grid" id="cefilterResults"></div>
               
               <div class="cefilter-pagination" id="cefilterPaginationBottom"></div>
+            </div>
+          </div>
+          </div>
+
+          <div class="cefilter-subpanel" id="cefilterSubServant" role="tabpanel" hidden>
+            <div class="card">
+              <div class="card-inner">
+                <div class="card-title">Servants</div>
+                <div class="cefilter-controls">
+                  <button class="cefilter-add-btn" id="cefilterServantAddBtn" type="button">
+                    Add Servant
+                  </button>
+                  <button class="cefilter-filter-btn" id="cefilterServantClearBtn" type="button">
+                    Clear
+                  </button>
+                </div>
+                <div class="cefilter-servant-count" id="cefilterServantCount">Servants (0)</div>
+                <div class="cefilter-servant-chips" id="cefilterServantChips"></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-inner">
+                <div class="card-title">Shared Craft Essences</div>
+                <div class="cefilter-combo-count" id="cefilterComboCount"></div>
+                <div class="cefilter-combo-results" id="cefilterComboResults"></div>
+                <div class="cefilter-combo-empty" id="cefilterComboEmpty" hidden></div>
+                <div class="cefilter-combo-unshared" id="cefilterComboUnshared" hidden></div>
+                <div class="cefilter-combo-truncated" id="cefilterComboTruncated" hidden></div>
+              </div>
             </div>
           </div>
         </section>

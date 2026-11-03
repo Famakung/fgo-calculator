@@ -66,6 +66,7 @@ function getClassOrderMap() {
 
 export const CEFilterApp = {
   state: {
+    subTab: "ce",
     selectedCEs: [],
     mode: "all",
     searchQuery: "",
@@ -208,6 +209,14 @@ export const CEFilterApp = {
       });
     }
 
+    const subtabs = document.getElementById("cefilterSubtabs");
+    if (subtabs) {
+      subtabs.addEventListener("click", (e) => {
+        const btn = e.target.closest(".cefilter-subtab-btn");
+        if (btn) this._switchSubTab(btn.dataset.subtab);
+      });
+    }
+
     this.buildClassFilter();
     this.buildRarityFilter();
 
@@ -215,6 +224,24 @@ export const CEFilterApp = {
 
     // Render immediately (synchronous computation) for faster first paint
     this.render();
+  },
+
+  _switchSubTab(sub) {
+    if (sub !== "ce" && sub !== "servant") return;
+    this.state.subTab = sub;
+
+    document.querySelectorAll(".cefilter-subtab-btn").forEach((btn) => {
+      const active = btn.dataset.subtab === sub;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+    });
+
+    const cePanel = document.getElementById("cefilterSubCE");
+    const servantPanel = document.getElementById("cefilterSubServant");
+    if (cePanel) cePanel.hidden = sub !== "ce";
+    if (servantPanel) servantPanel.hidden = sub !== "servant";
+
+    if (sub === "ce") this.render();
   },
 
   render() {
