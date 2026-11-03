@@ -336,6 +336,9 @@ try {
   if (ceCleared.clearLabel !== "Clear all") errors.push(`ce clear: label stayed "${ceCleared.clearLabel}"`);
   if (ceCleared.cards === 0) errors.push("ce clear: the servant grid emptied instead of falling back to all servants");
 
+  // Re-select a CE from a card badge so the reload below also proves Craft Essence Select persists.
+  await page.evaluate(() => document.querySelector("#cefilterResults .cefilter-match-badge")?.click());
+
   // Picks survive a refresh (the sub-tab does not), and Clear all empties the list in one click.
   await page.reload({ waitUntil: "networkidle0" });
   await page.click('button.cefilter-subtab-btn[data-subtab="servant"]');
@@ -351,14 +354,21 @@ try {
     /* falls through to the checks below */
   }
   const restored = await page.evaluate(() => ({
+    ceChips: document.querySelectorAll("#cefilterChips > .cefilter-chip").length,
     chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
     clearHidden: document.getElementById("cefilterServantClearBtn").hidden,
     clearLabel: document.getElementById("cefilterServantClearBtn").textContent.trim(),
     cards: document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length,
     subTab: document.querySelector(".cefilter-subtab-btn.active")?.dataset.subtab,
   }));
-  console.log(`NOTE: after reload — ${restored.chips} chip(s), "${restored.clearLabel}", ${restored.cards} card(s)`);
+  console.log(
+    `NOTE: after reload — ${restored.ceChips} CE chip(s), ${restored.chips} servant chip(s), ` +
+      `"${restored.clearLabel}", ${restored.cards} card(s)`,
+  );
   if (restored.chips !== 2) errors.push(`persistence: expected 2 restored chips after reload, saw ${restored.chips}`);
+  if (restored.ceChips !== 1) {
+    errors.push(`persistence: expected 1 restored CE chip after reload, saw ${restored.ceChips}`);
+  }
   if (restored.cards < 1) errors.push("persistence: restored picks rendered no shared-CE card");
   if (restored.subTab !== "servant") errors.push("persistence: sub-tab did not follow the explicit click");
   if (restored.clearHidden) errors.push(`clear all: button stayed hidden with ${restored.chips} picks`);
@@ -386,7 +396,20 @@ try {
   if (cleared.chips !== 0) errors.push(`clear all: ${cleared.chips} chip(s) left after clicking`);
   if (cleared.cards !== 0) errors.push(`clear all: ${cleared.cards} card(s) left after clicking`);
   if (!cleared.clearHidden) errors.push("clear all: button still shown with an empty pick list");
-  if (cleared.stored !== '{"servantPicks":[]}') errors.push(`clear all: stored "${cleared.stored}"`);
+  // Both sub-tabs share this key, so each write has to be read-modify-write: the servant Clear all
+  // must empty servantPicks and leave the CE side's picks standing.
+  let clearedStore = {};
+  try {
+    clearedStore = JSON.parse(cleared.stored || "{}");
+  } catch {
+    errors.push(`clear all: stored blob is not JSON: "${cleared.stored}"`);
+  }
+  if (clearedStore.servantPicks?.length !== 0) {
+    errors.push(`clear all: servantPicks not emptied — stored "${cleared.stored}"`);
+  }
+  if (clearedStore.cePicks?.length !== 1) {
+    errors.push(`clear all: the servant write clobbered cePicks — stored "${cleared.stored}"`);
+  }
 
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {

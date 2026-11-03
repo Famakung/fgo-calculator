@@ -108,7 +108,7 @@ fgo-calculator/
 │   │   ├── main.js            # Entry: DOMContentLoaded → lazy tab init (dynamic import())
 │   │   ├── bond-lazy.js       # Lazy entry: BondApp + selectors (on Bond tab switch)
 │   │   ├── event-lazy.js      # Lazy entry: EventShop init (on Event tab switch)
-│   │   ├── ce-filter-app.js   # CEFilterApp (Worker; CE picks unpersisted, servant picks persist)
+│   │   ├── ce-filter-app.js   # CEFilterApp (Worker; CE picks + match mode persist via CEFilterStore)
 │   │   ├── ce-match-worker.js # Worker entry (TraitMatcher inlined)
 │   │   ├── constants.js       # All constants
 │   │   ├── domain.js           # Schema, Validator, Calculator, TraitMatcher

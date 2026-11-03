@@ -1,8 +1,11 @@
 import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
-import { TraitMatcher } from "./domain.js";
+import { TraitMatcher, Validator } from "./domain.js";
 import { ServantData, CEById, TraitCEs, TraitNames } from "./data.js";
 import { DOMFactory, debounce } from "./presentation.js";
-import { ServantSelect } from "./ce-servant-select.js";
+import { ServantSelect, CEFilterStore } from "./ce-servant-select.js";
+
+/* The #cefilterMode select's option values; a stored mode outside this list is ignored. */
+const CE_MODES = ["all", "any", "custom"];
 
 /* === Worker setup for off-thread CE match computation === */
 let _worker = null;
@@ -97,6 +100,7 @@ export const CEFilterApp = {
     this._initialized = true;
     this._callbacks = callbacks || {};
     this._debouncedRender = debounce(() => this.render(), 50);
+    this._loadPicks();
 
     const addBtn = document.getElementById("cefilterAddBtn");
     const modeSelect = document.getElementById("cefilterMode");
@@ -267,11 +271,26 @@ export const CEFilterApp = {
   },
 
   render() {
+    /* Every pick change ends in render(), so this is the only save point — the list is also mutated
+       from main.js (picker onApply) and from card badges, which would each need a call otherwise. */
+    this._saveState();
     this.renderChips();
     this.buildCustomCountFilter();
 
     const allMatches = this.computeAllCEMatches();
     this._finishRender(allMatches);
+  },
+
+  /* Picks plus the match mode: mode alone would restore chips under "any" that the user left
+     filtered by "all". matchCustomCounts, class/rarity filters, search and paging still reset. */
+  _saveState() {
+    CEFilterStore.write({ cePicks: this.state.selectedCEs, ceMode: this.state.mode });
+  },
+
+  _loadPicks() {
+    const stored = CEFilterStore.read();
+    this.state.selectedCEs = Validator.validatePicks(stored.cePicks).filter((id) => CEById.has(id));
+    this.state.mode = CE_MODES.includes(stored.ceMode) ? stored.ceMode : this.state.mode;
   },
 
   _processWorkerResults(data) {

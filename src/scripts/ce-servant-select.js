@@ -8,6 +8,40 @@ const MAX_INITIAL_CARDS = 60;
 const CARDS_PER_PAGE = 60;
 
 /* ============================================
+   CE FILTER SUB-TAB STORE
+   ============================================ */
+
+/* Both CE Filter sub-tabs share the one key, so every write is read-modify-write: a blind
+   setItem of a single field erases the other sub-tab's picks on the next refresh. Lives here
+   rather than in ce-filter-app.js because ServantSelect already owns the key and CEFilterApp
+   imports this module, not the other way round. */
+export const CEFilterStore = {
+  read() {
+    let raw;
+    try {
+      raw = localStorage.getItem(CEFILTER_STORAGE_KEY);
+    } catch (_e) {
+      return {};
+    }
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch (_e) {
+      return {};
+    }
+  },
+
+  write(patch) {
+    try {
+      localStorage.setItem(CEFILTER_STORAGE_KEY, JSON.stringify({ ...CEFilterStore.read(), ...patch }));
+    } catch (_e) {
+      /* private mode / quota — nothing to recover */
+    }
+  },
+};
+
+/* ============================================
    SERVENT SELECT SUB-TAB (inside the CE Filter tab)
    ============================================ */
 export const ServantSelect = {
@@ -76,30 +110,14 @@ export const ServantSelect = {
     this.render();
   },
 
-  /* Same key CE Filter has always declared and never read; only the pick list survives a refresh —
-     the sub-tab choice and the visible-card count still reset. */
+  /* Only the pick list survives a refresh here: the sub-tab choice and the visible-card count
+     still reset. Both sub-tabs share one key, so writes go through CEFilterStore. */
   _savePicks() {
-    try {
-      localStorage.setItem(CEFILTER_STORAGE_KEY, JSON.stringify({ servantPicks: this.state.pickedIds }));
-    } catch (_e) {
-      /* ignore */
-    }
+    CEFilterStore.write({ servantPicks: this.state.pickedIds });
   },
 
   _loadPicks() {
-    let raw;
-    try {
-      raw = localStorage.getItem(CEFILTER_STORAGE_KEY);
-    } catch (_e) {
-      return [];
-    }
-    if (!raw) return [];
-    let picks;
-    try {
-      picks = Validator.validateServantPicks(JSON.parse(raw).servantPicks);
-    } catch (_e) {
-      return [];
-    }
+    const picks = Validator.validatePicks(CEFilterStore.read().servantPicks);
     return picks.filter((id) => ServantData.getServant(id) != null);
   },
 

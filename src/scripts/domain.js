@@ -44,11 +44,11 @@ export const Validator = {
     return sanitized;
   },
 
-  /* Servant Select picks come back from localStorage as an arbitrary value. Keep only zero-padded
-     numeric id strings (servant ids are "001"-style today, so 3 digits or more), deduped, in the
-     order they were saved; ids gone from SERVANT_DATA are dropped by the caller. Not
-     validateStorageData — that coerces every key through parseFloat. */
-  validateServantPicks(value) {
+  /* CE Filter picks (either sub-tab) come back from localStorage as an arbitrary value. Keep only
+     zero-padded numeric id strings (servant ids are "001"-style, CE ids "0099"-style, so 3 digits or
+     more), deduped, in the order they were saved; ids gone from the data files are dropped by the
+     caller. Not validateStorageData — that coerces every key through parseFloat. */
+  validatePicks(value) {
     if (!Array.isArray(value)) return [];
     const seen = new Set();
     value.forEach((id) => {
