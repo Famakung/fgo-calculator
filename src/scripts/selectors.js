@@ -8,12 +8,22 @@ import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
 export const ServantSelector = {
   activeSlotIndex: null,
   pendingSlot: false,
+  _skipAscension: false,
+  _multi: false,
+  _selectedIds: new Set(),
   classFilters: [],
   rarityFilters: [],
   _searchQuery: "",
   _callbacks: null,
 
+  _listenersBound: false,
+
+  // Called by both the Bond tab and the CE Filter's Servant Select sub-tab: the modal is
+  // shared, and its close controls must work whichever tab opens it first.
   init() {
+    if (this._listenersBound) return;
+    this._listenersBound = true;
+
     const modal = document.getElementById("servantModal");
     const closeBtn = document.getElementById("servantModalClose");
 
@@ -25,13 +35,21 @@ export const ServantSelector = {
       modal.addEventListener("click", (e) => {
         if (e.target === modal) this.close();
       });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && modal.classList.contains("open")) this.close();
+      });
     }
   },
 
-  open(slotIndex, pending = false, callbacks = null) {
+  open(slotIndex, pending = false, callbacks = null, options = {}) {
     this.activeSlotIndex = slotIndex;
     this.pendingSlot = pending;
     this._callbacks = callbacks;
+    // The Servant Select sub-tab unions every ascension's traits, so it never needs an ascension pick.
+    this._skipAscension = options.skipAscension === true;
+    // Multi keeps the modal open and marks items like the CE picker does.
+    this._multi = options.multi === true;
+    this._selectedIds = new Set(this._multi ? options.selected : []);
     this.classFilters = [];
     this.rarityFilters = [];
     this._searchQuery = "";
@@ -61,7 +79,13 @@ export const ServantSelector = {
     const frag = document.createDocumentFragment();
 
     servants.forEach((servant) => {
-      const item = DOMFactory.el("div", "servant-picker-item");
+      // ce-filter-picker-item carries the highlight and the tick, so every multi item needs it,
+      // not only the ones already picked.
+      const classes = this._multi
+        ? ["servant-picker-item", "ce-filter-picker-item", ...(this._selectedIds.has(servant.id) ? ["selected"] : [])]
+        : "servant-picker-item";
+      const item = DOMFactory.el("div", classes);
+      if (this._multi) DOMFactory.appendCheckMark(item);
 
       const img = DOMFactory.createLazyImg(servant.image, null, {
         alt: servant.name,
@@ -75,8 +99,21 @@ export const ServantSelector = {
       item.appendChild(name);
 
       item.addEventListener("click", () => {
+        if (this._multi) {
+          const picked = new Set(this._selectedIds);
+          if (picked.has(servant.id)) {
+            picked.delete(servant.id);
+            item.classList.remove("selected");
+          } else {
+            picked.add(servant.id);
+            item.classList.add("selected");
+          }
+          this._selectedIds = picked;
+          this._callbacks?.onToggle?.(this.activeSlotIndex, servant.id, picked.has(servant.id));
+          return; // stay open, like the CE picker
+        }
         this.pendingSlot = false; // servant selected, don't remove on close
-        if (servant.hasAscensions) {
+        if (servant.hasAscensions && !this._skipAscension) {
           const idx = this.activeSlotIndex;
           this.close();
           AscensionSelector.open(servant, idx, this._callbacks);

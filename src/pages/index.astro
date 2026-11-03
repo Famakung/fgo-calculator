@@ -471,78 +471,114 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <section class="tab-panel active" id="panel-cefilter">
           <div class="card">
             <div class="card-inner">
-              <div class="card-title">Bond Gain Craft Essences</div>
-            <div class="cefilter-controls">
-              <button
-                class="cefilter-add-btn"
-                id="cefilterAddBtn"
-                type="button"
-              >
-                Add Craft Essence
-              </button>
-              <div class="cefilter-mode-row">
-                <label class="cefilter-mode-label" for="cefilterMode"
-                  >Match Mode:</label
-                >
-                <select class="select-field" id="cefilterMode">
-                  <option value="all" selected>Match All (AND)</option>
-                  <option value="any">Match Any (OR)</option>
-                  <option value="custom">Custom Match</option>
-                </select>
-                <div
-                  id="cefilterCustomCount"
-                  class="cefilter-custom-count"
-                ></div>
+              <div class="cefilter-subtabs" id="cefilterSubtabs">
+                <button type="button" class="tab-btn cefilter-subtab-btn active" data-subtab="ce" aria-pressed="true">
+                  Craft Essence Select
+                </button>
+                <button type="button" class="tab-btn cefilter-subtab-btn" data-subtab="servant" aria-pressed="false">
+                  Servant Select
+                </button>
               </div>
-            </div>
-            <div class="cefilter-chips" id="cefilterChips"></div>
+
+              <div class="cefilter-subpanel" data-subpanel="ce">
+                <div class="card-title">Bond Gain Craft Essences</div>
+                <div class="cefilter-controls">
+                  <button class="cefilter-add-btn" id="cefilterAddBtn" type="button">Add Craft Essence</button>
+                  <button
+                    class="cefilter-add-btn cefilter-add-btn--clear"
+                    id="cefilterClearBtn"
+                    type="button"
+                    hidden
+                  >
+                    Clear all
+                  </button>
+                  <div class="cefilter-mode-row">
+                    <label class="cefilter-mode-label" for="cefilterMode">Match Mode:</label>
+                    <select class="select-field" id="cefilterMode">
+                      <option value="all" selected>Match All (AND)</option>
+                      <option value="any">Match Any (OR)</option>
+                      <option value="custom">Custom Match</option>
+                    </select>
+                    <div id="cefilterCustomCount" class="cefilter-custom-count"></div>
+                  </div>
+                </div>
+                <div class="cefilter-chips" id="cefilterChips"></div>
+              </div>
+
+              <div class="cefilter-subpanel" data-subpanel="servant" hidden>
+                <div class="card-title">Servants</div>
+                <div class="cefilter-controls">
+                  <button class="cefilter-add-btn" id="cefilterServantAddBtn" type="button">Add Servant</button>
+                  <button
+                    class="cefilter-add-btn cefilter-add-btn--clear"
+                    id="cefilterServantClearBtn"
+                    type="button"
+                    hidden
+                  >
+                    Clear all
+                  </button>
+                </div>
+                <div class="cefilter-chips" id="cefilterServantChips"></div>
+              </div>
             </div>
           </div>
 
           <div class="card">
             <div class="card-inner">
-              <div class="card-title cefilter-results-header">
-                <span>Servants</span>
+              <div class="cefilter-subpanel" data-subpanel="ce">
+                <div class="card-title cefilter-results-header">
+                  <span>Servants</span>
+                </div>
+                <div class="cefilter-search-container">
+                  <input
+                    type="text"
+                    class="search-filter cefilter-search-input"
+                    id="cefilterSearchInput"
+                    placeholder="Search by ID or name..."
+                    autocomplete="off"
+                  />
+                </div>
+                <div class="cefilter-sort-row">
+                  <button
+                    type="button"
+                    class="cefilter-filter-btn"
+                    id="cefilterFilterBtn"
+                    aria-haspopup="dialog"
+                    aria-label="Open filter settings modal"
+                  >
+                    Filter
+                  </button>
+                  <select class="select-field cefilter-sort-select" id="cefilterSortBy" aria-label="Sort by">
+                    <option value="id" selected>ID</option>
+                    <option value="rarity">Rarity</option>
+                    <option value="class">Class</option>
+                  </select>
+                  <button
+                    type="button"
+                    class="cefilter-sort-order-btn"
+                    id="cefilterSortOrderToggle"
+                    data-order="asc"
+                    aria-label="Sort ascending"
+                    title="Sort ascending"
+                  >
+                    <span class="cefilter-sort-order-icon">&#9650;</span>
+                  </button>
+                </div>
+                <div class="cefilter-pagination" id="cefilterPaginationTop"></div>
+                <div class="cefilter-results-grid grid" id="cefilterResults"></div>
+
+                <div class="cefilter-pagination" id="cefilterPaginationBottom"></div>
               </div>
-              <div class="cefilter-search-container">
-                <input
-                  type="text"
-                  class="search-filter cefilter-search-input"
-                  id="cefilterSearchInput"
-                  placeholder="Search by ID or name..."
-                  autocomplete="off"
-                />
+
+              <div class="cefilter-subpanel" data-subpanel="servant" hidden>
+                <div class="card-title cefilter-results-header">
+                  <span>Shared Craft Essences</span>
+                </div>
+                <div class="cefilter-combo-results" id="cefilterComboResults"></div>
+                <div class="cefilter-combo-empty" id="cefilterComboEmpty" hidden></div>
+                <div class="cefilter-combo-unshared" id="cefilterComboUnshared" hidden></div>
+                <div class="cefilter-combo-truncated" id="cefilterComboTruncated" hidden>Too many combinations — remove a servant.</div>
               </div>
-              <div class="cefilter-sort-row">
-                <button
-                  type="button"
-                  class="cefilter-filter-btn"
-                  id="cefilterFilterBtn"
-                  aria-haspopup="dialog"
-                  aria-label="Open filter settings modal"
-                >
-                  Filter
-                </button>
-                <select class="select-field cefilter-sort-select" id="cefilterSortBy" aria-label="Sort by">
-                  <option value="id" selected>ID</option>
-                  <option value="rarity">Rarity</option>
-                  <option value="class">Class</option>
-                </select>
-                <button
-                  type="button"
-                  class="cefilter-sort-order-btn"
-                  id="cefilterSortOrderToggle"
-                  data-order="asc"
-                  aria-label="Sort ascending"
-                  title="Sort ascending"
-                >
-                  <span class="cefilter-sort-order-icon">&#9650;</span>
-                </button>
-              </div>
-              <div class="cefilter-pagination" id="cefilterPaginationTop"></div>
-              <div class="cefilter-results-grid grid" id="cefilterResults"></div>
-              
-              <div class="cefilter-pagination" id="cefilterPaginationBottom"></div>
             </div>
           </div>
         </section>

@@ -1,7 +1,11 @@
 import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
-import { TraitMatcher } from "./domain.js";
+import { TraitMatcher, Validator } from "./domain.js";
 import { ServantData, CEById, TraitCEs, TraitNames } from "./data.js";
 import { DOMFactory, debounce } from "./presentation.js";
+import { ServantSelect, CEFilterStore } from "./ce-servant-select.js";
+
+/* The #cefilterMode select's option values; a stored mode outside this list is ignored. */
+const CE_MODES = ["all", "any", "custom"];
 
 /* === Worker setup for off-thread CE match computation === */
 let _worker = null;
@@ -66,6 +70,7 @@ function getClassOrderMap() {
 
 export const CEFilterApp = {
   state: {
+    subTab: "ce",
     selectedCEs: [],
     mode: "all",
     searchQuery: "",
@@ -95,6 +100,7 @@ export const CEFilterApp = {
     this._initialized = true;
     this._callbacks = callbacks || {};
     this._debouncedRender = debounce(() => this.render(), 50);
+    this._loadPicks();
 
     const addBtn = document.getElementById("cefilterAddBtn");
     const modeSelect = document.getElementById("cefilterMode");
@@ -107,6 +113,9 @@ export const CEFilterApp = {
         if (this._callbacks.openFilterPicker) this._callbacks.openFilterPicker();
       });
     }
+
+    const clearBtn = document.getElementById("cefilterClearBtn");
+    if (clearBtn) clearBtn.addEventListener("click", () => this.clearAllCEs());
 
     if (modeSelect) {
       modeSelect.value = this.state.mode;
@@ -208,6 +217,19 @@ export const CEFilterApp = {
       });
     }
 
+    const subtabs = document.getElementById("cefilterSubtabs");
+    if (subtabs) {
+      subtabs.addEventListener("click", (e) => {
+        const btn = e.target.closest(".cefilter-subtab-btn");
+        if (btn) this._switchSubTab(btn.dataset.subtab);
+      });
+    }
+
+    ServantSelect.init({
+      getEntries: () => this.computeAllCEMatches(),
+      onSelectCE: (ceId) => this.selectCEFromCombo(ceId),
+    });
+
     this.buildClassFilter();
     this.buildRarityFilter();
 
@@ -217,12 +239,58 @@ export const CEFilterApp = {
     this.render();
   },
 
+  selectCEFromCombo(ceId) {
+    if (!ceId) return;
+    if (!this.state.selectedCEs.includes(ceId)) {
+      this.state.selectedCEs.push(ceId);
+      this.state.currentPage = 1;
+    }
+    // _switchSubTab renders, so the CE side paints once with the new selection.
+    this._switchSubTab("ce");
+  },
+
+  _switchSubTab(sub) {
+    if (sub !== "ce" && sub !== "servant") return;
+    this.state.subTab = sub;
+
+    document.querySelectorAll(".cefilter-subtab-btn").forEach((btn) => {
+      const active = btn.dataset.subtab === sub;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+
+    // Each sub-tab owns one panel in the controls card and one in the results card.
+    ["ce", "servant"].forEach((name) => {
+      document.querySelectorAll(`.cefilter-subpanel[data-subpanel="${name}"]`).forEach((panel) => {
+        panel.hidden = name !== sub;
+      });
+    });
+
+    if (sub === "ce") this.render();
+    else ServantSelect.render();
+  },
+
   render() {
+    /* Every pick change ends in render(), so this is the only save point — the list is also mutated
+       from main.js (picker onApply) and from card badges, which would each need a call otherwise. */
+    this._saveState();
     this.renderChips();
     this.buildCustomCountFilter();
 
     const allMatches = this.computeAllCEMatches();
     this._finishRender(allMatches);
+  },
+
+  /* Picks plus the match mode: mode alone would restore chips under "any" that the user left
+     filtered by "all". matchCustomCounts, class/rarity filters, search and paging still reset. */
+  _saveState() {
+    CEFilterStore.write({ cePicks: this.state.selectedCEs, ceMode: this.state.mode });
+  },
+
+  _loadPicks() {
+    const stored = CEFilterStore.read();
+    this.state.selectedCEs = Validator.validatePicks(stored.cePicks).filter((id) => CEById.has(id));
+    this.state.mode = CE_MODES.includes(stored.ceMode) ? stored.ceMode : this.state.mode;
   },
 
   _processWorkerResults(data) {
@@ -440,10 +508,26 @@ export const CEFilterApp = {
     }
   },
 
+  /* Bulk empty of the selected CEs — the same contract as ServantSelect.clearAll(): the label
+     carries the count, and clearing re-paginates instead of stranding the old page. */
+  clearAllCEs() {
+    if (this.state.selectedCEs.length === 0) return;
+    this.state.selectedCEs = [];
+    this.state.currentPage = 1;
+    this.render();
+  },
+
   renderChips() {
     const container = document.getElementById("cefilterChips");
     if (!container) return;
     container.replaceChildren();
+
+    const clearBtn = document.getElementById("cefilterClearBtn");
+    if (clearBtn) {
+      const count = this.state.selectedCEs.length;
+      clearBtn.hidden = count === 0;
+      clearBtn.textContent = count > 0 ? `Clear all (${count})` : "Clear all";
+    }
 
     if (this.state.selectedCEs.length === 0) {
       return;
@@ -459,11 +543,10 @@ export const CEFilterApp = {
       DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
       chip.appendChild(img);
 
-      const nameSpan = DOMFactory.el("span");
-      nameSpan.textContent = ce.name;
-      chip.appendChild(nameSpan);
-
-      const removeBtn = DOMFactory.el("button", ["cefilter-chip-remove", "flex-row"], { type: "button" });
+      const removeBtn = DOMFactory.el("button", ["cefilter-chip-remove", "flex-row"], {
+        type: "button",
+        "aria-label": `Remove ${ce.name}`,
+      });
       removeBtn.textContent = "\u2715";
       removeBtn.addEventListener("click", () => {
         this.state.selectedCEs = this.state.selectedCEs.filter((id) => id !== ceId);
