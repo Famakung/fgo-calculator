@@ -132,3 +132,80 @@ export const TraitMatcher = {
     return sets;
   },
 };
+
+/* ============================================
+   SERVANT COMBO CALCULATOR (Servant Select sub-tab)
+   ============================================ */
+export const ServantComboCalculator = {
+  MAX_COMBO_NODES: 50000,
+
+  /* A servant's usable list is the union of matchingCEIds over every entry with its id, so a
+     multi-ascension servant with one entry per ascension group is still one servant.
+     Returns { groups: [{ ceIds, servantIds }], unshared: [servantId], truncated: boolean }. */
+  buildSharedCEGroups(entries, pickedIds) {
+    const picked = [...new Set(pickedIds)].sort();
+    const usable = new Map(picked.map((id) => [id, new Set()]));
+    entries.forEach((entry) => {
+      const list = usable.get(entry.servant.id);
+      if (list) entry.matchingCEIds.forEach((ceId) => list.add(ceId));
+    });
+
+    // Servants with the same usable list are interchangeable: one search node covers them all.
+    const classes = new Map();
+    picked.forEach((id) => {
+      const ceIds = [...usable.get(id)].sort();
+      if (ceIds.length === 0) return;
+      const key = ceIds.join(",");
+      if (!classes.has(key)) classes.set(key, ceIds);
+    });
+    const classLists = [...classes.values()].map((ceIds) => ({ ceIds, ceSet: new Set(ceIds) }));
+
+    const rows = new Map();
+    let nodes = 0;
+    let truncated = false;
+
+    // J = every picked servant whose usable list contains P, so each CE list is recorded once,
+    // with its maximal servant group. Groups of one servant are not combos.
+    const record = (ceIds) => {
+      const key = ceIds.join(",");
+      const servantIds = picked.filter((id) => ceIds.every((ceId) => usable.get(id).has(ceId)));
+      if (servantIds.length >= 2) rows.set(key, { ceIds, servantIds });
+    };
+
+    const walk = (start, current) => {
+      for (let i = start; i < classLists.length; i++) {
+        if (++nodes > this.MAX_COMBO_NODES) {
+          truncated = true;
+          return;
+        }
+        const next = current.filter((ceId) => classLists[i].ceSet.has(ceId));
+        if (next.length === 0) continue; // supersets stay empty, so the branch is dead
+        record(next);
+        walk(i + 1, next);
+      }
+    };
+
+    classLists.forEach((cls, i) => {
+      if (truncated) return;
+      if (++nodes > this.MAX_COMBO_NODES) {
+        truncated = true;
+        return;
+      }
+      record(cls.ceIds);
+      walk(i + 1, cls.ceIds);
+    });
+    // shortcut: enumeration stops at MAX_COMBO_NODES subsets and flags `truncated`; raise the cap
+    // or switch to closed-itemset enumeration only if a real pick of servants hits it.
+
+    const groups = [...rows.values()].sort((a, b) => {
+      if (b.ceIds.length !== a.ceIds.length) return b.ceIds.length - a.ceIds.length;
+      if (b.servantIds.length !== a.servantIds.length) return b.servantIds.length - a.servantIds.length;
+      if (a.ceIds[0] !== b.ceIds[0]) return a.ceIds[0] < b.ceIds[0] ? -1 : 1;
+      if (a.servantIds[0] !== b.servantIds[0]) return a.servantIds[0] < b.servantIds[0] ? -1 : 1;
+      return 0;
+    });
+
+    const covered = new Set(groups.flatMap((g) => g.servantIds));
+    return { groups, unshared: picked.filter((id) => !covered.has(id)), truncated };
+  },
+};
