@@ -3,8 +3,8 @@ import { ServantComboCalculator } from "./domain.js";
 import { DOMFactory } from "./presentation.js";
 import { ServantSelector } from "./selectors.js";
 
-const VISIBLE_PER_BUCKET = 5;
-const MAX_INITIAL_ROWS = 60;
+const MAX_INITIAL_CARDS = 60;
+const CARDS_PER_PAGE = 60;
 
 /* ============================================
    SERVENT SELECT SUB-TAB (inside the CE Filter tab)
@@ -12,27 +12,35 @@ const MAX_INITIAL_ROWS = 60;
 export const ServantSelect = {
   state: {
     pickedIds: [],
+    visibleCards: MAX_INITIAL_CARDS,
   },
 
   _deps: null,
   _initialized: false,
+  _lastGroups: [],
 
   init(deps) {
     if (this._initialized) return;
     this._initialized = true;
     this._deps = deps || {};
 
-    const addBtn = document.getElementById("cefilterServantAddBtn");
-    const clearBtn = document.getElementById("cefilterServantClearBtn");
+    // The modal's close button, backdrop click and Escape are bound here too: without the Bond
+    // tab, nothing else ever called ServantSelector.init().
+    ServantSelector.init();
 
+    const addBtn = document.getElementById("cefilterServantAddBtn");
     if (addBtn) {
       addBtn.addEventListener("click", () => {
-        ServantSelector.open(0, false, { onSelect: (slotIndex, id) => this.addServant(id) }, { skipAscension: true });
+        ServantSelector.open(
+          0,
+          false,
+          {
+            // Toggle in place, modal stays open — the same contract as the CE picker.
+            onToggle: (slotIndex, id, selected) => (selected ? this.addServant(id) : this.removeServant(id)),
+          },
+          { skipAscension: true, multi: true, selected: this.state.pickedIds },
+        );
       });
-    }
-
-    if (clearBtn) {
-      clearBtn.addEventListener("click", () => this.clearPicked());
     }
   },
 
@@ -49,22 +57,12 @@ export const ServantSelect = {
     this.render();
   },
 
-  clearPicked() {
-    if (this.state.pickedIds.length === 0) return;
-    this.state.pickedIds = [];
-    this.renderChips();
-    this.render();
-  },
-
   _nameOf(id) {
     const servant = ServantData.getServant(id);
     return servant ? servant.name : id;
   },
 
   renderChips() {
-    const count = document.getElementById("cefilterServantCount");
-    if (count) count.textContent = `Servants (${this.state.pickedIds.length})`;
-
     const container = document.getElementById("cefilterServantChips");
     if (!container) return;
 
@@ -100,93 +98,88 @@ export const ServantSelect = {
   render() {
     const entries = this._deps?.getEntries?.() || [];
     const { groups, unshared, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, this.state.pickedIds);
+    this._lastGroups = groups;
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        this._paintResults(groups);
+        this._paintResults();
         this._paintNotes(groups.length, unshared, truncated);
       });
     });
   },
 
-  _paintResults(groups) {
-    const container = document.getElementById("cefilterComboResults");
-    if (!container) return;
+  _paintResults() {
+    const wrapper = document.getElementById("cefilterComboResults");
+    if (!wrapper) return;
 
-    // Bucket by CE count, keeping the calculator's descending order. A CE count with no rows
-    // never gets a bucket, so an empty section can never print.
-    const buckets = new Map();
-    groups.forEach((group) => {
-      const size = group.ceIds.length;
-      if (!buckets.has(size)) buckets.set(size, []);
-      buckets.get(size).push(group);
-    });
+    const groups = this._lastGroups;
+    const shown = groups.slice(0, this.state.visibleCards);
+
+    const grid = DOMFactory.el("div", ["cefilter-results-grid", "grid"]);
+    shown.forEach((group) => grid.appendChild(this._buildCard(group)));
 
     const frag = document.createDocumentFragment();
-    let built = 0;
-    buckets.forEach((rows, size) => {
-      const section = DOMFactory.el("div", "cefilter-combo-bucket");
-      const header = DOMFactory.el("h3", "cefilter-combo-size");
-      header.textContent = `${size} CE · ${rows.length} ${rows.length === 1 ? "group" : "groups"}`;
-      section.appendChild(header);
+    frag.appendChild(grid);
 
-      const room = Math.min(VISIBLE_PER_BUCKET, Math.max(0, MAX_INITIAL_ROWS - built));
-      const shown = rows.slice(0, room);
-      const hidden = rows.slice(room);
-      shown.forEach((group) => {
-        section.appendChild(this._buildGroup(group));
-        built += 1;
+    const hidden = groups.length - shown.length;
+    if (hidden > 0) {
+      const btn = DOMFactory.el("button", "cefilter-combo-more", { type: "button", "aria-expanded": "false" });
+      btn.textContent = `Show ${hidden} more`;
+      btn.addEventListener("click", () => {
+        this.state.visibleCards += CARDS_PER_PAGE;
+        this._paintResults();
       });
+      frag.appendChild(btn);
+    }
 
-      if (hidden.length > 0) section.appendChild(this._buildMoreButton(hidden));
-      frag.appendChild(section);
-    });
-
-    container.replaceChildren(frag);
+    wrapper.replaceChildren(frag);
   },
 
-  _buildMoreButton(hidden) {
-    const btn = DOMFactory.el("button", "cefilter-combo-more", { type: "button", "aria-expanded": "false" });
-    btn.textContent = `Show ${hidden.length} more`;
-    btn.addEventListener("click", () => {
-      const section = btn.parentElement;
-      hidden.forEach((group) => section.insertBefore(this._buildGroup(group), btn));
-      btn.remove();
-    });
-    return btn;
-  },
+  /* One card per servant group, on the CE Select card grid: the shared CEs are the main
+     row, the servants that all share them are the badge row below. */
+  _buildCard(group) {
+    const card = DOMFactory.el("div", ["cefilter-servant-card", "cefilter-combo-card"]);
 
-  _buildGroup(group) {
-    const row = DOMFactory.el("div", "cefilter-combo-group");
-    const ceLine = DOMFactory.el("div", "cefilter-combo-ce-list");
-
+    const ceRow = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
     group.ceIds.forEach((ceId) => {
       const ce = CEById.get(ceId);
       if (!ce) return;
-      const chip = DOMFactory.el("button", "cefilter-combo-ce", {
+      const cell = DOMFactory.el("button", "cefilter-combo-ce", {
         type: "button",
-        title: ce.name,
         "aria-label": `Select ${ce.name} in Craft Essence Select`,
       });
-      const img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-combo-ce-img", { alt: ce.name, title: ce.name });
-      DOMFactory.addSimpleFallback(img, "cefilter-combo-ce-fallback", ce.id);
-      const label = DOMFactory.el("span", "cefilter-combo-ce-name");
-      label.textContent = ce.name;
-      chip.appendChild(img);
-      chip.appendChild(label);
-      chip.addEventListener("click", (e) => {
+      const img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-match-badge", { alt: ce.name, title: ce.name });
+      DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
+      const name = DOMFactory.el("span", "cefilter-combo-ce-name");
+      name.textContent = ce.name;
+      cell.appendChild(img);
+      cell.appendChild(name);
+      cell.addEventListener("click", (e) => {
         e.stopPropagation();
         this._deps?.onSelectCE?.(ceId);
       });
-      ceLine.appendChild(chip);
+      ceRow.appendChild(cell);
     });
+    card.appendChild(ceRow);
 
-    row.appendChild(ceLine);
+    const caption = DOMFactory.el("div", "cefilter-combo-caption");
+    caption.textContent = `${group.ceIds.length} CE shared`;
+    card.appendChild(caption);
 
-    const servants = DOMFactory.el("div", "cefilter-combo-servants");
-    servants.textContent = group.servantIds.map((id) => this._nameOf(id)).join(", ");
-    row.appendChild(servants);
-    return row;
+    const servantRow = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
+    group.servantIds.forEach((id) => {
+      const servant = ServantData.getServant(id);
+      if (!servant) return;
+      const img = DOMFactory.createLazyImg(servant.image, ["cefilter-match-badge", "cefilter-combo-servant-badge"], {
+        alt: servant.name,
+        title: servant.name,
+      });
+      DOMFactory.addAscensionFallback(img, id);
+      servantRow.appendChild(img);
+    });
+    card.appendChild(servantRow);
+
+    return card;
   },
 
   _paintNotes(groupCount, unshared, truncated) {

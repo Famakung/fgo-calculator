@@ -798,40 +798,22 @@ html[data-tab="event"] #panel-event {
    CE FILTER TAB
    ============================================ */
 
+/* .tab-btn carries the visual language, so these match the main navbar tabs */
 .cefilter-subtabs {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   margin-bottom: 12px;
+  overflow-x: auto;
 }
 
 .cefilter-subtab-btn {
-  flex: 1;
-  height: 48px;
-  padding: 0 8px;
-  background: var(--card);
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-family: "DM Sans", sans-serif;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background 0.2s,
-    color 0.2s;
-}
-
-.cefilter-subtab-btn.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  white-space: nowrap;
 }
 
 .cefilter-subpanel[hidden] {
   display: none;
 }
 
-.cefilter-servant-count,
 .cefilter-combo-count {
   margin-bottom: 8px;
   font-size: 0.75rem;
@@ -873,10 +855,9 @@ html[data-tab="event"] #panel-event {
   cursor: pointer;
 }
 
+/* Results grid + the Show-more button sit side by side in this wrapper */
 .cefilter-combo-results {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  display: block;
 }
 
 .cefilter-combo-empty,
@@ -891,69 +872,59 @@ html[data-tab="event"] #panel-event {
   color: var(--warning);
 }
 
-.cefilter-combo-size {
-  margin: 0 0 8px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.cefilter-combo-group {
+/* Same card shell as .cefilter-servant-card: the CEs are the main row, the
+   servants that share them are the badge row underneath. */
+.cefilter-combo-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 10px 12px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 208px;
+  padding: 10px 8px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 208px;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: var(--radius-sm);
-}
-
-.cefilter-combo-ce-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  overflow: hidden;
+  text-align: center;
 }
 
 .cefilter-combo-ce {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px 4px 4px;
-  text-align: left;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
   font-family: "DM Sans", sans-serif;
-  font-size: 0.8rem;
-  color: var(--text);
   cursor: pointer;
-  transition: border-color 0.2s;
 }
 
-.cefilter-combo-ce-img {
-  height: 28px;
-  width: auto;
-  border-radius: 4px;
-}
-
-.cefilter-combo-ce-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+.cefilter-combo-ce-name {
   font-size: 0.6rem;
-  background: var(--border);
-  border-radius: 4px;
+  font-weight: 600;
+  color: var(--text);
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.cefilter-combo-servants {
-  font-size: 0.75rem;
+.cefilter-combo-caption {
+  font-size: 0.7rem;
+  font-weight: 600;
   color: var(--text-secondary);
+  width: 100%;
+}
+
+.cefilter-combo-servant-badge {
+  cursor: default;
+  transition: none;
 }
 
 .cefilter-combo-more {
+  display: block;
+  margin: 12px auto 0;
   padding: 6px 12px;
   background: none;
   border: 1px solid var(--border);
@@ -2190,8 +2161,9 @@ html[data-tab="event"] #panel-event {
     background: #3730a3;
   }
 
-  .cefilter-combo-ce:hover {
-    border-color: var(--accent);
+  .cefilter-combo-servant-badge:hover {
+    transform: none;
+    opacity: 1;
   }
 
   .cefilter-chip-remove:hover {
@@ -2319,12 +2291,6 @@ html[data-tab="event"] #panel-event {
 }
 
 @media (width >= 580px) {
-  .cefilter-subtab-btn {
-    flex: 0 0 auto;
-    padding: 0 18px;
-    font-size: 0.95rem;
-  }
-
   .navbar-tabs {
     display: flex;
   }

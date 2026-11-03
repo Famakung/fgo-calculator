@@ -77,9 +77,13 @@ try {
   } catch {
     errors.push("bond tab: #servantGrid never rendered any children");
   }
-  console.log(`NOTE: bond tab rendered ${bondSlots} grid children, bond-lazy responded ${bondRes ? bondRes.status() : "never"}`);
+  console.log(
+    `NOTE: bond tab rendered ${bondSlots} grid children, bond-lazy responded ${bondRes ? bondRes.status() : "never"}`,
+  );
   if (!bondRes || bondRes.status() !== 200) {
-    errors.push(`bond tab: bond-lazy was not fetched successfully (status ${bondRes ? bondRes.status() : "no request"})`);
+    errors.push(
+      `bond tab: bond-lazy was not fetched successfully (status ${bondRes ? bondRes.status() : "no request"})`,
+    );
   }
 
   // Event tab is lazily imported on first visit and preloaded while idle, so the
@@ -94,86 +98,131 @@ try {
   await page.click('.tab-btn[data-tab="cefilter"]');
   let cards = 0;
   try {
-    await page.waitForFunction(() => document.querySelectorAll("#cefilterResults > .cefilter-servant-card").length > 0, {
-      timeout: 15000,
-    });
+    await page.waitForFunction(
+      () => document.querySelectorAll("#cefilterResults > .cefilter-servant-card").length > 0,
+      {
+        timeout: 15000,
+      },
+    );
     cards = await page.evaluate(() => document.querySelectorAll("#cefilterResults > .cefilter-servant-card").length);
   } catch {
     errors.push("ce filter: #cefilterResults never filled with .cefilter-servant-card");
   }
-  const workerResults = await page.evaluate(() =>
-    (self.__workerMessages || []).filter((d) => d && Array.isArray(d.results) && d.results.length > 0).length,
+  const workerResults = await page.evaluate(
+    () => (self.__workerMessages || []).filter((d) => d && Array.isArray(d.results) && d.results.length > 0).length,
   );
   console.log(`NOTE: ${cards} CE filter card(s), ${workerResults} worker result message(s)`);
   if (workerResults === 0) errors.push("ce filter: worker sent no message carrying a non-empty results array");
 
-  // Servant Select sub-tab: the reverse direction. Switch panels, pick two servants in
-  // one click each, and get at least one shared-CE row back.
+  // Servant Select sub-tab: the reverse direction. The sub-tab bar sits inside the controls
+  // card above its title, and both cards swap panels together by data-subpanel.
   await page.click('button.cefilter-subtab-btn[data-subtab="servant"]');
-  const panels = await page.evaluate(() => ({
-    ceHidden: document.getElementById("cefilterSubCE").hidden,
-    servantHidden: document.getElementById("cefilterSubServant").hidden,
-    activeTab: document.querySelector(".cefilter-subtab-btn.active")?.dataset.subtab,
-  }));
+  const panels = await page.evaluate(() => {
+    const visible = (name) =>
+      Array.from(document.querySelectorAll(`.cefilter-subpanel[data-subpanel="${name}"]`)).filter((p) => !p.hidden)
+        .length;
+    return {
+      ce: visible("ce"),
+      servant: visible("servant"),
+      titles: Array.from(
+        document.querySelectorAll("#panel-cefilter > .card .card-inner > .cefilter-subpanel:not([hidden]) .card-title"),
+      ).map((t) => t.textContent.trim()),
+      activeTab: document.querySelector(".cefilter-subtab-btn.active")?.dataset.subtab,
+      tabStyledLikeNavbar: document.querySelector(".cefilter-subtab-btn")?.classList.contains("tab-btn"),
+    };
+  });
   if (panels.activeTab !== "servant") errors.push(`sub-tab: active button is ${panels.activeTab}, expected servant`);
-  if (!panels.ceHidden) errors.push("sub-tab: #cefilterSubCE stayed visible after switching to Servant Select");
-  if (panels.servantHidden) errors.push("sub-tab: #cefilterSubServant stayed hidden after switching to Servant Select");
+  if (panels.ce !== 0) errors.push(`sub-tab: ${panels.ce} Craft Essence Select panel(s) still visible`);
+  if (panels.servant !== 2) errors.push(`sub-tab: expected 2 Servant Select panels visible, saw ${panels.servant}`);
+  if (!panels.tabStyledLikeNavbar) errors.push("sub-tab: buttons do not carry the navbar tab style (.tab-btn)");
+  if (!panels.titles.includes("Servants") || !panels.titles.includes("Shared Craft Essences")) {
+    errors.push(`sub-tab: Servant Select card titles wrong: ${JSON.stringify(panels.titles)}`);
+  }
 
-  // 444 U-Olga Marie has ascension-different traits: picking her must not open the
-  // ascension prompt, because this tab unions every ascension's traits anyway.
+  // Picking marks items and keeps the modal open, like the CE picker. 444 U-Olga Marie has
+  // ascension-different traits, so she also proves the ascension prompt is bypassed here.
+  await page.click("#cefilterServantAddBtn");
+  await page.waitForFunction(() => document.getElementById("servantModal").classList.contains("open"), {
+    timeout: 15000,
+  });
+  const marked = [];
   for (const servantId of ["001", "444"]) {
-    await page.click("#cefilterServantAddBtn");
-    await page.waitForFunction(() => document.getElementById("servantModal").classList.contains("open"), { timeout: 15000 });
     const clicked = await page.evaluate((id) => {
       const item = Array.from(document.querySelectorAll("#servantPickerGrid .servant-picker-item")).find((el) =>
         el.querySelector("img")?.getAttribute("src")?.includes(`servants/${id}/`),
       );
       if (item) item.click();
-      return Boolean(item);
+      return item ? item.classList.contains("selected") : false;
     }, servantId);
-    if (!clicked) errors.push(`servant select: picker grid has no servant ${servantId}`);
-    await page
-      .waitForFunction(() => !document.getElementById("servantModal").classList.contains("open"), { timeout: 15000 })
-      .catch(() => errors.push(`servant select: picking ${servantId} left #servantModal open`));
-    const ascensionOpen = await page.evaluate(() => document.getElementById("ascensionModal").classList.contains("open"));
+    if (!clicked) errors.push(`servant select: ${servantId} not picked or not marked selected`);
+    marked.push(clicked);
+    const stillOpen = await page.evaluate(() => document.getElementById("servantModal").classList.contains("open"));
+    if (!stillOpen) errors.push(`servant select: picking ${servantId} closed the modal`);
+    const ascensionOpen = await page.evaluate(() =>
+      document.getElementById("ascensionModal").classList.contains("open"),
+    );
     if (ascensionOpen) errors.push(`servant select: picking ${servantId} opened the ascension prompt`);
   }
+  await page.click("#servantModalClose");
+  await page.waitForFunction(() => !document.getElementById("servantModal").classList.contains("open"), {
+    timeout: 15000,
+  });
 
   try {
-    await page.waitForFunction(() => document.querySelectorAll("#cefilterComboResults .cefilter-combo-group").length > 0, {
-      timeout: 15000,
-    });
+    await page.waitForFunction(
+      () => document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length > 0,
+      {
+        timeout: 15000,
+      },
+    );
   } catch {
-    errors.push("servant select: #cefilterComboResults never filled with .cefilter-combo-group");
+    errors.push("servant select: #cefilterComboResults never filled with .cefilter-combo-card");
   }
   const combos = await page.evaluate(() => ({
     chips: document.querySelectorAll("#cefilterServantChips > .cefilter-servant-chip").length,
-    rows: document.querySelectorAll("#cefilterComboResults .cefilter-combo-group").length,
-    sections: Array.from(document.querySelectorAll(".cefilter-combo-size")).map((h) => h.textContent),
+    cards: document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length,
+    // The card grid must be the same grid the CE Select results use.
+    onCeSelectGrid: !!document.querySelector("#cefilterComboResults > .cefilter-results-grid.grid"),
+    ceBadges: document.querySelectorAll("#cefilterComboResults .cefilter-combo-ce .cefilter-match-badge").length,
+    servantBadges: document.querySelectorAll("#cefilterComboResults .cefilter-combo-servant-badge").length,
+    captions: Array.from(document.querySelectorAll(".cefilter-combo-caption")).map((c) => c.textContent),
     count: document.getElementById("cefilterComboCount").textContent,
     emptyHidden: document.getElementById("cefilterComboEmpty").hidden,
     unsharedHidden: document.getElementById("cefilterComboUnshared").hidden,
   }));
   console.log(
-    `NOTE: servant select ${combos.chips} chip(s), ${combos.rows} combo row(s), sections ${JSON.stringify(combos.sections)}, count "${combos.count}"`,
+    `NOTE: servant select ${combos.chips} chip(s), ${combos.cards} card(s), ${combos.ceBadges} CE badge(s), ${combos.servantBadges} servant badge(s), captions ${JSON.stringify(combos.captions)}`,
   );
   if (combos.chips !== 2) errors.push(`servant select: expected 2 chips, saw ${combos.chips}`);
-  if (combos.rows < 1) errors.push("servant select: Mash and U-Olga Marie share 4 CEs but no combo row rendered");
-  if (combos.sections.some((s) => /0 group/.test(s))) {
-    errors.push(`servant select: a CE-count section printed with no groups: ${combos.sections.join(" | ")}`);
-  }
-  if (combos.emptyHidden === false) errors.push("servant select: empty-state note shown while groups are rendered");
-  if (combos.unsharedHidden === false) errors.push("servant select: both servants share CEs but the unshared line showed");
+  if (combos.cards < 1) errors.push("servant select: Mash and U-Olga Marie share 4 CEs but no card rendered");
+  if (!combos.onCeSelectGrid) errors.push("servant select: results are not on the CE Select result grid");
+  if (combos.servantBadges === 0)
+    errors.push("servant select: no servant badges rendered (servants must be the badge row)");
+  if (combos.emptyHidden === false) errors.push("servant select: empty-state note shown while cards are rendered");
+  if (combos.unsharedHidden === false)
+    errors.push("servant select: both servants share CEs but the unshared line showed");
 
-  // Back to Craft Essence Select: the original panel has to work again.
-  await page.click('button.cefilter-subtab-btn[data-subtab="ce"]');
-  const backPanels = await page.evaluate(() => ({
-    ceHidden: document.getElementById("cefilterSubCE").hidden,
-    servantHidden: document.getElementById("cefilterSubServant").hidden,
-    cards: document.querySelectorAll("#cefilterResults > .cefilter-servant-card").length,
-  }));
-  if (backPanels.ceHidden || !backPanels.servantHidden) errors.push("sub-tab: switching back to Craft Essence Select did not restore the panels");
-  if (backPanels.cards === 0) errors.push("sub-tab: Craft Essence Select lost its results after returning from Servant Select");
+  // Clicking a CE badge hands over to Craft Essence Select with that CE selected.
+  const ceName = await page.evaluate(() => document.querySelector(".cefilter-combo-ce-name")?.textContent);
+  await page.evaluate(() => document.querySelector(".cefilter-combo-ce")?.click());
+  const handoff = await page.evaluate((name) => {
+    const visible = (n) =>
+      Array.from(document.querySelectorAll(`.cefilter-subpanel[data-subpanel="${n}"]`)).filter((p) => !p.hidden).length;
+    return {
+      servantVisible: visible("servant"),
+      ceVisible: visible("ce"),
+      chips: Array.from(document.querySelectorAll("#cefilterChips .cefilter-chip")).map((c) => c.textContent.trim()),
+      cards: document.querySelectorAll("#cefilterResults > .cefilter-servant-card").length,
+      name,
+    };
+  }, ceName);
+  if (handoff.ceVisible !== 2 || handoff.servantVisible !== 0) {
+    errors.push(`CE hand-off did not switch both cards: ce=${handoff.ceVisible} servant=${handoff.servantVisible}`);
+  }
+  if (!handoff.chips.some((t) => t.includes(handoff.name))) {
+    errors.push(`CE hand-off: ${handoff.name} not selected in Craft Essence Select (${JSON.stringify(handoff.chips)})`);
+  }
+  if (handoff.cards === 0) errors.push("sub-tab: Craft Essence Select lost its results after the hand-off");
 
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {

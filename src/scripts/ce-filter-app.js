@@ -252,10 +252,12 @@ export const CEFilterApp = {
       btn.setAttribute("aria-selected", active ? "true" : "false");
     });
 
-    const cePanel = document.getElementById("cefilterSubCE");
-    const servantPanel = document.getElementById("cefilterSubServant");
-    if (cePanel) cePanel.hidden = sub !== "ce";
-    if (servantPanel) servantPanel.hidden = sub !== "servant";
+    // Each sub-tab owns one panel in the controls card and one in the results card.
+    ["ce", "servant"].forEach((name) => {
+      document.querySelectorAll(`.cefilter-subpanel[data-subpanel="${name}"]`).forEach((panel) => {
+        panel.hidden = name !== sub;
+      });
+    });
 
     if (sub === "ce") this.render();
     else ServantSelect.render();
