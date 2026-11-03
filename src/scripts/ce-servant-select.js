@@ -62,33 +62,30 @@ export const ServantSelect = {
     return servant ? servant.name : id;
   },
 
+  /* Same chip as the CE side builds under Add Craft Essence, minus the visible name. */
   renderChips() {
     const container = document.getElementById("cefilterServantChips");
     if (!container) return;
+    container.replaceChildren();
 
     const frag = document.createDocumentFragment();
     this.state.pickedIds.forEach((id) => {
-      const name = this._nameOf(id);
-      const chip = DOMFactory.el("div", "cefilter-servant-chip");
-
       const servant = ServantData.getServant(id);
-      const img = servant
-        ? DOMFactory.createLazyImg(servant.image, "cefilter-servant-chip-img", { alt: name })
-        : DOMFactory.el("div", "cefilter-servant-chip-img");
-      if (servant) DOMFactory.addAscensionFallback(img, id);
+      if (!servant) return;
+
+      const chip = DOMFactory.el("div", ["cefilter-chip", "flex-row"]);
+
+      const img = DOMFactory.createLazyImg(servant.image, null, { alt: servant.name });
+      DOMFactory.addAscensionFallback(img, id);
       chip.appendChild(img);
 
-      const label = DOMFactory.el("span", "cefilter-servant-chip-name");
-      label.textContent = name;
-      chip.appendChild(label);
-
-      const remove = DOMFactory.el("button", "cefilter-servant-chip-remove", {
+      const removeBtn = DOMFactory.el("button", ["cefilter-chip-remove", "flex-row"], {
         type: "button",
-        "aria-label": `Remove ${name}`,
+        "aria-label": `Remove ${servant.name}`,
       });
-      remove.textContent = "×";
-      remove.addEventListener("click", () => this.removeServant(id));
-      chip.appendChild(remove);
+      removeBtn.textContent = "✕";
+      removeBtn.addEventListener("click", () => this.removeServant(id));
+      chip.appendChild(removeBtn);
 
       frag.appendChild(chip);
     });
@@ -115,7 +112,7 @@ export const ServantSelect = {
     const groups = this._lastGroups;
     const shown = groups.slice(0, this.state.visibleCards);
 
-    const grid = DOMFactory.el("div", ["cefilter-results-grid", "grid"]);
+    const grid = DOMFactory.el("div", "cefilter-combo-grid");
     shown.forEach((group) => grid.appendChild(this._buildCard(group)));
 
     const frag = document.createDocumentFragment();
@@ -135,25 +132,24 @@ export const ServantSelect = {
     wrapper.replaceChildren(frag);
   },
 
-  /* One card per servant group, on the CE Select card grid: the shared CEs are the main
-     row, the servants that all share them are the badge row below. */
+  /* One card per servant group, twice the width of a CE Select card: the shared CEs are the
+     main row at portrait size, the servants that all share them are the badge row below.
+     Names stay off the card — the portraits are the content, and title/alt carry the name. */
   _buildCard(group) {
     const card = DOMFactory.el("div", ["cefilter-servant-card", "cefilter-combo-card"]);
 
-    const ceRow = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
+    const ceRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-ce-row"]);
     group.ceIds.forEach((ceId) => {
       const ce = CEById.get(ceId);
       if (!ce) return;
       const cell = DOMFactory.el("button", "cefilter-combo-ce", {
         type: "button",
         "aria-label": `Select ${ce.name} in Craft Essence Select`,
+        title: ce.name,
       });
-      const img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-match-badge", { alt: ce.name, title: ce.name });
+      const img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-combo-ce-img", { alt: ce.name, title: ce.name });
       DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
-      const name = DOMFactory.el("span", "cefilter-combo-ce-name");
-      name.textContent = ce.name;
       cell.appendChild(img);
-      cell.appendChild(name);
       cell.addEventListener("click", (e) => {
         e.stopPropagation();
         this._deps?.onSelectCE?.(ceId);
@@ -161,10 +157,6 @@ export const ServantSelect = {
       ceRow.appendChild(cell);
     });
     card.appendChild(ceRow);
-
-    const caption = DOMFactory.el("div", "cefilter-combo-caption");
-    caption.textContent = `${group.ceIds.length} CE shared`;
-    card.appendChild(caption);
 
     const servantRow = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
     group.servantIds.forEach((id) => {
@@ -183,25 +175,18 @@ export const ServantSelect = {
   },
 
   _paintNotes(groupCount, unshared, truncated) {
-    const count = document.getElementById("cefilterComboCount");
-    if (count) {
-      count.textContent =
-        this.state.pickedIds.length === 0 ? "" : `${groupCount} ${groupCount === 1 ? "group" : "groups"}`;
-    }
-
     const empty = document.getElementById("cefilterComboEmpty");
     if (empty) {
       const show = this.state.pickedIds.length > 0 && groupCount === 0;
       empty.hidden = !show;
-      if (show) empty.textContent = "No CE is usable by two or more of these servants.";
+      empty.textContent = show ? "No CE is usable by two or more of these servants." : "";
     }
 
     const unsharedEl = document.getElementById("cefilterComboUnshared");
     if (unsharedEl) {
       unsharedEl.hidden = unshared.length === 0;
-      if (unshared.length > 0) {
-        unsharedEl.textContent = `No shared CE with: ${unshared.map((id) => this._nameOf(id)).join(", ")}`;
-      }
+      unsharedEl.textContent =
+        unshared.length > 0 ? `No shared CE with: ${unshared.map((id) => this._nameOf(id)).join(", ")}` : "";
     }
 
     const truncatedEl = document.getElementById("cefilterComboTruncated");

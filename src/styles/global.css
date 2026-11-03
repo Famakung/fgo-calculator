@@ -814,50 +814,19 @@ html[data-tab="event"] #panel-event {
   display: none;
 }
 
-.cefilter-combo-count {
-  margin-bottom: 8px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.cefilter-servant-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.cefilter-servant-chip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px 4px 4px;
-  background: var(--accent-light);
-  border-radius: var(--radius-sm);
-  font-size: 0.8rem;
-  color: var(--text);
-}
-
-.cefilter-servant-chip-img {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.cefilter-servant-chip-remove {
-  padding: 0 2px;
-  background: none;
-  border: none;
-  font-size: 1rem;
-  line-height: 1;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
 /* Results grid + the Show-more button sit side by side in this wrapper */
 .cefilter-combo-results {
   display: block;
+}
+
+/* Twice the CE Select card width; auto-fill keeps one column on a phone without
+   borrowing that tab's 160px breakpoint ladder. */
+.cefilter-combo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 320px));
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
 }
 
 .cefilter-combo-empty,
@@ -891,30 +860,33 @@ html[data-tab="event"] #panel-event {
   text-align: center;
 }
 
-.cefilter-combo-ce {
+.cefilter-combo-ce-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   width: 100%;
+  padding: 4px;
+  justify-content: center;
+}
+
+.cefilter-combo-ce {
   padding: 0;
   background: none;
   border: none;
-  font-family: "DM Sans", sans-serif;
   cursor: pointer;
 }
 
-.cefilter-combo-ce-name {
-  font-size: 0.6rem;
-  font-weight: 600;
-  color: var(--text);
-  width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cefilter-combo-caption {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  width: 100%;
+/* Portrait height, same as a Craft Essence Select card's own portrait */
+.cefilter-combo-ce-img {
+  height: var(--servant-portrait-h);
+  width: auto;
+  aspect-ratio: 142 / 155;
+  border: none;
+  border-radius: 4px;
+  object-fit: contain;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .cefilter-combo-servant-badge {
@@ -2159,6 +2131,11 @@ html[data-tab="event"] #panel-event {
   .cefilter-add-btn:hover,
   .cefilter-filter-btn:hover {
     background: #3730a3;
+  }
+
+  .cefilter-combo-ce-img:hover {
+    transform: scale(1.15);
+    opacity: 0.8;
   }
 
   .cefilter-combo-servant-badge:hover {

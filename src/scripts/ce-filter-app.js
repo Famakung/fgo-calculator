@@ -249,7 +249,7 @@ export const CEFilterApp = {
     document.querySelectorAll(".cefilter-subtab-btn").forEach((btn) => {
       const active = btn.dataset.subtab === sub;
       btn.classList.toggle("active", active);
-      btn.setAttribute("aria-selected", active ? "true" : "false");
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
     });
 
     // Each sub-tab owns one panel in the controls card and one in the results card.

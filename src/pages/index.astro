@@ -471,16 +471,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <section class="tab-panel active" id="panel-cefilter">
           <div class="card">
             <div class="card-inner">
-              <div class="cefilter-subtabs" id="cefilterSubtabs" role="tablist">
-                <button type="button" class="tab-btn cefilter-subtab-btn active" data-subtab="ce" role="tab" aria-selected="true">
+              <div class="cefilter-subtabs" id="cefilterSubtabs">
+                <button type="button" class="tab-btn cefilter-subtab-btn active" data-subtab="ce" aria-pressed="true">
                   Craft Essence Select
                 </button>
-                <button type="button" class="tab-btn cefilter-subtab-btn" data-subtab="servant" role="tab" aria-selected="false">
+                <button type="button" class="tab-btn cefilter-subtab-btn" data-subtab="servant" aria-pressed="false">
                   Servant Select
                 </button>
               </div>
 
-              <div class="cefilter-subpanel" data-subpanel="ce" role="tabpanel">
+              <div class="cefilter-subpanel" data-subpanel="ce">
                 <div class="card-title">Bond Gain Craft Essences</div>
                 <div class="cefilter-controls">
                   <button class="cefilter-add-btn" id="cefilterAddBtn" type="button">Add Craft Essence</button>
@@ -497,19 +497,19 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <div class="cefilter-chips" id="cefilterChips"></div>
               </div>
 
-              <div class="cefilter-subpanel" data-subpanel="servant" role="tabpanel" hidden>
+              <div class="cefilter-subpanel" data-subpanel="servant" hidden>
                 <div class="card-title">Servants</div>
                 <div class="cefilter-controls">
                   <button class="cefilter-add-btn" id="cefilterServantAddBtn" type="button">Add Servant</button>
                 </div>
-                <div class="cefilter-servant-chips" id="cefilterServantChips"></div>
+                <div class="cefilter-chips" id="cefilterServantChips"></div>
               </div>
             </div>
           </div>
 
           <div class="card">
             <div class="card-inner">
-              <div class="cefilter-subpanel" data-subpanel="ce" role="tabpanel">
+              <div class="cefilter-subpanel" data-subpanel="ce">
                 <div class="card-title cefilter-results-header">
                   <span>Servants</span>
                 </div>
@@ -554,11 +554,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <div class="cefilter-pagination" id="cefilterPaginationBottom"></div>
               </div>
 
-              <div class="cefilter-subpanel" data-subpanel="servant" role="tabpanel" hidden>
+              <div class="cefilter-subpanel" data-subpanel="servant" hidden>
                 <div class="card-title cefilter-results-header">
                   <span>Shared Craft Essences</span>
                 </div>
-                <div class="cefilter-combo-count" id="cefilterComboCount"></div>
                 <div class="cefilter-combo-results" id="cefilterComboResults"></div>
                 <div class="cefilter-combo-empty" id="cefilterComboEmpty" hidden></div>
                 <div class="cefilter-combo-unshared" id="cefilterComboUnshared" hidden></div>

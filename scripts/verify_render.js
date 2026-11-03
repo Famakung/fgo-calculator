@@ -141,32 +141,42 @@ try {
 
   // Picking marks items and keeps the modal open, like the CE picker. 444 U-Olga Marie has
   // ascension-different traits, so she also proves the ascension prompt is bypassed here.
-  await page.click("#cefilterServantAddBtn");
-  await page.waitForFunction(() => document.getElementById("servantModal").classList.contains("open"), {
-    timeout: 15000,
-  });
-  const marked = [];
-  for (const servantId of ["001", "444"]) {
-    const clicked = await page.evaluate((id) => {
+  const pickInModal = (servantId) =>
+    page.evaluate((id) => {
       const item = Array.from(document.querySelectorAll("#servantPickerGrid .servant-picker-item")).find((el) =>
         el.querySelector("img")?.getAttribute("src")?.includes(`servants/${id}/`),
       );
       if (item) item.click();
-      return item ? item.classList.contains("selected") : false;
+      return item ? { found: true, selected: item.classList.contains("selected") } : { found: false, selected: false };
     }, servantId);
-    if (!clicked) errors.push(`servant select: ${servantId} not picked or not marked selected`);
-    marked.push(clicked);
-    const stillOpen = await page.evaluate(() => document.getElementById("servantModal").classList.contains("open"));
-    if (!stillOpen) errors.push(`servant select: picking ${servantId} closed the modal`);
-    const ascensionOpen = await page.evaluate(() =>
-      document.getElementById("ascensionModal").classList.contains("open"),
-    );
-    if (ascensionOpen) errors.push(`servant select: picking ${servantId} opened the ascension prompt`);
-  }
-  await page.click("#servantModalClose");
-  await page.waitForFunction(() => !document.getElementById("servantModal").classList.contains("open"), {
+  const openModal = async () => {
+    await page.click("#cefilterServantAddBtn");
+    await page.waitForFunction(() => document.getElementById("servantModal").classList.contains("open"), {
+      timeout: 15000,
+    });
+  };
+  const closeModal = async () => {
+    await page.click("#servantModalClose");
+    await page.waitForFunction(() => !document.getElementById("servantModal").classList.contains("open"), {
+      timeout: 15000,
+    });
+  };
+  await openModal();
+  await page.waitForFunction(() => document.getElementById("servantModal").classList.contains("open"), {
     timeout: 15000,
   });
+  for (const servantId of ["001", "444"]) {
+    const picked = await pickInModal(servantId);
+    if (!picked.found) errors.push(`servant select: picker grid has no servant ${servantId}`);
+    if (!picked.selected) errors.push(`servant select: ${servantId} picked but not marked selected`);
+    const stateAfter = await page.evaluate(() => ({
+      modalOpen: document.getElementById("servantModal").classList.contains("open"),
+      ascensionOpen: document.getElementById("ascensionModal").classList.contains("open"),
+    }));
+    if (!stateAfter.modalOpen) errors.push(`servant select: picking ${servantId} closed the modal`);
+    if (stateAfter.ascensionOpen) errors.push(`servant select: picking ${servantId} opened the ascension prompt`);
+  }
+  await closeModal();
 
   try {
     await page.waitForFunction(
@@ -179,31 +189,87 @@ try {
     errors.push("servant select: #cefilterComboResults never filled with .cefilter-combo-card");
   }
   const combos = await page.evaluate(() => ({
-    chips: document.querySelectorAll("#cefilterServantChips > .cefilter-servant-chip").length,
+    chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
+    chipHasName: !!document.querySelector("#cefilterServantChips .cefilter-chip span"),
+    chipRemove: document.querySelectorAll("#cefilterServantChips .cefilter-chip-remove").length,
     cards: document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length,
-    // The card grid must be the same grid the CE Select results use.
-    onCeSelectGrid: !!document.querySelector("#cefilterComboResults > .cefilter-results-grid.grid"),
-    ceBadges: document.querySelectorAll("#cefilterComboResults .cefilter-combo-ce .cefilter-match-badge").length,
+    cardWidth: document.querySelector(".cefilter-combo-card")?.getBoundingClientRect().width || 0,
+    onComboGrid: !!document.querySelector("#cefilterComboResults > .cefilter-combo-grid"),
+    ceImages: document.querySelectorAll("#cefilterComboResults .cefilter-combo-ce-img").length,
+    ceImageHeight: document.querySelector(".cefilter-combo-ce-img")?.getBoundingClientRect().height || 0,
+    // No count line, no "N CE shared" caption, no CE name text: the card is portraits + badges.
+    ceNames: document.querySelectorAll("#cefilterComboResults .cefilter-combo-ce-name").length,
+    captions: document.querySelectorAll("#cefilterComboResults .cefilter-combo-caption").length,
+    countEl: !!document.getElementById("cefilterComboCount"),
     servantBadges: document.querySelectorAll("#cefilterComboResults .cefilter-combo-servant-badge").length,
-    captions: Array.from(document.querySelectorAll(".cefilter-combo-caption")).map((c) => c.textContent),
-    count: document.getElementById("cefilterComboCount").textContent,
     emptyHidden: document.getElementById("cefilterComboEmpty").hidden,
     unsharedHidden: document.getElementById("cefilterComboUnshared").hidden,
   }));
   console.log(
-    `NOTE: servant select ${combos.chips} chip(s), ${combos.cards} card(s), ${combos.ceBadges} CE badge(s), ${combos.servantBadges} servant badge(s), captions ${JSON.stringify(combos.captions)}`,
+    `NOTE: servant select ${combos.chips} chip(s), ${combos.cards} card(s) at ${Math.round(combos.cardWidth)}px, ${combos.ceImages} CE image(s) at ${Math.round(combos.ceImageHeight)}px, ${combos.servantBadges} servant badge(s)`,
   );
   if (combos.chips !== 2) errors.push(`servant select: expected 2 chips, saw ${combos.chips}`);
   if (combos.cards < 1) errors.push("servant select: Mash and U-Olga Marie share 4 CEs but no card rendered");
-  if (!combos.onCeSelectGrid) errors.push("servant select: results are not on the CE Select result grid");
+  if (!combos.onComboGrid) errors.push("servant select: cards are not inside .cefilter-combo-grid");
+  if (combos.ceImages === 0) errors.push("servant select: no CE portraits rendered in the card");
+  if (combos.ceNames > 0 || combos.captions > 0 || combos.countEl) {
+    errors.push(
+      `servant select: card still shows text (names ${combos.ceNames}, captions ${combos.captions}, count line ${combos.countEl})`,
+    );
+  }
+  if (Math.abs(combos.ceImageHeight - 96) > 6) {
+    errors.push(`servant select: CE portrait is ${Math.round(combos.ceImageHeight)}px tall, expected 96px`);
+  }
+  if (combos.cardWidth < 280) {
+    errors.push(
+      `servant select: card is ${Math.round(combos.cardWidth)}px wide, expected ~2x the 160px CE Select card`,
+    );
+  }
   if (combos.servantBadges === 0)
     errors.push("servant select: no servant badges rendered (servants must be the badge row)");
   if (combos.emptyHidden === false) errors.push("servant select: empty-state note shown while cards are rendered");
   if (combos.unsharedHidden === false)
     errors.push("servant select: both servants share CEs but the unshared line showed");
+  if (combos.chipHasName) errors.push("servant chip shows a visible name; the CE-side chip shape has none");
+  if (combos.chipRemove !== combos.chips)
+    errors.push(`servant chips: ${combos.chips} chip(s) but ${combos.chipRemove} remove button(s)`);
+
+  // Review Focus 1: 020 Cú Chulainn (Prototype) can use no CE at all, so she must be named,
+  // not silently missing. Toggling her back off must clear the note again.
+  await openModal();
+  const oddPicked = await pickInModal("020");
+  await closeModal();
+  if (!oddPicked.found) errors.push("servant select: picker grid has no servant 020");
+  const withOdd = await page.evaluate(() => ({
+    chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
+    unshared: document.getElementById("cefilterComboUnshared").hidden
+      ? null
+      : document.getElementById("cefilterComboUnshared").textContent,
+    cards: document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length,
+  }));
+  if (withOdd.chips !== 3) errors.push(`servant select: expected 3 chips after adding 020, saw ${withOdd.chips}`);
+  if (withOdd.unshared === null || !/Cú Chulainn \(Prototype\)/.test(withOdd.unshared)) {
+    errors.push(
+      `servant select: a servant matching no CE was not named as unshared (${JSON.stringify(withOdd.unshared)})`,
+    );
+  }
+  if (withOdd.cards < 1) errors.push("servant select: the two sharing servants lost their card when a third was added");
+
+  await openModal();
+  await pickInModal("020");
+  await closeModal();
+  const afterUntoggle = await page.evaluate(() => ({
+    chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
+    unsharedHidden: document.getElementById("cefilterComboUnshared").hidden,
+    unsharedText: document.getElementById("cefilterComboUnshared").textContent,
+  }));
+  if (afterUntoggle.chips !== 2) errors.push(`servant select: untoggle left ${afterUntoggle.chips} chips, expected 2`);
+  if (!afterUntoggle.unsharedHidden) errors.push("servant select: unshared note still shown after untoggle");
+  if (afterUntoggle.unsharedText !== "")
+    errors.push(`servant select: hidden unshared note kept stale text "${afterUntoggle.unsharedText}"`);
 
   // Clicking a CE badge hands over to Craft Essence Select with that CE selected.
-  const ceName = await page.evaluate(() => document.querySelector(".cefilter-combo-ce-name")?.textContent);
+  const ceName = await page.evaluate(() => document.querySelector(".cefilter-combo-ce-img")?.getAttribute("alt"));
   await page.evaluate(() => document.querySelector(".cefilter-combo-ce")?.click());
   const handoff = await page.evaluate((name) => {
     const visible = (n) =>

@@ -14,7 +14,7 @@
   ],
   "chunkBytes": {
     "bond-lazy": 17798,
-    "ce-filter-chunk": 23042,
+    "ce-filter-chunk": 22626,
     "ce-match-worker": 2788,
     "constants-chunk": 1548,
     "data-chunk": 51633,
@@ -26,7 +26,7 @@
   },
   "chunkMinBytes": {
     "bond-lazy": 4449,
-    "ce-filter-chunk": 5760,
+    "ce-filter-chunk": 5656,
     "ce-match-worker": 697,
     "constants-chunk": 387,
     "data-chunk": 12908,
@@ -36,6 +36,6 @@
     "selectors-chunk": 5655,
     "tab-navigator-chunk": 427
   },
-  "rawTextSha": "46ecd53a2aaa79df260622bc7021cb70978ad08f78a2f0f61b5afff300a5f746",
+  "rawTextSha": "c42fea62e3b0212815e73fdb875809669d755db9b6e09c314c9306f4ea0a3c9e",
   "normalisedTextSha": "b803c4a62b9a4cb7d7f6f652fc8c1220c09bab554fc503e497cc5daf6cb09e02"
 }
