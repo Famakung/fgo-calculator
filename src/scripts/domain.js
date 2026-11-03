@@ -206,6 +206,9 @@ export const ServantComboCalculator = {
     });
 
     const covered = new Set(groups.flatMap((g) => g.servantIds));
-    return { groups, unshared: picked.filter((id) => !covered.has(id)), truncated };
+    // A truncated run visited only part of the subset lattice, so a servant missing from the
+    // returned rows may still share CEs with another — claim nothing rather than name falsely.
+    const unshared = truncated ? [] : picked.filter((id) => !covered.has(id));
+    return { groups, unshared, truncated };
   },
 };
