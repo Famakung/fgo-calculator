@@ -50,6 +50,14 @@ def normal_entry(cno, svt):
     return key, m.format_servant_js_entry(key, svt.get("name") or "", base, diffs, ol, on)
 
 
+def trait_add_entry(cno, traits, adds):
+    """Base traits + traitAdd entries -> normalized base list."""
+    svt = make_nice(cno, 5, traits)
+    svt["traitAdd"] = adds
+    base, _d, _ol, _on, _cb = m.extract_servant_traits(svt)
+    return base
+
+
 def main():
     tmp = tempfile.mkdtemp()
     n = 0
@@ -80,6 +88,38 @@ def main():
     m.SERVANTS_JS = write_servants_file(tmp, stored)
     changed = m.revalidate_servant_traits({467: {}}, [make_nice(467, 5, ["0100"])])
     assert 467 not in changed, f"unchanged 467 wrongly flagged: {changed}"
+    n += 1
+
+    # E. permanent traitAdd (condType "none", no eventId) merges into the base set.
+    # 2821 = Beast Servants; Atlas keeps it out of the servant's own trait list.
+    perm_2821 = [{"idx": 1, "condType": "none", "eventId": 0, "limitCount": -1, "trait": [{"id": 2821}]}]
+    base = trait_add_entry(314, ["0002", "0105", "0204", "0300", "0304", "2780"], perm_2821)
+    assert "2821" in base, f"permanent traitAdd 2821 dropped for 314: {base}"
+    assert "2821" in trait_add_entry(238, ["0002", "0109", "0201", "0300", "0303"], perm_2821), \
+        "238 needs traitAdd now that the hard-coded 2821 is gone"
+    n += 1
+
+    # F. event- and quest-gated traitAdd entries are not always-on -> ignored
+    for gated in ({"idx": 1, "condType": "none", "eventId": 80432, "trait": [{"id": 2821}]},
+                  {"idx": 1, "condType": "questClear", "eventId": 0, "trait": [{"id": 2821}]}):
+        assert "2821" not in trait_add_entry(314, ["0002", "0105"], [gated]), f"gated entry merged: {gated}"
+    n += 1
+
+    # G. class-form entries (Mash, idx = classId) must not leak another form's rarity
+    form_adds = [{"idx": 100, "condType": "none", "eventId": 0, "trait": [{"id": 403}, {"id": 2008}, {"id": 2795}]},
+                 {"idx": 117, "condType": "none", "eventId": 0, "trait": [{"id": 405}]}]
+    base = trait_add_entry(1, ["0002", "0107", "0200", "0301", "0303"], form_adds)
+    assert "0403" not in base and "0405" in base, f"form rarity leaked: {base}"
+    n += 1
+
+    # H. a servant stored before its permanent traitAdd was read is flagged, so
+    # the scheduled run rewrites it (this is what fixes 314/334 in place).
+    stale_key, stale_entry = normal_entry(334, make_nice(334, 5, ["0002", "0117", "0204", "0301", "0304"]))
+    m.SERVANTS_JS = write_servants_file(tmp, {stale_key: stale_entry})
+    fixed = make_nice(334, 5, ["0002", "0117", "0204", "0301", "0304"])
+    fixed["traitAdd"] = perm_2821
+    changed = m.revalidate_servant_traits({334: {}}, [fixed])
+    assert 334 in changed, f"missing traitAdd trait not flagged: {changed}"
     n += 1
 
     print(f"{n} tests passed")
