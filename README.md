@@ -24,7 +24,10 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Max Bond & Bond ≥15 checkboxes: "Max Bond" hides the bond required input, while "Bond ≥15" grants a +25% party bond bonus (usable even while leveling up to Bond 16)
 - Visual slot badges: Starting member slots display frontline bonus badges (+20% self for Normal, +4% All for Support); checking "Bond ≥15" displays a "Bond All +25%" badge in any slot (stacked below +self 20% when in starting member)
 - Quest presets (Free Quest Lv.83/84, Grand Duel Lv.100) or custom bond per run
-- Per-servant results with bond breakdown and run count
+- Bond level planning: **Current Lv.** (0–15) and **Target Lv.** (up to 16) per slot, with every level's cost read from that servant's own Atlas table
+- **Bond Point Required** fills itself with the cost of the level you are standing on; overwrite it with the number the game shows when you are partway through a level
+- Choosing Current Lv. 15 ticks "Bond ≥15" for you (that is the level paying the +25% party bonus); a lower level unticks it
+- Per-servant results with bond breakdown and run count; when the plan crosses more than one level the card lists the runs per stretch (`Bond Lv.0->2` / `1 run`), carrying surplus up to Lv.10 and rounding alone above the bond cap
 
 ### Bond Gain CE Filter
 - Two sub-tabs: **Craft Essence Select** (CEs → servants, default) and **Servant Select** (servants → shared CEs)
@@ -68,10 +71,11 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 1. Add servants and select from the portrait modal
 2. Choose servant type (Normal or Support)
 3. For Normal servants, toggle "Max Bond" (if already maxed) and/or "Bond ≥15" (+25% party bond bonus)
-4. For servants not at Max Bond, enter bond required
-5. Add Craft Essences for bonus traits
-6. Select a quest
-7. Click "Calculate Quest Runs"
+4. Set **Current Lv.** and **Target Lv.** — **Bond Point Required** fills itself from that servant's table
+5. Partway through a level? Replace the box with the number the game shows you; the levels above still come from the table
+6. Add Craft Essences for bonus traits
+7. Select a quest
+8. Click "Calculate Quest Runs" — total runs plus, when more than one level is crossed, the runs per stretch of levels
 
 ### CE Filter
 1. Click "Add Craft Essence" to select CEs
@@ -111,8 +115,8 @@ fgo-calculator/
 │   │   ├── ce-filter-app.js   # CEFilterApp (Worker; CE picks + match mode persist via CEFilterStore)
 │   │   ├── ce-match-worker.js # Worker entry (TraitMatcher inlined)
 │   │   ├── constants.js       # All constants
-│   │   ├── domain.js           # Schema, Validator, Calculator, TraitMatcher
-│   │   ├── data.js             # ServantData, TraitNames, CEList, CEById, TraitCEs
+│   │   ├── domain.js           # Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher
+│   │   ├── data.js             # ServantData (incl. getBondGrowth), TraitNames, CEList, CEById, TraitCEs
 │   │   ├── state.js            # StateManager, Persistence
 │   │   ├── presentation.js     # DOMFactory, CollapsibleFactory, debounce
 │   │   ├── selectors.js        # ServantSelector, AscensionSelector, CESelector, etc.
@@ -122,7 +126,8 @@ fgo-calculator/
 │   │   └── data/
 │   │       ├── servants.js      # SERVANT_DATA
 │   │       ├── craft_essences.js # CE_DATA
-│   │       └── traits.js        # TRAIT_DATA
+│   │       ├── traits.js        # TRAIT_DATA
+│   │       └── bond_growth.js   # BOND_TABLES + BOND_TABLE_BY_SVT (bond points per level step)
 │   └── styles/
 │       ├── critical.css        # Above-fold CSS (inlined by Astro)
 │       └── global.css          # Full styles (loaded by Astro)
@@ -138,7 +143,7 @@ fgo-calculator/
 │   └── icons/                  # UI icons (classes, materials, PWA)
 │
 ├── scripts/                    # Build-time sync and validation engine
-│   ├── sync_atlas_data.py      # Incremental Atlas Academy sync (traits, face icons, multi-ascension)
+│   ├── sync_atlas_data.py      # Incremental Atlas Academy sync (traits, face icons, multi-ascension, bond tables)
 │   ├── validate_data.js        # Data integrity, schema, and image existence validator
 │   └── fetch_bordered_ces.py   # Craft Essence icon fetcher & WebP converter
 │
@@ -152,7 +157,7 @@ The application follows a 3-layer architecture using ES modules bundled by Astro
 
 | Layer | Modules | Purpose |
 |-------|---------|---------|
-| **Domain** | Schema, Validator, Calculator, TraitMatcher | Pure business logic, no DOM |
+| **Domain** | Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher | Pure business logic, no DOM |
 | **Application** | StateManager, Persistence, App, BondApp, CEFilterApp | State management and coordination |
 | **Presentation** | DOMFactory, CollapsibleFactory, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events |
 
@@ -184,7 +189,7 @@ Astro produces optimized chunks via Vite:
 - Schema-based input validation with localStorage sanitization
 - Debounced input handlers (100ms)
 - Multi-ascension servant support with per-ascension traits, ascension stage face icons, and spiriton dress images
-- Automated build-time data sync pipeline (`scripts/sync_atlas_data.py`) with polite rate limiting (`0.1s`), automatic multi-ascension detection, full-auto Craft Essence data detection & series grouping, and dynamic bordered icon synchronization
+- Automated build-time data sync pipeline (`scripts/sync_atlas_data.py`) with polite rate limiting (`0.1s`), automatic multi-ascension detection, full-auto Craft Essence data detection & series grouping, dynamic bordered icon synchronization, and bond point tables converted from Atlas' running totals into per-level-step costs (471 playable servants deduped into 76 shared tables)
 - Zero-commit binary assets architecture: servant and CE images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v4`), and synced at build time
 - PWA manifest with standalone display mode
 - Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, `font-display: optional`, critical CSS inlined, font preloads with `fetchpriority="high"`, CLS prevention with `min-width` and `tabular-nums`

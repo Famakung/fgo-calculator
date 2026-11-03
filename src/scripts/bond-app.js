@@ -1,7 +1,23 @@
 import { BOND_CONSTANTS, SERVANT_MAX_SLOTS, BOND_QUESTS, BOND_STORAGE_KEY } from "./constants.js";
-import { Validator, TraitMatcher } from "./domain.js";
+import { Validator, TraitMatcher, BondLevelCalculator } from "./domain.js";
 import { ServantData, CEById, TraitNames } from "./data.js";
 import { DOMFactory } from "./presentation.js";
+
+/* One servant slot's shape. Every place a slot is created or cleared goes through here, so a new
+   field is added once instead of in each of the eight copies this replaced. */
+function defaultSlot(overrides = {}) {
+  return {
+    servantId: null,
+    bondNeeded: 0,
+    bondLevel: BOND_CONSTANTS.MIN_BOND_LEVEL,
+    targetLevel: BOND_CONSTANTS.MIN_BOND_LEVEL + 1,
+    type: "normal",
+    maxBond: false,
+    bond15: false,
+    ascension: null,
+    ...overrides,
+  };
+}
 
 export const BondApp = {
   state: null,
@@ -17,14 +33,7 @@ export const BondApp = {
     return {
       onSelect: (_slotIdx, servantId, ascension) => this.setServant(slotIndex, servantId, ascension),
       onPendingRemove: () => {
-        this.state.slots[slotIndex] = {
-          servantId: null,
-          bondNeeded: 0,
-          type: "normal",
-          maxBond: false,
-          bond15: false,
-          ascension: null,
-        };
+        this.state.slots[slotIndex] = defaultSlot();
         this.saveState();
         this.buildServantSlots();
       },
@@ -65,14 +74,7 @@ export const BondApp = {
     this._initialized = true;
     const saved = this.loadState();
     this.state = saved || {
-      slots: Array.from({ length: SERVANT_MAX_SLOTS }, () => ({
-        servantId: null,
-        bondNeeded: 0,
-        type: "normal",
-        maxBond: false,
-        bond15: false,
-        ascension: null,
-      })),
+      slots: Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot()),
       selectedQuest: "",
       customBond: 0,
       ces: [],
@@ -156,14 +158,7 @@ export const BondApp = {
 
   removeSlot(index) {
     this.flushInputsToState();
-    this.state.slots[index] = {
-      servantId: null,
-      bondNeeded: 0,
-      type: "normal",
-      maxBond: false,
-      bond15: false,
-      ascension: null,
-    };
+    this.state.slots[index] = defaultSlot();
     this.saveState();
     this.buildServantSlots();
   },
@@ -324,14 +319,7 @@ export const BondApp = {
     let firstPortraitCreated = false;
 
     for (let i = 0; i < SERVANT_MAX_SLOTS; i++) {
-      const slotData = this.state.slots[i] || {
-        servantId: null,
-        bondNeeded: 0,
-        type: "normal",
-        maxBond: false,
-        bond15: false,
-        ascension: null,
-      };
+      const slotData = this.state.slots[i] || defaultSlot();
 
       // Insert group labels before first slot of each group
       if (i === 0) {
@@ -553,11 +541,90 @@ export const BondApp = {
           });
         }
 
+        /* Bond level selects, then the point box the player reads off the in-game bond screen.
+           All three hide together for support and Max Bond slots, as the point box always did. */
+        const bondGrowth = ServantData.getBondGrowth(slotData.servantId);
+        const maxLevel = bondGrowth ? bondGrowth.length - 1 : BOND_CONSTANTS.MAX_BOND_LEVEL - 1;
+        const currentLevel = Math.min(Validator.clamp(slotData.bondLevel, 0, maxLevel), maxLevel);
+        const targetLevel = Math.round(Validator.clamp(slotData.targetLevel, currentLevel + 1, maxLevel + 1));
+        // A slot with an empty box (fresh pick, or an old save) starts on its own level's cost. The
+        // player's own figure and their own tick are left alone here; only the controls set those.
+        if (bondGrowth && !slotData.bondNeeded) {
+          slotData.bondNeeded = bondGrowth[currentLevel];
+          this.saveState();
+        }
+
+        const levelBox = (refKey, labelText, id, values, selected, onChange) => {
+          const box = DOMFactory.el("div", isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box");
+          const label = DOMFactory.el("label", "bond-input-box-label", { for: id });
+          label.textContent = labelText;
+          const select = DOMFactory.el("select", "bond-input-box-field bond-level-select", { id });
+          if (isBondHidden) {
+            select.disabled = true;
+            select.tabIndex = -1;
+          }
+          values.forEach((value) => {
+            const opt = DOMFactory.el("option", null, { value: String(value) });
+            opt.textContent = String(value);
+            if (value === selected) opt.selected = true;
+            select.appendChild(opt);
+          });
+          select.addEventListener("change", () => onChange(select.value));
+          if (!isBondHidden) this.elements[refKey] = select;
+          box.appendChild(label);
+          box.appendChild(select);
+          return box;
+        };
+
+        const levelValues = (from, to) => {
+          const out = [];
+          for (let v = from; v <= to; v++) out.push(v);
+          return out;
+        };
+
+        // Moving off a level always re-prices the box from the table — the old level's figure is stale.
+        const currentBox = levelBox(
+          `slotBondLv_${i}`,
+          "Current Lv.",
+          `slotBondLv_${i}`,
+          levelValues(0, maxLevel),
+          currentLevel,
+          (value) => {
+            this.flushInputsToState();
+            const next = Math.round(Validator.clamp(value, 0, maxLevel));
+            slotData.bondLevel = next;
+            if (slotData.targetLevel <= next) slotData.targetLevel = next + 1;
+            if (bondGrowth) slotData.bondNeeded = bondGrowth[next];
+            // The +25% all-servant bonus belongs to bond 15+, so the box follows the level both ways.
+            slotData.bond15 = next >= BOND_CONSTANTS.BOND_BONUS_LEVEL;
+            this.saveState();
+            this.buildServantSlots();
+          },
+        );
+
+        const targetBox = levelBox(
+          `slotBondTgt_${i}`,
+          "Target Lv.",
+          `slotBondTgt_${i}`,
+          levelValues(currentLevel + 1, maxLevel + 1),
+          targetLevel,
+          (value) => {
+            this.flushInputsToState();
+            slotData.targetLevel = Math.round(Validator.clamp(value, currentLevel + 1, maxLevel + 1));
+            this.saveState();
+          },
+        );
+
+        const levelRow = DOMFactory.el("div", "bond-level-row");
+        levelRow.appendChild(currentBox);
+        levelRow.appendChild(targetBox);
+        info.appendChild(levelRow);
+
         // Bond input box with border label (always created to preserve height, hidden if max bond or support)
         const inputBoxClass = isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box";
         const inputBox = DOMFactory.el("div", inputBoxClass);
         const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
-        inputLabel.textContent = "Bond Required";
+        inputLabel.textContent = "Bond Point Required";
         const inputAttrs = {
           type: "number",
           id: `slotBond_${i}`,
@@ -620,8 +687,12 @@ export const BondApp = {
   setServant(slotIndex, servantId, ascension) {
     if (slotIndex < 0 || slotIndex >= this.state.slots.length) return;
     this.flushInputsToState();
-    this.state.slots[slotIndex].servantId = servantId;
-    this.state.slots[slotIndex].ascension = ascension || null;
+    const slot = this.state.slots[slotIndex];
+    slot.servantId = servantId;
+    slot.ascension = ascension || null;
+    // Every servant prices its own levels, so a new pick re-prices the box the same way a level change does.
+    const growth = ServantData.getBondGrowth(servantId);
+    if (growth) slot.bondNeeded = growth[Math.round(Validator.clamp(slot.bondLevel, 0, growth.length - 1))];
     this.saveState();
     this.buildServantSlots();
   },
@@ -816,6 +887,14 @@ export const BondApp = {
       totalBonus += flatBonus;
       // Step 4: effectiveBond = base + totalBonus
       const effectiveBond = bondPerRun + totalBonus;
+      // The typed figure prices the level the player stands on; the table prices every one above it.
+      const bondPlan = BondLevelCalculator.plan({
+        growth: ServantData.getBondGrowth(servantId),
+        current: slot.bondLevel || 0,
+        target: slot.targetLevel || 0,
+        bondPerRun: effectiveBond,
+        typedCost: bondNeeded,
+      });
       slotResults.push({
         index: i,
         servantId,
@@ -824,7 +903,8 @@ export const BondApp = {
         bondNeeded,
         effectiveBond,
         totalBonus,
-        runs: effectiveBond > 0 ? Math.ceil(bondNeeded / effectiveBond) : 0,
+        runs: bondPlan.spansLevels ? bondPlan.total : effectiveBond > 0 ? Math.ceil(bondNeeded / effectiveBond) : 0,
+        bondPlan,
         ceBonus: ceBonusPercent,
         appliedCEs,
         isFrontline,
@@ -934,10 +1014,23 @@ export const BondApp = {
           : `${bondPerRun.toLocaleString()}`;
       card.appendChild(bondInfo);
 
-      // Runs count
+      // Runs count — the plain number, or one line per stretch of bond levels when the plan crosses more than one
       const runsEl = DOMFactory.el("div", "bond-result-runs");
       runsEl.textContent = `${sr.runs} ${sr.runs === 1 ? "run" : "runs"}`;
       card.appendChild(runsEl);
+
+      if (sr.bondPlan.spansLevels) {
+        const levelList = DOMFactory.el("div", "bond-result-levels");
+        sr.bondPlan.rows.forEach((row) => {
+          const label = DOMFactory.el("div", "bond-result-level-label");
+          label.textContent = `Bond Lv.${row.from}->${row.to}`;
+          const rowRuns = DOMFactory.el("div", "bond-result-level-runs");
+          rowRuns.textContent = `${row.runs} ${row.runs === 1 ? "run" : "runs"}`;
+          levelList.appendChild(label);
+          levelList.appendChild(rowRuns);
+        });
+        card.appendChild(levelList);
+      }
 
       resultGrid.appendChild(card);
     });
@@ -968,50 +1061,42 @@ export const BondApp = {
 
       // Migrate old format (single bondNeeded) to new slots format
       let slots;
-      if (data.slots && Array.isArray(data.slots)) {
-        slots = data.slots.map((s) => ({
+      /* Levels are rounded and re-clamped here because a saved slot could carry anything: an old
+         save without the fields, or a level past what the servant's table covers. */
+      const level = (value, max) => Math.round(Validator.clamp(value, 0, max));
+      const sanitize = (s) => {
+        const bondLevel = level(s.bondLevel || 0, BOND_CONSTANTS.MAX_BOND_LEVEL - 1);
+        return defaultSlot({
           servantId: s.servantId || null,
           bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, BOND_CONSTANTS.MAX_BOND_NEEDED),
+          bondLevel,
+          targetLevel: Math.min(
+            Math.max(level(s.targetLevel || 0, BOND_CONSTANTS.MAX_BOND_LEVEL), bondLevel + 1),
+            BOND_CONSTANTS.MAX_BOND_LEVEL,
+          ),
           type: s.type === "support" ? "support" : "normal",
           maxBond: s.type === "maxbond" ? true : Boolean(s.maxBond),
           bond15: s.type === "maxbond" ? true : Boolean(s.bond15),
           ascension: typeof s.ascension === "string" && s.ascension ? s.ascension : null,
-        }));
+        });
+      };
+
+      if (data.slots && Array.isArray(data.slots)) {
+        slots = data.slots.map(sanitize);
       } else {
         slots = [];
         if (data.bondNeeded) {
-          slots.push({
-            servantId: null,
-            bondNeeded: Validator.clamp(data.bondNeeded, 0, BOND_CONSTANTS.MAX_BOND_NEEDED),
-            type: "normal",
-            maxBond: false,
-            bond15: false,
-            ascension: null,
-          });
+          slots.push(defaultSlot({ bondNeeded: Validator.clamp(data.bondNeeded, 0, BOND_CONSTANTS.MAX_BOND_NEEDED) }));
         }
       }
 
       // Pad to SERVANT_MAX_SLOTS
       while (slots.length < SERVANT_MAX_SLOTS) {
-        slots.push({
-          servantId: null,
-          bondNeeded: 0,
-          type: "normal",
-          maxBond: false,
-          bond15: false,
-          ascension: null,
-        });
+        slots.push(defaultSlot());
       }
 
       return {
-        slots: slots.map((s) => ({
-          servantId: s.servantId || null,
-          bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, BOND_CONSTANTS.MAX_BOND_NEEDED),
-          type: s.type === "support" ? "support" : "normal",
-          maxBond: Boolean(s.maxBond),
-          bond15: Boolean(s.bond15),
-          ascension: typeof s.ascension === "string" && s.ascension ? s.ascension : null,
-        })),
+        slots: slots.map(sanitize),
         selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",
         customBond: Validator.clamp(data.customBond || 0, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND),
         ces: Array.isArray(data.ces)

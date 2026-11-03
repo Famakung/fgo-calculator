@@ -13,11 +13,11 @@
     "tab-navigator-chunk"
   ],
   "chunkBytes": {
-    "bond-lazy": 17798,
-    "ce-filter-chunk": 25059,
+    "bond-lazy": 19326,
+    "ce-filter-chunk": 25732,
     "ce-match-worker": 2788,
-    "constants-chunk": 1578,
-    "data-chunk": 51974,
+    "constants-chunk": 1633,
+    "data-chunk": 64441,
     "event-lazy": 5222,
     "index.astro_astro_type_script_index_0_lang": 33,
     "main-entry": 2995,
@@ -25,11 +25,11 @@
     "tab-navigator-chunk": 1709
   },
   "chunkMinBytes": {
-    "bond-lazy": 4449,
-    "ce-filter-chunk": 6264,
+    "bond-lazy": 4831,
+    "ce-filter-chunk": 6433,
     "ce-match-worker": 697,
-    "constants-chunk": 394,
-    "data-chunk": 12993,
+    "constants-chunk": 408,
+    "data-chunk": 16110,
     "event-lazy": 1305,
     "index.astro_astro_type_script_index_0_lang": 8,
     "main-entry": 748,

@@ -1,4 +1,4 @@
-import { TIERS, TIER_FIELDS, MAX_ITERATIONS, EPSILON } from "./constants.js";
+import { TIERS, TIER_FIELDS, MAX_ITERATIONS, EPSILON, BOND_CONSTANTS } from "./constants.js";
 
 export const Schema = {
   tier: {
@@ -93,6 +93,53 @@ export const Calculator = {
       return { runs, warning: "Calculation limit reached" };
     }
     return { runs };
+  },
+};
+
+/* ============================================
+   BOND LEVEL CALCULATOR (Bond Calculator per-level run breakdown)
+   ============================================ */
+export const BondLevelCalculator = {
+  /* Group the runs by the bond levels they actually cross, using the servant's own point table.
+     growth[i] = bond points needed while standing at level i to reach level i+1.
+     typedCost replaces the cost of the starting level only — that is the figure the game shows for
+     the player's partial progress, while every level above it comes from the table.
+     Returns { rows: [{ from, to, runs }], total, spansLevels }. */
+  plan({ growth, current, target, bondPerRun, typedCost = 0 }) {
+    const rows = [];
+    const none = { rows, total: 0, spansLevels: false };
+    if (!Array.isArray(growth) || growth.length === 0 || !(bondPerRun > 0)) return none;
+
+    const start = Math.round(
+      Validator.clamp(current, BOND_CONSTANTS.MIN_BOND_LEVEL, BOND_CONSTANTS.MAX_BOND_LEVEL - 1),
+    );
+    const goal = Math.round(Validator.clamp(target, BOND_CONSTANTS.MIN_BOND_LEVEL + 1, BOND_CONSTANTS.MAX_BOND_LEVEL));
+    if (goal <= start) return none;
+
+    let level = start;
+    let carry = 0;
+    let iterations = 0;
+
+    while (level < goal && iterations++ < MAX_ITERATIONS) {
+      const rowStart = level;
+      const cost = level === start && typedCost > 0 ? typedCost : growth[level];
+      const runs = Math.max(0, Math.ceil((cost - carry) / bondPerRun));
+      carry += runs * bondPerRun - cost;
+      level += 1;
+      if (level >= BOND_CONSTANTS.BOND_CARRY_LIMIT) carry = 0;
+
+      // One run can clear several levels, so keep spending the surplus on the levels above it.
+      while (level < goal && level < growth.length && carry >= growth[level]) {
+        carry -= growth[level];
+        level += 1;
+        if (level >= BOND_CONSTANTS.BOND_CARRY_LIMIT) carry = 0;
+      }
+
+      rows.push({ from: rowStart, to: level, runs });
+    }
+
+    const total = rows.reduce((sum, row) => sum + row.runs, 0);
+    return { rows, total, spansLevels: rows.length > 1 || (rows.length === 1 && rows[0].to - rows[0].from > 1) };
   },
 };
 

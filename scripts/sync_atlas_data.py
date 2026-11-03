@@ -9,6 +9,8 @@ Fetches data from Atlas Academy API:
   - Automatically discovers permanent bond Craft Essences (filtering event-only CEs), parses traits/bonuses,
     auto-groups same-effect campaign series variants, formats src/scripts/data/craft_essences.js, and
     downloads bordered face WebP icons to public/craft_essences/{id}.webp.
+  - Writes src/scripts/data/bond_growth.js from the same cached servant export: the bond point cost of every
+    bond level, deduped into shared tables.
 """
 
 import argparse
@@ -30,12 +32,18 @@ DATA_DIR = os.path.join(BASE_DIR, "src", "scripts", "data")
 SERVANTS_JS = os.path.join(DATA_DIR, "servants.js")
 TRAITS_JS = os.path.join(DATA_DIR, "traits.js")
 CE_DATA_JS = os.path.join(DATA_DIR, "craft_essences.js")
+BOND_GROWTH_JS = os.path.join(DATA_DIR, "bond_growth.js")
 PUBLIC_SERVANTS_DIR = os.path.join(BASE_DIR, "public", "servants")
 
 API_BASE = "https://api.atlasacademy.io"
 STATIC_BASE = "https://static.atlasacademy.io"
 EQUIP_EXPORT_URL = f"{API_BASE}/export/JP/nice_equip_lang_en.json"
 NA_NICE_TRAIT_URL = f"{API_BASE}/export/NA/nice_trait.json"
+BASIC_SERVANT_URL = f"{API_BASE}/export/JP/basic_servant.json"
+NICE_SERVANT_URL = f"{API_BASE}/export/JP/nice_servant_lore_lang_en.json"
+
+# Atlas bondGrowth is a 16-entry running total (levels 0..15); the app stores the step costs
+BOND_GROWTH_LEVELS = 16
 
 # Trait ranges to recognize and format to 4-digit zero-padded strings
 TRAIT_PREFIX_RANGES = [
@@ -764,8 +772,7 @@ def _extra_image_stages(asc_diffs: Dict[str, List[str]], costume_battle_ids: Dic
 def sync_servants(args):
     """Check for new servants and sync traits and face icons."""
     print("Checking Atlas Academy API for latest servant data...")
-    basic_url = f"{API_BASE}/export/JP/basic_servant.json"
-    basic_data = get_cached_json(args.cache_dir, "basic_servant.json", basic_url, force=args.force)
+    basic_data = get_cached_json(args.cache_dir, "basic_servant.json", BASIC_SERVANT_URL, force=args.force)
 
     existing_keys = load_existing_servant_keys()
     print(f"Current local dataset contains {len(existing_keys)} servants.")
@@ -785,7 +792,7 @@ def sync_servants(args):
     bulk_svt_map = {}
     if not args.dry_run:
         try:
-            nice_servants = get_cached_json(args.cache_dir, "nice_servant_lore_lang_en.json", f"{API_BASE}/export/JP/nice_servant_lore_lang_en.json", force=args.force)
+            nice_servants = get_cached_json(args.cache_dir, "nice_servant_lore_lang_en.json", NICE_SERVANT_URL, force=args.force)
             bulk_svt_map = {s.get("id"): s for s in nice_servants if s.get("id")}
         except Exception as e:
             print(f"Bulk nice_servant_lore_lang_en.json fetch failed ({e}), trait revalidation skipped.", file=sys.stderr)
@@ -917,6 +924,64 @@ def sync_servants(args):
             update_servants_js_full(new_entries, dry_run=args.dry_run)
         else:
             update_servants_js(new_entries, dry_run=args.dry_run)
+
+
+def sync_bond_growth(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), force: bool = False, dry_run: bool = False):
+    """Generate src/scripts/data/bond_growth.js — bond point cost of each level step per servant.
+
+    Atlas' nice_servant_lore_lang_en.json carries `bondGrowth` as a RUNNING TOTAL: its [1] is 9,125 for
+    Altria, the points from Lv.0 to Lv.2, so the Lv.1 -> Lv.2 step itself is 9,125 - 3,000 = 6,125. The
+    emitted table is the per-step cost, where index i is what Lv.i -> Lv.i+1 asks for.
+    Playable servants share only a few dozen distinct tables, so the file holds one table per shape plus
+    a servant -> table key map instead of 16 numbers per servant.
+    """
+    basic_data = get_cached_json(cache_dir, "basic_servant.json", BASIC_SERVANT_URL, force=force)
+    nice_servants = get_cached_json(cache_dir, "nice_servant_lore_lang_en.json", NICE_SERVANT_URL, force=force)
+    total_by_id = {s.get("id"): s.get("bondGrowth") for s in nice_servants if s.get("id")}
+
+    tables: Dict[str, str] = {}
+    by_svt: Dict[str, str] = {}
+    skipped = 0
+    for s in basic_data:
+        if s.get("type") not in ("normal", "heroine"):
+            continue
+        cno = s.get("collectionNo", 0)
+        if cno <= 0:
+            continue
+        totals = total_by_id.get(s.get("id"))
+        if not isinstance(totals, list) or len(totals) != BOND_GROWTH_LEVELS or not all(isinstance(v, int) and v > 0 for v in totals):
+            skipped += 1
+            continue
+        steps = [totals[0]] + [totals[i] - totals[i - 1] for i in range(1, len(totals))]
+        if not all(v > 0 for v in steps):
+            skipped += 1
+            continue
+        short_id = str(cno).zfill(3) if cno < 100 else str(cno)
+        canonical = json.dumps(steps)
+        by_svt[short_id] = tables.setdefault(canonical, f"t{len(tables)}")
+
+    if skipped:
+        print(f"[WARN] {skipped} playable servant(s) have no complete bondGrowth table; skipped.", file=sys.stderr)
+
+    lines = ["export const BOND_TABLES = {"]
+    for canonical, table_key in tables.items():
+        lines.append(f'  "{table_key}": {canonical},')
+    lines.append("};")
+    lines.append("")
+    lines.append("export const BOND_TABLE_BY_SVT = {")
+    for short_id in sorted(by_svt, key=lambda k: int(k.split("-")[0])):
+        lines.append(f'  "{short_id}": "{by_svt[short_id]}",')
+    lines.append("};\n")
+    content = "\n".join(lines)
+
+    if dry_run:
+        print(f"[DRY-RUN] Would write {len(by_svt)} servants over {len(tables)} bond tables to {BOND_GROWTH_JS}")
+        return
+
+    os.makedirs(os.path.dirname(BOND_GROWTH_JS), exist_ok=True)
+    with open(BOND_GROWTH_JS, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"Successfully synchronized {len(by_svt)} servants over {len(tables)} bond tables into {BOND_GROWTH_JS}")
 
 
 # ==============================================================================
@@ -1317,6 +1382,7 @@ def main():
     # 1. Sync Servants
     if not args.skip_servants:
         sync_servants(args)
+        sync_bond_growth(cache_dir=args.cache_dir, force=args.force, dry_run=args.dry_run)
 
     # 2. Sync Craft Essences & Traits
     if not args.skip_ces:
