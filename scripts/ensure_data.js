@@ -21,6 +21,7 @@ const requiredFiles = [
   path.join(dataDir, "servants.js"),
   path.join(dataDir, "craft_essences.js"),
   path.join(dataDir, "traits.js"),
+  path.join(dataDir, "bond_growth.js"),
 ];
 
 const missing = requiredFiles.filter((file) => !fs.existsSync(file));

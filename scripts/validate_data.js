@@ -19,6 +19,7 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const { SERVANT_DATA } = await import(path.join(ROOT_DIR, 'src/scripts/data/servants.js'));
 const { CE_DATA } = await import(path.join(ROOT_DIR, 'src/scripts/data/craft_essences.js'));
 const { TRAIT_DATA } = await import(path.join(ROOT_DIR, 'src/scripts/data/traits.js'));
+const { BOND_TABLES, BOND_TABLE_BY_SVT } = await import(path.join(ROOT_DIR, 'src/scripts/data/bond_growth.js'));
 
 let errors = [];
 let warnings = [];
@@ -104,6 +105,25 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
         errors.push(`${ctx}: Ascension stage "${stage}" image missing at public/servants/${id}/${stage}.webp`);
       }
     }
+  }
+}
+
+// 2b. Validate bond point tables (Bond Calculator level costs)
+console.log(`Validating BOND_TABLES (${Object.keys(BOND_TABLES).length} tables over ${Object.keys(BOND_TABLE_BY_SVT).length} servants)...`);
+for (const [key, table] of Object.entries(BOND_TABLES)) {
+  if (!Array.isArray(table) || table.length !== 16 || !table.every((v) => Number.isInteger(v) && v > 0)) {
+    errors.push(`Bond table ${key}: expected 16 positive integers`);
+  }
+}
+for (const [id, key] of Object.entries(BOND_TABLE_BY_SVT)) {
+  if (!BOND_TABLES[key]) {
+    errors.push(`Bond table ${id}: key "${key}" is missing from BOND_TABLES`);
+  }
+}
+for (const id of Object.keys(SERVANT_DATA)) {
+  const base = String(id).split('-')[0];
+  if (!BOND_TABLE_BY_SVT[id] && !BOND_TABLE_BY_SVT[base]) {
+    errors.push(`Servant ${id}: no bond point table`);
   }
 }
 

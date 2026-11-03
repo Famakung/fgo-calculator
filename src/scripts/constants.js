@@ -17,6 +17,13 @@ export const BOND_CONSTANTS = {
   SUPPORT_BONUS_PCT: 4,
   FRONTLINE_BONUS_PCT: 20,
   FRONTLINE_BONUS_FRACTION: 0.2,
+  MIN_BOND_LEVEL: 0,
+  MAX_BOND_LEVEL: 16,
+  /* Surplus bond points carry from one level to the next up to this level; past it the in-game
+     bond cap throws the extra away, so every higher level needs its own whole runs. */
+  BOND_CARRY_LIMIT: 10,
+  /* The level at which a servant starts granting the +25% all-servant bond bonus. */
+  BOND_BONUS_LEVEL: 15,
 };
 
 export const TIER_COLORS = {

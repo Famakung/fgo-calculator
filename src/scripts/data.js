@@ -1,6 +1,7 @@
 import { TRAIT_DATA } from "./data/traits.js";
 import { SERVANT_DATA } from "./data/servants.js";
 import { CE_DATA } from "./data/craft_essences.js";
+import { BOND_TABLES, BOND_TABLE_BY_SVT } from "./data/bond_growth.js";
 import { IMAGE_VERSION } from "./constants.js";
 
 /* Trait names lookup */
@@ -125,6 +126,13 @@ export const ServantData = {
 
   getServant(id) {
     return this.byId.get(id) || null;
+  },
+
+  /* Bond point cost per level: index i is the cost of Lv.i -> Lv.i+1 for this servant.
+     Split portraits ("467-1") share the base collection's table. Null when the data has none. */
+  getBondGrowth(id) {
+    const key = BOND_TABLE_BY_SVT[id] || BOND_TABLE_BY_SVT[String(id).split("-")[0]];
+    return (key && BOND_TABLES[key]) || null;
   },
 
   getTraitsForAscension(id, ascension) {

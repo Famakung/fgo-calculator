@@ -443,6 +443,26 @@ html[data-tab="event"] #panel-event {
   color: var(--accent);
 }
 
+/* Per-level run breakdown, printed under the total when the plan crosses more than one bond level */
+.bond-result-levels {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.bond-result-level-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.bond-result-level-runs {
+  font-family: "Space Mono", monospace;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
 .bond-result-ce-img {
   width: auto;
   height: var(--ce-badge-h);
@@ -1889,6 +1909,17 @@ html[data-tab="event"] #panel-event {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+/* Current / Target bond level selects, side by side above the point box */
+.bond-level-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.bond-level-select {
+  text-align: center;
 }
 
 .bond-checkbox-row--hidden,
