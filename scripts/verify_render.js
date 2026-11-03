@@ -107,6 +107,74 @@ try {
   console.log(`NOTE: ${cards} CE filter card(s), ${workerResults} worker result message(s)`);
   if (workerResults === 0) errors.push("ce filter: worker sent no message carrying a non-empty results array");
 
+  // Servant Select sub-tab: the reverse direction. Switch panels, pick two servants in
+  // one click each, and get at least one shared-CE row back.
+  await page.click('button.cefilter-subtab-btn[data-subtab="servant"]');
+  const panels = await page.evaluate(() => ({
+    ceHidden: document.getElementById("cefilterSubCE").hidden,
+    servantHidden: document.getElementById("cefilterSubServant").hidden,
+    activeTab: document.querySelector(".cefilter-subtab-btn.active")?.dataset.subtab,
+  }));
+  if (panels.activeTab !== "servant") errors.push(`sub-tab: active button is ${panels.activeTab}, expected servant`);
+  if (!panels.ceHidden) errors.push("sub-tab: #cefilterSubCE stayed visible after switching to Servant Select");
+  if (panels.servantHidden) errors.push("sub-tab: #cefilterSubServant stayed hidden after switching to Servant Select");
+
+  // 444 U-Olga Marie has ascension-different traits: picking her must not open the
+  // ascension prompt, because this tab unions every ascension's traits anyway.
+  for (const servantId of ["001", "444"]) {
+    await page.click("#cefilterServantAddBtn");
+    await page.waitForFunction(() => document.getElementById("servantModal").classList.contains("open"), { timeout: 15000 });
+    const clicked = await page.evaluate((id) => {
+      const item = Array.from(document.querySelectorAll("#servantPickerGrid .servant-picker-item")).find((el) =>
+        el.querySelector("img")?.getAttribute("src")?.includes(`servants/${id}/`),
+      );
+      if (item) item.click();
+      return Boolean(item);
+    }, servantId);
+    if (!clicked) errors.push(`servant select: picker grid has no servant ${servantId}`);
+    await page
+      .waitForFunction(() => !document.getElementById("servantModal").classList.contains("open"), { timeout: 15000 })
+      .catch(() => errors.push(`servant select: picking ${servantId} left #servantModal open`));
+    const ascensionOpen = await page.evaluate(() => document.getElementById("ascensionModal").classList.contains("open"));
+    if (ascensionOpen) errors.push(`servant select: picking ${servantId} opened the ascension prompt`);
+  }
+
+  try {
+    await page.waitForFunction(() => document.querySelectorAll("#cefilterComboResults .cefilter-combo-group").length > 0, {
+      timeout: 15000,
+    });
+  } catch {
+    errors.push("servant select: #cefilterComboResults never filled with .cefilter-combo-group");
+  }
+  const combos = await page.evaluate(() => ({
+    chips: document.querySelectorAll("#cefilterServantChips > .cefilter-servant-chip").length,
+    rows: document.querySelectorAll("#cefilterComboResults .cefilter-combo-group").length,
+    sections: Array.from(document.querySelectorAll(".cefilter-combo-size")).map((h) => h.textContent),
+    count: document.getElementById("cefilterComboCount").textContent,
+    emptyHidden: document.getElementById("cefilterComboEmpty").hidden,
+    unsharedHidden: document.getElementById("cefilterComboUnshared").hidden,
+  }));
+  console.log(
+    `NOTE: servant select ${combos.chips} chip(s), ${combos.rows} combo row(s), sections ${JSON.stringify(combos.sections)}, count "${combos.count}"`,
+  );
+  if (combos.chips !== 2) errors.push(`servant select: expected 2 chips, saw ${combos.chips}`);
+  if (combos.rows < 1) errors.push("servant select: Mash and U-Olga Marie share 4 CEs but no combo row rendered");
+  if (combos.sections.some((s) => /0 group/.test(s))) {
+    errors.push(`servant select: a CE-count section printed with no groups: ${combos.sections.join(" | ")}`);
+  }
+  if (combos.emptyHidden === false) errors.push("servant select: empty-state note shown while groups are rendered");
+  if (combos.unsharedHidden === false) errors.push("servant select: both servants share CEs but the unshared line showed");
+
+  // Back to Craft Essence Select: the original panel has to work again.
+  await page.click('button.cefilter-subtab-btn[data-subtab="ce"]');
+  const backPanels = await page.evaluate(() => ({
+    ceHidden: document.getElementById("cefilterSubCE").hidden,
+    servantHidden: document.getElementById("cefilterSubServant").hidden,
+    cards: document.querySelectorAll("#cefilterResults > .cefilter-servant-card").length,
+  }));
+  if (backPanels.ceHidden || !backPanels.servantHidden) errors.push("sub-tab: switching back to Craft Essence Select did not restore the panels");
+  if (backPanels.cards === 0) errors.push("sub-tab: Craft Essence Select lost its results after returning from Servant Select");
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();

@@ -27,12 +27,7 @@ export const ServantSelect = {
 
     if (addBtn) {
       addBtn.addEventListener("click", () => {
-        ServantSelector.open(
-          0,
-          false,
-          { onSelect: (slotIndex, id) => this.addServant(id) },
-          { skipAscension: true },
-        );
+        ServantSelector.open(0, false, { onSelect: (slotIndex, id) => this.addServant(id) }, { skipAscension: true });
       });
     }
 
