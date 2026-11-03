@@ -278,7 +278,10 @@ try {
     return {
       servantVisible: visible("servant"),
       ceVisible: visible("ce"),
-      chips: Array.from(document.querySelectorAll("#cefilterChips .cefilter-chip")).map((c) => c.textContent.trim()),
+      // Chips are portrait-only on both sub-tabs, so the name is carried by the image's alt.
+      chips: Array.from(document.querySelectorAll("#cefilterChips .cefilter-chip img")).map((i) =>
+        i.getAttribute("alt"),
+      ),
       cards: document.querySelectorAll("#cefilterResults > .cefilter-servant-card").length,
       name,
     };
@@ -290,6 +293,48 @@ try {
     errors.push(`CE hand-off: ${handoff.name} not selected in Craft Essence Select (${JSON.stringify(handoff.chips)})`);
   }
   if (handoff.cards === 0) errors.push("sub-tab: Craft Essence Select lost its results after the hand-off");
+
+  // The CE side owns the same chip shape plus Clear all, so check it where a CE is actually selected.
+  const ceChips = await page.evaluate(() => ({
+    count: document.querySelectorAll("#cefilterChips > .cefilter-chip").length,
+    hasName: !!document.querySelector("#cefilterChips .cefilter-chip span"),
+    removeLabels: Array.from(document.querySelectorAll("#cefilterChips .cefilter-chip-remove")).map((b) =>
+      b.getAttribute("aria-label"),
+    ),
+    clearHidden: document.getElementById("cefilterClearBtn").hidden,
+    clearLabel: document.getElementById("cefilterClearBtn").textContent.trim(),
+  }));
+  console.log(
+    `NOTE: ce chips ${ceChips.count} chip(s), label "${ceChips.clearLabel}", visible name ${ceChips.hasName}`,
+  );
+  if (ceChips.count === 0) errors.push("ce chips: no chip after the hand-off");
+  if (ceChips.hasName) errors.push("ce chip shows a visible name; chips are portrait-only on both sub-tabs");
+  if (ceChips.removeLabels.length !== ceChips.count || ceChips.removeLabels.some((l) => !l)) {
+    errors.push(`ce chips: remove buttons are not all labelled (${JSON.stringify(ceChips.removeLabels)})`);
+  }
+  if (ceChips.clearHidden) errors.push("ce clear: #cefilterClearBtn hidden while CEs are selected");
+  if (ceChips.clearLabel !== `Clear all (${ceChips.count})`) {
+    errors.push(`ce clear: label is "${ceChips.clearLabel}", expected "Clear all (${ceChips.count})"`);
+  }
+
+  await page.click("#cefilterClearBtn");
+  try {
+    await page.waitForFunction(() => document.querySelectorAll("#cefilterChips > .cefilter-chip").length === 0, {
+      timeout: 15000,
+    });
+  } catch {
+    /* falls through to the checks below */
+  }
+  const ceCleared = await page.evaluate(() => ({
+    chips: document.querySelectorAll("#cefilterChips > .cefilter-chip").length,
+    clearHidden: document.getElementById("cefilterClearBtn").hidden,
+    clearLabel: document.getElementById("cefilterClearBtn").textContent.trim(),
+    cards: document.querySelectorAll("#cefilterResults > .cefilter-servant-card").length,
+  }));
+  if (ceCleared.chips !== 0) errors.push(`ce clear: ${ceCleared.chips} chip(s) left after Clear all`);
+  if (!ceCleared.clearHidden) errors.push("ce clear: button still shown with an empty selection");
+  if (ceCleared.clearLabel !== "Clear all") errors.push(`ce clear: label stayed "${ceCleared.clearLabel}"`);
+  if (ceCleared.cards === 0) errors.push("ce clear: the servant grid emptied instead of falling back to all servants");
 
   // Picks survive a refresh (the sub-tab does not), and Clear all empties the list in one click.
   await page.reload({ waitUntil: "networkidle0" });

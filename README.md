@@ -32,6 +32,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Servant Select splits multi-ascension servants: when a servant's ascension groups match different CEs, each group shows its own portrait, the same way Craft Essence Select cards it — badge is image only, the ascension names sit in the hover tooltip
 - Servant Select keeps your picked servants across refreshes (`fgo_ce_filter_data`), and "Clear all (N)" empties the list in one click; the sub-tab choice still resets
 - Reverse lookup: select CEs to find matching servants
+- Selected-CE chips are portrait only, same shape as the Servant Select chips; "Clear all (N)" next to "Add Craft Essence" empties the selection in one click
 - Match modes: All (AND), Any (OR), and Custom Match (filter by exact CE match count)
 - Dedicated "Filter Settings" modal with class filter, rarity filter, and CE match count buttons
 - Direct servant search bar positioned statically above controls row

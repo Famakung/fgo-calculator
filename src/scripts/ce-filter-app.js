@@ -110,6 +110,9 @@ export const CEFilterApp = {
       });
     }
 
+    const clearBtn = document.getElementById("cefilterClearBtn");
+    if (clearBtn) clearBtn.addEventListener("click", () => this.clearAllCEs());
+
     if (modeSelect) {
       modeSelect.value = this.state.mode;
       modeSelect.addEventListener("change", () => {
@@ -486,10 +489,26 @@ export const CEFilterApp = {
     }
   },
 
+  /* Bulk empty of the selected CEs — the same contract as ServantSelect.clearAll(): the label
+     carries the count, and clearing re-paginates instead of stranding the old page. */
+  clearAllCEs() {
+    if (this.state.selectedCEs.length === 0) return;
+    this.state.selectedCEs = [];
+    this.state.currentPage = 1;
+    this.render();
+  },
+
   renderChips() {
     const container = document.getElementById("cefilterChips");
     if (!container) return;
     container.replaceChildren();
+
+    const clearBtn = document.getElementById("cefilterClearBtn");
+    if (clearBtn) {
+      const count = this.state.selectedCEs.length;
+      clearBtn.hidden = count === 0;
+      clearBtn.textContent = count > 0 ? `Clear all (${count})` : "Clear all";
+    }
 
     if (this.state.selectedCEs.length === 0) {
       return;
@@ -505,11 +524,10 @@ export const CEFilterApp = {
       DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
       chip.appendChild(img);
 
-      const nameSpan = DOMFactory.el("span");
-      nameSpan.textContent = ce.name;
-      chip.appendChild(nameSpan);
-
-      const removeBtn = DOMFactory.el("button", ["cefilter-chip-remove", "flex-row"], { type: "button" });
+      const removeBtn = DOMFactory.el("button", ["cefilter-chip-remove", "flex-row"], {
+        type: "button",
+        "aria-label": `Remove ${ce.name}`,
+      });
       removeBtn.textContent = "\u2715";
       removeBtn.addEventListener("click", () => {
         this.state.selectedCEs = this.state.selectedCEs.filter((id) => id !== ceId);

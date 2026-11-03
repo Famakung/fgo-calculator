@@ -484,6 +484,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <div class="card-title">Bond Gain Craft Essences</div>
                 <div class="cefilter-controls">
                   <button class="cefilter-add-btn" id="cefilterAddBtn" type="button">Add Craft Essence</button>
+                  <button
+                    class="cefilter-add-btn cefilter-add-btn--clear"
+                    id="cefilterClearBtn"
+                    type="button"
+                    hidden
+                  >
+                    Clear all
+                  </button>
                   <div class="cefilter-mode-row">
                     <label class="cefilter-mode-label" for="cefilterMode">Match Mode:</label>
                     <select class="select-field" id="cefilterMode">
