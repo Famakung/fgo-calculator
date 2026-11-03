@@ -2,6 +2,7 @@ import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
 import { TraitMatcher } from "./domain.js";
 import { ServantData, CEById, TraitCEs, TraitNames } from "./data.js";
 import { DOMFactory, debounce } from "./presentation.js";
+import { ServantSelect } from "./ce-servant-select.js";
 
 /* === Worker setup for off-thread CE match computation === */
 let _worker = null;
@@ -217,6 +218,8 @@ export const CEFilterApp = {
       });
     }
 
+    ServantSelect.init({ getEntries: () => this.computeAllCEMatches() });
+
     this.buildClassFilter();
     this.buildRarityFilter();
 
@@ -242,6 +245,7 @@ export const CEFilterApp = {
     if (servantPanel) servantPanel.hidden = sub !== "servant";
 
     if (sub === "ce") this.render();
+    else ServantSelect.render();
   },
 
   render() {

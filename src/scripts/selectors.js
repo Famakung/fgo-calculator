@@ -8,6 +8,7 @@ import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
 export const ServantSelector = {
   activeSlotIndex: null,
   pendingSlot: false,
+  _skipAscension: false,
   classFilters: [],
   rarityFilters: [],
   _searchQuery: "",
@@ -28,10 +29,12 @@ export const ServantSelector = {
     }
   },
 
-  open(slotIndex, pending = false, callbacks = null) {
+  open(slotIndex, pending = false, callbacks = null, options = {}) {
     this.activeSlotIndex = slotIndex;
     this.pendingSlot = pending;
     this._callbacks = callbacks;
+    // The Servant Select sub-tab unions every ascension's traits, so it never needs an ascension pick.
+    this._skipAscension = options.skipAscension === true;
     this.classFilters = [];
     this.rarityFilters = [];
     this._searchQuery = "";
@@ -76,7 +79,7 @@ export const ServantSelector = {
 
       item.addEventListener("click", () => {
         this.pendingSlot = false; // servant selected, don't remove on close
-        if (servant.hasAscensions) {
+        if (servant.hasAscensions && !this._skipAscension) {
           const idx = this.activeSlotIndex;
           this.close();
           AscensionSelector.open(servant, idx, this._callbacks);
