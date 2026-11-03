@@ -114,8 +114,9 @@ try {
   console.log(`NOTE: ${cards} CE filter card(s), ${workerResults} worker result message(s)`);
   if (workerResults === 0) errors.push("ce filter: worker sent no message carrying a non-empty results array");
 
-  // Servant Select sub-tab: the reverse direction. The sub-tab bar sits inside the controls
-  // card above its title, and both cards swap panels together by data-subpanel.
+  // Servant Select sub-tab: the reverse direction. The sub-tab bar sits in the top-right corner
+  // of the controls card (its own right-aligned row below 760px), and both cards swap panels
+  // together by data-subpanel.
   await page.click('button.cefilter-subtab-btn[data-subtab="servant"]');
   const panels = await page.evaluate(() => {
     const visible = (name) =>

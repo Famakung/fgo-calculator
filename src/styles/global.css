@@ -798,12 +798,30 @@ html[data-tab="event"] #panel-event {
    CE FILTER TAB
    ============================================ */
 
-/* .tab-btn carries the visual language, so these match the main navbar tabs */
+/* .tab-btn carries the visual language, so these match the main navbar tabs.
+   Narrow cards have no room left of the card title, so the bar keeps its own row. */
 .cefilter-subtabs {
   display: flex;
   gap: 4px;
+  justify-content: flex-end;
   margin-bottom: 12px;
   overflow-x: auto;
+}
+
+/* Wide enough for title and tabs to share the top line: pin the bar to the
+   card's top-right corner, centred on the title's line box. */
+@media (width >= 760px) {
+  #panel-cefilter > .card:first-child .card-inner {
+    position: relative;
+  }
+
+  #panel-cefilter > .card:first-child .cefilter-subtabs {
+    position: absolute;
+    top: -9px;
+    right: 0;
+    margin-bottom: 0;
+    overflow-x: visible;
+  }
 }
 
 .cefilter-subtab-btn {
