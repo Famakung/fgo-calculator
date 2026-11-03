@@ -286,10 +286,23 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
     cno = svt_data.get("collectionNo", 0)
     has_costumes = bool(svt_data.get("costumes")) or bool(svt_data.get("profile", {}).get("costume"))
 
+    # Always-on individualities Atlas keeps out of the servant's own trait list.
+    # e.g. 2821 (Beast Servants) on Koyanskaya of Light (314) / Dark (334), whose
+    # base traits only carry 2632. condType "none" + no eventId = not quest- or
+    # event-gated. shortcut: only special traits (>1000) merge — the class-form
+    # entries (Mash, idx = classId) add rarity/divine ids we already derive.
+    extra_traits = [
+        t.get("id")
+        for e in (svt_data.get("traitAdd") or [])
+        if e.get("condType") == "none" and not e.get("eventId")
+        for t in e.get("trait", [])
+        if (t.get("id") or 0) > 1000
+    ]
+
     # Helper to parse and normalize trait list
     def parse_traits(tlist):
         tset = set()
-        for t in tlist:
+        for t in list(tlist) + extra_traits:
             tid = t.get("id") if isinstance(t, dict) else t
             norm = normalize_trait_id(tid)
             if norm:
@@ -300,8 +313,6 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
             tset.add("2780")
         if "0001" not in tset and "0002" not in tset:
             tset.add("0003")
-        if cno == 238:
-            tset.add("2821")
         if cno in (377, 417, 444):
             tset.add("0124")
         return tset
