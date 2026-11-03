@@ -64,7 +64,6 @@ export const ServantSelect = {
   clearAll() {
     if (this.state.pickedIds.length === 0) return;
     this.state.pickedIds = [];
-    this.state.visibleCards = MAX_INITIAL_CARDS;
     this.renderChips();
     this._savePicks();
     this.render();
@@ -146,7 +145,11 @@ export const ServantSelect = {
     container.replaceChildren(frag);
   },
 
+  /* Called whenever the pick list changes or the sub-tab is entered, so the visible-row count
+     restarts here: a counter left over from a 60-row list would start a fresh pick deep in it.
+     "Show N more" repaints through _paintResults() directly and is not affected. */
   render() {
+    this.state.visibleCards = MAX_INITIAL_CARDS;
     const entries = this._deps?.getEntries?.() || [];
     const { groups, unshared, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, this.state.pickedIds);
     this._lastGroups = groups;
@@ -254,7 +257,9 @@ export const ServantSelect = {
   _paintNotes(groupCount, unshared, truncated) {
     const empty = document.getElementById("cefilterComboEmpty");
     if (empty) {
-      const show = this.state.pickedIds.length > 0 && groupCount === 0;
+      // A truncated walk visited only part of the subset lattice, so zero rows prove nothing —
+      // the same reason buildSharedCEGroups names nobody as unshared when truncated.
+      const show = this.state.pickedIds.length > 0 && groupCount === 0 && !truncated;
       empty.hidden = !show;
       empty.textContent = show ? "No CE is usable by two or more of these servants." : "";
     }
