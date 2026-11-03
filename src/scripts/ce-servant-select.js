@@ -169,8 +169,9 @@ export const ServantSelect = {
     return card;
   },
 
-  /* One badge per ascension group, labelled and portraited like that group's own card in Craft
-     Essence Select, so a servant whose forms match different CEs shows both forms here. */
+  /* One badge per ascension group, portraited like that group's own card in Craft Essence Select,
+     so a servant whose forms match different CEs shows both forms here. Image only: the ascension
+     names live in the badge's title/alt, never as text under the portrait. */
   _buildServantCell(entry, rowCEs) {
     const servant = entry.servant;
     const matchedAscensions = entry.matchedAscensions || [];
@@ -192,12 +193,6 @@ export const ServantSelect = {
     });
     DOMFactory.addAscensionFallback(img, servant.id);
     cell.appendChild(img);
-
-    if (labelParts.length > 0) {
-      const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
-      ascLabel.textContent = labelParts.join("\n");
-      cell.appendChild(ascLabel);
-    }
 
     return cell;
   },
