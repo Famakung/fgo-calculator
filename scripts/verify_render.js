@@ -118,6 +118,12 @@ try {
   // of the controls card (its own right-aligned row below 760px), and both cards swap panels
   // together by data-subpanel.
   await page.click('button.cefilter-subtab-btn[data-subtab="servant"]');
+  // Notes paint inside ServantSelect.render()'s double rAF, so give it a frame before reading.
+  try {
+    await page.waitForFunction(() => !document.getElementById("cefilterComboEmpty").hidden, { timeout: 15000 });
+  } catch {
+    /* falls through to the hint check below */
+  }
   const panels = await page.evaluate(() => {
     const visible = (name) =>
       Array.from(document.querySelectorAll(`.cefilter-subpanel[data-subpanel="${name}"]`)).filter((p) => !p.hidden)
@@ -130,6 +136,8 @@ try {
       ).map((t) => t.textContent.trim()),
       activeTab: document.querySelector(".cefilter-subtab-btn.active")?.dataset.subtab,
       tabStyledLikeNavbar: document.querySelector(".cefilter-subtab-btn")?.classList.contains("tab-btn"),
+      hintHidden: document.getElementById("cefilterComboEmpty").hidden,
+      hintText: document.getElementById("cefilterComboEmpty").textContent.trim(),
     };
   });
   if (panels.activeTab !== "servant") errors.push(`sub-tab: active button is ${panels.activeTab}, expected servant`);
@@ -138,6 +146,10 @@ try {
   if (!panels.tabStyledLikeNavbar) errors.push("sub-tab: buttons do not carry the navbar tab style (.tab-btn)");
   if (!panels.titles.includes("Servants") || !panels.titles.includes("Shared Craft Essences")) {
     errors.push(`sub-tab: Servant Select card titles wrong: ${JSON.stringify(panels.titles)}`);
+  }
+  // With nothing picked the card has to say what to do instead of sitting blank.
+  if (panels.hintHidden || !panels.hintText.includes("two or more servants")) {
+    errors.push(`sub-tab: no how-to line with an empty pick list (hidden=${panels.hintHidden}, "${panels.hintText}")`);
   }
 
   // Picking marks items and keeps the modal open, like the CE picker. 444 U-Olga Marie has
@@ -166,10 +178,36 @@ try {
   await page.waitForFunction(() => document.getElementById("servantModal").classList.contains("open"), {
     timeout: 15000,
   });
+  let solo = null;
   for (const servantId of ["001", "444"]) {
     const picked = await pickInModal(servantId);
     if (!picked.found) errors.push(`servant select: picker grid has no servant ${servantId}`);
     if (!picked.selected) errors.push(`servant select: ${servantId} picked but not marked selected`);
+    if (servantId === "001") {
+      // One servant has nobody to share with: the line must ask for one more, and must not name the
+      // lone pick as unshared. The note is already visible from the empty-list paint, so waiting on
+      // its hidden flag proves nothing — yield the two frames ServantSelect.render() paints on.
+      let settled = true;
+      try {
+        await page.waitForFunction(
+          () => document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length === 1,
+          { timeout: 15000 },
+        );
+      } catch {
+        settled = false;
+      }
+      // ServantSelect.render() paints on a double rAF, so let the pick's frame budget run out
+      // before reading the note.
+      await new Promise((r) => setTimeout(r, 300));
+      if (!settled) errors.push("servant select: the first pick never reached #cefilterServantChips");
+      solo = await page.evaluate(() => ({
+        chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
+        hidden: document.getElementById("cefilterComboEmpty").hidden,
+        text: document.getElementById("cefilterComboEmpty").textContent.trim(),
+        unsharedHidden: document.getElementById("cefilterComboUnshared").hidden,
+        unsharedText: document.getElementById("cefilterComboUnshared").textContent.trim(),
+      }));
+    }
     const stateAfter = await page.evaluate(() => ({
       modalOpen: document.getElementById("servantModal").classList.contains("open"),
       ascensionOpen: document.getElementById("ascensionModal").classList.contains("open"),
@@ -178,6 +216,15 @@ try {
     if (stateAfter.ascensionOpen) errors.push(`servant select: picking ${servantId} opened the ascension prompt`);
   }
   await closeModal();
+
+  if (solo?.chips === 1) {
+    if (solo.hidden || !solo.text.includes("Add one more servant")) {
+      errors.push(`servant select: one-pick line wrong (hidden=${solo.hidden}, "${solo.text}")`);
+    }
+    if (!solo.unsharedHidden) {
+      errors.push(`servant select: lone pick named as unshared ("${solo.unsharedText}")`);
+    }
+  }
 
   try {
     await page.waitForFunction(

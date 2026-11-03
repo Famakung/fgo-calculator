@@ -273,20 +273,34 @@ export const ServantSelect = {
   },
 
   _paintNotes(groupCount, unshared, truncated) {
+    const picked = this.state.pickedIds.length;
+
     const empty = document.getElementById("cefilterComboEmpty");
     if (empty) {
-      // A truncated walk visited only part of the subset lattice, so zero rows prove nothing —
-      // the same reason buildSharedCEGroups names nobody as unshared when truncated.
-      const show = this.state.pickedIds.length > 0 && groupCount === 0 && !truncated;
-      empty.hidden = !show;
-      empty.textContent = show ? "No CE is usable by two or more of these servants." : "";
+      /* One servant has nothing to share with yet, so below two picks this line says what to add
+         instead of reporting an empty result — and it never leaves the card blank under its title.
+         A truncated walk visited only part of the subset lattice, so zero rows prove nothing —
+         the same reason buildSharedCEGroups names nobody as unshared when truncated. */
+      const note =
+        picked < 2
+          ? picked === 0
+            ? "Add two or more servants to see which Craft Essences they share."
+            : "Add one more servant to see which Craft Essences they share."
+          : groupCount === 0 && !truncated
+            ? "No CE is usable by two or more of these servants."
+            : "";
+      empty.textContent = note;
+      empty.hidden = note === "";
     }
 
     const unsharedEl = document.getElementById("cefilterComboUnshared");
     if (unsharedEl) {
-      unsharedEl.hidden = unshared.length === 0;
-      unsharedEl.textContent =
-        unshared.length > 0 ? `No shared CE with: ${unshared.map((id) => this._nameOf(id)).join(", ")}` : "";
+      // Naming a servant as sharing nothing takes two to compare, so with fewer picks the list is noise.
+      const showUnshared = unshared.length > 0 && picked >= 2;
+      unsharedEl.hidden = !showUnshared;
+      unsharedEl.textContent = showUnshared
+        ? `No shared CE with: ${unshared.map((id) => this._nameOf(id)).join(", ")}`
+        : "";
     }
 
     const truncatedEl = document.getElementById("cefilterComboTruncated");
