@@ -14,7 +14,7 @@
   ],
   "chunkBytes": {
     "bond-lazy": 17798,
-    "ce-filter-chunk": 24659,
+    "ce-filter-chunk": 25059,
     "ce-match-worker": 2788,
     "constants-chunk": 1578,
     "data-chunk": 51974,
@@ -26,7 +26,7 @@
   },
   "chunkMinBytes": {
     "bond-lazy": 4449,
-    "ce-filter-chunk": 6164,
+    "ce-filter-chunk": 6264,
     "ce-match-worker": 697,
     "constants-chunk": 394,
     "data-chunk": 12993,
