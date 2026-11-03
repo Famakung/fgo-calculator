@@ -891,6 +891,80 @@ html[data-tab="event"] #panel-event {
   color: var(--warning);
 }
 
+.cefilter-combo-size {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.cefilter-combo-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.cefilter-combo-ce-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cefilter-combo-ce {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.8rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.cefilter-combo-ce-img {
+  height: 28px;
+  width: auto;
+  border-radius: 4px;
+}
+
+.cefilter-combo-ce-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 0.6rem;
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.cefilter-combo-servants {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.cefilter-combo-more {
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
 .cefilter-controls {
   display: flex;
   align-items: center;
@@ -2114,6 +2188,10 @@ html[data-tab="event"] #panel-event {
   .cefilter-add-btn:hover,
   .cefilter-filter-btn:hover {
     background: #3730a3;
+  }
+
+  .cefilter-combo-ce:hover {
+    border-color: var(--accent);
   }
 
   .cefilter-chip-remove:hover {

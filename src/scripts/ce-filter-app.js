@@ -218,7 +218,10 @@ export const CEFilterApp = {
       });
     }
 
-    ServantSelect.init({ getEntries: () => this.computeAllCEMatches() });
+    ServantSelect.init({
+      getEntries: () => this.computeAllCEMatches(),
+      onSelectCE: (ceId) => this.selectCEFromCombo(ceId),
+    });
 
     this.buildClassFilter();
     this.buildRarityFilter();
@@ -227,6 +230,16 @@ export const CEFilterApp = {
 
     // Render immediately (synchronous computation) for faster first paint
     this.render();
+  },
+
+  selectCEFromCombo(ceId) {
+    if (!ceId) return;
+    if (!this.state.selectedCEs.includes(ceId)) {
+      this.state.selectedCEs.push(ceId);
+      this.state.currentPage = 1;
+    }
+    // _switchSubTab renders, so the CE side paints once with the new selection.
+    this._switchSubTab("ce");
   },
 
   _switchSubTab(sub) {
