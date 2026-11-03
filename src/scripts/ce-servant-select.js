@@ -1,5 +1,6 @@
 import { ServantData, CEById } from "./data.js";
-import { ServantComboCalculator } from "./domain.js";
+import { ServantComboCalculator, Validator } from "./domain.js";
+import { CEFILTER_STORAGE_KEY } from "./constants.js";
 import { DOMFactory } from "./presentation.js";
 import { ServantSelector } from "./selectors.js";
 
@@ -42,19 +43,65 @@ export const ServantSelect = {
         );
       });
     }
+
+    const clearBtn = document.getElementById("cefilterServantClearBtn");
+    if (clearBtn) clearBtn.addEventListener("click", () => this.clearAll());
+
+    this.state.pickedIds = this._loadPicks();
+    this.renderChips();
   },
 
   addServant(id) {
     if (!id || this.state.pickedIds.includes(id)) return;
     this.state.pickedIds.push(id);
     this.renderChips();
+    this._savePicks();
+    this.render();
+  },
+
+  /* Bulk empty of the pick list. A blind label would hide how much is about to go, so the button
+     carries the count; the row count resets so the next pick starts on the first page. */
+  clearAll() {
+    if (this.state.pickedIds.length === 0) return;
+    this.state.pickedIds = [];
+    this.state.visibleCards = MAX_INITIAL_CARDS;
+    this.renderChips();
+    this._savePicks();
     this.render();
   },
 
   removeServant(id) {
     this.state.pickedIds = this.state.pickedIds.filter((picked) => picked !== id);
     this.renderChips();
+    this._savePicks();
     this.render();
+  },
+
+  /* Same key CE Filter has always declared and never read; only the pick list survives a refresh —
+     the sub-tab choice and the visible-card count still reset. */
+  _savePicks() {
+    try {
+      localStorage.setItem(CEFILTER_STORAGE_KEY, JSON.stringify({ servantPicks: this.state.pickedIds }));
+    } catch (_e) {
+      /* ignore */
+    }
+  },
+
+  _loadPicks() {
+    let raw;
+    try {
+      raw = localStorage.getItem(CEFILTER_STORAGE_KEY);
+    } catch (_e) {
+      return [];
+    }
+    if (!raw) return [];
+    let picks;
+    try {
+      picks = Validator.validateServantPicks(JSON.parse(raw).servantPicks);
+    } catch (_e) {
+      return [];
+    }
+    return picks.filter((id) => ServantData.getServant(id) != null);
   },
 
   _nameOf(id) {
@@ -67,6 +114,13 @@ export const ServantSelect = {
     const container = document.getElementById("cefilterServantChips");
     if (!container) return;
     container.replaceChildren();
+
+    const clearBtn = document.getElementById("cefilterServantClearBtn");
+    if (clearBtn) {
+      const count = this.state.pickedIds.length;
+      clearBtn.hidden = count === 0;
+      clearBtn.textContent = count > 0 ? `Clear all (${count})` : "Clear all";
+    }
 
     const frag = document.createDocumentFragment();
     this.state.pickedIds.forEach((id) => {

@@ -291,6 +291,58 @@ try {
   }
   if (handoff.cards === 0) errors.push("sub-tab: Craft Essence Select lost its results after the hand-off");
 
+  // Picks survive a refresh (the sub-tab does not), and Clear all empties the list in one click.
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.click('button.cefilter-subtab-btn[data-subtab="servant"]');
+  // Rows paint inside the panel's double rAF, so wait on the cards, not the chips.
+  try {
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length > 0 &&
+        document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length > 0,
+      { timeout: 15000 },
+    );
+  } catch {
+    /* falls through to the checks below */
+  }
+  const restored = await page.evaluate(() => ({
+    chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
+    clearHidden: document.getElementById("cefilterServantClearBtn").hidden,
+    clearLabel: document.getElementById("cefilterServantClearBtn").textContent.trim(),
+    cards: document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length,
+    subTab: document.querySelector(".cefilter-subtab-btn.active")?.dataset.subtab,
+  }));
+  console.log(`NOTE: after reload — ${restored.chips} chip(s), "${restored.clearLabel}", ${restored.cards} card(s)`);
+  if (restored.chips !== 2) errors.push(`persistence: expected 2 restored chips after reload, saw ${restored.chips}`);
+  if (restored.cards < 1) errors.push("persistence: restored picks rendered no shared-CE card");
+  if (restored.subTab !== "servant") errors.push("persistence: sub-tab did not follow the explicit click");
+  if (restored.clearHidden) errors.push(`clear all: button stayed hidden with ${restored.chips} picks`);
+  if (!/\(\s*2\s*\)/.test(restored.clearLabel)) {
+    errors.push(`clear all: label should carry the pick count, reads "${restored.clearLabel}"`);
+  }
+
+  await page.click("#cefilterServantClearBtn");
+  try {
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length === 0 &&
+        document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length === 0,
+      { timeout: 15000 },
+    );
+  } catch {
+    /* falls through to the checks below */
+  }
+  const cleared = await page.evaluate(() => ({
+    chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
+    cards: document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length,
+    clearHidden: document.getElementById("cefilterServantClearBtn").hidden,
+    stored: localStorage.getItem("fgo_ce_filter_data"),
+  }));
+  if (cleared.chips !== 0) errors.push(`clear all: ${cleared.chips} chip(s) left after clicking`);
+  if (cleared.cards !== 0) errors.push(`clear all: ${cleared.cards} card(s) left after clicking`);
+  if (!cleared.clearHidden) errors.push("clear all: button still shown with an empty pick list");
+  if (cleared.stored !== '{"servantPicks":[]}') errors.push(`clear all: stored "${cleared.stored}"`);
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();

@@ -964,6 +964,14 @@ html[data-tab="event"] #panel-event {
   transition: background 0.2s;
 }
 
+/* Destructive sibling of the Add button: outline, so the accent fill stays on the one action
+   that adds something. Its hover rule must come after `.cefilter-add-btn:hover` — equal weight. */
+.cefilter-add-btn--clear {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
 .cefilter-mode-row {
   display: none;
   align-items: center;
@@ -2166,6 +2174,11 @@ html[data-tab="event"] #panel-event {
   .cefilter-add-btn:hover,
   .cefilter-filter-btn:hover {
     background: #3730a3;
+  }
+
+  .cefilter-add-btn--clear:hover {
+    background: var(--accent-light);
+    color: var(--accent);
   }
 
   .cefilter-combo-ce-img:hover {

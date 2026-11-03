@@ -30,6 +30,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Two sub-tabs: **Craft Essence Select** (CEs → servants, default) and **Servant Select** (servants → shared CEs)
 - Servant Select: pick any number of servants, get one card per distinct shared CE list with every servant that can use it
 - Servant Select splits multi-ascension servants: when a servant's ascension groups match different CEs, each group shows its own portrait, the same way Craft Essence Select cards it — badge is image only, the ascension names sit in the hover tooltip
+- Servant Select keeps your picked servants across refreshes (`fgo_ce_filter_data`), and "Clear all (N)" empties the list in one click; the sub-tab choice still resets
 - Reverse lookup: select CEs to find matching servants
 - Match modes: All (AND), Any (OR), and Custom Match (filter by exact CE match count)
 - Dedicated "Filter Settings" modal with class filter, rarity filter, and CE match count buttons
@@ -106,7 +107,7 @@ fgo-calculator/
 │   │   ├── main.js            # Entry: DOMContentLoaded → lazy tab init (dynamic import())
 │   │   ├── bond-lazy.js       # Lazy entry: BondApp + selectors (on Bond tab switch)
 │   │   ├── event-lazy.js      # Lazy entry: EventShop init (on Event tab switch)
-│   │   ├── ce-filter-app.js   # CEFilterApp (Worker, no localStorage)
+│   │   ├── ce-filter-app.js   # CEFilterApp (Worker; CE picks unpersisted, servant picks persist)
 │   │   ├── ce-match-worker.js # Worker entry (TraitMatcher inlined)
 │   │   ├── constants.js       # All constants
 │   │   ├── domain.js           # Schema, Validator, Calculator, TraitMatcher

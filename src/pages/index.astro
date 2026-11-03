@@ -501,6 +501,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <div class="card-title">Servants</div>
                 <div class="cefilter-controls">
                   <button class="cefilter-add-btn" id="cefilterServantAddBtn" type="button">Add Servant</button>
+                  <button
+                    class="cefilter-add-btn cefilter-add-btn--clear"
+                    id="cefilterServantClearBtn"
+                    type="button"
+                    hidden
+                  >
+                    Clear all
+                  </button>
                 </div>
                 <div class="cefilter-chips" id="cefilterServantChips"></div>
               </div>
