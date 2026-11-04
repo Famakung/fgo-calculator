@@ -1,6 +1,6 @@
 # FGO Calculator
 
-A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calculator** for optimizing event item farming, **Bond Calculator** for planning bond point farming, and **Bond Gain CE Filter** for looking up eligible servants by CE traits.
+A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calculator** for optimizing event item farming, **Bond Calculator** for planning bond point farming, and **Bond Gain CE** for looking up eligible servants by CE traits.
 
 **Live at:** https://famakung.github.io/fgo-calculator/
 
@@ -29,7 +29,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Choosing Current Lv. 15 ticks "Bond ≥15" for you (that is the level paying the +25% party bonus); a lower level unticks it
 - Per-servant results with bond breakdown and run count; when the plan crosses more than one level the card lists the runs per stretch (`Bond Lv.0->2` / `1 run`), carrying surplus up to Lv.10 and rounding alone above the bond cap
 
-### Bond Gain CE Filter
+### Bond Gain CE
 - Two sub-tabs: **Craft Essence Select** (CEs → servants, default) and **Servant Select** (servants → shared CEs)
 - Servant Select: pick any number of servants, get one card per distinct shared CE list with every servant that can use it
 - Servant Select splits multi-ascension servants: when a servant's ascension groups match different CEs, each group shows its own portrait, the same way Craft Essence Select cards it — badge is image only, the ascension names sit in the hover tooltip
@@ -77,7 +77,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 7. Select a quest
 8. Click "Calculate Quest Runs" — total runs plus, when more than one level is crossed, the runs per stretch of levels
 
-### CE Filter
+### Bond Gain CE
 1. Click "Add Craft Essence" to select CEs
 2. Choose match mode (Match All / Match Any OR / Custom Match)
 3. Browse matching servants in the results grid

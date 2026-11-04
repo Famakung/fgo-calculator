@@ -8,10 +8,10 @@ const MAX_INITIAL_CARDS = 60;
 const CARDS_PER_PAGE = 60;
 
 /* ============================================
-   CE FILTER SUB-TAB STORE
+   BOND GAIN CE SUB-TAB STORE
    ============================================ */
 
-/* Both CE Filter sub-tabs share the one key, so every write is read-modify-write: a blind
+/* Both Bond Gain CE sub-tabs share the one key, so every write is read-modify-write: a blind
    setItem of a single field erases the other sub-tab's picks on the next refresh. Lives here
    rather than in ce-filter-app.js because ServantSelect already owns the key and CEFilterApp
    imports this module, not the other way round. */
@@ -42,7 +42,7 @@ export const CEFilterStore = {
 };
 
 /* ============================================
-   SERVENT SELECT SUB-TAB (inside the CE Filter tab)
+   SERVENT SELECT SUB-TAB (inside the Bond Gain CE tab)
    ============================================ */
 export const ServantSelect = {
   state: {

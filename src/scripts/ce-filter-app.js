@@ -235,8 +235,9 @@ export const CEFilterApp = {
 
     initWorker();
 
-    // Render immediately (synchronous computation) for faster first paint
-    this.render();
+    // Render immediately (synchronous computation) for faster first paint. Going through
+    // _switchSubTab also restores the saved sub-tab — the markup ships with "ce" visible.
+    this._switchSubTab(this.state.subTab);
   },
 
   selectCEFromCombo(ceId) {
@@ -251,7 +252,12 @@ export const CEFilterApp = {
 
   _switchSubTab(sub) {
     if (sub !== "ce" && sub !== "servant") return;
+    const changed = this.state.subTab !== sub;
     this.state.subTab = sub;
+    // The head script sets this before the body parses; keep it in step with the panels' `hidden`.
+    document.documentElement.dataset.subtab = sub;
+    // init() calls this on the saved value, so only a real change is worth a write.
+    if (changed) CEFilterStore.write({ subTab: sub });
 
     document.querySelectorAll(".cefilter-subtab-btn").forEach((btn) => {
       const active = btn.dataset.subtab === sub;
@@ -291,6 +297,7 @@ export const CEFilterApp = {
     const stored = CEFilterStore.read();
     this.state.selectedCEs = Validator.validatePicks(stored.cePicks).filter((id) => CEById.has(id));
     this.state.mode = CE_MODES.includes(stored.ceMode) ? stored.ceMode : this.state.mode;
+    this.state.subTab = stored.subTab === "servant" ? "servant" : "ce";
   },
 
   _processWorkerResults(data) {

@@ -7,7 +7,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       <nav class="navbar">
         <span class="navbar-title">FGO Calculator</span>
         <div class="navbar-tabs">
-          <button class="tab-btn active" data-tab="cefilter">CE Filter</button>
+          <button class="tab-btn active" data-tab="cefilter">Bond Gain CE</button>
           <button class="tab-btn" data-tab="bond">Bond Calculator</button>
           <button class="tab-btn" data-tab="event">Event Shop</button>
         </div>
@@ -15,7 +15,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           <span></span><span></span><span></span>
         </button>
         <div class="navbar-dropdown" aria-hidden="true">
-          <button class="navbar-dropdown-item active" data-tab="cefilter">CE Filter</button>
+          <button class="navbar-dropdown-item active" data-tab="cefilter">Bond Gain CE</button>
           <button class="navbar-dropdown-item" data-tab="bond">Bond Calculator</button>
           <button class="navbar-dropdown-item" data-tab="event">Event Shop</button>
         </div>
@@ -480,8 +480,20 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 </button>
               </div>
 
+              <!-- The panels are already right: <html data-subtab> + CSS hide Craft Essence Select
+                   before this parses. The buttons keep their look in a class, so they are flipped
+                   here — as early in the parse as the markup allows. -->
+              <script is:inline>(function () {
+                if (document.documentElement.getAttribute("data-subtab") !== "servant") return;
+                document.querySelectorAll(".cefilter-subtab-btn").forEach(function (b) {
+                  var on = b.dataset.subtab === "servant";
+                  b.classList.toggle("active", on);
+                  b.setAttribute("aria-pressed", on ? "true" : "false");
+                });
+              })();</script>
+
               <div class="cefilter-subpanel" data-subpanel="ce">
-                <div class="card-title">Bond Gain Craft Essences</div>
+                <div class="card-title">Craft Essences</div>
                 <div class="cefilter-controls">
                   <button class="cefilter-add-btn" id="cefilterAddBtn" type="button">Add Craft Essence</button>
                   <button
@@ -676,11 +688,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           </div>
         </div>
 
-        <!-- CE Filter Picker Modal -->
+        <!-- Bond Gain CE Picker Modal -->
         <div class="servant-modal" id="ceFilterModal">
           <div class="servant-modal-content">
             <div class="servant-modal-header">
-              <span class="ascension-modal-title">Bond Gain Craft Essences</span>
+              <span class="ascension-modal-title">Craft Essences</span>
               <button
                 class="servant-modal-close"
                 id="ceFilterModalClose"
@@ -701,7 +713,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           </div>
         </div>
 
-        <!-- CE Filter Servants Filter Modal -->
+        <!-- Bond Gain CE Servants Filter Modal -->
         <div class="servant-modal" id="cefilterFilterModal" role="dialog" aria-modal="true" aria-labelledby="cefilterFilterModalTitle">
           <div class="servant-modal-content">
             <div class="servant-modal-header">

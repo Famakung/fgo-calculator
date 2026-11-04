@@ -1,7 +1,7 @@
 {
   "name": "FGO Calculator",
   "short_name": "FGO Calc",
-  "description": "Event Shop optimizer, Bond Point calculator, and CE filter for FGO",
+  "description": "Event Shop optimizer, Bond Point calculator, and Bond Gain CE for FGO",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#1a1a2e",
