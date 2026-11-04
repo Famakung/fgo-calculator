@@ -58,7 +58,7 @@ Browser gate (local only, needs Chromium): `npx astro preview`, then `node scrip
 | `scripts/` | data sync (`sync_atlas_data.py`), build/render gates, tests |
 | `.github/workflows/` | Pages deploy, 10-min ETag-gated data schedule |
 
-`develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never merge `develop` into `main`** — these docs (`.claude/**`, `AGENTS.md`, `GEMINI.md`) are deliberately `develop`-only and must not become public; ship code to `main` by cherry-picking the code commits.
+`develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never plain-merge `develop` into `main`** (`git pull origin develop` is the same merge) — these docs (`.claude/**`, `AGENTS.md`, `GEMINI.md`) are deliberately `develop`-only and must not become public; ship code to `main` with `scripts/merge_code_only.sh` (merges the code, drops those paths from the merge commit, keeps `main`'s `.gitignore`, pushes nothing) or by cherry-picking the code commits.
 
 ## Which folder to work in
 
