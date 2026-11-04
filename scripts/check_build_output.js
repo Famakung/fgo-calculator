@@ -55,9 +55,10 @@ const REQUIRED_CHUNKS = [
 const REQUIRED_HEAD_MARKERS = ["<style>", "--bg:", 'fetchpriority="high"', "<script>", "fgo_build_etag"];
 
 // The sub-tab restore hides Craft Essence Select from the first paint using CSS keyed on
-// <html data-subtab>, so those rules must be present in the page that ships AND in both
-// hand-maintained copies of the stylesheet: BaseLayout's `<style is:inline>` (the copy the build
-// actually inlines) and src/styles/global.css (a duplicate no build step imports). The un-hide
+// <html data-subtab>, so those rules must be present in the page that ships AND in the one
+// hand-maintained copy of the stylesheet: BaseLayout's `<style is:inline>` (the copy the build
+// actually inlines). `src/styles/global.css` used to be a third copy kept in step by hand and was
+// deleted — it was loaded by nothing, and stylelint there was linting CSS that never shipped. The un-hide
 // names `display: block` outright, which is why the whole set of panel-level display rules is
 // pinned: a later rule giving .cefilter-subpanel a display of its own would silently fight it.
 const SUBTAB_PANEL_DISPLAY_RULES = [
@@ -179,7 +180,6 @@ const expectedPanel = SUBTAB_PANEL_DISPLAY_RULES.map(([sel, display]) => panelEn
 for (const [label, file, extract] of [
   ["dist/index.html", path.join(distDir, "index.html"), styleBodies],
   ["src/layouts/BaseLayout.astro", path.join(root, "src", "layouts", "BaseLayout.astro"), styleBodies],
-  ["src/styles/global.css", path.join(root, "src", "styles", "global.css"), (s) => s],
 ]) {
   let css;
   try {
@@ -193,7 +193,7 @@ for (const [label, file, extract] of [
     assertions.push(
       `sub-tab restore display rules changed in ${label} — saw [${saw.join(" ")}], want [${expectedPanel.join(
         " ",
-      )}]. Keep all three copies in step, and give the un-hide rule the panel's real display value if its layout moved`,
+      )}]. Keep the shipped page and BaseLayout's inline <style> in step, and give the un-hide rule the panel's real display value if its layout moved`,
     );
   }
 }

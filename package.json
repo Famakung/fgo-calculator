@@ -10,12 +10,9 @@
     "dev": "astro dev --port 3000",
     "build": "astro build",
     "preview": "astro preview --port 3000",
-    "lighthouse": "node lighthouse-runner.js",
-    "lint": "npm run lint:js && npm run lint:css",
-    "lint:js": "eslint src/scripts/",
-    "lint:css": "stylelint src/styles/global.css",
-    "format": "prettier --write \"src/scripts/**/*.js\" \"tests/**/*.js\" \"src/styles/*.css\" \"*.mjs\" && stylelint --fix src/styles/global.css",
-    "format:check": "prettier --check \"src/scripts/**/*.js\" \"tests/**/*.js\" \"src/styles/*.css\" \"*.mjs\"",
+    "lint": "eslint src/scripts/",
+    "format": "prettier --write \"src/scripts/**/*.js\" \"tests/**/*.js\" \"*.mjs\"",
+    "format:check": "prettier --check \"src/scripts/**/*.js\" \"tests/**/*.js\" \"*.mjs\"",
     "test": "node --test \"tests/**/*.test.js\"",
     "data:sync": "python3 scripts/sync_atlas_data.py --clean-cache",
     "data:validate": "node scripts/validate_data.js",
@@ -27,10 +24,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.2.0",
-    "lighthouse": "^13.3.0",
     "prettier": "^3.8.3",
-    "puppeteer": "^24.43.0",
-    "stylelint": "^17.8.0",
-    "stylelint-config-standard": "^40.0.0"
+    "puppeteer": "^24.43.0"
   }
 }
