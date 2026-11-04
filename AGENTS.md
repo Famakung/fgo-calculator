@@ -23,7 +23,7 @@ On demand, do **not** load them by default (they are big):
 
 - **Never `innerHTML`, never `insertAdjacentHTML`.** `createElement()` + `textContent` + `setAttribute()`; heavy renders build a `DocumentFragment` then one `replaceChildren()`. A `<head>` inline Trusted Types policy makes unsanitized sinks throw at runtime.
 - **No `100vh` / `80vh` lengths.** The layout applies `zoom` on `<html>` above 1400 CSS px, so viewport units overshoot; use the `--screen-h` variable. Any new viewport-unit length must go through it.
-- **Visual CSS lives in `src/layouts/BaseLayout.astro`** — that single inline `<style>` is what ships. `src/styles/global.css` is loaded by nothing (only lint/format name it) but must still be hand-kept in step. A rule added to one copy needs the other.
+- **All visual CSS is the single inline `<style>` in `src/layouts/BaseLayout.astro`** — that block is the only stylesheet the site has. There is no `src/styles/` directory: `global.css` and `critical.css` sat there unread by any build step and were deleted, after the duplicate had already drifted (a rule kept only there never shipped).
 - **JS style**: ES modules, 2-space indent, semicolons, **double quotes** (Prettier `printWidth: 120`, `trailingComma: "all"`). Files kebab-case.
 - **Trait IDs are 4-digit zero-padded strings** (`"0100"`, `"0002"`), sorted ascending in arrays.
 - **Generated data is gitignored**: `src/scripts/data/*.js`, `public/servants/`, `public/craft_essences/`. Fresh clone → `npm run data:sync` before anything builds (`predev`/`prebuild` call `scripts/ensure_data.js`).
@@ -33,7 +33,7 @@ On demand, do **not** load them by default (they are big):
 ```bash
 npm run dev          # Astro dev server, localhost:3000
 npm run build        # production build → dist/
-npm run lint         # ESLint (src/scripts/) + Stylelint (global.css)
+npm run lint         # ESLint (src/scripts/) — no CSS linter, nothing ships a .css file
 npm run format       # Prettier + Stylelint --fix
 npm run test         # pure-domain unit tests (node --test), no browser
 npm run check:build  # assert dist/ against scripts/build_baseline.json
@@ -55,7 +55,6 @@ Browser gate (local only, needs Chromium): `npx astro preview`, then `node scrip
 | `src/scripts/domain.js` | Domain layer: validators, calculators, trait matcher, `ServantComboCalculator` |
 | `src/scripts/bond-app.js`, `ce-filter-app.js`, `ce-servant-select.js`, `event-shop.js` | Application controllers per tab |
 | `src/scripts/data.js` + `src/scripts/data/*.js` | data access and generated datasets |
-| `src/styles/global.css` | duplicate of the shipped CSS, lint target, not loaded |
 | `scripts/` | data sync (`sync_atlas_data.py`), build/render gates, tests |
 | `.github/workflows/` | Pages deploy, 10-min ETag-gated data schedule |
 

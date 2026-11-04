@@ -58,7 +58,7 @@
 
 ## CSS
 - Shipped CSS: the single `<style is:inline>` block in BaseLayout.astro `<head>` (font-face, tokens, reset, layout, every component rule). Nothing else provides CSS — no `<link rel=stylesheet>`, no `.css` in `dist/`
-- `src/styles/global.css`: readable copy and the `npm run lint:css` target. Imported by nothing, so a rule added only there never reaches a browser — write the rule in both files, same order
+- There is no second stylesheet to write into: `src/styles/global.css` and `critical.css` were deleted 2026-11-04 (nothing imported them, and rules existed only there that never shipped). Write each rule once, in the inline block. `npm run lint:css` is gone with stylelint
 - Grid + Flexbox. Breakpoints: 580/760/940/1120px; `.grid` and `.ce-grid` use `padding: 8px`
 - Image & button tokens: `--servant-portrait-h: 96px` (`width: auto; aspect-ratio: 142 / 155` ~88px); `--ce-badge-h: 48px` & `--ce-badge-w: calc(var(--ce-badge-h) * 142 / 155)` (~44px); `--portrait-lg: 96px`; `.class-btn`: 48×48px (img: 40×40px); `.rarity-btn`, `.ce-count-btn`: 48×36px; `.servant-slot-badge-item`: 24×24px; `.material-icon`: 96px height auto width (`aspect-ratio: 112 / 120` ~90px, fg: 80×80px); `.mini-icon`: 48px height auto width (`aspect-ratio: 112 / 120` ~45px, fg: 40×40px)
 - Servant slots: bond badges placed at `top: 4px; left: 4px; z-index: 2;` (outside portrait, opposite remove button at `top: 4px; right: 4px;`); blank slots share CE add slot layout (`+` fallback `0.7rem`, `"Add Servant"` bold 600 in `.servant-slot-name`, no dummy controls), preserving frontline red (`#e74c3c`) and backline blue (`#3498db`) borders

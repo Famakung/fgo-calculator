@@ -101,35 +101,34 @@ Craft Essences apply bonuses based on servant traits with four modes:
 fgo-calculator/
 ├── astro.config.mjs          # Astro config: static output, base path, Vite chunk splitting
 ├── tsconfig.json              # TypeScript config (Astro strict)
-├── package.json               # Dependencies: astro; puppeteer + eslint + prettier + stylelint (devDeps)
+├── package.json               # Dependencies: astro; puppeteer + eslint + prettier (devDeps)
 │
 ├── src/
 │   ├── layouts/
 │   │   └── BaseLayout.astro   # HTML shell, inline CSS, font preloads, Trusted Types, manifest
 │   ├── pages/
 │   │   └── index.astro        # Main page: tab panels, UI structure, imports all JS modules
-│   ├── scripts/
-│   │   ├── main.js            # Entry: DOMContentLoaded → lazy tab init (dynamic import())
-│   │   ├── bond-lazy.js       # Lazy entry: BondApp + selectors (on Bond tab switch)
-│   │   ├── event-lazy.js      # Lazy entry: EventShop init (on Event tab switch)
-│   │   ├── ce-filter-app.js   # CEFilterApp (Worker; CE picks + match mode persist via CEFilterStore)
-│   │   ├── ce-match-worker.js # Worker entry (TraitMatcher inlined)
-│   │   ├── constants.js       # All constants
-│   │   ├── domain.js           # Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher
-│   │   ├── data.js             # ServantData (incl. getBondGrowth), TraitNames, CEList, CEById, TraitCEs
-│   │   ├── state.js            # StateManager, Persistence
-│   │   ├── presentation.js     # DOMFactory, CollapsibleFactory, debounce
-│   │   ├── selectors.js        # ServantSelector, AscensionSelector, CESelector, etc.
-│   │   ├── bond-app.js         # BondApp (configure() for refs, _initialized guard)
-│   │   ├── event-shop.js       # UIBuilder, ViewManager, EventHandler, App
-│   │   ├── tab-navigator.js    # TabNavigator (lazy init callbacks)
-│   │   └── data/
-│   │       ├── servants.js      # SERVANT_DATA
-│   │       ├── craft_essences.js # CE_DATA
-│   │       ├── traits.js        # TRAIT_DATA
-│   │       └── bond_growth.js   # BOND_TABLES + BOND_TABLE_BY_SVT (bond points per level step)
-│   └── styles/
-│       └── global.css          # Readable copy + stylelint target; NOT imported — the shipped CSS is the inline <style> in BaseLayout.astro
+│   └── scripts/
+│       ├── main.js            # Entry: DOMContentLoaded → lazy tab init (dynamic import())
+│       ├── bond-lazy.js       # Lazy entry: BondApp + selectors (on Bond tab switch)
+│       ├── event-lazy.js      # Lazy entry: EventShop init (on Event tab switch)
+│       ├── ce-filter-app.js   # CEFilterApp (Worker; CE picks + match mode persist via CEFilterStore)
+│       ├── ce-servant-select.js # Servant Select sub-tab view + CEFilterStore
+│       ├── ce-match-worker.js # Worker entry (TraitMatcher inlined)
+│       ├── constants.js       # All constants
+│       ├── domain.js           # Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher
+│       ├── data.js             # ServantData (incl. getBondGrowth), TraitNames, CEList, CEById, TraitCEs
+│       ├── state.js            # StateManager, Persistence
+│       ├── presentation.js     # DOMFactory, CollapsibleFactory, debounce
+│       ├── selectors.js        # ServantSelector, AscensionSelector, CESelector, etc.
+│       ├── bond-app.js         # BondApp (configure() for refs, _initialized guard)
+│       ├── event-shop.js       # UIBuilder, ViewManager, EventHandler, App
+│       ├── tab-navigator.js    # TabNavigator (lazy init callbacks)
+│       └── data/
+│           ├── servants.js      # SERVANT_DATA
+│           ├── craft_essences.js # CE_DATA
+│           ├── traits.js        # TRAIT_DATA
+│           └── bond_growth.js   # BOND_TABLES + BOND_TABLE_BY_SVT (bond points per level step)
 │
 ├── public/                     # Static assets (served as-is by Astro)
 │   ├── manifest.json           # PWA manifest (start_url: ".", standalone)

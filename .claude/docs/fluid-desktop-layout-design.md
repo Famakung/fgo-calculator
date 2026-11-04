@@ -3,7 +3,9 @@
 Date: 2026-11-04
 Status: ready for owner approval
 Status note (2026-11-04): **not built, and no longer describing the shipped site.** The owner chose magnification instead — `zoom` on `<html>` = `window.innerWidth / 1400` (it started at 1280), capped at 2, committed as `02df7e8` on `develop` and merged to `main` as `a8f7185`. The "No `zoom`" constraint in Non-goals is therefore already broken by design, and the facts below about `max-height: 80vh` and the 1120px rail have changed: viewport units now run through `--screen-h`, and wide windows render the 1280 layout scaled up rather than the fluid one this document proposes. Read it as the rejected alternative it became; if the fluid rail is ever wanted, re-derive it against the zoom script instead of assuming `zoom` is off. See the "Wide-screen magnification" bullet in `.claude/CLAUDE.md`.
-Location note: the repo's `.gitignore` has `docs/` (line 7) and `.claude/docs/` is already untracked, so this document cannot be committed from its natural home. Track it with `git add -f` if that is wanted; the project's documentation convention keeps this kind of file in `.claude/docs/`.
+Location note: `.claude/docs/` is tracked now (since 2026-11-04, through `.claude/*` plus negations in `.gitignore`), so this document and its plan commit normally from where they sit — no `git add -f`. Repo-root `docs/` and `design-docs/` stay ignored; superseded implementation plans live in `.claude/docs/archive/`.
+
+File note: every `global.css` line number below (2349, 2385, 2434, 2458, 892-893, 1232-1233, 141) and the `critical.css` reference point at files that have since been **deleted**. `src/styles/` no longer exists; the entire site stylesheet is the single `<style is:inline>` in `src/layouts/BaseLayout.astro`, and there is no `npm run lint:css`. The two-copy symmetry requirement in "Constraints" is gone with them.
 
 ## Intent
 

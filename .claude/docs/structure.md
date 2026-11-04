@@ -4,7 +4,7 @@
 ```
 astro.config.mjs           — Astro config: static output, base '/fgo-calculator/', Rolldown `codeSplitting.groups`
 tsconfig.json               — TypeScript config (Astro strict)
-package.json                 — Dependencies: astro; puppeteer + eslint + prettier + stylelint (devDeps)
+package.json                 — Dependencies: astro; puppeteer + eslint + prettier (devDeps)
 
 # Source (tracked in git)
 src/
@@ -33,8 +33,6 @@ src/
       servants.js              — SERVANT_DATA
       craft_essences.js        — CE_DATA
       bond_growth.js           — BOND_TABLES + BOND_TABLE_BY_SVT (per-step bond point costs)
-  styles/
-    global.css                 — Full styles (readable copy + stylelint target; NOT imported — see CSS below)
 
 # Static assets (tracked, served as-is)
 public/
@@ -74,8 +72,8 @@ dist/                         — Static site output for GitHub Pages
 9. Web Worker (`ce-match-worker.js`) spawned by CEFilterApp for first trait match computation
 
 ## CSS
-- Everything the browser sees is the single `<style is:inline>` block in `BaseLayout.astro` (font-face + tokens + full styles). Astro emits no `.css` file and `index.astro` imports no stylesheet, so a rule added only to `global.css` never ships
-- `global.css`: readable copy, checked by `npm run lint:css`. Any style change goes in both files, in the same order
+- Everything the browser sees is the single `<style is:inline>` block in `BaseLayout.astro` (font-face + tokens + full styles). Astro emits no `.css` file and `index.astro` imports no stylesheet
+- There is no second copy to keep in step: `src/styles/` (`global.css`, `critical.css`) was deleted 2026-11-04 after its rules drifted out of the shipped block, and `npm run lint:css` / stylelint went with it. If a rule is not in that inline block, it does not exist
 - `@font-face` URLs use relative paths (`fonts/dm-sans-400.woff2`) so Astro rewrites with base path
 
 ## JS Loading (Astro 7 / Vite 8 + Rolldown `codeSplitting.groups`)
@@ -110,7 +108,7 @@ Sub-tabs (`#cefilterSubtabs`, top-right of the controls card) swap one panel per
 - Below-fold images: `DOMFactory.createLazyImg()`
 - After changes: `npm run build` (or push to main for CI build)
 
-## Responsive CSS (global.css)
+## Responsive CSS
 - Breakpoints: 580 / 760 / 940 / 1120 px
 - Container max-width: 400 / 580 / 760 / 940 / 1120 px
 - `.card-inner` margin: 6.4 / 12.4 / 18.4 / 24.4 / 30.4 px
