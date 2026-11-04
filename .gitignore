@@ -1,10 +1,13 @@
-.claude
-GEMINI.md
-AGENTS.md
+# Agent guidance is tracked: CLAUDE.md + docs/ are the handoff contract for any
+# AI assistant or fresh clone. Only local permission state stays ignored.
+# `.claude/*` (not `.claude`) so the negations below can actually re-include.
+.claude/*
+!.claude/CLAUDE.md
+!.claude/docs/
 .plans
 design-docs
 node_modules/
-docs/
+/docs/
 dist/
 .astro/
 .cache/
