@@ -4,8 +4,9 @@
  *
  * Renders the PRODUCTION build in a real browser and asserts the parts a static
  * check cannot see: the lazy tab modules actually load, the Bond Gain CE worker
- * actually computes, the critical CSS actually applies, and the stale-version
- * poller is still in the page.
+ * actually computes, the critical CSS actually applies, the stale-version poller
+ * is still in the page, and the saved sub-tab is correct from the first painted
+ * frame (not merely after the module wakes up).
  *
  * Run it against `astro preview` only:
  *   npm run build
@@ -457,6 +458,88 @@ try {
   if (clearedStore.cePicks?.length !== 1) {
     errors.push(`clear all: the servant write clobbered cePicks — stored "${cleared.stored}"`);
   }
+
+  // The sub-tab restore has to survive a reload and be right before any script runs: Chrome paints
+  // while it parses, so panel visibility comes from CSS keyed on <html data-subtab>, which the head
+  // script sets. Recording every panel at the instant it first exists catches a restore that only
+  // works once the module is awake. The button highlight is the one part JS-only (the is:inline
+  // script after #cefilterSubtabs, which no linter covers), so its class and aria state are checked
+  // here too.
+  await page.evaluateOnNewDocument(() => {
+    self.__firstSight = [];
+    const seen = new Set();
+    new MutationObserver(() => {
+      document.querySelectorAll(".cefilter-subpanel").forEach((p) => {
+        if (seen.has(p)) return;
+        seen.add(p);
+        self.__firstSight.push({
+          name: p.dataset.subpanel,
+          display: getComputedStyle(p).display,
+          attr: document.documentElement.getAttribute("data-subtab"),
+        });
+      });
+    }).observe(document, { subtree: true, childList: true });
+  });
+
+  await page.evaluate(() => {
+    let st = {};
+    try {
+      st = JSON.parse(localStorage.getItem("fgo_ce_filter_data")) || {};
+    } catch {
+      /* a corrupt blob is treated as empty, same as CEFilterStore.read() */
+    }
+    st.subTab = "servant";
+    localStorage.setItem("fgo_ce_filter_data", JSON.stringify(st));
+  });
+  await page.reload({ waitUntil: "networkidle0" });
+
+  const subtabRestore = await page.evaluate(() => {
+    const visible = (name) =>
+      Array.from(document.querySelectorAll(`.cefilter-subpanel[data-subpanel="${name}"]`)).filter(
+        (p) => getComputedStyle(p).display !== "none",
+      ).length;
+    return {
+      firstSight: self.__firstSight,
+      attr: document.documentElement.dataset.subtab,
+      ce: visible("ce"),
+      servant: visible("servant"),
+      buttons: Array.from(document.querySelectorAll(".cefilter-subtab-btn")).map((b) => ({
+        subtab: b.dataset.subtab,
+        active: b.classList.contains("active"),
+        pressed: b.getAttribute("aria-pressed"),
+      })),
+    };
+  });
+  if (subtabRestore.firstSight.length !== 4) {
+    errors.push(`sub-tab restore: recorded ${subtabRestore.firstSight.length} panel(s) at first sight, expected 4`);
+  }
+  const wrongPaint = subtabRestore.firstSight.filter(
+    (f) => (f.name === "ce") !== (f.display === "none") || f.attr !== "servant",
+  );
+  if (wrongPaint.length) {
+    errors.push(`sub-tab restore: CSS was wrong while the page was still parsing: ${JSON.stringify(wrongPaint)}`);
+  }
+  if (subtabRestore.attr !== "servant") {
+    errors.push(`sub-tab restore: <html data-subtab> is "${subtabRestore.attr}" after load`);
+  }
+  if (subtabRestore.ce !== 0 || subtabRestore.servant !== 2) {
+    errors.push(`sub-tab restore: after reload ce=${subtabRestore.ce} servant=${subtabRestore.servant} visible, want 0/2`);
+  }
+  const activeBtns = subtabRestore.buttons.filter((b) => b.active).map((b) => b.subtab);
+  if (activeBtns.join() !== "servant") {
+    errors.push(`sub-tab restore: active button(s) ${JSON.stringify(activeBtns)}, want servant`);
+  }
+  for (const b of subtabRestore.buttons) {
+    if (b.pressed !== String(b.active)) {
+      errors.push(`sub-tab restore: ${b.subtab} button aria-pressed=${b.pressed} but class says ${b.active}`);
+    }
+  }
+  console.log(
+    `NOTE: sub-tab restored — <html data-subtab>="${subtabRestore.attr}", ` +
+      `${subtabRestore.firstSight.filter((f) => f.display === "none").length}/${subtabRestore.firstSight.length}` +
+      ` panel(s) already hidden the moment they were parsed, buttons ` +
+      JSON.stringify(subtabRestore.buttons),
+  );
 
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {

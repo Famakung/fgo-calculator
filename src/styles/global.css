@@ -857,6 +857,17 @@ html[data-tab="event"] #panel-event {
   display: none;
 }
 
+/* Pre-JS sub-tab restore: <html data-subtab> is set by the head script from the saved picks, so a
+   returning Servant Select user never sees Craft Essence Select paint. Beats [hidden] on
+   specificity, so it also governs once CEFilterApp._switchSubTab keeps the two in sync. */
+html[data-subtab="servant"] .cefilter-subpanel[data-subpanel="ce"] {
+  display: none;
+}
+
+html[data-subtab="servant"] .cefilter-subpanel[data-subpanel="servant"] {
+  display: block;
+}
+
 /* Results grid + the Show-more button sit side by side in this wrapper */
 .cefilter-combo-results {
   display: block;

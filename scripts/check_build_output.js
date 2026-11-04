@@ -5,8 +5,10 @@
  * Build-output gate for the Astro 5 -> 7 migration and every upgrade after it.
  * Asserts that `dist/` still contains the chunk layout the lazy tabs and the CE
  * Filter worker depend on, that the critical CSS and the stale-version poller are
- * still emitted into <head> in the same order, and that the page's visible text —
- * including the whitespace between adjacent inline elements — has not changed.
+ * still emitted into <head> in the same order, that the sub-tab restore's display
+ * rules still match across the shipped page and both hand-maintained stylesheet
+ * copies, and that the page's visible text — including the whitespace between
+ * adjacent inline elements — has not changed.
  *
  * Baseline: scripts/build_baseline.json, captured on astro 7.4.5.
  *   node scripts/check_build_output.js          compare (exit 1 on any [ERROR])
@@ -52,6 +54,18 @@ const REQUIRED_CHUNKS = [
 // ETag and drives the "A new version is available" banner).
 const REQUIRED_HEAD_MARKERS = ["<style>", "--bg:", 'fetchpriority="high"', "<script>", "fgo_build_etag"];
 
+// The sub-tab restore hides Craft Essence Select from the first paint using CSS keyed on
+// <html data-subtab>, so those rules must be present in the page that ships AND in both
+// hand-maintained copies of the stylesheet: BaseLayout's `<style is:inline>` (the copy the build
+// actually inlines) and src/styles/global.css (a duplicate no build step imports). The un-hide
+// names `display: block` outright, which is why the whole set of panel-level display rules is
+// pinned: a later rule giving .cefilter-subpanel a display of its own would silently fight it.
+const SUBTAB_PANEL_DISPLAY_RULES = [
+  [".cefilter-subpanel[hidden]", "none"],
+  ['html[data-subtab="servant"] .cefilter-subpanel[data-subpanel="ce"]', "none"],
+  ['html[data-subtab="servant"] .cefilter-subpanel[data-subpanel="servant"]', "block"],
+];
+
 // A chunk may fall to a quarter of its measured size before this fails, and may
 // not exceed three times it. The ceiling is what catches content being swept into
 // the wrong chunk: generated game data grows a few percent per event, so 3x is far
@@ -77,6 +91,34 @@ function visibleTextLines(html) {
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
   return withoutCode.replace(/<[^>]*>/g, "\n").split("\n");
+}
+
+// Selectors and values compared quote-free and space-collapsed: the copies differ in formatting
+// (the inlined one is a single line) and a minifier would drop the quotes.
+const flat = (s) => s.replace(/\s+/g, " ").replace(/["']/g, "").trim();
+const panelEntry = (sel, display) => `${flat(sel)}=${flat(display)}`;
+
+function styleBodies(html) {
+  return (html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) || [])
+    .map((s) => s.replace(/^<style[^>]*>/i, "").replace(/<\/style>$/i, ""))
+    .join("\n");
+}
+
+// Every rule that sets `display` on a sub-panel itself (not on something inside it). A crude split
+// on `}` is enough for these flat rules; the `@media … {` that survives the split is stripped.
+function panelDisplayRules(css) {
+  const found = [];
+  for (const block of css.replace(/\/\*[\s\S]*?\*\//g, "").split("}")) {
+    const brace = block.indexOf("{");
+    if (brace < 0) continue;
+    const display = (block.slice(brace + 1).match(/(?:^|[;{])\s*display\s*:\s*([^;]+)/i) || [])[1];
+    if (!display) continue;
+    for (const raw of block.slice(0, brace).split(",")) {
+      const sel = flat(raw.replace(/^@[^{]*\{\s*/, ""));
+      if (/(^|\s)\.cefilter-subpanel(\[[^\]]*\])?$/.test(sel)) found.push(`${sel}=${flat(display)}`);
+    }
+  }
+  return found.sort();
 }
 
 function measure() {
@@ -130,6 +172,29 @@ for (let i = 1; i < REQUIRED_HEAD_MARKERS.length; i++) {
     assertions.push(`head marker missing: ${REQUIRED_HEAD_MARKERS[prev < 0 ? i - 1 : i]}`);
   } else if (cur < prev) {
     assertions.push(`head marker out of order: ${REQUIRED_HEAD_MARKERS[i]} before ${REQUIRED_HEAD_MARKERS[i - 1]}`);
+  }
+}
+
+const expectedPanel = SUBTAB_PANEL_DISPLAY_RULES.map(([sel, display]) => panelEntry(sel, display)).sort();
+for (const [label, file, extract] of [
+  ["dist/index.html", path.join(distDir, "index.html"), styleBodies],
+  ["src/layouts/BaseLayout.astro", path.join(root, "src", "layouts", "BaseLayout.astro"), styleBodies],
+  ["src/styles/global.css", path.join(root, "src", "styles", "global.css"), (s) => s],
+]) {
+  let css;
+  try {
+    css = extract(fs.readFileSync(file, "utf8"));
+  } catch {
+    assertions.push(`sub-tab restore: cannot read ${file}`);
+    continue;
+  }
+  const saw = panelDisplayRules(css);
+  if (saw.join("|") !== expectedPanel.join("|")) {
+    assertions.push(
+      `sub-tab restore display rules changed in ${label} — saw [${saw.join(" ")}], want [${expectedPanel.join(
+        " ",
+      )}]. Keep all three copies in step, and give the un-hide rule the panel's real display value if its layout moved`,
+    );
   }
 }
 

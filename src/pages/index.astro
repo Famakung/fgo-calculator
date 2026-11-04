@@ -480,6 +480,18 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 </button>
               </div>
 
+              <!-- The panels are already right: <html data-subtab> + CSS hide Craft Essence Select
+                   before this parses. The buttons keep their look in a class, so they are flipped
+                   here — as early in the parse as the markup allows. -->
+              <script is:inline>(function () {
+                if (document.documentElement.getAttribute("data-subtab") !== "servant") return;
+                document.querySelectorAll(".cefilter-subtab-btn").forEach(function (b) {
+                  var on = b.dataset.subtab === "servant";
+                  b.classList.toggle("active", on);
+                  b.setAttribute("aria-pressed", on ? "true" : "false");
+                });
+              })();</script>
+
               <div class="cefilter-subpanel" data-subpanel="ce">
                 <div class="card-title">Craft Essences</div>
                 <div class="cefilter-controls">
