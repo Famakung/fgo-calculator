@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-11-04 — chore(repo): docs made reachable, dead files deleted, CSS collapsed to one home
+
+Prompted by "can another AI agent pick this up from the docs?" — it could not, and one dead file was quietly costing the live site.
+
+### Agent handoff (commits `75be629`, `fd32889`)
+- `.gitignore` said `.claude` on line 1, so `CLAUDE.md` and all of `.claude/docs/` were untracked: invisible to CI, to a fresh clone, and to any non-Claude agent. Now `.claude/*` + `!.claude/CLAUDE.md` + `!.claude/docs/`; `settings.local.json` stays local. Traps, both silent: a bare `.claude` line cannot be re-included (git does not descend into an excluded directory), and the file's own `docs/` pattern matched `.claude/docs/` and cancelled the new negation — anchored to `/docs/`.
+- `AGENTS.md` / `GEMINI.md` were byte-identical and every link in them was `file:///d:/Dev/Projects/fgo-calculator/…`, a Windows path matching neither clone: no agent could follow one reference. `AGENTS.md` is now the contract with repo-relative links; `GEMINI.md` points at it plus the six non-negotiables, so the copies cannot drift again.
+- "MUST ALWAYS read `.claude/docs/`" meant 320 KB, ~60-80k tokens before any code. Mandatory read is now the four ~25 KB docs (`code-style`, `structure`, `data-rules`, `security`); `CLAUDE.md`, `progress.md` and `fetch-data-guideline.md` are marked on-demand with their sizes.
+- 26 `file:///mnt/storage/…` links in this log rewritten relative.
+- `AGENTS.md` states `/home/famakung/dev/fgo-calculator` is the main checkout and `/mnt/storage` is off-limits — this log already records an agent that ran a command without `cd`, read the stale copy, and reported bugs that do not exist here.
+
+### Dead files (commit `8e59fc1`)
+- `src/styles/critical.css`, `.claude/docs/download_image.py`: zero importers.
+- `npm run lighthouse` + `lighthouse` devDependency: the script ran `lighthouse-runner.js`, a gitignored temp file present in neither clone, so the documented command was broken. 1,616 lockfile lines. `npx lighthouse <url>` instead.
+- Audit method mattered: a filename grep calls `scripts/fetch_bordered_ces.py` dead, but `sync_atlas_data.py:1345` does `from fetch_bordered_ces import sync_ces`. Name-grep alone would have broken the data sync.
+- Kept, with reasons: `public/sw.js` (killswitch for browsers still holding the old PWA registration — nothing registers it, deleting it could strand one), and the `fluid-desktop-layout-*.md` pair (both already open with "do not build this" banners).
+
+### One stylesheet (commit in this batch)
+- Deleted `src/styles/global.css` (47 KB) and `src/styles/critical.css`, removed `src/styles/`, dropped `.stylelintrc.json` + both stylelint devDependencies, and `lint:js`/`lint:css` collapsed into `npm run lint` = eslint only. `BaseLayout.astro`'s inline `<style>` is now the only CSS in the project.
+- **The dead copy held one live rule.** `.cefilter-sort-order-btn:active { background: var(--bg) }` existed only in `global.css`, so the sort-direction button has had no press state on the site; it is ported into `BaseLayout.astro`. The other two recorded drifts were left as the shipped copy has them on purpose: `#panel-cefilter > .card:first-child .card-inner { position: relative }` stays unconditional, and font `src` stays `fonts/…` — the `/fonts/…` form in the dead file would break under the `/fgo-calculator/` base path.
+- `scripts/check_build_output.js` pins the `.cefilter-subpanel` display rules across two texts (`dist/index.html`, `BaseLayout.astro`) instead of three; the `--write` refusal is unchanged.
+- Wording fixed everywhere the dual copy was described as the norm: `AGENTS.md`, `GEMINI.md`, `README.md`, `CLAUDE.md` (perf bullet, Lint & Format section, Known Issues), `code-style.md`, `structure.md`, plus a file note in each fluid-layout doc.
+- Superseded plans that only lived in ignored directories (`docs/superpowers/`, `design-docs/`) are now `.claude/docs/archive/` with a `README.md` saying they are records, not work, and which files they name no longer exist.
+
+### Not a bug: the `aria-expanded` finding
+This log records `ce-servant-select.js:177` as "always renders `aria-expanded="false"`, so after a click the next batch claims a collapsed state. Re-checked the code: the button is created inside `if (hidden > 0)` (`ce-servant-select.js:197-198`) and `_paintResults()` rebuilds the whole fragment, so an element that exists only while rows are still hidden carrying `false` is accurate — and once nothing is hidden, there is no button left to misreport. No code change made, the finding closed. Separate, real, and unfixed: clicking `Show N more` destroys the focused button and does not restore focus, so a keyboard or screen-reader user loses their place in the list each press.
+
+### Verification
+`npm run lint` exit 0 · `npm run test` 25/25 · `npm run build` ✓ · `npm run check:build` SUCCESS against baseline · `node scripts/verify_render.js` after this batch (see below) · `git check-ignore -v` confirms `.claude/CLAUDE.md`, `.claude/docs/**`, `AGENTS.md`, `GEMINI.md` tracked while `.claude/settings.local.json` and root `docs/` stay ignored.
+
+Not checked: the ported `:active` rule was verified by grep on the shipped CSS, not by pressing the button in a browser; `npm prune` removed 206 packages from `node_modules` here only, so the `/mnt/storage` copy still carries stylelint and lighthouse.
+
 ## 2026-11-04 — feat(layout): wide-screen magnification of the 1280 layout
 
 Started as "screen width over 1280 think display on 1280" and ended as magnification. The owner was shown three readings of that sentence — magnify, leave the 1120px rail alone, or widen the rail — picked magnification, then explicitly dropped the fluid-layout plan when its documents surfaced as an already-written argument against `zoom`. Merged to `main` as `a8f7185` and deployed (run 41818042561).
