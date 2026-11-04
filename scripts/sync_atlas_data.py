@@ -1322,7 +1322,7 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
 
 
 def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), force: bool = False, dry_run: bool = False):
-    """Synchronize all permanent Bond Gain Craft Essences, trait registry, and their icons."""
+    """Synchronize all permanent Craft Essences, trait registry, and their icons."""
     print("Checking Atlas Academy API for latest Craft Essence data...")
     na_url = f"{API_BASE}/export/NA/basic_equip.json"
     na_names = {}

@@ -3,7 +3,7 @@
  * scripts/verify_render.js
  *
  * Renders the PRODUCTION build in a real browser and asserts the parts a static
- * check cannot see: the lazy tab modules actually load, the CE Filter worker
+ * check cannot see: the lazy tab modules actually load, the Bond Gain CE worker
  * actually computes, the critical CSS actually applies, and the stale-version
  * poller is still in the page.
  *
@@ -94,7 +94,7 @@ try {
   console.log(`NOTE: event tab shows ${questRows} quest-grid node(s), event-lazy responded ${eventStatus}`);
   if (eventStatus !== 200) errors.push(`event tab: event-lazy was not fetched successfully (status ${eventStatus})`);
 
-  // CE Filter tab: the worker computes, the results grid fills.
+  // Bond Gain CE tab: the worker computes, the results grid fills.
   await page.click('.tab-btn[data-tab="cefilter"]');
   let cards = 0;
   try {
@@ -111,7 +111,7 @@ try {
   const workerResults = await page.evaluate(
     () => (self.__workerMessages || []).filter((d) => d && Array.isArray(d.results) && d.results.length > 0).length,
   );
-  console.log(`NOTE: ${cards} CE filter card(s), ${workerResults} worker result message(s)`);
+  console.log(`NOTE: ${cards} Bond Gain CE card(s), ${workerResults} worker result message(s)`);
   if (workerResults === 0) errors.push("ce filter: worker sent no message carrying a non-empty results array");
 
   // Servant Select sub-tab: the reverse direction. The sub-tab bar sits in the top-right corner

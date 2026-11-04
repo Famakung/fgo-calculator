@@ -33,7 +33,7 @@ const baselinePath = path.join(root, "scripts", "build_baseline.json");
 
 // Chunk layout. The six names come from the codeSplitting groups in
 // astro.config.mjs; the rest are split automatically and are what the first-visit
-// tab imports and the CE Filter worker resolve to.
+// tab imports and the Bond Gain CE worker resolve to.
 const REQUIRED_CHUNKS = [
   "constants-chunk",
   "data-chunk",

@@ -18,7 +18,7 @@ export const ServantSelector = {
 
   _listenersBound: false,
 
-  // Called by both the Bond tab and the CE Filter's Servant Select sub-tab: the modal is
+  // Called by both the Bond tab and the Bond Gain CE's Servant Select sub-tab: the modal is
   // shared, and its close controls must work whichever tab opens it first.
   init() {
     if (this._listenersBound) return;
@@ -600,7 +600,7 @@ export const CESubSelector = {
 };
 
 /* ============================================
-   CE FILTER PICKER
+   BOND GAIN CE PICKER
    ============================================ */
 export const CEFilterPicker = {
   tempSelected: new Set(),
