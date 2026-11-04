@@ -95,9 +95,8 @@ npm run check:build # Assert dist/ against scripts/build_baseline.json (exit 1 o
 **Browser gate** (`scripts/verify_render.js`, local only — kept out of CI because it needs a Chromium download on a 10-minute schedule): drives the production build with Puppeteer and asserts lazy tabs actually fetch, the CE worker returns results, critical CSS paints, and the `fgo_build_etag` poller is present. Serve first: `npx astro preview`, then `node scripts/verify_render.js`.
 
 ### Lighthouse Audit
-```bash
-npm run lighthouse # Requires running server on localhost:3000 first
-```
+
+No npm script and no project dependency — run it ad hoc against a served build: `npx lighthouse <url>`. The old `npm run lighthouse` invoked `lighthouse-runner.js`, which `.gitignore` lists as a temp/test file and which does not exist in either clone, so the script was broken and the `lighthouse` devDependency (1,616 lockfile lines) bought nothing; both are removed. `node_modules/lighthouse` may still be on disk until `npm prune`.
 
 ## Tech Stack
 

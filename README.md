@@ -101,7 +101,7 @@ Craft Essences apply bonuses based on servant traits with four modes:
 fgo-calculator/
 ├── astro.config.mjs          # Astro config: static output, base path, Vite chunk splitting
 ├── tsconfig.json              # TypeScript config (Astro strict)
-├── package.json               # Dependencies: astro (dev), lighthouse + puppeteer (devDeps)
+├── package.json               # Dependencies: astro; puppeteer + eslint + prettier + stylelint (devDeps)
 │
 ├── src/
 │   ├── layouts/
@@ -129,8 +129,7 @@ fgo-calculator/
 │   │       ├── traits.js        # TRAIT_DATA
 │   │       └── bond_growth.js   # BOND_TABLES + BOND_TABLE_BY_SVT (bond points per level step)
 │   └── styles/
-│       ├── critical.css        # Above-fold CSS (inlined by Astro)
-│       └── global.css          # Full styles (loaded by Astro)
+│       └── global.css          # Readable copy + stylelint target; NOT imported — the shipped CSS is the inline <style> in BaseLayout.astro
 │
 ├── public/                     # Static assets (served as-is by Astro)
 │   ├── manifest.json           # PWA manifest (start_url: ".", standalone)

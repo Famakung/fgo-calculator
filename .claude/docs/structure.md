@@ -4,7 +4,7 @@
 ```
 astro.config.mjs           — Astro config: static output, base '/fgo-calculator/', Rolldown `codeSplitting.groups`
 tsconfig.json               — TypeScript config (Astro strict)
-package.json                 — Dependencies: astro (dev), lighthouse + puppeteer (devDeps)
+package.json                 — Dependencies: astro; puppeteer + eslint + prettier + stylelint (devDeps)
 
 # Source (tracked in git)
 src/
@@ -34,7 +34,6 @@ src/
       craft_essences.js        — CE_DATA
       bond_growth.js           — BOND_TABLES + BOND_TABLE_BY_SVT (per-step bond point costs)
   styles/
-    critical.css               — Above-fold CSS (inlined by Astro into <head>)
     global.css                 — Full styles (readable copy + stylelint target; NOT imported — see CSS below)
 
 # Static assets (tracked, served as-is)
