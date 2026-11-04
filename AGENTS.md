@@ -43,7 +43,7 @@ node --version       # must be >= 22.23.4 (.nvmrc); npm only WARNS on EBADENGINE
 
 Browser gate (local only, needs Chromium): `npx astro preview`, then `node scripts/verify_render.js`.
 
-**`astro build` fails on this repo's `/mnt/storage` (ntfs3) mount** — Vite bundles Astro's dev-toolbar entrypoint and dies on `[MISSING_EXPORT] "loadDevToolbarApps"`. Build and run dev from the native clone, `/home/famakung/dev/fgo-calculator` on btrfs. The `/mnt/storage` checkout is the editor-side copy only; `node_modules` there holds Astro 5.18.2 installed with `--no-save`, which is why it shows a `__vite__injectQuery` console error.
+**`astro build` fails on this repo's `/mnt/storage` (ntfs3) mount** — Vite bundles Astro's dev-toolbar entrypoint and dies on `[MISSING_EXPORT] "loadDevToolbarApps"`. See "Which folder to work in". That copy's `node_modules` holds Astro 5.18.2 installed with `--no-save`, which is why it shows a `__vite__injectQuery` console error.
 
 ## Layout map
 
@@ -61,4 +61,8 @@ Browser gate (local only, needs Chromium): `npx astro preview`, then `node scrip
 
 `develop` is a local-only branch; `origin` carries `main`. Commit to a `feat/*` branch or `develop`, merge to `main` to deploy.
 
-Two working copies of this repo exist on the machine and their git histories are separate — do not assume a commit in one is visible in the other.
+## Which folder to work in
+
+**`/home/famakung/dev/fgo-calculator` is the main checkout.** Work, build, test and commit here — never anywhere under `/mnt/storage`.
+
+A stale second copy exists at `/mnt/storage/Dev/Projects/fgo-calculator`: separate git dir, behind on commits, old docs, and `astro build` fails on its ntfs3 mount. Treat it as read-never. An agent that runs a command without `cd` into this folder lands there and starts reporting bugs that do not exist in this code — recorded in [.claude/docs/progress.md](.claude/docs/progress.md).
