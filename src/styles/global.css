@@ -102,6 +102,11 @@
   --servant-portrait-h: 96px;
   --ce-badge-h: 48px;
   --ce-badge-w: calc(var(--ce-badge-h) * 142 / 155);
+
+  /* One screen tall. The head script overwrites this with innerHeight in px
+     whenever it zooms <html>, because Chrome multiplies viewport units by `zoom`,
+     so a `vh`-sized box would then overflow the real screen. */
+  --screen-h: 100vh;
 }
 
 /* Tier-based theming */
@@ -138,7 +143,7 @@ body {
 }
 
 body {
-  min-height: 100vh;
+  min-height: var(--screen-h);
   background: var(--bg);
   font-family: "DM Sans", sans-serif;
   color: var(--text);
@@ -1539,7 +1544,7 @@ html[data-tab="event"] #panel-event {
   border-radius: var(--radius);
   padding: 16px 8px;
   width: 95%;
-  max-height: 80vh;
+  max-height: calc(var(--screen-h) * 0.8);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1548,7 +1553,7 @@ html[data-tab="event"] #panel-event {
 
 .cefilter-modal-body {
   overflow-y: auto;
-  max-height: calc(80vh - 80px);
+  max-height: calc(var(--screen-h) * 0.8 - 80px);
   padding: 4px 0;
 }
 
