@@ -3,6 +3,9 @@ import { defineConfig } from "astro/config";
 export default defineConfig({
   output: "static",
   base: "/fgo-calculator/",
+  // Bare `astro dev` / `astro preview` default to 4321; every script and doc here uses 3000.
+  server: { port: 3000 },
+  preview: { port: 3000 },
   vite: {
     worker: {
       format: "es",

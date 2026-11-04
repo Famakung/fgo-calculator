@@ -9,7 +9,7 @@
  *
  * Run it against `astro preview` only:
  *   npm run build
- *   npx astro preview --port 4173 &
+ *   npx astro preview
  *   node scripts/verify_render.js
  *
  * WARNING: the HMR dev server is not a valid target. It creates duplicate module
@@ -22,7 +22,7 @@
 
 import puppeteer from "puppeteer";
 
-const url = process.argv[2] || "http://localhost:4173/fgo-calculator/";
+const url = process.argv[2] || "http://localhost:3000/fgo-calculator/";
 const errors = [];
 
 const browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox"] });
