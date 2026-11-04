@@ -208,6 +208,7 @@ Bond Gain CE uses Web Worker (`ce-match-worker.js`) for trait matching off main 
 ## Deployment & CI/CD Pipeline
 
 - **Branch flow**: `feat/*` → `develop` → `main`, but **`develop` is local-only** (unpublished 2026-11-03: `origin` carries `main` alone). CI never needed it — the workflow triggers are push to `main`, the 10-minute schedule, and `workflow_dispatch`. A bare `git push` on `develop` now errors with "no upstream branch", which is the guard; re-publish with `git push -u origin develop` if you ever want it on GitHub again.
+- **The docs never reach `main` (owner decision 2026-11-04).** `.claude/CLAUDE.md`, `.claude/docs/**`, `AGENTS.md` and `GEMINI.md` are tracked on `develop` only — `main` is the public repo GitHub Pages deploys from, and those files name local paths and the two-clone workflow. So **do not `git merge develop` into `main`**: it drags the whole doc tree with it (this happened and was undone with `git reset --hard origin/main` before any push). Ship code by cherry-picking the code commits onto `main`, or by merging and then dropping the doc paths in the merge commit (`git rm -r --cached .claude AGENTS.md GEMINI.md` + restore `main`'s blanket `.claude` line in `.gitignore`) — and note that a later merge of `develop` re-adds them unless `main`'s `.gitignore` keeps the bare `.claude` line.
 - **Pages source**: GitHub Actions (not branch-based)
 - **Zero Committed Images**: `public/servants/` and `public/craft_essences/` are gitignored. Assets are synced dynamically at build time and cached with `actions/cache@v4`.
 - **Triggers**:
