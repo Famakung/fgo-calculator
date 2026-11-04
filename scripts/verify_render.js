@@ -285,9 +285,21 @@ try {
 
   // Review Focus 1: 020 Cú Chulainn (Prototype) can use no CE at all, so she must be named,
   // not silently missing. Toggling her back off must clear the note again.
+  // The note repaints inside ServantSelect.render()'s double rAF and its input can come back from
+  // the worker, so read it only once it has settled: against a deployed target these three reads
+  // landed on the previous frame and reported both the stale name and a note that was already gone.
+  const waitForUnshared = (shown) =>
+    page
+      .waitForFunction(
+        (want) => document.getElementById("cefilterComboUnshared").hidden === !want,
+        { timeout: 15000 },
+        shown,
+      )
+      .catch(() => {});
   await openModal();
   const oddPicked = await pickInModal("020");
   await closeModal();
+  await waitForUnshared(true);
   if (!oddPicked.found) errors.push("servant select: picker grid has no servant 020");
   const withOdd = await page.evaluate(() => ({
     chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
@@ -307,6 +319,7 @@ try {
   await openModal();
   await pickInModal("020");
   await closeModal();
+  await waitForUnshared(false);
   const afterUntoggle = await page.evaluate(() => ({
     chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
     unsharedHidden: document.getElementById("cefilterComboUnshared").hidden,
