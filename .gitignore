@@ -28,3 +28,6 @@ styles.min.css
 
 # Temp/test files
 lighthouse-runner.js
+
+# develop-only release tooling, keeps itself off this branch
+scripts/merge_code_only.sh
