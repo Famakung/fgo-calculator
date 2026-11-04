@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Merge a source branch into main carrying code only.
 #
-# The agent-doc tree (.claude/, AGENTS.md, GEMINI.md) is tracked on develop
-# alone, so a plain `git merge develop` drags it onto the public branch. This
-# script runs the merge and drops those paths from the merge result before the
-# commit, and keeps main's own .gitignore (its blanket `.claude` line is what
-# hides the leftover files on disk).
+# The agent-doc tree (.claude/, AGENTS.md, GEMINI.md) and this script itself
+# are tracked on develop alone: a plain `git merge develop` would drag them
+# onto the public branch. This script runs the merge and drops those paths
+# from the merge result before the commit, and keeps main's own .gitignore —
+# its blanket `.claude` line and its `scripts/merge_code_only.sh` line are
+# what hide the leftover files on disk, so the work tree stays clean.
 #
 # Usage: scripts/merge_code_only.sh [source]   # default: develop
 # Nothing is pushed — the script prints the push command when it is done.
@@ -13,7 +14,8 @@ set -euo pipefail
 
 SRC="${1:-develop}"
 TARGET="main"
-DOC_PATHS=(.claude AGENTS.md GEMINI.md)
+# develop-only paths; HIDDEN must stay a subset of '$TARGET's .gitignore entries.
+HIDDEN_PATHS=(.claude AGENTS.md GEMINI.md scripts/merge_code_only.sh)
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -55,8 +57,16 @@ fi
 git checkout --quiet HEAD -- .gitignore
 
 # --cached keeps the files on disk: '$TARGET' ignores them, so the tree stays clean.
-# -f resolves them even if the merge marked them unmerged (an add/add conflict).
-git rm --quiet -r -f --cached --ignore-unmatch -- "${DOC_PATHS[@]}"
+# -f resolves them even if the merge marked them unmerged (a modify/delete conflict).
+git rm --quiet -r -f --cached --ignore-unmatch -- "${HIDDEN_PATHS[@]}"
+
+# An ignore rule missing from '$TARGET' would leave a dropped path untracked-dirty.
+for path in .claude AGENTS.md GEMINI.md scripts/merge_code_only.sh; do
+  git check-ignore --no-index -q "$path" || {
+    echo "merge_code_only: '$TARGET' does not ignore '$path' — add that line to its .gitignore" >&2
+    exit 1
+  }
+done
 
 conflicts="$(git diff --name-only --diff-filter=U)"
 if [ -n "$conflicts" ]; then
@@ -67,9 +77,9 @@ fi
 
 git commit --no-edit --quiet
 
-leftover="$(git ls-tree -r --name-only HEAD -- "${DOC_PATHS[@]}")"
+leftover="$(git ls-tree -r --name-only HEAD -- "${HIDDEN_PATHS[@]}")"
 if [ -n "$leftover" ]; then
-  echo "merge_code_only: FAILED, docs reached '$TARGET' — undo with 'git reset --hard HEAD~1'" >&2
+  echo "merge_code_only: FAILED, develop-only paths reached '$TARGET' — undo with 'git reset --hard HEAD~1'" >&2
   echo "$leftover" >&2
   exit 1
 fi
