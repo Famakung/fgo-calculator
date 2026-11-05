@@ -49,7 +49,10 @@ export const FilterSections = {
     chips.forEach((chip) => {
       const value = chip.value !== undefined ? chip.value : chip.other ? ServantFilters.SUB_ALI_OTHER : chip.id;
       const isDisabled = opts.disabled ? opts.disabled(chip) : false;
-      const btn = this.chipEl(chip, chosen.has(value), isDisabled, opts.className);
+      /* A greyed chip cannot be honoured — `ServantFilters.effectiveClassIds` drops a class pick outside the
+         group, and a Grand Duel lock drops one outside its bound — so it must not press itself out. Kept in
+         state, so leaving the group highlights it again; only the paint says "not in force right now". */
+      const btn = this.chipEl(chip, isDisabled ? false : chosen.has(value), isDisabled, opts.className);
       if (!isDisabled) {
         btn.addEventListener("click", () => {
           const nowActive = !chosen.has(value);
