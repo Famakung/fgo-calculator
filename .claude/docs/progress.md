@@ -4,6 +4,19 @@
 
 ---
 
+## 2026-11-06 — feat(filter): Filter Settings becomes seven labelled sections
+
+Design `.claude/docs/filter-settings-rework-design.md`, plan `.claude/docs/filter-settings-rework-plan.md`.
+
+- Rarity / Class / Class (Group) / Alignment (Lawful·Neutral·Chaotic) / Alignment (Good·Balanced·Evil·Other) / Sub-Attribute / CE Bonus, each a centred label over centred chips with a hairline separator; one column, the modal body scrolls (owner choice A).
+- One chip builder: `FilterSections.renderRow` / `chipEl` (`src/scripts/filter-sections.js`) replaces `CEFilterApp.buildClassFilter`/`buildRarityFilter` and `ServantSelector._buildClassFilter`/`_buildRarityFilter`. A chip is now `<button aria-pressed>`, because the class row has to render a chip that exists but cannot be clicked.
+- New state (page-scoped, never persisted): `groupClassFilters`, `aliFilters`, `subAliFilters`, `subAttrFilters` beside the existing `classFilters` / `rarityFilters` / `matchCounts`.
+- Rules in `ServantFilters` (`domain.js`): union inside a row, AND across rows, empty row = no filter; `rowScope` is the display bound (group chips and a Grand Duel lock only — a class pick never greys a sibling, owner decision), `effectiveClassIds` what the grid matches on; `Other` = the Good/Balanced/Evil complement (Madness, Summer live there).
+- `CLASS_GROUPS` (`constants.js`): Three Knights = Saber/Archer/Lancer, Four Cavalries = Rider/Caster/Assassin/Berserker, Extra I/II reused from the Grand Duel lists — all four are class-id lists, so no hand-maintained servant roster and `data:sync` is untouched.
+- Word chips (group, both alignments, sub-attribute) size to their text (`width: auto`), rarity and CE-count chips keep the 48px box; separators are `2px` of `var(--border)`, the same recipe as a card's own border (a 1px hairline read as absent).
+- `tests/servant-filters.test.js` (new, 13 tests), `scripts/verify_render.js` picker blocks re-pinned to the greyed-not-dropped DOM plus a new Bond Gain CE section block, `scripts/build_baseline.json` re-captured with `--write`.
+- Not run by the author: `npm run test` and `npm run build` passed; `node scripts/verify_render.js` was **not** executed after the last markup change (owner tests by hand at `localhost:3000`).
+
 ## 2026-11-05 — feat(bond): servant picker modal takes the Bond Gain CE tab's shape
 
 Asked as *"rework servant modal in bond calculator tab to be consistent with Bond Gain CE tab — search bar outside filter, filter button pops up a sub-modal and sort config next to it"*, then *"in grand duel single class will not have class sort selectable"*, then *"space between search and filter in modal should be consistent with Craft Essence Select, currently too much"*.
