@@ -796,6 +796,66 @@ try {
       `${(order.ratio * 100).toFixed(0)}% of the party card; event button ${(eventRatio * 100).toFixed(0)}%`,
   );
 
+  /* An essence worn by a borrowed support servant pays that CE's friend-side rate: 0910 Chaldea Teatime
+     gives +5% when your own servant wears it and +15% when you borrow a servant wearing it. The state is
+     seeded the way a returning player's save arrives (loadState() -> buildServantSlots), so a stripped
+     `supportBonus` field in CEList, a pool that forgets whose servant wears the essence, or a label that
+     stops reading SlotCEs.rate all fail here — the picker path above never equips a Support slot. */
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "fgo_bond_calculator_data",
+      JSON.stringify({
+        slots: [
+          { servantId: "001", bondNeeded: 5000, type: "normal", bondLevel: 0, targetLevel: 1, ces: ["0910"] },
+          { servantId: "002", type: "support", ces: ["0910"] },
+        ],
+        selectedQuest: "custom",
+        customBond: 1000,
+      }),
+    ),
+  );
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.click('.tab-btn[data-tab="bond"]');
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip-x").length === 2,
+      { timeout: 15000 },
+    );
+  } catch {
+    errors.push("support CE rate: neither slot restored its 0910 essence after reload");
+  }
+  await page.click("#bondCalculateBtn");
+  await page.waitForSelector("#bondResultContent .bond-result-servant-card", { timeout: 15000 });
+  const split = await page.evaluate(() => {
+    const chips = [...document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip")].map((c) => c.title);
+    const badges = Array.from(document.querySelectorAll("#bondResultContent .bond-result-ce-img"))
+      .map((i) => i.getAttribute("title"))
+      .filter((t) => t && t.includes("Teatime"));
+    const info = document.querySelector("#bondResultContent .bond-result-bond-info");
+    return { chips, badges, bonus: info ? (info.textContent.match(/\(\+([\d,]+)\)/) || [])[1] : null };
+  });
+  const chipWants = ["Chaldea Teatime · +5% All", "Chaldea Teatime · +15% All"];
+  if (JSON.stringify(split.chips.slice(0, 2)) !== JSON.stringify(chipWants)) {
+    errors.push(`support CE rate: slot chips read ${JSON.stringify(split.chips.slice(0, 2))}, want ${JSON.stringify(chipWants)}`);
+  }
+  if (JSON.stringify([...split.badges].sort()) !== JSON.stringify(["Chaldea Teatime +15%", "Chaldea Teatime +5%"])) {
+    errors.push(`support CE rate: the result card shows ${JSON.stringify(split.badges)}, want one +5% and one +15% badge`);
+  }
+  // 5%+15% = 200 of the 1,000-point base, x1.24 frontline (one borrowed support in the first three),
+  // +200 frontline flat and +40 for that support's +4%. Both essences boost the one calculated servant.
+  const wantBonus = Math.floor(200 * 1.24) + 200 + 40;
+  const gotBonus = Number((split.bonus || "").replace(/,/g, ""));
+  if (gotBonus !== wantBonus) {
+    errors.push(
+      `support CE rate: bond bonus is ${split.bonus} per run, want ${wantBonus} ` +
+        "(both essences paid self rate, both paid friend rate, or one was dropped)",
+    );
+  }
+  console.log(
+    `NOTE: support CE rate — chips ${JSON.stringify(split.chips.slice(0, 2))}, badges ${JSON.stringify(split.badges)}, ` +
+      `bonus +${split.bonus}/run`,
+  );
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();
