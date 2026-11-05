@@ -31,3 +31,5 @@ lighthouse-runner.js
 
 # develop-only release tooling, keeps itself off this branch
 scripts/merge_code_only.sh
+# local browser gate: CI never runs it (needs a Chromium download)
+scripts/verify_render.js
