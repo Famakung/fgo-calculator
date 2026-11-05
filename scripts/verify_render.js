@@ -115,6 +115,46 @@ try {
   console.log(`NOTE: ${cards} Bond Gain CE card(s), ${workerResults} worker result message(s)`);
   if (workerResults === 0) errors.push("ce filter: worker sent no message carrying a non-empty results array");
 
+  /* The result cards and the servant picker share one comparator: `CEFilterApp._sortEntries` delegates to
+     `ServantSort`, so this tab's own select and order button must still move the grid — and be put back,
+     because every block below reads the cards in their default ID order. */
+  const ceFirstCard = () =>
+    page.evaluate(() => {
+      const name = document.querySelector("#cefilterResults > .cefilter-servant-card .cefilter-servant-name");
+      return name ? name.textContent.trim() : "";
+    });
+  const ceIdFirst = await ceFirstCard();
+  await page.select("#cefilterSortBy", "class");
+  const ceClassFirst = await ceFirstCard();
+  await page.click("#cefilterSortOrderToggle");
+  const ceDescOrder = await page.evaluate(() => document.getElementById("cefilterSortOrderToggle").dataset.order);
+  const ceDescFirst = await ceFirstCard();
+  await page.click("#cefilterSortOrderToggle");
+  await page.select("#cefilterSortBy", "id");
+  const ceRestored = await ceFirstCard();
+  // The vertical rhythm the servant picker has to match: search bar to controls row.
+  const ceSearchGap = await page.evaluate(() =>
+    Math.round(
+      document
+        .querySelector("#cefilterSortBy")
+        .getBoundingClientRect()
+        .top - document.querySelector("#cefilterSearchInput").getBoundingClientRect().bottom,
+    ),
+  );
+  if (
+    !ceIdFirst ||
+    ceClassFirst === ceIdFirst ||
+    ceDescOrder !== "desc" ||
+    ceDescFirst === ceClassFirst ||
+    ceRestored !== ceIdFirst
+  ) {
+    errors.push(
+      `ce sort: ${JSON.stringify({ ceIdFirst, ceClassFirst, ceDescOrder, ceDescFirst, ceRestored })} — want Class ` +
+        `to move a different servant to the top than ID does, the order button to read desc and change the top ` +
+        `again, and ID ascending to come back on restore`,
+    );
+  }
+
   // Servant Select sub-tab: the reverse direction. The sub-tab bar sits in the top-right corner
   // of the controls card (its own right-aligned row below 760px), and both cards swap panels
   // together by data-subpanel.
@@ -1099,18 +1139,34 @@ try {
       };
     });
 
+  /* The class and rarity rows sit in a Filter sub-modal behind the Filter button, the same shape the Bond
+     Gain CE tab uses, so every read opens that first and peels the layers off in order. */
+  const openFilterSubModal = async () => {
+    await page.click("#servantPickerFilterBtn");
+    await page.waitForSelector("#servantFilterModal.open", { timeout: 15000 });
+  };
+  const closePicker = async () => {
+    // One Escape closes the sub-modal and leaves the picker under it; the second closes the picker.
+    if (await page.evaluate(() => document.getElementById("servantFilterModal").classList.contains("open"))) {
+      await page.keyboard.press("Escape");
+      await page.waitForSelector("#servantFilterModal:not(.open)", { timeout: 5000 });
+    }
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#servantModal:not(.open)", { timeout: 5000 });
+  };
+
   const pickerState = async () => {
     await page.click(".servant-add-slot");
     await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+    await openFilterSubModal();
     const seen = await page.evaluate(() => ({
-      row: Boolean(document.querySelector("#servantFilterArea .class-filter")),
-      classes: Array.from(document.querySelectorAll("#servantFilterArea .class-btn")).map((b) =>
+      row: document.getElementById("servantClassFilter").children.length > 0,
+      classes: Array.from(document.querySelectorAll("#servantClassFilter .class-btn")).map((b) =>
         b.classList.contains("active"),
       ),
       cards: document.getElementById("servantPickerGrid").children.length,
     }));
-    await page.keyboard.press("Escape");
-    await page.waitForSelector("#servantModal:not(.open)", { timeout: 5000 });
+    await closePicker();
     return seen;
   };
 
@@ -1119,8 +1175,9 @@ try {
   const pickerNarrow = async () => {
     await page.click(".servant-add-slot");
     await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+    await openFilterSubModal();
     const seen = await page.evaluate(() => {
-      const btns = [...document.querySelectorAll("#servantFilterArea .class-btn")];
+      const btns = [...document.querySelectorAll("#servantClassFilter .class-btn")];
       const grid = document.getElementById("servantPickerGrid");
       const active = () => btns.filter((b) => b.classList.contains("active")).length;
       const cards = () => grid.children.length;
@@ -1130,8 +1187,7 @@ try {
       btns[0].click();
       return { start, oneOn, cleared: { active: active(), cards: cards() } };
     });
-    await page.keyboard.press("Escape");
-    await page.waitForSelector("#servantModal:not(.open)", { timeout: 5000 });
+    await closePicker();
     return seen;
   };
 
@@ -1206,7 +1262,7 @@ try {
      group that does not contain it. */
   const pfRead = (setup) =>
     page.evaluate((spec) => {
-      const all = [...document.querySelectorAll("#servantFilterArea .class-btn, #servantFilterArea .rarity-btn")];
+      const all = [...document.querySelectorAll("#servantClassFilter .class-btn, #servantRarityFilter .rarity-btn")];
       const byLabel = (label) =>
         all.find((b) => ((b.querySelector("img") || {}).title || b.textContent.trim()) === label);
       (spec.pick || []).forEach((label) => byLabel(label).click());
@@ -1216,8 +1272,8 @@ try {
           .filter((b) => b.classList.contains("active"))
           .map((b) => (b.querySelector("img") || {}).title || b.textContent.trim());
       return {
-        classes: on("#servantFilterArea .class-btn"),
-        rarities: on("#servantFilterArea .rarity-btn"),
+        classes: on("#servantClassFilter .class-btn"),
+        rarities: on("#servantRarityFilter .rarity-btn"),
         cards: document.getElementById("servantPickerGrid").children.length,
       };
     }, setup || {});
@@ -1225,9 +1281,9 @@ try {
   const pfOpen = async (setup) => {
     await page.click(".servant-add-slot");
     await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+    await openFilterSubModal();
     const seen = await pfRead(setup);
-    await page.keyboard.press("Escape");
-    await page.waitForSelector("#servantModal:not(.open)", { timeout: 5000 });
+    await closePicker();
     return seen;
   };
 
@@ -1259,6 +1315,150 @@ try {
         `reopen and wiped by a refresh, and Extra I showing its own ${extra1.cards} cards with the Saber pick ignored`,
     );
   }
+
+  /* The sort row beside the Filter button: the grid re-orders on it, the choice is remembered with the rest
+     of the picker row, and a Grand Duel group that names one class greys Class out and falls back to ID. */
+  const gridIds = () =>
+    page.evaluate(() =>
+      [...document.getElementById("servantPickerGrid").children].map((item) => {
+        const img = item.querySelector("img");
+        const match = ((img || {}).getAttribute ? img.getAttribute("src") : "").match(/servants\/([^/]+)\//);
+        return match ? match[1] : "";
+      }),
+    );
+  const setSort = (value) =>
+    page.evaluate((v) => {
+      const select = document.getElementById("servantPickerSortBy");
+      select.value = v;
+      select.dispatchEvent(new Event("change"));
+    }, value);
+  const sortFlags = () =>
+    page.evaluate(() => {
+      const select = document.getElementById("servantPickerSortBy");
+      const order = document.getElementById("servantPickerSortOrder");
+      return {
+        by: select.value,
+        order: order.dataset.order,
+        classDisabled: select.querySelector('option[value="class"]').disabled,
+        searchVisible: Boolean(document.getElementById("servantPickerSearch").offsetParent),
+        collapsible: Boolean(document.querySelector("#servantModal .filter")),
+        subOpen: document.getElementById("servantFilterModal").classList.contains("open"),
+      };
+    });
+
+  // A refresh blanks the picker row, so the sort story starts from its defaults.
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.click('.tab-btn[data-tab="bond"]');
+  await page.waitForSelector(".servant-slot", { timeout: 15000 });
+  await page.select("#bondGrandClassSelect", "all");
+  await page.click(".servant-add-slot");
+  await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+  const sDefault = await sortFlags();
+  const ascIds = await gridIds();
+  const pickerSearchGap = await page.evaluate(() =>
+    Math.round(
+      document.querySelector("#servantPickerSortBy").getBoundingClientRect().top -
+        document.querySelector("#servantPickerSearch").getBoundingClientRect().bottom,
+    ),
+  );
+
+  await page.click("#servantPickerFilterBtn");
+  await page.waitForSelector("#servantFilterModal.open", { timeout: 5000 });
+  const underFilter = await page.evaluate(() => ({
+    main: document.getElementById("servantModal").classList.contains("open"),
+    sub: document.getElementById("servantFilterModal").classList.contains("open"),
+  }));
+  await page.keyboard.press("Escape");
+  await page.waitForSelector("#servantFilterModal:not(.open)", { timeout: 5000 });
+  const topPeeled = await page.evaluate(() => document.getElementById("servantModal").classList.contains("open"));
+
+  await setSort("rarity");
+  const rarityAsc = await gridIds();
+  await page.click("#servantPickerSortOrder");
+  const rarityFlags = await sortFlags();
+  const rarityDesc = await gridIds();
+  await closePicker();
+  await page.click(".servant-add-slot");
+  await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+  const reopened = await sortFlags();
+  await setSort("class");
+  const classAsc = await gridIds();
+  await closePicker();
+
+  await page.select("#bondGrandClassSelect", "0100");
+  await page.click(".servant-add-slot");
+  await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+  const saberSort = await sortFlags();
+  await closePicker();
+
+  await page.select("#bondGrandClassSelect", "extra1");
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.click('.tab-btn[data-tab="bond"]');
+  await page.waitForSelector(".servant-slot", { timeout: 15000 });
+  await page.click(".servant-add-slot");
+  await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+  const reloaded = await sortFlags();
+  await closePicker();
+
+  if (
+    pickerSearchGap !== ceSearchGap ||
+    sDefault.by !== "id" ||
+    sDefault.order !== "asc" ||
+    sDefault.classDisabled ||
+    !sDefault.searchVisible ||
+    sDefault.collapsible ||
+    sDefault.subOpen ||
+    ascIds.length < 2 ||
+    ascIds.join() !== ascIds.slice().sort().join() ||
+    !underFilter.main ||
+    !underFilter.sub ||
+    topPeeled !== true ||
+    rarityAsc.join() === ascIds.join() ||
+    rarityFlags.by !== "rarity" ||
+    rarityFlags.order !== "desc" ||
+    rarityDesc.join() !== rarityAsc.slice().reverse().join() ||
+    reopened.by !== "rarity" ||
+    reopened.order !== "desc" ||
+    classAsc.length !== ascIds.length ||
+    classAsc.join() === rarityDesc.join() ||
+    saberSort.classDisabled !== true ||
+    saberSort.by !== "id" ||
+    reloaded.classDisabled !== false ||
+    reloaded.by !== "id" ||
+    reloaded.order !== "asc"
+  ) {
+    const sortSeen = {
+      ceGap: ceSearchGap,
+      pickerGap: pickerSearchGap,
+      default: sDefault,
+      underFilter,
+      topPeeled,
+      asc: ascIds.slice(0, 4),
+      rarityAsc: rarityAsc.slice(0, 4),
+      rarityDesc: rarityDesc.slice(0, 4),
+      rarityFlags,
+      reopened,
+      classAsc: classAsc.slice(0, 4),
+      saberSort,
+      reloaded,
+    };
+    errors.push(
+      `picker sort: ${JSON.stringify(sortSeen)}, want the search bar sitting exactly as far above the controls row ` +
+        `as it does on the Bond Gain CE tab, ID ascending at first paint, a Rarity sort that reverses when ` +
+        `its order button is pressed, that choice held across a close and a reopen and wiped by a refresh, the Filter ` +
+        `button opening a sub-modal over the picker with Escape peeling only that layer, and Class greyed out with ` +
+        `the sort back on ID under a single-class quest`,
+    );
+  }
+
+  console.log(
+    `NOTE: picker sort row — search-to-controls gap ${pickerSearchGap}px against the tab's ${ceSearchGap}px, ` +
+      `at open ${JSON.stringify(sDefault)} over ${ascIds.length} cards ` +
+      `(${ascIds.slice(0, 3)}…), Filter button ${JSON.stringify(underFilter)} and Escape left the picker ` +
+      `${topPeeled}, rarity ${rarityAsc.slice(0, 3)}… then ${JSON.stringify(rarityFlags)} ${rarityDesc.slice(0, 3)}…, ` +
+      `reopen ${JSON.stringify(reopened)}, class ${classAsc.slice(0, 3)}…, Saber ${JSON.stringify(saberSort)}, ` +
+      `after a refresh ${JSON.stringify(reloaded)}`,
+  );
 
   /* Each class files its own party. Mash is stored under Saber (a class it does not belong to, which only
      a hand-written save can do) and under All, so Saber must refuse it, All must price it, and a class
