@@ -5,6 +5,8 @@ import {
   EPSILON,
   BOND_CONSTANTS,
   CLASS_FILTERS,
+  CLASS_GROUPS,
+  ALIGNMENT_GBE_FILTERS,
   FREE_QUESTS,
   GRAND_CLASSES,
   GRAND_DIFFICULTIES,
@@ -451,6 +453,65 @@ export const Quest = {
     if (!ids) return true;
     const allowed = new Set(ids);
     return (traits || []).some((t) => allowed.has(t));
+  },
+};
+
+/* ============================================
+   SERVANT FILTERS (Filter Settings modal rows)
+   ============================================ */
+
+/* One row is a union — any chip in it passes — and the rows are ANDed together; a row with nothing
+   selected is no filter at all. `traits` is always the same merged list the class and rarity rows
+   already read: the servant's own in the picker, the resolved ascension's on a result card. */
+export const ServantFilters = {
+  /* The Good/Balanced/Evil row's last chip is a complement, not a trait: it stands for every servant
+     with none of the three, which is where Madness and Summer alignments land. */
+  SUB_ALI_OTHER: "other",
+  GBE: ALIGNMENT_GBE_FILTERS.filter((c) => c.id).map((c) => c.id),
+
+  /* Which classes the Class row may offer: the union of the chosen groups, clipped to a quest's party
+     lock when there is one. null means the row is unbounded — no group and no lock — and [] means a
+     group that shares nothing with the lock, which leaves the row with nothing it can offer. */
+  classScope(groupClassFilters, lockedClasses) {
+    const keys = (groupClassFilters || []).filter((k) => CLASS_GROUPS.some((g) => g.key === k));
+    const ids = keys.flatMap((k) => CLASS_GROUPS.find((g) => g.key === k).classes);
+    const lock = lockedClasses && lockedClasses.length ? lockedClasses : null;
+    if (ids.length === 0) return lock ? [...lock] : null;
+    if (!lock) return [...new Set(ids)];
+    return [...new Set(ids)].filter((id) => lock.includes(id));
+  },
+
+  /* An absent row is no filter; an empty array is a bound nothing can satisfy (the class scope after a
+     group and a lock that share no class). */
+  rowMatches(traits, selected, { other } = {}) {
+    if (!selected) return true;
+    if (selected.length === 0) return false;
+    if (other && selected.includes(ServantFilters.SUB_ALI_OTHER)) {
+      const gbe = new Set(ServantFilters.GBE);
+      if (!(traits || []).some((t) => gbe.has(t))) return true;
+      // the complement is one chip among several: the rest still have to be met
+      if (selected.length === 1) return false;
+      return (traits || []).some((t) => selected.includes(t));
+    }
+    return (traits || []).some((t) => selected.includes(t));
+  },
+
+  match(traits, filters = {}) {
+    const { classFilters, rarityFilters, groupClassFilters, aliFilters, subAliFilters, subAttrFilters, lockedClasses } =
+      filters;
+    /* The same rule the Grand Duel lock uses: a class pick carried from outside the scope is ignored,
+       and nothing picked inside a scope means the whole scope. An empty non-null scope is a group that
+       shares nothing with the lock, and no servant can satisfy it. */
+    const scope = this.classScope(groupClassFilters, lockedClasses);
+    const classIds = Quest.pickedClassIds(classFilters, scope);
+    if (scope && classIds.length === 0) return false;
+    return (
+      this.rowMatches(traits, classIds.length > 0 ? classIds : undefined) &&
+      this.rowMatches(traits, rarityFilters) &&
+      this.rowMatches(traits, aliFilters) &&
+      this.rowMatches(traits, subAliFilters, { other: true }) &&
+      this.rowMatches(traits, subAttrFilters)
+    );
   },
 };
 
