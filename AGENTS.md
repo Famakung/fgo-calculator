@@ -15,7 +15,7 @@ Mandatory — read the ones that cover your change (25 KB total):
 
 On demand, do **not** load them by default (they are big):
 
-- [.claude/CLAUDE.md](.claude/CLAUDE.md) (39 KB) — full architecture, build/deploy pipeline, Known Issues. Read the section matching your task; it is the deepest source of truth.
+- [.claude/CLAUDE.md](.claude/CLAUDE.md) (41 KB) — full architecture, build/deploy pipeline, Known Issues. Read the section matching your task; it is the deepest source of truth.
 - [.claude/docs/progress.md](.claude/docs/progress.md) (172 KB) — implementation log, per-feature status, testing checklists. Read the tail and grep for your feature, not the whole file.
 - [.claude/docs/fetch-data-guideline.md](.claude/docs/fetch-data-guideline.md) (63 KB) — only for Atlas Academy data-sync work.
 

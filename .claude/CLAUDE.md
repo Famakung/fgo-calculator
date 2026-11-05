@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) and AI coding assist
 ## ⚠️ Pre-Implementation Requirement (Project Memory)
 
 **ALWAYS read the relevant documentation in `.claude/docs/` before implementing anything!**
-The first four bullets are the mandatory read (~25 KB together). `fetch-data-guideline.md` and `progress.md` are 62 KB and 163 KB — grep them for your feature instead of loading either whole. `AGENTS.md` and `GEMINI.md` at the repo root carry the same contract for non-Claude agents (Antigravity, Codex, Copilot); all four files are tracked, keep them in step.
+The first four bullets are the mandatory read (~25 KB together). `fetch-data-guideline.md` and `progress.md` are 63 KB and 172 KB — grep them for your feature instead of loading either whole. `AGENTS.md` and `GEMINI.md` at the repo root carry the same contract for non-Claude agents (Antigravity, Codex, Copilot); all four files are tracked, keep them in step.
 - **`code-style.md`** — Coding conventions, strict DOM safety rules (NEVER use `innerHTML`, use `createElement()` + `textContent` + `setAttribute()`, or `DocumentFragment` with `replaceChildren()`), naming standards, state management, and performance patterns.
 - **`structure.md`** — Project architecture, 3-layer pattern (Domain, Application, Presentation), module responsibilities, Vite manual chunk splitting, and script loading order.
 - **`data-rules.md`** — Trait ID conventions (4-digit zero-padded strings), `SERVANT_DATA` and `CE_DATA` schemas, trait match modes, and public asset paths (`public/servants/`, `public/craft_essences/`).
@@ -13,6 +13,25 @@ The first four bullets are the mandatory read (~25 KB together). `fetch-data-gui
 On demand only (large):
 - **`fetch-data-guideline.md`** — Guidelines for fetching and processing game data from Atlas Academy API.
 - **`progress.md`** — Current implementation status, testing checklists, and project roadmap.
+
+## ⚠️ Token Spend — Ask Before a Big Burn (owner rule, applies to every repo)
+
+The owner decides what a run costs; the workflow does not. Name the step in one line and **wait for approval**
+before any of:
+
+- dispatching a reviewer, auditor or any other subagent, and any parallel fan-out of agents
+- running a multi-agent `Workflow`
+- reading a large file whole (this file's on-demand docs above, generated data, lockfiles) instead of grepping
+- repeating `npm run build` + `node scripts/verify_render.js` when no source file changed
+
+No approval needed for what a task already calls for: `npm run test`, `npm run lint`,
+`node scripts/check_build_output.js`, `git` reads, targeted greps.
+
+**Never auto-run a final whole-branch code review.** The owner reviews the diff and tests by hand (currently
+against a served build at `localhost:3000`). Report the gate evidence and stop; do not substitute a self-review
+pass for the reviewer you were told to skip. Recorded the same way in `AGENTS.md` and `GEMINI.md`, and globally in
+`~/.claude/CLAUDE.md`. This is not permission to pause between plan tasks asking "should I continue?" — progress
+prompts stay forbidden.
 
 ## Project
 
