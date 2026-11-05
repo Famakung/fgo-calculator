@@ -758,6 +758,44 @@ try {
     errors.push(`bond slot back to Normal: point box shows ${JSON.stringify(backToNormal.points)}, was ${JSON.stringify(normal.points)}`);
   }
 
+  /* The Bond tab reads quest first, then the party it is spent on, and the calculate button belongs to
+     the party card — bottom right of it, not a full-width bar across the page. The Event Shop button is
+     measured too, because it shares .calculate-btn and must keep stretching. */
+  const order = await page.evaluate(() => {
+    const quest = document.getElementById("bondQuestSelect").closest(".card");
+    const party = document.getElementById("servantGrid").closest(".card");
+    const btn = document.getElementById("bondCalculateBtn");
+    const partyInner = party.querySelector(".card-inner");
+    return {
+      questFirst: Boolean(quest.compareDocumentPosition(party) & Node.DOCUMENT_POSITION_FOLLOWING),
+      inPartyCard: partyInner.contains(btn),
+      label: btn.textContent.trim(),
+      ratio: btn.getBoundingClientRect().width / btn.parentElement.clientWidth,
+    };
+  });
+  if (!order.questFirst) errors.push("bond order: the Select Quest card does not come before the Party Setup card");
+  if (!order.inPartyCard) errors.push("bond order: #bondCalculateBtn is not inside the Party Setup card");
+  if (order.label !== "Calculate Quest Runs") {
+    errors.push(`bond order: the button reads ${JSON.stringify(order.label)}, want "Calculate Quest Runs"`);
+  }
+  if (!(order.ratio > 0 && order.ratio <= 0.5)) {
+    errors.push(`bond order: the button spans ${(order.ratio * 100).toFixed(0)}% of its row, want at most half`);
+  }
+
+  await page.click('.tab-btn[data-tab="event"]');
+  const eventRatio = await page.evaluate(() => {
+    const btn = document.getElementById("calculateBtn");
+    return btn.getBoundingClientRect().width / btn.parentElement.clientWidth;
+  });
+  await page.click('.tab-btn[data-tab="bond"]');
+  if (!(eventRatio > 0.9)) {
+    errors.push(`event tab: #calculateBtn spans ${(eventRatio * 100).toFixed(0)}% of its row, want full width`);
+  }
+  console.log(
+    `NOTE: bond tab order — quest card first, button ${JSON.stringify(order.label)} at ` +
+      `${(order.ratio * 100).toFixed(0)}% of the party card; event button ${(eventRatio * 100).toFixed(0)}%`,
+  );
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();
