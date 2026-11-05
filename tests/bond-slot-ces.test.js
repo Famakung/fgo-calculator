@@ -78,9 +78,31 @@ test("the old top-level pool is dropped, not dealt out to the slots", () => {
   const state = BondApp.loadState();
   assert.equal(state.ces, undefined);
   assert.deepEqual(state.slots[0].ces, ["2645"]);
-  assert.equal(state.slots[0].grand, true);
+  // No quest in the save, so this is the shared party — and the shared party cannot be grand.
+  assert.equal(state.slots[0].grand, false);
   assert.deepEqual(state.slots[1].ces, []);
   assert.equal(state.slots[1].grand, false);
+});
+
+/* The tick became Grand Duel's own, so loadState() sanitizes each party by its own key: an old save that
+   ticked it under Free Quest must not come back wearing an essence no tick can untick, while the Grand
+   Duel racks that can use the flag keep it and both essences. */
+test("a shared party loses grand and the second essence, a Grand Duel party keeps both", () => {
+  const rack = [{ servantId: "105", ces: ["2645", "2198"], grand: true }];
+  blobs.set(
+    KEY,
+    JSON.stringify({
+      slots: rack,
+      parties: { all: rack.map((s) => ({ ...s })) },
+      questMain: "fq",
+      questSub: "fq83",
+    }),
+  );
+  const state = BondApp.loadState();
+  assert.deepEqual(state.slots[0].ces, ["2645"]);
+  assert.equal(state.slots[0].grand, false);
+  assert.deepEqual(state.parties.all[0].ces, ["2645", "2198"]);
+  assert.equal(state.parties.all[0].grand, true);
 });
 
 test("a save holding more essences than the slot fits comes back clamped, and stays clamped", () => {

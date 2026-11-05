@@ -562,6 +562,10 @@ try {
   // the shipped text and that nothing clips or overflows at each layout tier.
   await page.click('.tab-btn[data-tab="bond"]');
   await page.waitForSelector(".servant-add-slot");
+  /* The Grand Servant tick lives only in a Grand Duel party, and each quest choice owns its own rack, so
+     the card the blocks below measure is built inside Grand Duel from here on. */
+  await page.select("#bondQuestSelect", "gd");
+  await page.waitForSelector(".servant-add-slot");
   await page.click(".servant-add-slot");
   await page.waitForSelector("#servantModal.open .servant-picker-item");
   await page.click("#servantModal .servant-picker-item");
@@ -1076,6 +1080,25 @@ try {
   /* How many slots are still blank — one number that says whether the rack on screen is this class's own. */
   const blankSlots = () => page.evaluate(() => document.querySelectorAll(".servant-add-slot").length);
 
+  /* The Grand Servant tick is Grand Duel's own: the block keeps its label and its chip everywhere, but only
+     a Grand Duel party builds the row that opens the second position, and no label may point at a control
+     that is not there. */
+  const ceTickState = () =>
+    page.evaluate(() => {
+      // Each slot has one block and one tick of its own, so the three counts can never drift apart when a
+      // rack mixes a Grand Duel card with a Free Quest one.
+      const blocks = [...document.querySelectorAll(".slot-ce-block")];
+      return {
+        blocks: blocks.length,
+        ticks: blocks.filter((b) => b.querySelector(".bond-checkbox")).length,
+        chips: blocks.reduce((n, b) => n + b.querySelectorAll(".ce-chip").length, 0),
+        labels: blocks.map((b) => (b.querySelector(":scope > .bond-input-box-label") || {}).textContent || ""),
+        orphans: [...document.querySelectorAll(".slot-ce-block label[for]")].filter(
+          (l) => !document.getElementById(l.getAttribute("for")),
+        ).length,
+      };
+    });
+
   const pickerState = async () => {
     await page.click(".servant-add-slot");
     await page.waitForSelector("#servantModal.open", { timeout: 15000 });
@@ -1281,6 +1304,12 @@ try {
   if (allBlank !== 5) {
     errors.push(`party per class: All opened with ${6 - allBlank} servant(s), want its own filed Mash`);
   }
+  const gdTicks = await ceTickState();
+  if (gdTicks.blocks !== 1 || gdTicks.ticks !== 1 || gdTicks.orphans || !gdTicks.labels.includes("Craft Essence")) {
+    errors.push(
+      `Grand Servant tick: a Grand Duel party drew ${JSON.stringify(gdTicks)}, want 1 block, 1 tick, no dangling label`,
+    );
+  }
   await page.click("#bondCalculateBtn");
   const gdPlan = await readTeapot();
   if (!gdPlan.boosted || !/^3,164\(/.test(gdPlan.boosted.info)) {
@@ -1311,6 +1340,55 @@ try {
   if (fqShared !== 1) {
     errors.push(`party per class: Free Quest reopened with ${fqShared} servant(s), want the parked Mash`);
   }
+  const fqTicks = await ceTickState();
+  if (fqTicks.blocks !== 1 || fqTicks.ticks !== 0 || fqTicks.chips !== 1 || !fqTicks.labels.includes("Craft Essence")) {
+    errors.push(
+      `Grand Servant tick: Free Quest drew ${JSON.stringify(fqTicks)}, want the block, one chip, its label and no tick`,
+    );
+  }
+
+  /* The fallback for a save written while the tick sat in every card: the shared party carries
+     `grand: true` and two essences, and loadState() must strip both — otherwise the card shows a second
+     chip that no longer has a tick to untick it. The same save's Grand Duel party keeps both, so the strip
+     is scoped to the party that cannot use it and is not a blanket wipe. */
+  await page.evaluate(() => {
+    const data = JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));
+    const mash = [
+      {
+        servantId: "001",
+        bondNeeded: 2500,
+        type: "normal",
+        bondLevel: 0,
+        targetLevel: 3,
+        ces: ["0910", "1080"],
+        grand: true,
+      },
+    ];
+    data.slots = mash;
+    data.parties = { all: mash.map((s) => ({ ...s })) };
+    data.questMain = "fq";
+    data.questSub = "fq83";
+    localStorage.setItem("fgo_bond_calculator_data", JSON.stringify(data));
+  });
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.click('.tab-btn[data-tab="bond"]');
+  await page.waitForSelector(".slot-ce-block", { timeout: 15000 });
+  const legacyFq = await ceTickState();
+  if (legacyFq.blocks !== 1 || legacyFq.ticks !== 0 || legacyFq.chips !== 1 || legacyFq.orphans) {
+    errors.push(
+      `Grand Servant fallback: an old Free Quest save with grand:true drew ${JSON.stringify(legacyFq)}, ` +
+        `want one block, one chip, no tick`,
+    );
+  }
+  await page.select("#bondQuestSelect", "gd");
+  await page.waitForSelector(".slot-ce-block", { timeout: 15000 });
+  const legacyGd = await ceTickState();
+  if (legacyGd.blocks !== 1 || legacyGd.ticks !== 1 || legacyGd.chips !== 2) {
+    errors.push(
+      `Grand Servant fallback: the same save's Grand Duel party drew ${JSON.stringify(legacyGd)}, ` +
+        `want its tick and both essences intact`,
+    );
+  }
   console.log(
     `NOTE: quest cascade — Free ${JSON.stringify(fqRows)}, Grand ${JSON.stringify(grandRows)}; ` +
       `Extra I picker ${JSON.stringify(extra1)} → narrow ${JSON.stringify(narrow)}; Saber ${JSON.stringify(saber)}; ` +
@@ -1318,6 +1396,8 @@ try {
       `refusal ${JSON.stringify(questDialogs)}; ` +
       `parties: Grand ${6 - grandBlank} servant(s) on entry, Saber held ${6 - saberBlank}, Extra I ${6 - awayBlank} ` +
       `while away and ${6 - backBlank} back, All ${6 - allBlank}, Free Quest again ${fqShared}; ` +
+      `Grand Servant tick: gd ${JSON.stringify(gdTicks)}, fq ${JSON.stringify(fqTicks)}, ` +
+      `old save fq ${JSON.stringify(legacyFq)} → gd ${JSON.stringify(legacyGd)}; ` +
       `restored ${JSON.stringify(questRestored)} on "${lv100}" — priced ${JSON.stringify(gdPlan.boosted)}`,
   );
 
