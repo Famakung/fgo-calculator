@@ -102,6 +102,14 @@ export const SUB_ATTR_FILTERS = [
   { id: "0204", label: "Beast" },
 ];
 
+/* Gender, the row under Sub-Attribute: the `00xx` family every servant carries (164 male, 288 female, 23
+   unknown), read by `filter-sections.js` and matched by `ServantFilters`. */
+export const GENDER_FILTERS = [
+  { id: "0001", label: "Male" },
+  { id: "0002", label: "Female" },
+  { id: "0003", label: "Unknown" },
+];
+
 /* The quest a Bond plan is priced on. The player picks a family first, then one choice inside it:
    Free Quest names a single quest (or its own custom figure), Grand Duel names a class group and then
    the Rank-Up Training Battle level of that class. */

@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ServantFilters } from "../src/scripts/domain.js";
-import { CLASS_FILTERS, CLASS_GROUPS, SUB_ATTR_FILTERS, ALIGNMENT_GBE_FILTERS } from "../src/scripts/constants.js";
+import {
+  CLASS_FILTERS,
+  CLASS_GROUPS,
+  SUB_ATTR_FILTERS,
+  ALIGNMENT_GBE_FILTERS,
+  GENDER_FILTERS,
+} from "../src/scripts/constants.js";
 
 const sabers = ["0001", "0100", "0200", "0300", "0303", "0404"];
 const helena = ["0002", "0104", "0202", "0301", "0303", "0404", "2780"];
@@ -185,6 +191,25 @@ test("the picker reads every form, so a per-ascension attribute is findable", as
   assert1.deepEqual(ServantFilters.match(every, { subAttrFilters: ["0204"] }), false);
   // a servant with no ascension diffs is unaffected
   assert1.deepEqual([...ServantData.getAllTraits("100")].sort(), [...ServantData.byId.get("100").traits].sort());
+});
+
+test("gender is a row like the others", () => {
+  assert.deepEqual(ServantFilters.match(sabers, { genderFilters: ["0001"] }), true);
+  assert.deepEqual(ServantFilters.match(sabers, { genderFilters: ["0002"] }), false);
+  assert.deepEqual(ServantFilters.match(helena, { genderFilters: ["0001", "0002"] }), true); // union inside the row
+  assert.deepEqual(ServantFilters.match(helena, { genderFilters: [], rarityFilters: ["0404"] }), true);
+  assert.deepEqual(ServantFilters.match(helena, { genderFilters: ["0003"] }), false);
+});
+
+test("the gender row offers the three traits the data uses", () => {
+  assert.deepEqual(
+    GENDER_FILTERS.map((g) => g.id),
+    ["0001", "0002", "0003"],
+  );
+  assert.deepEqual(
+    GENDER_FILTERS.map((g) => g.label),
+    ["Male", "Female", "Unknown"],
+  );
 });
 
 test("Other unions with the chips beside it instead of vetoing them", () => {

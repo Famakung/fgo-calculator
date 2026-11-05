@@ -508,7 +508,7 @@ export const ServantFilters = {
   },
 
   match(traits, filters = {}) {
-    const { rarityFilters, aliFilters, subAliFilters, subAttrFilters } = filters;
+    const { rarityFilters, aliFilters, subAliFilters, subAttrFilters, genderFilters } = filters;
     /* The class row reads the group, the quest's lock and the player's picks together, and a pick from
        outside the bound is ignored rather than honoured. */
     const ids = this.effectiveClassIds(filters);
@@ -517,7 +517,8 @@ export const ServantFilters = {
       this.rowMatches(traits, rarityFilters) &&
       this.rowMatches(traits, aliFilters) &&
       this.rowMatches(traits, subAliFilters, { other: true }) &&
-      this.rowMatches(traits, subAttrFilters)
+      this.rowMatches(traits, subAttrFilters) &&
+      this.rowMatches(traits, genderFilters)
     );
   },
 };

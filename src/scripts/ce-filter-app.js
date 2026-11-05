@@ -5,6 +5,7 @@ import {
   ALIGNMENT_LNC_FILTERS,
   ALIGNMENT_GBE_FILTERS,
   SUB_ATTR_FILTERS,
+  GENDER_FILTERS,
   DEBOUNCE_MS,
 } from "./constants.js";
 import { TraitMatcher, Validator, ServantSort, ServantFilters } from "./domain.js";
@@ -81,6 +82,7 @@ export const CEFilterApp = {
     aliFilters: [],
     subAliFilters: [],
     subAttrFilters: [],
+    genderFilters: [],
     matchCounts: [],
     matchCustomCounts: [],
     sortBy: "id",
@@ -406,6 +408,12 @@ export const CEFilterApp = {
       SUB_ATTR_FILTERS,
       this.state.subAttrFilters,
       toggle("subAttrFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("cefilterGenderFilter"),
+      GENDER_FILTERS,
+      this.state.genderFilters,
+      toggle("genderFilters"),
     );
   },
 

@@ -33,7 +33,7 @@ today duplicates the class and rarity rows by hand.
 - A hand-maintained servant-id list per group. Every group is a list of class trait ids.
 - Chip sizes under 48px.
 
-## The seven sections
+## The sections (eight as built — Gender was added after approval)
 
 | # | Label (centred) | Chips, in this order | State key | Trait ids |
 |---|---|---|---|---|
@@ -43,7 +43,8 @@ today duplicates the class and rarity rows by hand.
 | 4 | Alignment (Lawful/Neutral/Chaotic) | Lawful · Neutral · Chaotic | `aliFilters` (new) | `0300` `0302` `0301` |
 | 5 | Alignment (Good/Balanced/Evil) | Good · Balanced · Evil · Other | `subAliFilters` (new) | `0303` `0305` `0304` + Other |
 | 6 | Sub-Attribute | Heaven · Earth · Human · Star · Beast | `subAttrFilters` (new) | `0200`–`0204` |
-| 7 | CE Bonus | one button per CE count that occurs in the results | `matchCounts` (exists) | — |
+| 7 | Gender | Male · Female · Unknown | `genderFilters` (added after approval, 2026-11-06) | `0001` `0002` `0003` |
+| 8 | CE Bonus | one button per CE count that occurs in the results | `matchCounts` (exists) | — |
 
 Rarity order is ascending (★0 first), as `RARITY_FILTERS` already spells it; the owner's sketch listed ★5
 first, which is the open question this document does not settle.

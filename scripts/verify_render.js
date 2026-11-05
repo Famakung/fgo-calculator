@@ -436,7 +436,7 @@ try {
   if (ceCleared.clearLabel !== "Clear all") errors.push(`ce clear: label stayed "${ceCleared.clearLabel}"`);
   if (ceCleared.cards === 0) errors.push("ce clear: the servant grid emptied instead of falling back to all servants");
 
-  /* The seven-section Filter Settings modal: labels in order, a class pick that narrows the grid without
+  /* The eight-section Filter Settings modal: labels in order, a class pick that narrows the grid without
      greying any sibling, and a group chip that greys the twelve classes outside it. Everything is toggled
      back off before the blocks below run, since they read the grid unfiltered. */
   await page.evaluate(() => document.getElementById("cefilterFilterBtn").click());
@@ -482,12 +482,13 @@ try {
     "Alignment (Lawful/Neutral/Chaotic)",
     "Alignment (Good/Balanced/Evil)",
     "Sub-Attribute",
+    "Gender",
     "CE Bonus",
   ];
   if (ceFilter.sections.join() !== WANT_LABELS.join()) {
     errors.push(`ce filter: sections read ${JSON.stringify(ceFilter.sections)}, want ${JSON.stringify(WANT_LABELS)}`);
   }
-  if (ceFilter.dividers !== 6) errors.push(`ce filter: ${ceFilter.dividers} separators, want 6 between 7 sections`);
+  if (ceFilter.dividers !== 7) errors.push(`ce filter: ${ceFilter.dividers} separators, want 7 between 8 sections`);
   if (ceFilter.disabledUnderGroup !== 12) {
     errors.push(`ce filter: Three Knights greyed ${ceFilter.disabledUnderGroup} class chips, want the 12 outside it`);
   }
@@ -1312,7 +1313,7 @@ try {
     extra1.enabled !== 4 ||
     extra1.disabled !== 11 ||
     extra1.groups !== 4 ||
-    extra1.sections !== 6 ||
+    extra1.sections !== 7 ||
     extra1.classes.some((a) => a) ||
     narrow.start.active !== 0 ||
     narrow.oneOn.active !== 1 ||

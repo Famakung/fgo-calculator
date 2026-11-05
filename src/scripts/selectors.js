@@ -6,6 +6,7 @@ import {
   ALIGNMENT_LNC_FILTERS,
   ALIGNMENT_GBE_FILTERS,
   SUB_ATTR_FILTERS,
+  GENDER_FILTERS,
   DEBOUNCE_MS,
 } from "./constants.js";
 import { ServantSort, ServantFilters } from "./domain.js";
@@ -36,6 +37,7 @@ export const ServantSelector = {
   aliFilters: [],
   subAliFilters: [],
   subAttrFilters: [],
+  genderFilters: [],
   _searchQuery: "",
   /* Sort sits with the rest of the picker row: kept for the page, blank after a refresh, and never saved. */
   sortBy: "id",
@@ -324,6 +326,12 @@ export const ServantSelector = {
       SUB_ATTR_FILTERS,
       this.subAttrFilters,
       toggle("subAttrFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantGenderFilter"),
+      GENDER_FILTERS,
+      this.genderFilters,
+      toggle("genderFilters"),
     );
   },
 };
