@@ -68,12 +68,12 @@ export const CLASS_FILTERS = {
 };
 
 export const RARITY_FILTERS = [
-  { id: "0400", label: "0 \u2605" },
-  { id: "0401", label: "1 \u2605" },
-  { id: "0402", label: "2 \u2605" },
-  { id: "0403", label: "3 \u2605" },
-  { id: "0404", label: "4 \u2605" },
-  { id: "0405", label: "5 \u2605" },
+  { id: "0400", label: "\u26050" },
+  { id: "0401", label: "\u26051" },
+  { id: "0402", label: "\u26052" },
+  { id: "0403", label: "\u26053" },
+  { id: "0404", label: "\u26054" },
+  { id: "0405", label: "\u26055" },
 ];
 
 /* The Filter Settings modal's trait chip rows, read by `filter-sections.js` and matched by

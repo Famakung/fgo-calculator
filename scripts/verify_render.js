@@ -1370,7 +1370,7 @@ try {
   };
 
   const pfSame = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  const pfPicked = await pfOpen({ pick: ["Saber", "5 ★"] });
+  const pfPicked = await pfOpen({ pick: ["Saber", "★5"] });
   const pfReopen = await pfOpen();
   await page.reload({ waitUntil: "networkidle0" });
   await page.click('.tab-btn[data-tab="bond"]');
@@ -1382,7 +1382,7 @@ try {
   const pfGroup = await pfOpen();
   if (
     pfPicked.classes.join() !== "Saber" ||
-    pfPicked.rarities.join() !== "5 ★" ||
+    pfPicked.rarities.join() !== "★5" ||
     !(pfPicked.cards > 0 && pfPicked.cards < every.cards) ||
     !pfSame(pfReopen, pfPicked) ||
     pfReload.classes.length !== 0 ||
@@ -1393,7 +1393,7 @@ try {
     pfGroup.cards !== extra1.cards
   ) {
     errors.push(
-      `picker filters: ${JSON.stringify([pfPicked, pfReopen, pfReload, pfGroup])}, want Saber + 5 ★ held across a ` +
+      `picker filters: ${JSON.stringify([pfPicked, pfReopen, pfReload, pfGroup])}, want Saber + ★5 held across a ` +
         `reopen and wiped by a refresh, and Extra I showing its own ${extra1.cards} cards with the Saber pick ignored`,
     );
   }
