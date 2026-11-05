@@ -4,6 +4,7 @@ import {
   MAX_ITERATIONS,
   EPSILON,
   BOND_CONSTANTS,
+  CLASS_FILTERS,
   FREE_QUESTS,
   GRAND_CLASSES,
   GRAND_DIFFICULTIES,
@@ -450,5 +451,66 @@ export const Quest = {
     if (!ids) return true;
     const allowed = new Set(ids);
     return (traits || []).some((t) => allowed.has(t));
+  },
+};
+
+/* ============================================
+   SERVANT SORT (picker rows and result cards)
+   ============================================ */
+
+/* Class rank follows the order the filter rows show classes, built once per process. */
+let _classOrder = null;
+const classOrder = () => {
+  if (!_classOrder) {
+    _classOrder = new Map();
+    [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].forEach((cls, idx) => {
+      _classOrder.set(cls.id, idx);
+    });
+  }
+  return _classOrder;
+};
+
+/* Both keys read the trait list the class and rarity filters already read — the servant's base traits in
+   the picker, and the resolved ascension's in a Bond Gain CE result card — so what a row sorts by is what
+   filters it. */
+export const ServantSort = {
+  KEYS: ["id", "rarity", "class"],
+
+  /* The `04xx` rarity trait as a number; a servant with none ranks 0 rather than vanishing. */
+  rarity(traits) {
+    const found = (traits || []).filter((t) => t.startsWith("04"));
+    return found.length > 0 ? Math.max(...found.map((t) => parseInt(t.slice(2), 10))) : 0;
+  },
+
+  /* Rank in the picker's own class order. 99 keeps a class nobody lists at the end of ascending order
+     instead of folding it in with Saber. */
+  classIndex(traits) {
+    const found = (traits || []).find((t) => t.startsWith("01"));
+    const rank = classOrder().get(found);
+    return rank === undefined ? 99 : rank;
+  },
+
+  /* A sorted copy. ID breaks every tie, and the direction applies to that tie-break too, so the same list
+     re-sorted the other way round comes back exactly reversed.
+
+     A Bond Gain CE result card is not a servant — it is a servant plus the ascension its traits came from —
+     so the two readers say where a row's id and trait list live instead of this code guessing. */
+  sorted(rows, sortBy = "id", order = "asc", idOf = (row) => row.id, traitsOf = (row) => row.traits) {
+    const key = this.KEYS.includes(sortBy) ? sortBy : "id";
+    const dir = order === "desc" ? -1 : 1;
+    const value = (row) => {
+      const traits = traitsOf(row);
+      return key === "rarity" ? this.rarity(traits) : key === "class" ? this.classIndex(traits) : 0;
+    };
+    const numId = (row) => parseInt(idOf(row), 10) || 0;
+
+    return [...rows].sort((a, b) => {
+      if (key !== "id") {
+        const cmp = value(a) - value(b);
+        if (cmp !== 0) return cmp * dir;
+      }
+      const idCmp = numId(a) !== numId(b) ? numId(a) - numId(b) : String(idOf(a)).localeCompare(String(idOf(b)));
+      return idCmp * dir;
+    });
   },
 };

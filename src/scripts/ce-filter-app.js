@@ -1,5 +1,5 @@
 import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
-import { TraitMatcher, Validator } from "./domain.js";
+import { TraitMatcher, Validator, ServantSort } from "./domain.js";
 import { ServantData, CEById, TraitCEs, TraitNames } from "./data.js";
 import { DOMFactory, debounce } from "./presentation.js";
 import { ServantSelect, CEFilterStore } from "./ce-servant-select.js";
@@ -55,17 +55,6 @@ function initWorker() {
     traitNames: TraitNames,
   });
   worker.postMessage({ type: "compute" });
-}
-
-let _classOrderMap = null;
-function getClassOrderMap() {
-  if (!_classOrderMap) {
-    _classOrderMap = new Map();
-    [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].forEach((cls, idx) => {
-      _classOrderMap.set(cls.id, idx);
-    });
-  }
-  return _classOrderMap;
 }
 
 export const CEFilterApp = {
@@ -786,53 +775,23 @@ export const CEFilterApp = {
     });
   },
 
-  _getEntryRarity(entry) {
+  /* A result card is a servant plus the ascension its traits were matched on, and that list is what both
+     the sort keys and the class/rarity filters read. */
+  _traitsOf(entry) {
     const traits = entry.primaryAscension
       ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
       : entry.servant.traits;
-    const r = (traits || entry.servant.traits).filter((t) => t.startsWith("04"));
-    return r.length > 0 ? Math.max(...r.map((t) => parseInt(t.slice(2), 10))) : 0;
-  },
-
-  _getEntryClassIndex(entry) {
-    const traits = entry.primaryAscension
-      ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
-      : entry.servant.traits;
-    const c = (traits || entry.servant.traits).find((t) => t.startsWith("01"));
-    const orderMap = getClassOrderMap();
-    return c && orderMap.has(c) ? orderMap.get(c) : 99;
+    return traits || entry.servant.traits;
   },
 
   _sortEntries(entries) {
-    const sortBy = this.state.sortBy || "id";
-    const sortOrder = this.state.sortOrder || "asc";
-    const isDesc = sortOrder === "desc";
-
-    return [...entries].sort((a, b) => {
-      let cmp;
-      if (sortBy === "rarity") {
-        const rarityA = this._getEntryRarity(a);
-        const rarityB = this._getEntryRarity(b);
-        cmp = rarityA - rarityB;
-      } else if (sortBy === "class") {
-        const classA = this._getEntryClassIndex(a);
-        const classB = this._getEntryClassIndex(b);
-        cmp = classA - classB;
-      } else {
-        const idA = parseInt(a.servant.id, 10) || 0;
-        const idB = parseInt(b.servant.id, 10) || 0;
-        cmp = idA - idB;
-      }
-
-      if (cmp !== 0) {
-        return isDesc ? -cmp : cmp;
-      }
-
-      const idA = parseInt(a.servant.id, 10) || 0;
-      const idB = parseInt(b.servant.id, 10) || 0;
-      const idCmp = idA !== idB ? idA - idB : a.servant.id.localeCompare(b.servant.id);
-      return isDesc ? -idCmp : idCmp;
-    });
+    return ServantSort.sorted(
+      entries,
+      this.state.sortBy,
+      this.state.sortOrder,
+      (entry) => entry.servant.id,
+      (entry) => this._traitsOf(entry),
+    );
   },
 
   computeAllCEMatches() {

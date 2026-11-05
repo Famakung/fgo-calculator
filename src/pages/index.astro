@@ -647,8 +647,65 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 &#10005;
               </button>
             </div>
-            <div id="servantFilterArea"></div>
+            <div class="cefilter-search-container">
+              <input
+                type="text"
+                class="search-filter cefilter-search-input"
+                id="servantPickerSearch"
+                placeholder="Search by ID or name..."
+                autocomplete="off"
+              />
+            </div>
+            <div class="cefilter-sort-row">
+              <button
+                type="button"
+                class="cefilter-filter-btn"
+                id="servantPickerFilterBtn"
+                aria-haspopup="dialog"
+                aria-label="Open filter settings modal"
+              >
+                Filter
+              </button>
+              <select class="select-field cefilter-sort-select" id="servantPickerSortBy" aria-label="Sort by">
+                <option value="id" selected>ID</option>
+                <option value="rarity">Rarity</option>
+                <option value="class">Class</option>
+              </select>
+              <button
+                type="button"
+                class="cefilter-sort-order-btn"
+                id="servantPickerSortOrder"
+                data-order="asc"
+                aria-label="Sort ascending"
+                title="Sort ascending"
+              >
+                <span class="cefilter-sort-order-icon">&#9650;</span>
+              </button>
+            </div>
             <div class="servant-picker-grid grid-sm servant-picker-grid--servant" id="servantPickerGrid"></div>
+          </div>
+        </div>
+
+        <!-- Servant Picker Filter Modal (nested under #servantModal, so it must come after it to paint on top) -->
+        <div class="servant-modal" id="servantFilterModal" role="dialog" aria-modal="true" aria-labelledby="servantFilterModalTitle">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <span class="ascension-modal-title" id="servantFilterModalTitle">Filter Settings</span>
+              <button
+                class="servant-modal-close"
+                id="servantFilterModalClose"
+                type="button"
+                aria-label="Close"
+              >
+                &#10005;
+              </button>
+            </div>
+            <div class="cefilter-modal-body">
+              <div class="filter-group">
+                <div class="class-filter" id="servantClassFilter"></div>
+                <div class="rarity-filter" id="servantRarityFilter"></div>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 import { ServantData, CEList, TraitCEs } from "./data.js";
 import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
-import { Quest } from "./domain.js";
+import { Quest, ServantSort } from "./domain.js";
 import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
 
 /* Longest search the servant picker keeps. Names top out well under this, so it only trims a paste someone
@@ -22,6 +22,9 @@ export const ServantSelector = {
   lockedClasses: null,
   rarityFilters: [],
   _searchQuery: "",
+  /* Sort sits with the rest of the picker row: kept for the page, blank after a refresh, and never saved. */
+  sortBy: "id",
+  sortOrder: "asc",
   _callbacks: null,
 
   _listenersBound: false,
@@ -34,9 +37,57 @@ export const ServantSelector = {
 
     const modal = document.getElementById("servantModal");
     const closeBtn = document.getElementById("servantModalClose");
+    const subModal = document.getElementById("servantFilterModal");
 
     if (closeBtn) {
       closeBtn.addEventListener("click", () => this.close());
+    }
+
+    /* Search sits outside the filters and the sort row sits beside them, like the Bond Gain CE tab: the
+       controls live in the page, so they are wired once here and only read back on every open(). */
+    const searchInput = document.getElementById("servantPickerSearch");
+    if (searchInput) {
+      const debouncedSearch = debounce((query) => {
+        // Bounded, so a pasted wall of text cannot become the matcher's input or the reopened box.
+        this._searchQuery = query.slice(0, MAX_SEARCH);
+        this.filter();
+      }, DEBOUNCE_MS);
+      searchInput.addEventListener("input", (e) => debouncedSearch(e.target.value));
+    }
+
+    const filterBtn = document.getElementById("servantPickerFilterBtn");
+    if (filterBtn && subModal) {
+      filterBtn.addEventListener("click", () => subModal.classList.add("open"));
+    }
+
+    const subClose = document.getElementById("servantFilterModalClose");
+    if (subClose && subModal) {
+      subClose.addEventListener("click", () => subModal.classList.remove("open"));
+    }
+
+    if (subModal) {
+      subModal.addEventListener("click", (e) => {
+        if (e.target === subModal) subModal.classList.remove("open");
+      });
+    }
+
+    const sortSelect = document.getElementById("servantPickerSortBy");
+    if (sortSelect) {
+      sortSelect.addEventListener("change", () => {
+        this.sortBy = sortSelect.value;
+        sortSelect.blur();
+        this.filter();
+      });
+    }
+
+    const orderBtn = document.getElementById("servantPickerSortOrder");
+    if (orderBtn) {
+      orderBtn.addEventListener("click", () => {
+        this.sortOrder = this.sortOrder === "asc" ? "desc" : "asc";
+        this._paintSortOrder();
+        this.filter();
+      });
+      this._paintSortOrder();
     }
 
     if (modal) {
@@ -44,9 +95,27 @@ export const ServantSelector = {
         if (e.target === modal) this.close();
       });
       document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && modal.classList.contains("open")) this.close();
+        if (e.key !== "Escape" || !modal.classList.contains("open")) return;
+        // The filter modal sits on top of this one, so Escape takes the top layer off first.
+        if (subModal && subModal.classList.contains("open")) {
+          subModal.classList.remove("open");
+          return;
+        }
+        this.close();
       });
     }
+  },
+
+  _paintSortOrder() {
+    const btn = document.getElementById("servantPickerSortOrder");
+    if (!btn) return;
+    const isDesc = this.sortOrder === "desc";
+    const label = isDesc ? "Sort descending" : "Sort ascending";
+    btn.dataset.order = this.sortOrder;
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
+    const icon = btn.querySelector(".cefilter-sort-order-icon");
+    if (icon) icon.textContent = isDesc ? "▼" : "▲";
   },
 
   open(slotIndex, pending = false, callbacks = null, options = {}) {
@@ -61,7 +130,7 @@ export const ServantSelector = {
     this.lockedClasses = Array.isArray(options.lockClasses) && options.lockClasses.length ? options.lockClasses : null;
     // The row is kept as the player left it for the rest of the page, and starts blank again after a refresh.
 
-    this.buildFilterArea();
+    this.syncPickerControls();
     // Filtered, not raw: a locked party has to be filtered from the first paint, not after a click.
     this.renderGrid(this.getFilteredServants());
 
@@ -76,6 +145,9 @@ export const ServantSelector = {
     }
     const modal = document.getElementById("servantModal");
     if (modal) modal.classList.remove("open");
+    // The filter sub-modal belongs to this one: never leave it sitting over the tab behind.
+    const subModal = document.getElementById("servantFilterModal");
+    if (subModal) subModal.classList.remove("open");
     this.activeSlotIndex = null;
     this.pendingSlot = false;
   },
@@ -162,34 +234,51 @@ export const ServantSelector = {
       const raritySet = new Set(this.rarityFilters);
       result = result.filter((s) => s.traits.some((t) => raritySet.has(t)));
     }
-    return result;
+    // Ordered last: what the player sorted by is a property of the rows the grid shows, never of the filter.
+    return ServantSort.sorted(result, this.sortBy, this.sortOrder);
   },
 
-  buildFilterArea() {
-    const container = document.getElementById("servantFilterArea");
-    if (!container) return;
-    CollapsibleFactory.populateFilterArea(
-      container,
-      this._searchQuery,
-      (query) => {
-        // Bounded, so a pasted wall of text cannot become the matcher's input or the reopened box.
-        this._searchQuery = query.slice(0, MAX_SEARCH);
-        this.filter();
-      },
-      (content) => {
-        /* A Grand Duel choice that names exactly one class has nothing to filter: that class is the whole
-           party rule, so the row is not built at all. The three Extra groups span several classes, so
-           theirs stays — narrowed to those classes, and still usable. */
-        if (!this.lockedClasses || this.lockedClasses.length > 1) this._buildClassFilter(content);
-        this._buildRarityFilter(content);
-      },
-    );
+  /* The controls live in the page, so an open() only reads the player's row back into them. What it does
+     rebuild is the two rows the filter sub-modal shows: a Grand Duel group decides which classes exist
+     there, and a pick made while another quest was active must not show as active now. */
+  syncPickerControls() {
+    const searchInput = document.getElementById("servantPickerSearch");
+    if (searchInput) searchInput.value = this._searchQuery;
+
+    /* A Grand Duel choice that names exactly one class has nothing to sort by class — that class is the
+       whole party — so the option goes grey and a remembered "class" sort falls back to ID, for the same
+       reason its class row is not built at all. The three Extra groups span several classes, so theirs
+       stay usable. */
+    const singleClass = Boolean(this.lockedClasses) && this.lockedClasses.length === 1;
+    const sortSelect = document.getElementById("servantPickerSortBy");
+    if (sortSelect) {
+      const classOption = sortSelect.querySelector('option[value="class"]');
+      if (classOption) {
+        if (singleClass) classOption.setAttribute("disabled", "");
+        else classOption.removeAttribute("disabled");
+      }
+      if (singleClass && this.sortBy === "class") this.sortBy = "id";
+      sortSelect.value = this.sortBy;
+    }
+    this._paintSortOrder();
+
+    const classRow = document.getElementById("servantClassFilter");
+    if (classRow) {
+      classRow.replaceChildren();
+      if (!this.lockedClasses || this.lockedClasses.length > 1) this._buildClassFilter(classRow);
+    }
+
+    const rarityRow = document.getElementById("servantRarityFilter");
+    if (rarityRow) {
+      rarityRow.replaceChildren();
+      this._buildRarityFilter(rarityRow);
+    }
   },
 
+  /* `container` is the modal's `.class-filter` row itself: it is emptied and refilled, never wrapped. */
   _buildClassFilter(container) {
     const { standard, extra } = CLASS_FILTERS;
 
-    const filterDiv = DOMFactory.el("div", "class-filter");
     const selected = new Set(this.classFilters);
 
     /* Inside a group the quest still decides which classes exist here: the row offers only them, opens
@@ -200,8 +289,10 @@ export const ServantSelector = {
     const buildRow = (classes) => {
       classes.forEach((cls) => {
         const btn = DOMFactory.el("div", "class-btn" + (selected.has(cls.id) ? " active" : ""));
+        /* src, not data-src: nothing promotes it any more now that the row sits in a modal instead of a
+           collapsed filter, so a deferred icon would never load. */
         const img = DOMFactory.el("img", "", {
-          dataset: { src: "icons/classes/" + cls.icon + ".webp" },
+          src: `icons/classes/${cls.icon}.webp`,
           alt: cls.label,
           title: cls.label,
         });
@@ -217,18 +308,17 @@ export const ServantSelector = {
           this.classFilters = [...selected];
           this.filter();
         });
-        filterDiv.appendChild(btn);
+        container.appendChild(btn);
       });
     };
 
     rows.forEach(buildRow);
-    container.appendChild(filterDiv);
   },
 
+  /* `container` is the modal's `.rarity-filter` row itself, emptied and refilled like the class row. */
   _buildRarityFilter(container) {
     const rarities = RARITY_FILTERS;
 
-    const filterDiv = DOMFactory.el("div", "rarity-filter");
     const selected = new Set(this.rarityFilters);
 
     rarities.forEach((rarity) => {
@@ -245,10 +335,8 @@ export const ServantSelector = {
         this.rarityFilters = [...selected];
         this.filter();
       });
-      filterDiv.appendChild(btn);
+      container.appendChild(btn);
     });
-
-    container.appendChild(filterDiv);
   },
 };
 
