@@ -1,5 +1,5 @@
 import { BOND_CONSTANTS, SERVANT_MAX_SLOTS, BOND_QUESTS, BOND_STORAGE_KEY } from "./constants.js";
-import { Validator, TraitMatcher, BondLevelCalculator } from "./domain.js";
+import { Validator, TraitMatcher, BondLevelCalculator, SlotCEs } from "./domain.js";
 import { ServantData, CEById, TraitNames } from "./data.js";
 import { DOMFactory } from "./presentation.js";
 
@@ -15,6 +15,8 @@ function defaultSlot(overrides = {}) {
     maxBond: false,
     bond15: false,
     ascension: null,
+    ces: [],
+    grand: false,
     ...overrides,
   };
 }
@@ -77,7 +79,6 @@ export const BondApp = {
       slots: Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot()),
       selectedQuest: "",
       customBond: 0,
-      ces: [],
     };
 
     const select = document.getElementById("bondQuestSelect");
@@ -96,11 +97,8 @@ export const BondApp = {
     customOpt.textContent = "-- Custom --";
     select.appendChild(customOpt);
 
-    // Build servant slots
+    // Build servant slots (each card renders its own essences)
     this.buildServantSlots();
-
-    // Build CE slots
-    this.buildCESlots();
 
     // Restore quest state
     select.value = this.state.selectedQuest;
@@ -819,7 +817,7 @@ export const BondApp = {
       const servantTraits = servant ? ServantData.getTraitsForAscension(servantId, ascension) : [];
       const traitSet = new Set(servantTraits);
       let flatBonus = 0;
-      this.state.ces.forEach((ceEntry) => {
+      SlotCEs.partyPool(this.state.slots).forEach((ceEntry) => {
         // Resolve CE from entry (string or group object)
         let ceId, optionId;
         if (typeof ceEntry === "object" && ceEntry.groupId) {
@@ -1078,6 +1076,7 @@ export const BondApp = {
           maxBond: s.type === "maxbond" ? true : Boolean(s.maxBond),
           bond15: s.type === "maxbond" ? true : Boolean(s.bond15),
           ascension: typeof s.ascension === "string" && s.ascension ? s.ascension : null,
+          ...SlotCEs.sanitize(s.ces, s.grand),
         });
       };
 
@@ -1099,13 +1098,6 @@ export const BondApp = {
         slots: slots.map(sanitize),
         selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",
         customBond: Validator.clamp(data.customBond || 0, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND),
-        ces: Array.isArray(data.ces)
-          ? data.ces.filter((entry) => {
-              if (typeof entry === "string" && entry) return true;
-              if (entry && typeof entry === "object" && entry.groupId && entry.optionId) return true;
-              return false;
-            })
-          : [],
       };
     } catch (_e) {
       return null;
