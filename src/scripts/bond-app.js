@@ -348,35 +348,41 @@ export const BondApp = {
   },
 
   /* The card's own essence block: a bordered field labelled "Craft Essence" holding the Grand Servant
-     tick and one chip per position the slot can wear. */
+     tick and one chip per position the slot can wear. The tick belongs to Grand Duel alone — a Free Quest
+     party never wears two essences, so it is not offered the choice. Building the row or leaving it out
+     (never hiding it) is what the house does for fields a state cannot use, and a quest change already
+     rebuilds the rack through applyParty(), so the tick appears and goes with it. */
   _buildSlotCEs(slotData, slotIndex) {
     const block = DOMFactory.el("div", "slot-ce-block");
+    const grandOn = this.state.questMain === "gd";
 
-    const label = DOMFactory.el("label", "bond-input-box-label", { for: `slotGrand_${slotIndex}` });
+    const label = DOMFactory.el("label", "bond-input-box-label", grandOn ? { for: `slotGrand_${slotIndex}` } : {});
     label.textContent = "Craft Essence";
     block.appendChild(label);
 
-    const grandCheckbox = DOMFactory.el("input", "bond-checkbox", {
-      type: "checkbox",
-      id: `slotGrand_${slotIndex}`,
-    });
-    if (slotData.grand) grandCheckbox.checked = true;
-    const grandText = DOMFactory.el("span");
-    grandText.textContent = "Grand Servant";
-    const grandLabel = DOMFactory.el("label", "bond-checkbox-label");
-    grandLabel.appendChild(grandCheckbox);
-    grandLabel.appendChild(grandText);
-    const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
-    checkboxRow.appendChild(grandLabel);
-    block.appendChild(checkboxRow);
+    if (grandOn) {
+      const grandCheckbox = DOMFactory.el("input", "bond-checkbox", {
+        type: "checkbox",
+        id: `slotGrand_${slotIndex}`,
+      });
+      if (slotData.grand) grandCheckbox.checked = true;
+      const grandText = DOMFactory.el("span");
+      grandText.textContent = "Grand Servant";
+      const grandLabel = DOMFactory.el("label", "bond-checkbox-label");
+      grandLabel.appendChild(grandCheckbox);
+      grandLabel.appendChild(grandText);
+      const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
+      checkboxRow.appendChild(grandLabel);
+      block.appendChild(checkboxRow);
 
-    grandCheckbox.addEventListener("change", () => {
-      this.flushInputsToState();
-      slotData.grand = grandCheckbox.checked;
-      SlotCEs.trim(slotData); // unticking drops the second essence, no confirmation, no restore
-      this.saveState();
-      this.buildServantSlots();
-    });
+      grandCheckbox.addEventListener("change", () => {
+        this.flushInputsToState();
+        slotData.grand = grandCheckbox.checked;
+        SlotCEs.trim(slotData); // unticking drops the second essence, no confirmation, no restore
+        this.saveState();
+        this.buildServantSlots();
+      });
+    }
 
     const strip = DOMFactory.el("div", "slot-ce-strip");
     const chips = document.createDocumentFragment();
@@ -1260,7 +1266,11 @@ export const BondApp = {
       /* Levels are rounded and re-clamped here because a saved slot could carry anything: an old
          save without the fields, or a level past what the servant's table covers. */
       const level = (value, max) => Math.round(Validator.clamp(value, 0, max));
-      const sanitize = (s) => {
+      /* `grandOn` is the rule the card already shows: only a Grand Duel rack can widen to two essences, so
+         a party filed outside Grand Duel is stripped of the flag on load — and `SlotCEs.sanitize` then
+         trims it to one, which is the fallback an old save (ticked under Free Quest, before this rule)
+         needs, or it would keep a second chip nothing can untick. */
+      const sanitize = (s, grandOn) => {
         const bondLevel = level(s.bondLevel || 0, BOND_CONSTANTS.MAX_BOND_LEVEL - 1);
         return defaultSlot({
           servantId: s.servantId || null,
@@ -1274,13 +1284,13 @@ export const BondApp = {
           maxBond: s.type === "maxbond" ? true : Boolean(s.maxBond),
           bond15: s.type === "maxbond" ? true : Boolean(s.bond15),
           ascension: typeof s.ascension === "string" && s.ascension ? s.ascension : null,
-          ...SlotCEs.sanitize(s.ces, s.grand),
+          ...SlotCEs.sanitize(s.ces, grandOn && s.grand),
         });
       };
 
       // A party is a full rack of six slots, padded and sanitized whoever wrote it.
-      const partyOf = (raw) => {
-        const list = Array.isArray(raw) ? raw.map(sanitize) : [];
+      const partyOf = (raw, grandOn) => {
+        const list = Array.isArray(raw) ? raw.map((s) => sanitize(s, grandOn)) : [];
         // The one save shape older than slots[]: a single bond figure.
         if (list.length === 0 && !Array.isArray(raw) && data.bondNeeded) {
           list.push(defaultSlot({ bondNeeded: Validator.clamp(data.bondNeeded, 0, BOND_CONSTANTS.MAX_BOND_NEEDED) }));
@@ -1337,9 +1347,9 @@ export const BondApp = {
       const parties = {};
       ["", ...GRAND_CLASSES.map((c) => c.key)].forEach((key) => {
         // Any other key a tampered save carries is dropped, not bloated into storage.
-        if (Array.isArray(stored[key])) parties[key] = partyOf(stored[key]);
+        if (Array.isArray(stored[key])) parties[key] = partyOf(stored[key], Boolean(key));
       });
-      const slots = parties[liveKey] || partyOf(data.slots);
+      const slots = parties[liveKey] || partyOf(data.slots, liveKey !== "");
       delete parties[liveKey];
 
       return {
