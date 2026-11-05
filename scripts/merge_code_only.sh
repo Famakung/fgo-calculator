@@ -65,8 +65,10 @@ git checkout --quiet HEAD -- .gitignore
 git rm --quiet -r -f --cached --ignore-unmatch -- "${HIDDEN_PATHS[@]}"
 
 # An ignore rule missing from '$TARGET' would leave a dropped path untracked-dirty.
+# --no-index cannot tell a bare directory subject from a file one, so a `/dir/` rule only
+# matches '$path/': try both spellings, or a directory entry reads as un-ignored (tests/).
 for path in "${HIDDEN_PATHS[@]}"; do
-  git check-ignore --no-index -q "$path" || {
+  git check-ignore --no-index -q "$path" || git check-ignore --no-index -q "$path/" || {
     echo "merge_code_only: '$TARGET' does not ignore '$path' — add that line to its .gitignore" >&2
     exit 1
   }
