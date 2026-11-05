@@ -1050,6 +1050,277 @@ try {
       `99 held: ${JSON.stringify(enough.boosted)}`,
   );
 
+  /* The quest card cascades and the Grand Duel class choice reaches into the party: the picker must open
+     already filtered to the allowed classes, the wrong-class servant must be refused, and the three picks
+     must come back from localStorage. Driven through the selects, so a label that stops reading
+     Quest.classIds, or a picker that forgets its lock, fails here. */
+  const questDialogs = [];
+  const onQuestDialog = (d) => {
+    questDialogs.push(d.message());
+    d.dismiss();
+  };
+  page.on("dialog", onQuestDialog);
+
+  const questRowFlags = () =>
+    page.evaluate(() => {
+      const shown = (id) => document.getElementById(id).closest(".input-row").style.display !== "none";
+      return {
+        free: shown("bondFreeQuestSelect"),
+        gdClass: shown("bondGrandClassSelect"),
+        gdDiff: shown("bondGrandDiffSelect"),
+        custom: document.getElementById("customQuestSection").style.display !== "none",
+        customDisabled: document.getElementById("customBondPerRun").disabled,
+      };
+    });
+
+  /* How many slots are still blank — one number that says whether the rack on screen is this class's own. */
+  const blankSlots = () => page.evaluate(() => document.querySelectorAll(".servant-add-slot").length);
+
+  const pickerState = async () => {
+    await page.click(".servant-add-slot");
+    await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+    const seen = await page.evaluate(() => ({
+      row: Boolean(document.querySelector("#servantFilterArea .class-filter")),
+      classes: Array.from(document.querySelectorAll("#servantFilterArea .class-btn")).map((b) =>
+        b.classList.contains("active"),
+      ),
+      cards: document.getElementById("servantPickerGrid").children.length,
+    }));
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#servantModal:not(.open)", { timeout: 5000 });
+    return seen;
+  };
+
+  /* The group row opens unselected and still shows only its group; picking one class narrows to that
+     class, and clearing it again returns to the whole group — never to the full roster. */
+  const pickerNarrow = async () => {
+    await page.click(".servant-add-slot");
+    await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+    const seen = await page.evaluate(() => {
+      const btns = [...document.querySelectorAll("#servantFilterArea .class-btn")];
+      const grid = document.getElementById("servantPickerGrid");
+      const active = () => btns.filter((b) => b.classList.contains("active")).length;
+      const cards = () => grid.children.length;
+      const start = { active: active(), cards: cards() };
+      btns[0].click();
+      const oneOn = { active: active(), cards: cards() };
+      btns[0].click();
+      return { start, oneOn, cleared: { active: active(), cards: cards() } };
+    });
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#servantModal:not(.open)", { timeout: 5000 });
+    return seen;
+  };
+
+  await page.select("#bondQuestSelect", "fq");
+  const fqRows = await questRowFlags();
+  await page.select("#bondFreeQuestSelect", "custom");
+  const customRows = await questRowFlags();
+  await page.select("#bondFreeQuestSelect", "fq83");
+  const presetRows = await questRowFlags();
+  if (
+    !fqRows.free ||
+    fqRows.gdClass ||
+    fqRows.gdDiff ||
+    !customRows.custom ||
+    presetRows.custom ||
+    customRows.customDisabled !== false ||
+    presetRows.customDisabled !== true
+  ) {
+    errors.push(
+      `quest cascade: Free Quest drew ${JSON.stringify([fqRows, customRows, presetRows])}, ` +
+        `want only the quest row, its Custom box on then off and disabled again`,
+    );
+  }
+
+  await page.select("#bondQuestSelect", "gd");
+  const grandRows = await questRowFlags();
+  await page.select("#bondGrandClassSelect", "extra1");
+  await page.select("#bondGrandDiffSelect", "1");
+  if (!grandRows.gdClass || !grandRows.gdDiff || grandRows.free) {
+    errors.push(`quest cascade: Grand Duel drew ${JSON.stringify(grandRows)}, want class and difficulty rows only`);
+  }
+
+  /* Entering Grand Duel opens a rack of its own: the Mash picked under Free Quest does not follow, and a
+     class nobody has filled yet starts empty. */
+  const grandBlank = await blankSlots();
+  if (grandBlank !== 6) {
+    errors.push(`party per class: Extra I opened with ${6 - grandBlank} servant(s), want an empty rack`);
+  }
+
+  const extra1 = await pickerState();
+  const narrow = await pickerNarrow();
+  await page.select("#bondGrandClassSelect", "0100");
+  const saber = await pickerState();
+  await page.select("#bondGrandClassSelect", "all");
+  const every = await pickerState();
+  if (
+    !extra1.row ||
+    extra1.classes.length !== 4 ||
+    extra1.classes.some((a) => a) ||
+    narrow.start.active !== 0 ||
+    narrow.oneOn.active !== 1 ||
+    !(narrow.oneOn.cards < narrow.start.cards) ||
+    narrow.cleared.active !== 0 ||
+    narrow.cleared.cards !== narrow.start.cards ||
+    !(narrow.start.cards > 0 && narrow.start.cards < every.cards) ||
+    saber.row ||
+    saber.classes.length !== 0 ||
+    !(saber.cards > 0 && saber.cards < every.cards) ||
+    every.classes.length !== 15 ||
+    every.classes.some((a) => a) ||
+    !(every.cards > saber.cards && every.cards > extra1.cards)
+  ) {
+    errors.push(
+      `class filter: Extra I ${JSON.stringify([extra1, narrow])}, Saber ${JSON.stringify(saber)}, ` +
+        `All ${JSON.stringify(every)} — want 4 unselected buttons that narrow to one class and clear back ` +
+        `to the group, no row at all for a single class but still its own grid, and 15 free buttons on All`,
+    );
+  }
+
+  /* The filter row remembers itself for the page: pick a class and a rarity, then read them back after a
+     close and a reopen, and prove a refresh wipes them — and that a pick cannot leak into a Grand Duel
+     group that does not contain it. */
+  const pfRead = (setup) =>
+    page.evaluate((spec) => {
+      const all = [...document.querySelectorAll("#servantFilterArea .class-btn, #servantFilterArea .rarity-btn")];
+      const byLabel = (label) =>
+        all.find((b) => ((b.querySelector("img") || {}).title || b.textContent.trim()) === label);
+      (spec.pick || []).forEach((label) => byLabel(label).click());
+      (spec.unpick || []).forEach((label) => byLabel(label).click());
+      const on = (sel) =>
+        [...document.querySelectorAll(sel)]
+          .filter((b) => b.classList.contains("active"))
+          .map((b) => (b.querySelector("img") || {}).title || b.textContent.trim());
+      return {
+        classes: on("#servantFilterArea .class-btn"),
+        rarities: on("#servantFilterArea .rarity-btn"),
+        cards: document.getElementById("servantPickerGrid").children.length,
+      };
+    }, setup || {});
+
+  const pfOpen = async (setup) => {
+    await page.click(".servant-add-slot");
+    await page.waitForSelector("#servantModal.open", { timeout: 15000 });
+    const seen = await pfRead(setup);
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#servantModal:not(.open)", { timeout: 5000 });
+    return seen;
+  };
+
+  const pfSame = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const pfPicked = await pfOpen({ pick: ["Saber", "5 ★"] });
+  const pfReopen = await pfOpen();
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.click('.tab-btn[data-tab="bond"]');
+  await page.waitForSelector(".servant-slot", { timeout: 15000 });
+  const pfReload = await pfOpen();
+  // Saber picked again after the refresh, so the group check below has something to refuse.
+  await pfOpen({ pick: ["Saber"] });
+  await page.select("#bondGrandClassSelect", "extra1");
+  const pfGroup = await pfOpen();
+  if (
+    pfPicked.classes.join() !== "Saber" ||
+    pfPicked.rarities.join() !== "5 ★" ||
+    !(pfPicked.cards > 0 && pfPicked.cards < every.cards) ||
+    !pfSame(pfReopen, pfPicked) ||
+    pfReload.classes.length !== 0 ||
+    pfReload.rarities.length !== 0 ||
+    pfReload.cards !== every.cards ||
+    pfGroup.classes.length !== 0 ||
+    pfGroup.rarities.length !== 0 ||
+    pfGroup.cards !== extra1.cards
+  ) {
+    errors.push(
+      `picker filters: ${JSON.stringify([pfPicked, pfReopen, pfReload, pfGroup])}, want Saber + 5 ★ held across a ` +
+        `reopen and wiped by a refresh, and Extra I showing its own ${extra1.cards} cards with the Saber pick ignored`,
+    );
+  }
+
+  /* Each class files its own party. Mash is stored under Saber (a class it does not belong to, which only
+     a hand-written save can do) and under All, so Saber must refuse it, All must price it, and a class
+     that was never filled must come back blank. */
+  await page.evaluate(() => {
+    const data = JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));
+    const mash = [{ servantId: "001", bondNeeded: 2500, type: "normal", bondLevel: 0, targetLevel: 3, ces: [] }];
+    // Merged, not replaced: parties[""] holds the Free Quest rack this block parked on entry, and the
+    // last check below reads it back.
+    data.parties = { ...data.parties, "0100": mash, all: mash.map((s) => ({ ...s })) };
+    data.slots = mash;
+    data.questMain = "gd";
+    data.questClass = "0100";
+    data.questDiff = "1";
+    localStorage.setItem("fgo_bond_calculator_data", JSON.stringify(data));
+  });
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.click('.tab-btn[data-tab="bond"]');
+  await page.waitForFunction(() => document.querySelectorAll(".servant-slot").length === 6, { timeout: 15000 });
+  const saberBlank = await blankSlots();
+  if (saberBlank !== 5) {
+    errors.push(`party per class: Saber's own save loaded ${6 - saberBlank} servant(s), want the one Mash`);
+  }
+
+  await page.click("#bondCalculateBtn");
+  if (!questDialogs.some((m) => m.includes("Mash Kyrielight cannot join a Grand Duel Saber party"))) {
+    errors.push(`class lock: a Shielder in a Saber quest passed unnoticed — dialogs ${JSON.stringify(questDialogs)}`);
+  }
+
+  await page.select("#bondGrandClassSelect", "extra1");
+  const awayBlank = await blankSlots();
+  await page.select("#bondGrandClassSelect", "0100");
+  const backBlank = await blankSlots();
+  if (awayBlank !== 6 || backBlank !== 5) {
+    errors.push(
+      `party per class: leaving Saber left ${6 - awayBlank} servant(s) on screen and coming back drew ` +
+        `${6 - backBlank}, want an empty Extra I rack and Saber's Mash restored`,
+    );
+  }
+
+  await page.select("#bondGrandClassSelect", "all");
+  const allBlank = await blankSlots();
+  if (allBlank !== 5) {
+    errors.push(`party per class: All opened with ${6 - allBlank} servant(s), want its own filed Mash`);
+  }
+  await page.click("#bondCalculateBtn");
+  const gdPlan = await readTeapot();
+  if (!gdPlan.boosted || !/^3,164\(/.test(gdPlan.boosted.info)) {
+    errors.push(`quest table: Rank-Up Training Battle I priced ${JSON.stringify(gdPlan.boosted)}, want base "3,164(…)"`);
+  }
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.click('.tab-btn[data-tab="bond"]');
+  await page.waitForSelector(".servant-slot", { timeout: 15000 });
+  const questRestored = await page.evaluate(() => ({
+    main: document.getElementById("bondQuestSelect").value,
+    klass: document.getElementById("bondGrandClassSelect").value,
+    diff: document.getElementById("bondGrandDiffSelect").value,
+    servant: 6 - document.querySelectorAll(".servant-add-slot").length,
+  }));
+  if (questRestored.main !== "gd" || questRestored.klass !== "all" || questRestored.diff !== "1") {
+    errors.push(`quest save: after reload the selects read ${JSON.stringify(questRestored)}, want gd / all / 1`);
+  }
+  if (questRestored.servant !== 1) {
+    errors.push(`party per class: after reload All held ${questRestored.servant} servant(s), want its own Mash`);
+  }
+  const lv100 = await page.evaluate(() => document.getElementById("bondGrandDiffSelect").selectedOptions[0].textContent);
+  if (!lv100.includes("3164")) {
+    errors.push(`quest table: Lv.100 difficulty reads "${lv100}", want 3164 pts`);
+  }
+  // And the shared party is still where it was parked: back to Free Quest, the Mash returns.
+  await page.select("#bondQuestSelect", "fq");
+  const fqShared = 6 - (await blankSlots());
+  if (fqShared !== 1) {
+    errors.push(`party per class: Free Quest reopened with ${fqShared} servant(s), want the parked Mash`);
+  }
+  console.log(
+    `NOTE: quest cascade — Free ${JSON.stringify(fqRows)}, Grand ${JSON.stringify(grandRows)}; ` +
+      `Extra I picker ${JSON.stringify(extra1)} → narrow ${JSON.stringify(narrow)}; Saber ${JSON.stringify(saber)}; ` +
+      `All ${every.classes.length} buttons / ${every.cards} cards; filters ${JSON.stringify([pfPicked, pfReload, pfGroup])}; ` +
+      `refusal ${JSON.stringify(questDialogs)}; ` +
+      `parties: Grand ${6 - grandBlank} servant(s) on entry, Saber held ${6 - saberBlank}, Extra I ${6 - awayBlank} ` +
+      `while away and ${6 - backBlank} back, All ${6 - allBlank}, Free Quest again ${fqShared}; ` +
+      `restored ${JSON.stringify(questRestored)} on "${lv100}" — priced ${JSON.stringify(gdPlan.boosted)}`,
+  );
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();
