@@ -168,6 +168,25 @@ test("an ascension's alignment and sub-attribute reach the row it is filtered on
   );
 });
 
+test("the picker reads every form, so a per-ascension attribute is findable", async () => {
+  const { ServantData } = await import("../src/scripts/data.js");
+  const assert1 = await import("node:assert/strict");
+  ServantData.load();
+  // 415's base is the intersection of her stages and holds no sub-attribute at all
+  assert1.deepEqual(ServantData.byId.get("415").traits.filter((t) => t.startsWith("02")).length, 0);
+  const every = ServantData.getAllTraits("415");
+  assert1.deepEqual(ServantFilters.match(every, { subAttrFilters: ["0202"] }), true); // 1st/2nd form
+  assert1.deepEqual(ServantFilters.match(every, { subAttrFilters: ["0201"] }), true); // 3rd form
+  assert1.deepEqual(ServantFilters.match(every, { subAliFilters: ["0303"] }), true);
+  assert1.deepEqual(ServantFilters.match(every, { subAliFilters: ["0304"] }), true);
+  // the union never invents: she is a Caster, never a Saber, and never the Beast attribute
+  assert1.deepEqual(ServantFilters.match(every, { classFilters: ["0104"] }), true);
+  assert1.deepEqual(ServantFilters.match(every, { classFilters: ["0100"] }), false);
+  assert1.deepEqual(ServantFilters.match(every, { subAttrFilters: ["0204"] }), false);
+  // a servant with no ascension diffs is unaffected
+  assert1.deepEqual([...ServantData.getAllTraits("100")].sort(), [...ServantData.byId.get("100").traits].sort());
+});
+
 test("Other unions with the chips beside it instead of vetoing them", () => {
   const row = { subAliFilters: [ServantFilters.SUB_ALI_OTHER, "0303"] };
   assert.equal(ServantFilters.match(helena, row), true); // Good: met by the chip beside Other

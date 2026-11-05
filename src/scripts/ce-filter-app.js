@@ -765,12 +765,14 @@ export const CEFilterApp = {
   },
 
   /* A result card is a servant plus the ascension its traits were matched on, and that list is what both
-     the sort keys and the class/rarity filters read. */
+     the sort keys and every filter row reads. With no ascension named the card shows no single form, so it
+     reads every form: a sub-attribute that arrives with an ascension (415's Earth, from her 3rd) is not on
+     `servant.traits`, which is the intersection of her stages. */
   _traitsOf(entry) {
     const traits = entry.primaryAscension
       ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
-      : entry.servant.traits;
-    return traits || entry.servant.traits;
+      : ServantData.getAllTraits(entry.servant.id);
+    return traits || ServantData.getAllTraits(entry.servant.id);
   },
 
   _sortEntries(entries) {

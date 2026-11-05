@@ -239,8 +239,10 @@ export const ServantSelector = {
       );
     }
     /* Every row at once, the class row included: a locked party is bound by its group whether or not the
-       player picked a class in it, a pick inside the group narrows it, and a pick from outside is ignored. */
-    result = result.filter((s) => ServantFilters.match(s.traits, this));
+       player picked a class in it, a pick inside the group narrows it, and a pick from outside is ignored.
+       Read across the servant's forms — the picker names no ascension, and a sub-attribute can arrive with
+       one (415 is Human in her 1st form and Earth in her 3rd). */
+    result = result.filter((s) => ServantFilters.match(ServantData.getAllTraits(s.id), this));
     // Ordered last: what the player sorted by is a property of the rows the grid shows, never of the filter.
     return ServantSort.sorted(result, this.sortBy, this.sortOrder);
   },
