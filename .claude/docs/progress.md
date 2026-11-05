@@ -4,6 +4,15 @@
 
 ---
 
+## 2026-11-05 — feat(bond): "Party Setup" card title
+
+Asked as "in bond calculator tab change *Bond Points Requirements* to *Party Setup*". One string, one place: `src/pages/index.astro:417`, the `card-title` of the first card in `#panel-bond` (the servant-grid card). A case-insensitive repo-wide grep found no other occurrence — no test, doc, or gate asserted the old wording, so nothing else needed rewording. `scripts/verify_render.js` asserts the slot point box's label (`Next Lv. Required`), a different element, and was untouched.
+
+The one non-obvious step: `npm run check:build` pins two page-text signatures (`rawTextSha`, `normalisedTextSha`), so any visible title change trips it by design — that is the only failure this produced, and `npm run check:build -- --write` is the documented route for an intentional change, not a workaround. Re-capture also absorbed **pre-existing** byte drift: `bond-lazy` was 19347 B against a 19349 B baseline and `ce-filter-chunk` 26056 B against 25880 B. Neither came from this edit — rebuilding at HEAD's old markup gives the same two sizes, so the baseline had gone stale by 2 B and 176 B before it, inside the floor/ceiling tolerance and therefore only ever reported as a NOTE. No chunk was added and no head marker moved.
+
+Verification: `npm run build` ✓ · `npm run lint` exit 0 · `npm run test` 25/25 · `npm run check:build` SUCCESS after re-capture.
+Not checked: not viewed in a browser, and `node scripts/verify_render.js` was not run — the new title is shorter than the old, so no clip risk, and no assertion covers card titles.
+
 ## 2026-11-04 — chore(repo): docs made reachable, dead files deleted, CSS collapsed to one home
 
 Prompted by "can another AI agent pick this up from the docs?" — it could not, and one dead file was quietly costing the live site.
