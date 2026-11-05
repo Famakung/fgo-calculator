@@ -1346,14 +1346,20 @@ try {
   const pfRead = (setup) =>
     page.evaluate((spec) => {
       const all = [...document.querySelectorAll("#servantClassFilter .class-btn, #servantRarityFilter .rarity-btn")];
-      const byLabel = (label) =>
-        all.find((b) => ((b.querySelector("img") || {}).title || b.textContent.trim()) === label);
+      /* `FilterSections.chipEl` carries the name on the button's `title` and the icon's `alt`; an icon chip
+         has no textContent, so the old `img.title` reader matched nothing and a pick died on undefined. */
+      const labelOf = (b) => b.title || (b.querySelector("img") || {}).alt || b.textContent.trim();
+      const byLabel = (label) => {
+        const btn = all.find((b) => labelOf(b) === label);
+        if (!btn) throw new Error(`picker filter modal has no ${label} chip`);
+        return btn;
+      };
       (spec.pick || []).forEach((label) => byLabel(label).click());
       (spec.unpick || []).forEach((label) => byLabel(label).click());
       const on = (sel) =>
         [...document.querySelectorAll(sel)]
           .filter((b) => b.classList.contains("active"))
-          .map((b) => (b.querySelector("img") || {}).title || b.textContent.trim());
+          .map(labelOf);
       return {
         classes: on("#servantClassFilter .class-btn"),
         rarities: on("#servantRarityFilter .rarity-btn"),
@@ -1381,21 +1387,28 @@ try {
   await pfOpen({ pick: ["Saber"] });
   await page.select("#bondGrandClassSelect", "extra1");
   const pfGroup = await pfOpen();
-  if (
-    pfPicked.classes.join() !== "Saber" ||
-    pfPicked.rarities.join() !== "★5" ||
-    !(pfPicked.cards > 0 && pfPicked.cards < every.cards) ||
-    !pfSame(pfReopen, pfPicked) ||
-    pfReload.classes.length !== 0 ||
-    pfReload.rarities.length !== 0 ||
-    pfReload.cards !== every.cards ||
-    pfGroup.classes.length !== 0 ||
-    pfGroup.rarities.length !== 0 ||
-    pfGroup.cards !== extra1.cards
-  ) {
+  // Leaving the group must bring the same pick back: the chip only stops pressing, it is never forgotten.
+  await page.select("#bondGrandClassSelect", "all");
+  const pfBack = await pfOpen();
+  /* Each expectation names itself, so a failure says which one moved instead of printing four objects and
+     leaving the reader to diff them against a ten-term condition. */
+  const pfWants = [
+    ["pick shows Saber", pfPicked.classes.join() === "Saber"],
+    ["pick shows ★5", pfPicked.rarities.join() === "★5"],
+    [`pick narrows the grid under ${every.cards}`, pfPicked.cards > 0 && pfPicked.cards < every.cards],
+    ["reopen keeps the pick", pfSame(pfReopen, pfPicked)],
+    ["refresh clears classes", pfReload.classes.length === 0],
+    ["refresh clears rarities", pfReload.rarities.length === 0],
+    [`refresh restores ${every.cards} cards`, pfReload.cards === every.cards],
+    ["Extra I ignores the Saber pick", pfGroup.classes.length === 0],
+    ["Extra I clears rarities", pfGroup.rarities.length === 0],
+    [`Extra I shows its own ${extra1.cards} cards`, pfGroup.cards === extra1.cards],
+    ["leaving the group re-highlights Saber", pfBack.classes.join() === "Saber" && pfBack.cards === saber.cards],
+  ].filter(([, ok]) => !ok);
+  if (pfWants.length) {
     errors.push(
-      `picker filters: ${JSON.stringify([pfPicked, pfReopen, pfReload, pfGroup])}, want Saber + ★5 held across a ` +
-        `reopen and wiped by a refresh, and Extra I showing its own ${extra1.cards} cards with the Saber pick ignored`,
+      `picker filters: ${pfWants.map(([what]) => what).join("; ")} — ` +
+        JSON.stringify([pfPicked, pfReopen, pfReload, pfGroup, pfBack]),
     );
   }
 
