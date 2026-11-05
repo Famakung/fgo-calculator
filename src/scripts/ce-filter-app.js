@@ -338,7 +338,7 @@ export const CEFilterApp = {
           ServantData.getAllNames(s.servant.id).some((n) => n.toLowerCase().includes(query)),
       );
     }
-    return filtered.filter((s) => ServantFilters.match(s.servant.traits, this.state));
+    return filtered.filter((s) => ServantFilters.match(this._traitsOf(s), this.state));
   },
 
   /* The classes the Class row may offer. A group is the whole row when no class is picked inside it, and
@@ -353,8 +353,8 @@ export const CEFilterApp = {
   _renderFilterRows() {
     const base = this._lastCEFiltered || [];
     const avail = { class: new Set(), rarity: new Set() };
-    base.forEach(({ servant }) => {
-      servant.traits.forEach((t) => {
+    base.forEach((entry) => {
+      this._traitsOf(entry).forEach((t) => {
         if (t.startsWith("01")) avail.class.add(t);
         if (t.startsWith("04")) avail.rarity.add(t);
       });
@@ -576,8 +576,8 @@ export const CEFilterApp = {
     // Hide class/rarity chips not present in CE-filtered results, and re-read what that leaves selected
     const availableClassIds = new Set();
     const availableRarityIds = new Set();
-    base.forEach(({ servant }) => {
-      servant.traits.forEach((t) => {
+    base.forEach((entry) => {
+      this._traitsOf(entry).forEach((t) => {
         if (t.startsWith("01")) availableClassIds.add(t);
         if (t.startsWith("04")) availableRarityIds.add(t);
       });

@@ -495,12 +495,14 @@ export const ServantFilters = {
      reaches this as [] — the impossible combination is spelled null, which means "nothing selected". */
   rowMatches(traits, selected, { other } = {}) {
     if (!selected || selected.length === 0) return true;
-    if (other && selected.includes(ServantFilters.SUB_ALI_OTHER)) {
-      const gbe = new Set(ServantFilters.GBE);
-      if (!(traits || []).some((t) => gbe.has(t))) return true;
-      // the complement is one chip among several: the rest still have to be met
-      if (selected.length === 1) return false;
-      return (traits || []).some((t) => selected.includes(t));
+    /* `other` is one chip among the row's own, so it takes the same union test as the rest: it is simply
+       met by a servant with none of Good, Balanced or Evil rather than by a trait it carries. */
+    if (
+      other &&
+      selected.includes(ServantFilters.SUB_ALI_OTHER) &&
+      !(traits || []).some((t) => ServantFilters.GBE.includes(t))
+    ) {
+      return true;
     }
     return (traits || []).some((t) => selected.includes(t));
   },

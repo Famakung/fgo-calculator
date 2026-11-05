@@ -132,6 +132,38 @@ test("a class pick without a group still filters, and nonsense matches nothing",
   assert.equal(ServantFilters.match(sabers, { aliFilters: ["nonsense"] }), false);
 });
 
+test("an ascension's alignment and sub-attribute reach the row it is filtered on", async () => {
+  /* 415 is Chaotic with no second-axis alignment at all; Good appears in the 1st and 2nd ascension diffs
+     and Evil in the 3rd. The sub-attribute stays Human in every synced ascension — there is no 02xx entry
+     in any of her diffs, so Earth (what the player sees on the 3rd form) is not in the Atlas export. */
+  const { ServantData } = await import("../src/scripts/data.js");
+  const assert1 = await import("node:assert/strict");
+  ServantData.load();
+  const base = ServantData.getTraitsForAscension("415", "base");
+  const first = ServantData.getTraitsForAscension("415", "000");
+  const third = ServantData.getTraitsForAscension("415", "002");
+  assert1.deepEqual(ServantFilters.match(base, { aliFilters: ["0301"] }), true);
+  assert1.deepEqual(ServantFilters.match(base, { aliFilters: ["0301"], subAliFilters: ["0303"] }), false);
+  assert1.deepEqual(ServantFilters.match(first, { aliFilters: ["0301"], subAliFilters: ["0303"] }), true);
+  assert1.deepEqual(
+    ServantFilters.match(third, { aliFilters: ["0301"], subAliFilters: ["0304"], subAttrFilters: ["0202"] }),
+    true,
+  );
+  assert1.deepEqual(
+    ServantFilters.match(third, { aliFilters: ["0301"], subAliFilters: ["0303"], subAttrFilters: ["0202"] }),
+    false,
+  );
+});
+
+test("Other unions with the chips beside it instead of vetoing them", () => {
+  const row = { subAliFilters: [ServantFilters.SUB_ALI_OTHER, "0303"] };
+  assert.equal(ServantFilters.match(helena, row), true); // Good: met by the chip beside Other
+  assert.equal(ServantFilters.match(summerOnly, row), true); // no second axis: met by Other
+  assert.equal(ServantFilters.match(madnessOnly, { subAliFilters: ["0303"] }), false);
+  assert.equal(ServantFilters.match(madnessOnly, { subAliFilters: ["0303", "0304"] }), false);
+  assert.equal(ServantFilters.match(summerOnly, { subAliFilters: ["0303", "0304"] }), false);
+});
+
 test("every chip row's ids are trait ids, except Other", () => {
   assert.deepEqual(
     SUB_ATTR_FILTERS.map((c) => c.id),
