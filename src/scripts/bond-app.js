@@ -1,5 +1,5 @@
 import { BOND_CONSTANTS, SERVANT_MAX_SLOTS, BOND_QUESTS, BOND_STORAGE_KEY } from "./constants.js";
-import { Validator, TraitMatcher, BondLevelCalculator, SlotCEs } from "./domain.js";
+import { Validator, TraitMatcher, SlotCEs, Teapot } from "./domain.js";
 import { ServantData, CEById, TraitNames } from "./data.js";
 import { DOMFactory } from "./presentation.js";
 
@@ -25,6 +25,9 @@ export const BondApp = {
   state: null,
   elements: {},
   _refs: null,
+  /* The teapot count box and its switch live in the page markup, not in buildServantSlots(), so they
+     are kept apart from `elements`, which that builder clears on every re-render. */
+  _teapotInputs: null,
 
   configure(refs) {
     // refs = { ServantSelector, AscensionSelector, CESelector, CESubSelector, ServantDrag }
@@ -67,6 +70,8 @@ export const BondApp = {
       slots: Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot()),
       selectedQuest: "",
       customBond: 0,
+      teapotCount: 0,
+      teapotOn: false,
     };
 
     const select = document.getElementById("bondQuestSelect");
@@ -117,6 +122,24 @@ export const BondApp = {
     const calcBtn = document.getElementById("bondCalculateBtn");
     if (calcBtn) {
       calcBtn.addEventListener("click", () => this.calculate());
+    }
+
+    // Stargazer's Teapot: how many the player holds, and whether the plan spends them.
+    const teapotCount = document.getElementById("teapotCountInput");
+    const teapotToggle = document.getElementById("teapotToggle");
+    if (teapotCount && teapotToggle) {
+      this._teapotInputs = { count: teapotCount, toggle: teapotToggle };
+      teapotCount.value = this.state.teapotCount;
+      teapotToggle.checked = this.state.teapotOn;
+      // Saving only: the teapot changes what the *next* plan costs, so pricing stays the Calculate button's job.
+      const syncTeapot = () => {
+        this.state.teapotCount = Validator.clamp(teapotCount.value, 0, BOND_CONSTANTS.MAX_TEAPOT_COUNT);
+        teapotCount.value = this.state.teapotCount;
+        this.state.teapotOn = teapotToggle.checked;
+        this.saveState();
+      };
+      teapotCount.addEventListener("change", syncTeapot);
+      teapotToggle.addEventListener("change", syncTeapot);
     }
 
     // Init servant selector
@@ -751,6 +774,10 @@ export const BondApp = {
       }
     }
 
+    // Stargazer's Teapot: one spent per run, and a run pays every servant in the party.
+    const teapotStock = this.state.teapotOn ? Math.floor(this.state.teapotCount || 0) : 0;
+    const boosted = teapotStock > 0;
+
     // Calculate for normal servants only
     const slotResults = [];
     for (let i = 0; i < count; i++) {
@@ -863,14 +890,23 @@ export const BondApp = {
       totalBonus += flatBonus;
       // Step 4: effectiveBond = base + totalBonus
       const effectiveBond = bondPerRun + totalBonus;
+      // Step 5: a teapot-powered run pays that whole amount again, until the stock is gone.
+      const perRun = boosted ? effectiveBond * BOND_CONSTANTS.TEAPOT_MULTIPLIER : effectiveBond;
       // The typed figure prices the level the player stands on; the table prices every one above it.
-      const bondPlan = BondLevelCalculator.plan({
+      const teapot = Teapot.plan({
         growth: ServantData.getBondGrowth(servantId),
         current: slot.bondLevel || 0,
         target: slot.targetLevel || 0,
-        bondPerRun: effectiveBond,
+        onPerRun: perRun,
+        offPerRun: effectiveBond,
         typedCost: bondNeeded,
+        stock: teapotStock,
       });
+      const bondPlan = teapot.on;
+      // What the stock left unpaid, the ordinary rate finishes.
+      const offPlan = teapot.off;
+      const teapotOut = teapot.out;
+      const runs = teapot.runs;
       slotResults.push({
         index: i,
         servantId,
@@ -879,8 +915,13 @@ export const BondApp = {
         bondNeeded,
         effectiveBond,
         totalBonus,
-        runs: bondPlan.spansLevels ? bondPlan.total : effectiveBond > 0 ? Math.ceil(bondNeeded / effectiveBond) : 0,
+        runs,
         bondPlan,
+        teapotRuns: boosted ? runs : 0,
+        teapotOffRuns: offPlan ? offPlan.total : 0,
+        teapotBonus: boosted ? effectiveBond : 0,
+        teapotOut,
+        offPlan,
         ceBonus: ceBonusPercent,
         appliedCEs,
         isFrontline,
@@ -899,9 +940,11 @@ export const BondApp = {
     // Show results
     const container = document.getElementById("bondResultContent");
 
-    // Per-servant results grid
-    const resultGrid = DOMFactory.el("div", "bond-result-servant-grid");
-    slotResults.forEach((sr) => {
+    /* One servant's result card. A teapot plan the stock cannot finish is drawn twice: the boosted
+       stretch first, then what the ordinary rate still owes once the teapots are gone. */
+    const buildCard = (sr, afterTeapot = false) => {
+      const runs = afterTeapot ? sr.teapotOffRuns : sr.teapotOut ? sr.teapotRuns : sr.runs;
+      const bonus = afterTeapot ? sr.totalBonus : sr.totalBonus + sr.teapotBonus;
       const card = DOMFactory.el("div", "bond-result-servant-card");
 
       // Portrait
@@ -921,8 +964,8 @@ export const BondApp = {
       nameEl.textContent = sr.name;
       card.appendChild(nameEl);
 
-      // Applied CE images grid
-      if (sr.appliedCEs.length > 0) {
+      // Applied CE images grid, with the teapot last while it still pays for this servant's runs
+      if (sr.appliedCEs.length > 0 || (!afterTeapot && sr.teapotRuns > 0)) {
         const ceImgGrid = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
         sr.appliedCEs.forEach((ce) => {
           if (ce.isMaxBond) {
@@ -979,25 +1022,42 @@ export const BondApp = {
             ceImgGrid.appendChild(ceImg);
           }
         });
+        if (!afterTeapot && sr.teapotRuns > 0) {
+          const paid = `${sr.teapotRuns} ${sr.teapotRuns === 1 ? "run" : "runs"}`;
+          const teapotTitle = sr.teapotOut
+            ? `Stargazer's Teapot: ×2 bond for ${paid}, then the ordinary rate`
+            : "Stargazer's Teapot: ×2 bond";
+          const teapotImg = DOMFactory.createLazyImg("icons/teapot.webp", "bond-result-ce-img", {
+            alt: "Stargazer's Teapot",
+            title: teapotTitle,
+          });
+          DOMFactory.addSimpleFallback(teapotImg, "bond-result-ce-fallback", "×2");
+          ceImgGrid.appendChild(teapotImg);
+        }
         card.appendChild(ceImgGrid);
       }
 
       // Bond breakdown: base(+total bonus)
       const bondInfo = DOMFactory.el("div", "bond-result-bond-info");
       bondInfo.textContent =
-        sr.totalBonus > 0
-          ? `${bondPerRun.toLocaleString()}(+${sr.totalBonus.toLocaleString()})`
-          : `${bondPerRun.toLocaleString()}`;
+        bonus > 0 ? `${bondPerRun.toLocaleString()}(+${bonus.toLocaleString()})` : `${bondPerRun.toLocaleString()}`;
       card.appendChild(bondInfo);
 
       // Runs count — the plain number, or one line per stretch of bond levels when the plan crosses more than one
       const runsEl = DOMFactory.el("div", "bond-result-runs");
-      runsEl.textContent = `${sr.runs} ${sr.runs === 1 ? "run" : "runs"}`;
+      runsEl.textContent = `${runs} ${runs === 1 ? "run" : "runs"}`;
       card.appendChild(runsEl);
 
-      if (sr.bondPlan.spansLevels) {
+      /* Each block names only the levels its own runs actually cleared. Runs that died inside a level
+         — the last teapot spent on a stretch it never finished — belong to no row here: the servant is
+         still on that level, and the continuation block below owns it. A split plan prints its rows even
+         for one cleared level; an unsplit one keeps the old rule of naming the stretch only when it
+         crosses more than one level. */
+      const phasePlan = afterTeapot ? sr.offPlan : sr.bondPlan;
+      const phaseRows = phasePlan.rows;
+      if (phaseRows.length > 0 && (sr.teapotOut || phasePlan.spansLevels)) {
         const levelList = DOMFactory.el("div", "bond-result-levels");
-        sr.bondPlan.rows.forEach((row) => {
+        phaseRows.forEach((row) => {
           const label = DOMFactory.el("div", "bond-result-level-label");
           label.textContent = `Bond Lv.${row.from}->${row.to}`;
           const rowRuns = DOMFactory.el("div", "bond-result-level-runs");
@@ -1008,9 +1068,53 @@ export const BondApp = {
         card.appendChild(levelList);
       }
 
-      resultGrid.appendChild(card);
-    });
-    container.replaceChildren(resultGrid);
+      return card;
+    };
+
+    /* The control that sits between the two blocks once the teapots run out: clicking it takes the
+       toggle off, so the plan is priced at the ordinary rate alone. */
+    const buildTeapotExhaust = () => {
+      const row = DOMFactory.el("div", "bond-teapot-exhaust");
+      const btn = DOMFactory.el("button", "bond-teapot-remove", { type: "button" });
+      const label = DOMFactory.el("span", null);
+      label.textContent = "Out of Stargazer's Teapot";
+      // The name is already in the label, so the picture is decoration and stays out of the chip's name.
+      const img = DOMFactory.el("img", null, {
+        src: "icons/teapot.webp",
+        alt: "",
+        width: "142",
+        height: "155",
+      });
+      img.onerror = () => {
+        img.style.display = "none";
+      };
+      btn.append(label, img);
+      btn.addEventListener("click", () => {
+        this.state.teapotOn = false;
+        if (this._teapotInputs) this._teapotInputs.toggle.checked = false;
+        this.saveState();
+        this.calculate();
+      });
+      row.appendChild(btn);
+      return row;
+    };
+
+    const boostedGrid = DOMFactory.el("div", "bond-result-servant-grid");
+    slotResults.forEach((sr) => boostedGrid.appendChild(buildCard(sr)));
+    const frag = document.createDocumentFragment();
+    frag.appendChild(boostedGrid);
+
+    if (slotResults.some((sr) => sr.teapotOut)) {
+      frag.appendChild(buildTeapotExhaust());
+      const rest = slotResults.filter((sr) => sr.teapotOffRuns > 0);
+      if (rest.length > 0) {
+        const plainGrid = DOMFactory.el("div", "bond-result-servant-grid");
+        rest.forEach((sr) => plainGrid.appendChild(buildCard(sr, true)));
+        frag.appendChild(plainGrid);
+      }
+    }
+
+    container.replaceChildren(frag);
 
     const results = document.getElementById("bondResults");
     results.classList.add("visible");
@@ -1076,6 +1180,9 @@ export const BondApp = {
         slots: slots.map(sanitize),
         selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",
         customBond: Validator.clamp(data.customBond || 0, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND),
+        // Teapots are counted in whole items; a save that never had them simply starts empty.
+        teapotCount: Math.floor(Validator.clamp(data.teapotCount || 0, 0, BOND_CONSTANTS.MAX_TEAPOT_COUNT)),
+        teapotOn: Boolean(data.teapotOn),
       };
     } catch (_e) {
       return null;

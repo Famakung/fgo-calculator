@@ -641,6 +641,21 @@ curl -sL "https://static.atlasacademy.io/JP/SkillIcons/skill_00205.png" -o icons
 python -c "from PIL import Image; import os; Image.open('icons/bond_icon.png').save('icons/bond_icon.webp', 'WEBP', quality=80); os.remove('icons/bond_icon.png')"
 ```
 
+## Stargazer's Teapot Icon
+
+The Bond tab's ×2 item. Displayed at 48px tall (`--ce-badge-h`) everywhere: `.bond-teapot-img` in the setup row, `.bond-result-ce-img` in the results card, and `.bond-teapot-remove img` in the "Out of Stargazer's Teapot" chip. Atlas publishes it as a bordered 142×155 item image, the same card shape as a Craft Essence.
+
+| File                   | URL                                                           | Display sizes                                                                                     |
+| ---------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `icons/teapot.webp`    | `https://static.atlasacademy.io/JP/Items/94065901_bordered.png` | 48px (`--ce-badge-h`) at all three sites |
+
+Download + convert (never leave the remote URL in the shipped page — the site carries zero external resources):
+
+```bash
+curl -sL "https://static.atlasacademy.io/JP/Items/94065901_bordered.png" -o icons/teapot.png
+python -c "from PIL import Image; import os; Image.open('icons/teapot.png').save('icons/teapot.webp', 'WEBP', quality=90, method=6); os.remove('icons/teapot.png')"
+```
+
 ## Class Icons
 
 Display at 32x32px in CSS. Source images resized to 64x64 (2x Retina), encoded WebP quality 80.

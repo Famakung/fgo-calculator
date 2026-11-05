@@ -104,10 +104,12 @@ export const BondLevelCalculator = {
      growth[i] = bond points needed while standing at level i to reach level i+1.
      typedCost replaces the cost of the starting level only — that is the figure the game shows for
      the player's partial progress, while every level above it comes from the table.
-     Returns { rows: [{ from, to, runs }], total, spansLevels }. */
-  plan({ growth, current, target, bondPerRun, typedCost = 0 }) {
+     runBudget caps the runs the plan may spend (a Stargazer's Teapot stock); when it binds, the walk
+     stops where the money ran out and reports that level so the caller can continue at another rate.
+     Returns { rows: [{ from, to, runs }], total, spansLevels, stopLevel, stopRuns, stopOwed }. */
+  plan({ growth, current, target, bondPerRun, typedCost = 0, runBudget = Infinity }) {
     const rows = [];
-    const none = { rows, total: 0, spansLevels: false };
+    const none = { rows, total: 0, spansLevels: false, stopLevel: null, stopRuns: 0, stopOwed: 0 };
     if (!Array.isArray(growth) || growth.length === 0 || !(bondPerRun > 0)) return none;
 
     const start = Math.round(
@@ -118,13 +120,25 @@ export const BondLevelCalculator = {
 
     let level = start;
     let carry = 0;
+    let budget = runBudget;
+    let stopLevel = null;
+    let stopRuns = 0;
+    let stopOwed = 0;
     let iterations = 0;
 
     while (level < goal && iterations++ < MAX_ITERATIONS) {
       const rowStart = level;
       const cost = level === start && typedCost > 0 ? typedCost : growth[level];
       const runs = Math.max(0, Math.ceil((cost - carry) / bondPerRun));
+      if (runs > budget) {
+        // The budget dies inside this level: where it stopped, how far it got, what the level still owes.
+        stopLevel = level;
+        stopRuns = budget;
+        stopOwed = cost - carry - budget * bondPerRun;
+        break;
+      }
       carry += runs * bondPerRun - cost;
+      budget -= runs;
       level += 1;
       if (level >= BOND_CONSTANTS.BOND_CARRY_LIMIT) carry = 0;
 
@@ -139,7 +153,51 @@ export const BondLevelCalculator = {
     }
 
     const total = rows.reduce((sum, row) => sum + row.runs, 0);
-    return { rows, total, spansLevels: rows.length > 1 || (rows.length === 1 && rows[0].to - rows[0].from > 1) };
+    return {
+      rows,
+      total,
+      spansLevels: rows.length > 1 || (rows.length === 1 && rows[0].to - rows[0].from > 1),
+      stopLevel,
+      stopRuns,
+      stopOwed,
+    };
+  },
+};
+
+/* ============================================
+   STARGAZER'S TEAPOT (Bond Calculator ×2 item)
+   ============================================ */
+/* One teapot per quest run, and a run pays every servant in the party, so the stock is counted in
+   party runs and a servant who finishes early costs no extra teapots. */
+export const Teapot = {
+  /* Split one servant's plan across the party's stock. The boosted walk spends the teapots and reports
+     the level it died on; the ordinary walk continues from that level owing what the boosted runs left
+     unpaid. stock 0 means no teapot: one ordinary plan, `out` false, `off` null.
+     Returns { on, off, out, runs } — two BondLevelCalculator plans, whether the stock fell short, and
+     the boosted runs actually paid. `on.rows` names only the levels those runs really cleared: a
+     teapot spent inside a level the stock never finished adds to `runs` but to no row, because the
+     servant is still on that level when the teapots end and the continuation owns it. */
+  plan({ growth, current, target, onPerRun, offPerRun, typedCost, stock }) {
+    const spend = stock > 0 && offPerRun > 0;
+    const on = BondLevelCalculator.plan({
+      growth,
+      current,
+      target,
+      bondPerRun: onPerRun,
+      typedCost,
+      runBudget: spend ? stock : Infinity,
+    });
+    const planRuns = on.spansLevels ? on.total : onPerRun > 0 ? Math.ceil(typedCost / onPerRun) : 0;
+    if (!spend || on.stopLevel === null) return { on, off: null, out: false, runs: planRuns };
+
+    const off = BondLevelCalculator.plan({
+      growth,
+      current: on.stopLevel,
+      target,
+      bondPerRun: offPerRun,
+      typedCost: on.stopOwed,
+    });
+    return { on, off, out: true, runs: on.total + on.stopRuns };
   },
 };
 

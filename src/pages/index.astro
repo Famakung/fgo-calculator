@@ -445,6 +445,32 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="card-title">Party Setup</div>
             <div class="servant-grid grid" id="servantGrid"></div>
             <div class="bond-card-actions">
+              <div class="bond-teapot">
+                <img
+                  class="bond-teapot-img"
+                  src="icons/teapot.webp"
+                  alt="Stargazer's Teapot"
+                  width="142"
+                  height="155"
+                />
+                <div class="bond-input-box bond-teapot-box">
+                  <label class="bond-input-box-label" for="teapotCountInput">Stargazer's Teapot</label>
+                  <input
+                    class="bond-input-box-field bond-teapot-input"
+                    id="teapotCountInput"
+                    type="number"
+                    min="0"
+                    max="9999"
+                    step="1"
+                    value="0"
+                    inputmode="numeric"
+                  />
+                </div>
+                <label class="bond-teapot-switch" for="teapotToggle">
+                  <input type="checkbox" id="teapotToggle" aria-label="Use Stargazer's Teapot" />
+                  <span class="bond-teapot-slider" aria-hidden="true"></span>
+                </label>
+              </div>
               <button class="calculate-btn" id="bondCalculateBtn" type="button">
                 Calculate Quest Runs
               </button>

@@ -27,6 +27,10 @@ export const BOND_CONSTANTS = {
   /* Essences one slot can wear — two once the player ticks Grand Servant. */
   MAX_CE_SLOTS: 1,
   GRAND_MAX_CE_SLOTS: 2,
+  /* Stargazer's Teapot: what one multiplies a run's bond by, and how many the player can hold.
+     One teapot is spent per quest run, and a run pays every servant in the party. */
+  TEAPOT_MULTIPLIER: 2,
+  MAX_TEAPOT_COUNT: 9999,
 };
 
 export const TIER_COLORS = {

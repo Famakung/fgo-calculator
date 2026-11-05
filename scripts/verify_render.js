@@ -537,7 +537,9 @@ try {
     errors.push(`sub-tab restore: <html data-subtab> is "${subtabRestore.attr}" after load`);
   }
   if (subtabRestore.ce !== 0 || subtabRestore.servant !== 2) {
-    errors.push(`sub-tab restore: after reload ce=${subtabRestore.ce} servant=${subtabRestore.servant} visible, want 0/2`);
+    errors.push(
+      `sub-tab restore: after reload ce=${subtabRestore.ce} servant=${subtabRestore.servant} visible, want 0/2`,
+    );
   }
   const activeBtns = subtabRestore.buttons.filter((b) => b.active).map((b) => b.subtab);
   if (activeBtns.join() !== "servant") {
@@ -620,13 +622,13 @@ try {
       grid: !!document.getElementById("ceGrid"),
       inCard: !!block,
       afterPointBox:
-        !!block &&
-        !!pointBox &&
-        Boolean(block.compareDocumentPosition(pointBox) & Node.DOCUMENT_POSITION_PRECEDING),
+        !!block && !!pointBox && Boolean(block.compareDocumentPosition(pointBox) & Node.DOCUMENT_POSITION_PRECEDING),
       chipH: chips ? Math.round(block.querySelector(".ce-chip").getBoundingClientRect().height) : 0,
       chips,
       names: block ? block.querySelectorAll(".ce-slot-name, .ce-slot-bonus").length : -1,
-      labels: block ? [...block.querySelectorAll(".bond-input-box-label, .bond-checkbox-label")].map((l) => l.textContent) : [],
+      labels: block
+        ? [...block.querySelectorAll(".bond-input-box-label, .bond-checkbox-label")].map((l) => l.textContent)
+        : [],
       blankBlocks: document.querySelectorAll(".servant-add-slot .slot-ce-block").length,
     };
   });
@@ -655,7 +657,9 @@ try {
   });
   const equipped = await chipState();
   if (equipped.chips !== 1 || equipped.addTiles !== 0) {
-    errors.push(`bond slot CEs: after equipping, ${equipped.chips} chip(s) / ${equipped.addTiles} blank tile(s), want 1 filled`);
+    errors.push(
+      `bond slot CEs: after equipping, ${equipped.chips} chip(s) / ${equipped.addTiles} blank tile(s), want 1 filled`,
+    );
   }
   if (!equipped.keys[0]) errors.push("bond slot CEs: the equipped chip shows no portrait");
 
@@ -676,7 +680,9 @@ try {
   });
   const trimmed = await chipState();
   if (trimmed.chips !== 1 || trimmed.keys[0] !== equipped.keys[0]) {
-    errors.push(`bond slot CEs: unticking Grand left ${trimmed.chips} chip(s) first=${JSON.stringify(trimmed.keys[0])}`);
+    errors.push(
+      `bond slot CEs: unticking Grand left ${trimmed.chips} chip(s) first=${JSON.stringify(trimmed.keys[0])}`,
+    );
   }
 
   // And the card's own remove button empties it again.
@@ -686,7 +692,9 @@ try {
   });
   const removed = await chipState();
   if (removed.chips !== 1 || removed.addTiles !== 1) {
-    errors.push(`bond slot CEs: removing the essence left ${removed.chips} chip(s) / ${removed.addTiles} blank tile(s), want 1 blank`);
+    errors.push(
+      `bond slot CEs: removing the essence left ${removed.chips} chip(s) / ${removed.addTiles} blank tile(s), want 1 blank`,
+    );
   }
 
   /* Support and Max Bond cards must stop reserving the height of the fields they hide: those elements
@@ -738,7 +746,9 @@ try {
   if (support.tickRow) errors.push("bond slot Support: the Max Bond / Bond ≥15 row is still reserved");
   if (!support.collapsed) errors.push("bond slot Support: the essence block is no longer the card's last element");
   if (support.chips !== normal.chips) {
-    errors.push(`bond slot Support: ${support.chips} chip(s), want ${normal.chips} — collapsing fields must keep the essences`);
+    errors.push(
+      `bond slot Support: ${support.chips} chip(s), want ${normal.chips} — collapsing fields must keep the essences`,
+    );
   }
   if (!(support.height < normal.height)) {
     errors.push(`bond slot Support: card is ${support.height}px, no shorter than Normal ${normal.height}px`);
@@ -748,14 +758,18 @@ try {
   await page.select("#slotType_0", "normal");
   const backToNormal = await slotInfo(0);
   if (!backToNormal.levelRow || !backToNormal.pointBox || !backToNormal.tickRow) {
-    errors.push(`bond slot back to Normal: level row=${backToNormal.levelRow} point box=${backToNormal.pointBox} tick row=${backToNormal.tickRow}`);
+    errors.push(
+      `bond slot back to Normal: level row=${backToNormal.levelRow} point box=${backToNormal.pointBox} tick row=${backToNormal.tickRow}`,
+    );
   }
   console.log(
     `NOTE: bond slot card height — Normal ${normal.height}px, Max Bond ${maxBond.height}px, ` +
       `Support ${support.height}px, back to Normal ${backToNormal.height}px (${backToNormal.points} pts in the box)`,
   );
   if (backToNormal.points !== normal.points) {
-    errors.push(`bond slot back to Normal: point box shows ${JSON.stringify(backToNormal.points)}, was ${JSON.stringify(normal.points)}`);
+    errors.push(
+      `bond slot back to Normal: point box shows ${JSON.stringify(backToNormal.points)}, was ${JSON.stringify(normal.points)}`,
+    );
   }
 
   /* The Bond tab reads quest first, then the party it is spent on, and the calculate button belongs to
@@ -836,10 +850,14 @@ try {
   });
   const chipWants = ["Chaldea Teatime · +5% All", "Chaldea Teatime · +15% All"];
   if (JSON.stringify(split.chips.slice(0, 2)) !== JSON.stringify(chipWants)) {
-    errors.push(`support CE rate: slot chips read ${JSON.stringify(split.chips.slice(0, 2))}, want ${JSON.stringify(chipWants)}`);
+    errors.push(
+      `support CE rate: slot chips read ${JSON.stringify(split.chips.slice(0, 2))}, want ${JSON.stringify(chipWants)}`,
+    );
   }
   if (JSON.stringify([...split.badges].sort()) !== JSON.stringify(["Chaldea Teatime +15%", "Chaldea Teatime +5%"])) {
-    errors.push(`support CE rate: the result card shows ${JSON.stringify(split.badges)}, want one +5% and one +15% badge`);
+    errors.push(
+      `support CE rate: the result card shows ${JSON.stringify(split.badges)}, want one +5% and one +15% badge`,
+    );
   }
   // 5%+15% = 200 of the 1,000-point base, x1.24 frontline (one borrowed support in the first three),
   // +200 frontline flat and +40 for that support's +4%. Both essences boost the one calculated servant.
@@ -854,6 +872,182 @@ try {
   console.log(
     `NOTE: support CE rate — chips ${JSON.stringify(split.chips.slice(0, 2))}, badges ${JSON.stringify(split.badges)}, ` +
       `bonus +${split.bonus}/run`,
+  );
+
+  /* Stargazer's Teapot doubles what a run pays while the party still holds one, and the plan splits
+     where the stock runs out: the boosted stretch, a centred "Out of Stargazer's Teapot" chip, then
+     the ordinary rate for what is left — and both stretches name their own bond levels. Slot 0 is Mash
+     on a 1,000-point quest: 1,200 bond a run ordinary, 2,400 on a teapot run, 2,500 typed at Lv.0,
+     Lv.3 wanted. One teapot pays a single boosted run and leaves two ordinary ones behind it. */
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "fgo_bond_calculator_data",
+      JSON.stringify({
+        slots: [{ servantId: "001", bondNeeded: 2500, type: "normal", bondLevel: 0, targetLevel: 3, ces: [] }],
+        selectedQuest: "custom",
+        customBond: 1000,
+      }),
+    ),
+  );
+  await page.reload({ waitUntil: "networkidle0" });
+  await page.click('.tab-btn[data-tab="bond"]');
+  await page.waitForFunction(() => Boolean(document.getElementById("slotBond_0")), { timeout: 15000 });
+
+  /* The teapot controls belong beside the button that spends them, not parked on the far side of the
+     row: one line, and only the flex gap between them. */
+  const teapotPlace = await page.evaluate(() => {
+    const t = document.querySelector(".bond-teapot").getBoundingClientRect();
+    const b = document.getElementById("bondCalculateBtn").getBoundingClientRect();
+    return { gap: Math.round(b.left - t.right), sameLine: Math.abs(b.top - t.top) < 8 };
+  });
+  if (!teapotPlace.sameLine || teapotPlace.gap > 16) {
+    errors.push(`teapot: the settings are not beside #bondCalculateBtn (${JSON.stringify(teapotPlace)})`);
+  }
+
+  const readTeapot = () =>
+    page.evaluate(() => {
+      const grid = (el) => {
+        if (!el) return null;
+        const card = el.querySelector(".bond-result-servant-card");
+        if (!card) return null;
+        return {
+          info: card.querySelector(".bond-result-bond-info").textContent,
+          runs: card.querySelector(".bond-result-runs").textContent,
+          teapot: [...card.querySelectorAll(".bond-result-ce-img")].some((i) => (i.alt || "").includes("Teapot")),
+          levels: [...card.querySelectorAll(".bond-result-level-label")].map((l) => l.textContent),
+          levelRuns: [...card.querySelectorAll(".bond-result-level-runs")].map((r) => r.textContent),
+        };
+      };
+      const grids = [...document.querySelectorAll("#bondResultContent .bond-result-servant-grid")];
+      const btn = document.querySelector(".bond-teapot-remove");
+      const chipImg = btn ? btn.querySelector("img") : null;
+      return {
+        grids: grids.length,
+        boosted: grid(grids[0]),
+        plain: grid(grids[1]),
+        exhaust: btn
+          ? {
+              label: btn.textContent.trim(),
+              img: Boolean(chipImg),
+              imgH: chipImg ? Math.round(chipImg.getBoundingClientRect().height) : 0,
+            }
+          : null,
+      };
+    });
+  const setTeapotCount = (n) =>
+    page.evaluate((value) => {
+      const box = document.getElementById("teapotCountInput");
+      box.value = String(value);
+      box.dispatchEvent(new Event("change"));
+    }, n);
+
+  await setTeapotCount(1);
+  await page.click("#teapotToggle");
+  if (!(await page.evaluate(() => document.getElementById("teapotToggle").checked))) {
+    errors.push("teapot: clicking the switch did not leave #teapotToggle checked");
+  }
+  await page.click("#bondCalculateBtn");
+  await page.waitForSelector("#bondResultContent .bond-result-servant-card", { timeout: 15000 });
+  const teapotSplit = await readTeapot();
+  if (teapotSplit.grids !== 2) {
+    errors.push(
+      `teapot: ${teapotSplit.grids} result grid(s) with 1 teapot held, want the boosted plan and the continuation`,
+    );
+  }
+  if (!teapotSplit.exhaust || teapotSplit.exhaust.label !== "Out of Stargazer's Teapot" || !teapotSplit.exhaust.img) {
+    errors.push(
+      `teapot: the stock ran out and no centred "Out of Stargazer's Teapot" + image was drawn (${JSON.stringify(teapotSplit.exhaust)})`,
+    );
+  }
+  if (teapotSplit.exhaust && teapotSplit.exhaust.imgH !== 48) {
+    errors.push(
+      `teapot: the "Out of" chip draws its teapot ${teapotSplit.exhaust.imgH}px tall, want 48px (--ce-badge-h)`,
+    );
+  }
+  // The one teapot buys one 2,400-point run, which does not clear Lv.0->1 — so it names no level at all.
+  if (
+    !teapotSplit.boosted ||
+    teapotSplit.boosted.info !== "1,000(+1,400)" ||
+    teapotSplit.boosted.runs !== "1 run" ||
+    !teapotSplit.boosted.teapot ||
+    teapotSplit.boosted.levels.length !== 0
+  ) {
+    errors.push(
+      `teapot: the boosted block reads ${JSON.stringify(teapotSplit.boosted)}, want "1,000(+1,400)", "1 run", ` +
+        `teapot badge and NO level row (the run cleared no level)`,
+    );
+  }
+  // The continuation keeps the bond levels the teapots never got through, and their own run counts.
+  if (
+    !teapotSplit.plain ||
+    teapotSplit.plain.info !== "1,000(+200)" ||
+    teapotSplit.plain.runs !== "2 runs" ||
+    teapotSplit.plain.teapot ||
+    JSON.stringify(teapotSplit.plain.levels) !== JSON.stringify(["Bond Lv.0->2", "Bond Lv.2->3"]) ||
+    JSON.stringify(teapotSplit.plain.levelRuns) !== JSON.stringify(["1 run", "1 run"])
+  ) {
+    errors.push(
+      `teapot: the continuation reads ${JSON.stringify(teapotSplit.plain)}, want "1,000(+200)" / "2 runs" ` +
+        `with Lv.0->2 (1 run) and Lv.2->3 (1 run)`,
+    );
+  }
+
+  await page.click(".bond-teapot-remove");
+  const teapotRemoved = await readTeapot();
+  const afterRemove = await page.evaluate(() => ({
+    checked: document.getElementById("teapotToggle").checked,
+    saved: JSON.parse(localStorage.getItem("fgo_bond_calculator_data")).teapotOn,
+  }));
+  if (afterRemove.checked || afterRemove.saved) {
+    errors.push(`teapot: Remove left the switch on (dom ${afterRemove.checked}, saved ${afterRemove.saved})`);
+  }
+  if (
+    teapotRemoved.grids !== 1 ||
+    teapotRemoved.exhaust ||
+    !teapotRemoved.boosted ||
+    teapotRemoved.boosted.info !== "1,000(+200)" ||
+    teapotRemoved.boosted.runs !== "4 runs" ||
+    teapotRemoved.boosted.teapot ||
+    JSON.stringify(teapotRemoved.boosted.levels) !== JSON.stringify(["Bond Lv.0->2", "Bond Lv.2->3"])
+  ) {
+    errors.push(
+      `teapot: after Remove it drew ${JSON.stringify(teapotRemoved)}, want one plain grid "1,000(+200)" / "4 runs" ` +
+        `over Lv.0->2 and Lv.2->3`,
+    );
+  }
+
+  /* Turning the teapot on must NOT re-price by itself: results stay as the last Calculate left them
+     (the plain 4-run plan above) until the button is pressed. */
+  await setTeapotCount(99);
+  await page.click("#teapotToggle");
+  const idle = await readTeapot();
+  if (idle.boosted && idle.boosted.info === "1,000(+1,400)") {
+    errors.push("teapot: flipping the switch re-priced the plan without a Calculate click");
+  }
+
+  /* A stock that reaches the end of the plan pays every run, so one boosted block, its own level
+     breakdown, and no Remove row — but only once Calculate is clicked. */
+  await page.click("#bondCalculateBtn");
+  const enough = await readTeapot();
+  if (
+    enough.grids !== 1 ||
+    enough.exhaust ||
+    !enough.boosted ||
+    enough.boosted.info !== "1,000(+1,400)" ||
+    enough.boosted.runs !== "2 runs" ||
+    !enough.boosted.teapot ||
+    JSON.stringify(enough.boosted.levels) !== JSON.stringify(["Bond Lv.0->3"]) ||
+    JSON.stringify(enough.boosted.levelRuns) !== JSON.stringify(["2 runs"])
+  ) {
+    errors.push(
+      `teapot: with the stock covering the plan it drew ${JSON.stringify(enough)}, ` +
+        `want one boosted grid "1,000(+1,400)" / "2 runs" with its Lv.0->3 row`,
+    );
+  }
+  console.log(
+    `NOTE: teapot — 1 held: ${JSON.stringify(teapotSplit.boosted)} then ${JSON.stringify(teapotSplit.plain)}, ` +
+      `chip ${JSON.stringify(teapotSplit.exhaust)}; after the chip click: ${JSON.stringify(teapotRemoved.boosted)}; ` +
+      `99 held: ${JSON.stringify(enough.boosted)}`,
   );
 
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
