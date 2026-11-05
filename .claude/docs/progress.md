@@ -4,11 +4,11 @@
 
 ---
 
-## 2026-11-06 — feat(filter): Filter Settings becomes seven labelled sections
+## 2026-11-06 — feat(filter): Filter Settings becomes eight labelled sections
 
 Design `.claude/docs/filter-settings-rework-design.md`, plan `.claude/docs/filter-settings-rework-plan.md`.
 
-- Rarity / Class / Class (Group) / Alignment (Lawful·Neutral·Chaotic) / Alignment (Good·Balanced·Evil·Other) / Sub-Attribute / CE Bonus, each a centred label over centred chips with a hairline separator; one column, the modal body scrolls (owner choice A).
+- Rarity / Class / Class (Group) / Alignment (Lawful·Neutral·Chaotic) / Alignment (Good·Balanced·Evil·Other) / Sub-Attribute / Gender (added after approval) / CE Bonus, each a centred label over centred chips with the card's 2px separator; one column, the modal body scrolls (owner choice A).
 - One chip builder: `FilterSections.renderRow` / `chipEl` (`src/scripts/filter-sections.js`) replaces `CEFilterApp.buildClassFilter`/`buildRarityFilter` and `ServantSelector._buildClassFilter`/`_buildRarityFilter`. A chip is now `<button aria-pressed>`, because the class row has to render a chip that exists but cannot be clicked.
 - New state (page-scoped, never persisted): `groupClassFilters`, `aliFilters`, `subAliFilters`, `subAttrFilters` beside the existing `classFilters` / `rarityFilters` / `matchCounts`.
 - Rules in `ServantFilters` (`domain.js`): union inside a row, AND across rows, empty row = no filter; `rowScope` is the display bound (group chips and a Grand Duel lock only — a class pick never greys a sibling, owner decision), `effectiveClassIds` what the grid matches on; `Other` = the Good/Balanced/Evil complement (Madness, Summer live there).
@@ -17,7 +17,7 @@ Design `.claude/docs/filter-settings-rework-design.md`, plan `.claude/docs/filte
 - Data check (`npm run data:sync`, full servant revalidation): the stored data matched Atlas exactly, so the first pass concluded Alice had no Earth anywhere. **That conclusion was wrong and is superseded by `b13919d`**: the sub-attribute is not in `ascensionAdd.individuality` at all, it is in `ascensionAdd.attribute.ascension` (`{'3': 'earth', '4': 'earth'}` for 415, long id 505500), which `sync_atlas_data.py` never read. Now mapped to `02xx` onto the stage sets: 415 human→earth, 465 Demeter heaven→star, 416 Hibiki & Chikagi earth→star, 444 U-Olga Marie star→human. `2011 skyOrEarthServant` / `2903 kuonjiAliceStage3` are skill-AI gate conditions, correctly dropped by `normalize_trait_id`. `npm run data:validate` clean; `servants.js` is gitignored so only the script and the test changed. **Requires `npm run data:sync`** (or a CI sync run) before the per-stage attribute shows in the app — an old generated `servants.js` still lacks it.
 - Follow-up fixes (`f534ff6`), both found by the owner testing by hand: `_applyFilters` and the class/rarity availability passes matched `entry.servant.traits` (the base list) instead of `this._traitsOf(entry)` (the ascension the card shows), so no alignment trait living in an ascension diff could be filtered on at all — broken before this rework too; and `rowMatches` let the `Other` chip veto the chips beside it in its own row.
 - Follow-up (`ServantData.getAllTraits`): `base` is the intersection of the stages, so the four attribute-changing servants named no sub-attribute to anything that reads the whole servant — the Bond tab's party picker (`ServantSelector.getFilteredServants`) and a result card with no `primaryAscension` (`CEFilterApp._traitsOf`). Both now read `getAllTraits(id)`, the cached union of every form, so Alice answers to Human and Earth in a picker that has not chosen a form, while a card that has chosen one still answers to that form alone.
-- `tests/servant-filters.test.js` (new, 16 tests), `scripts/verify_render.js` picker blocks re-pinned to the greyed-not-dropped DOM plus a new Bond Gain CE section block, `scripts/build_baseline.json` re-captured with `--write`.
+- `tests/servant-filters.test.js` (new, 16 tests, 75 in the whole suite), `scripts/verify_render.js` picker blocks re-pinned to the greyed-not-dropped DOM plus a new Bond Gain CE section block, `scripts/build_baseline.json` re-captured with `--write`.
 - Not run by the author: `npm run test` and `npm run build` passed; `node scripts/verify_render.js` was **not** executed after the last markup change (owner tests by hand at `localhost:3000`).
 
 ## 2026-11-05 — feat(bond): servant picker modal takes the Bond Gain CE tab's shape
