@@ -69,4 +69,23 @@ document.addEventListener("DOMContentLoaded", () => {
   rIC(() => {
     if (activeTab !== "event") initEvent();
   });
+
+  /* Background scroll lock. All eight modals share `.servant-modal` and toggle `.open`, and a closed
+     overlay is `display: none`, so these non-passive listeners never see a gesture while normal pages
+     scroll — no cost to compositor scrolling — and once one is up, every gesture that does not land
+     inside that modal's own scrolling list is swallowed here instead of moving the page behind it.
+     The scrollbar keeps its track and the page keeps its position, unlike an `overflow: hidden` lock.
+     `overscroll-behavior: contain` (BaseLayout) covers a list whose gesture reaches its end.
+     shortcut: keyboard scrolling (PageDown, arrows) and dragging the page scrollbar still move the
+     background; add a keydown guard here if the owner wants a hard lock. */
+  const modalScrollAreas = ".servant-picker-grid, .cefilter-modal-body, .ceoverlap-scroll";
+  for (const modal of document.querySelectorAll(".servant-modal")) {
+    const blockBackgroundScroll = (e) => {
+      if (!modal.classList.contains("open")) return;
+      if (e.target?.closest?.(modalScrollAreas)) return;
+      e.preventDefault();
+    };
+    modal.addEventListener("wheel", blockBackgroundScroll, { passive: false });
+    modal.addEventListener("touchmove", blockBackgroundScroll, { passive: false });
+  }
 });
