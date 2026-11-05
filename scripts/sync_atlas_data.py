@@ -327,6 +327,13 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
 
     asc_add = svt_data.get("ascensionAdd", {})
     indiv_asc = asc_add.get("individuality", {}).get("ascension", {})
+    # A servant's sub-attribute is NOT in the individuality lists: the server stores it in its own field,
+    # where a late ascension overwrites it (415 Kuonji Alice is `human` at base and `earth` from her 3rd
+    # ascension on; 465 Demeter `star`; 416 Hibiki & Chikagi `earth` then `star`; 444 U-Olga Marie
+    # `human`). Reading only `individuality` loses it, which is why the Sub-Attribute row could never name
+    # them. Same stage keys as individuality: 0/1 -> 000, 2 (or 1/0) -> 001, 3/4 (or 2) -> 002.
+    attr_asc = asc_add.get("attribute", {}).get("ascension", {})
+    ATTRIBUTE_TRAIT_IDS = {"sky": "0200", "earth": "0201", "human": "0202", "star": "0203", "beast": "0204"}
     name_asc = asc_add.get("overWriteServantName", {}).get("ascension", {})
     indiv_costume = asc_add.get("individuality", {}).get("costume", {})
     costumes_profile = svt_data.get("profile", {}).get("costume", {})
@@ -340,6 +347,28 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
     stage_sets["000"] = parse_traits(raw_0) if raw_0 else set(default_set)
     stage_sets["001"] = parse_traits(raw_1) if raw_1 else set(default_set)
     stage_sets["002"] = parse_traits(raw_2) if raw_2 else set(default_set)
+
+    # `attribute.ascension` is keyed 1..4 (the in-game ascension number), NOT individuality's 0..4, and
+    # each stage says for itself: 1 -> 000, 2 -> 001, 3 or 4 -> 002. No fallback — 416 says earth for 1
+    # and 2 but star for 3 and 4, and borrowing a later stage's word would invent an attribute she lacks.
+    def attr_for(*api_stages):
+        for st in api_stages:
+            got = ATTRIBUTE_TRAIT_IDS.get(attr_asc.get(st))
+            if got:
+                return got
+        return None
+
+    def apply_attribute_overwrite(traits: set, trait_id) -> set:
+        if not trait_id:
+            return traits
+        return {t for t in traits if not t.startswith("02")} | {trait_id}
+
+    # The attribute replaces the family rather than joining it, so it is applied to the finished stage
+    # lists. shortcut: a stage that changes attribute still carries the base one in the diff model, because
+    # diffs are additive at runtime (see ServantData.load) — upgrade when a stage needs the old one gone.
+    stage_sets["000"] = apply_attribute_overwrite(stage_sets["000"], attr_for("1"))
+    stage_sets["001"] = apply_attribute_overwrite(stage_sets["001"], attr_for("2"))
+    stage_sets["002"] = apply_attribute_overwrite(stage_sets["002"], attr_for("3", "4"))
 
     # Costumes
     sorted_cids = sorted(

@@ -133,9 +133,10 @@ test("a class pick without a group still filters, and nonsense matches nothing",
 });
 
 test("an ascension's alignment and sub-attribute reach the row it is filtered on", async () => {
-  /* 415 is Chaotic with no second-axis alignment at all; Good appears in the 1st and 2nd ascension diffs
-     and Evil in the 3rd. The sub-attribute stays Human in every synced ascension — there is no 02xx entry
-     in any of her diffs, so Earth (what the player sees on the 3rd form) is not in the Atlas export. */
+  /* 415 is Chaotic with no second-axis alignment on `base`; Good arrives in her 1st and 2nd ascension and
+     Evil in her 3rd, and the 3rd also swaps Human for Earth — the sub-attribute comes from Atlas's
+     `ascensionAdd.attribute.ascension`, a field the individuality lists never carry. `base` is the
+     intersection of her stages, so it now holds no sub-attribute at all. */
   const { ServantData } = await import("../src/scripts/data.js");
   const assert1 = await import("node:assert/strict");
   ServantData.load();
@@ -144,14 +145,26 @@ test("an ascension's alignment and sub-attribute reach the row it is filtered on
   const third = ServantData.getTraitsForAscension("415", "002");
   assert1.deepEqual(ServantFilters.match(base, { aliFilters: ["0301"] }), true);
   assert1.deepEqual(ServantFilters.match(base, { aliFilters: ["0301"], subAliFilters: ["0303"] }), false);
-  assert1.deepEqual(ServantFilters.match(first, { aliFilters: ["0301"], subAliFilters: ["0303"] }), true);
   assert1.deepEqual(
-    ServantFilters.match(third, { aliFilters: ["0301"], subAliFilters: ["0304"], subAttrFilters: ["0202"] }),
+    ServantFilters.match(first, { aliFilters: ["0301"], subAliFilters: ["0303"], subAttrFilters: ["0202"] }),
     true,
   );
   assert1.deepEqual(
-    ServantFilters.match(third, { aliFilters: ["0301"], subAliFilters: ["0303"], subAttrFilters: ["0202"] }),
-    false,
+    ServantFilters.match(third, { aliFilters: ["0301"], subAliFilters: ["0304"], subAttrFilters: ["0201"] }),
+    true,
+  );
+  // the 3rd form is Earth, not Human: the attribute replaces rather than joins
+  assert1.deepEqual(ServantFilters.match(third, { subAttrFilters: ["0202"] }), false);
+  assert1.deepEqual(ServantFilters.match(third, { aliFilters: ["0301"], subAliFilters: ["0303"] }), false);
+  assert1.deepEqual(base.filter((t) => t.startsWith("02")).length, 0);
+  // 465 Demeter: Heaven in the first two forms, Star in the third
+  assert1.deepEqual(
+    ServantFilters.match(ServantData.getTraitsForAscension("465", "000"), { subAttrFilters: ["0200"] }),
+    true,
+  );
+  assert1.deepEqual(
+    ServantFilters.match(ServantData.getTraitsForAscension("465", "002"), { subAttrFilters: ["0203"] }),
+    true,
   );
 });
 
