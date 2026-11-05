@@ -18,6 +18,22 @@ test("single level span stays one row and does not ask for a breakdown", () => {
   assert.equal(plan.spansLevels, false);
 });
 
+test("runBudget stops the walk where the runs run out and says what is left", () => {
+  // Lv.0->1 costs 3,000, so three of the five runs clear it and the surplus carries nothing.
+  const plan = BondLevelCalculator.plan({ growth: A, current: 0, target: 10, bondPerRun: 1000, runBudget: 5 });
+  assert.deepEqual(plan.rows, [{ from: 0, to: 1, runs: 3 }]);
+  assert.equal(plan.total, 3);
+  // Lv.1->2 asks 6,125 and only the two runs the budget still held were paid for.
+  assert.equal(plan.stopLevel, 1);
+  assert.equal(plan.stopRuns, 2);
+  assert.equal(plan.stopOwed, 4125);
+});
+
+test("an unbudgeted plan never reports where it stopped", () => {
+  const plan = BondLevelCalculator.plan({ growth: A, current: 0, target: 3, bondPerRun: 1000 });
+  assert.deepEqual([plan.stopLevel, plan.stopRuns, plan.stopOwed], [null, 0, 0]);
+});
+
 test("surplus carries from level to level up to the bond cap", () => {
   const plan = BondLevelCalculator.plan({ growth: A, current: 0, target: 10, bondPerRun: 1000 });
   assert.equal(plan.spansLevels, true);
@@ -64,7 +80,7 @@ test("a typed figure prices only the level the player stands on", () => {
 });
 
 test("rejects unusable input instead of dividing by it", () => {
-  const empty = { rows: [], total: 0, spansLevels: false };
+  const empty = { rows: [], total: 0, spansLevels: false, stopLevel: null, stopRuns: 0, stopOwed: 0 };
   assert.deepEqual(BondLevelCalculator.plan({ growth: A, current: 5, target: 5, bondPerRun: 1000 }), empty);
   // a target above the table is clamped to the last level the table prices
   assert.equal(BondLevelCalculator.plan({ growth: A, current: 0, target: 99, bondPerRun: 1000 }).total, 13460);

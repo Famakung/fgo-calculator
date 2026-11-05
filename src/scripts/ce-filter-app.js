@@ -1,5 +1,15 @@
-import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
-import { TraitMatcher, Validator } from "./domain.js";
+import {
+  CLASS_FILTERS,
+  CLASS_GROUPS,
+  RARITY_FILTERS,
+  ALIGNMENT_LNC_FILTERS,
+  ALIGNMENT_GBE_FILTERS,
+  SUB_ATTR_FILTERS,
+  GENDER_FILTERS,
+  DEBOUNCE_MS,
+} from "./constants.js";
+import { TraitMatcher, Validator, ServantSort, ServantFilters } from "./domain.js";
+import { FilterSections } from "./filter-sections.js";
 import { ServantData, CEById, TraitCEs, TraitNames } from "./data.js";
 import { DOMFactory, debounce } from "./presentation.js";
 import { ServantSelect, CEFilterStore } from "./ce-servant-select.js";
@@ -57,17 +67,6 @@ function initWorker() {
   worker.postMessage({ type: "compute" });
 }
 
-let _classOrderMap = null;
-function getClassOrderMap() {
-  if (!_classOrderMap) {
-    _classOrderMap = new Map();
-    [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].forEach((cls, idx) => {
-      _classOrderMap.set(cls.id, idx);
-    });
-  }
-  return _classOrderMap;
-}
-
 export const CEFilterApp = {
   state: {
     subTab: "ce",
@@ -76,6 +75,14 @@ export const CEFilterApp = {
     searchQuery: "",
     classFilters: [],
     rarityFilters: [],
+    /* Class (Group) narrows the class row instead of replacing it; the two alignment rows and the
+       sub-attribute row are independent ANDed filters like those two. None of these four are persisted —
+       like the rest of the rows, they reset on refresh. */
+    groupClassFilters: [],
+    aliFilters: [],
+    subAliFilters: [],
+    subAttrFilters: [],
+    genderFilters: [],
     matchCounts: [],
     matchCustomCounts: [],
     sortBy: "id",
@@ -230,8 +237,7 @@ export const CEFilterApp = {
       onSelectCE: (ceId) => this.selectCEFromCombo(ceId),
     });
 
-    this.buildClassFilter();
-    this.buildRarityFilter();
+    this._renderFilterRows();
 
     initWorker();
 
@@ -316,12 +322,14 @@ export const CEFilterApp = {
   _finishRender(allMatches) {
     const ceFiltered = this.filterByCEs(allMatches);
     this._lastCEFiltered = ceFiltered;
-    const preFiltered = this._applySearchClassRarity(ceFiltered);
+    const preFiltered = this._applyFilters(ceFiltered);
     this.buildMatchCountFilter(preFiltered);
     this.renderResults(ceFiltered);
   },
 
-  _applySearchClassRarity(entries) {
+  /* Search, then every Filter Settings row at once: a row with nothing selected is no filter, and a row
+     with something selected must be met by the traits of the ascension this card actually shows. */
+  _applyFilters(entries) {
     let filtered = entries;
     const query = (this.state.searchQuery || "").toLowerCase().trim();
     if (query) {
@@ -332,86 +340,81 @@ export const CEFilterApp = {
           ServantData.getAllNames(s.servant.id).some((n) => n.toLowerCase().includes(query)),
       );
     }
-    if (this.state.classFilters.length > 0) {
-      const classSet = new Set(this.state.classFilters);
-      filtered = filtered.filter((s) => s.servant.traits.some((t) => classSet.has(t)));
-    }
-    if (this.state.rarityFilters.length > 0) {
-      const raritySet = new Set(this.state.rarityFilters);
-      filtered = filtered.filter((s) => s.servant.traits.some((t) => raritySet.has(t)));
-    }
-    return filtered;
+    return filtered.filter((s) => ServantFilters.match(this._traitsOf(s), this.state));
   },
 
-  buildClassFilter() {
-    const container = document.getElementById("cefilterClassFilter");
-    if (!container) return;
+  /* The classes the Class row may offer. A group is the whole row when no class is picked inside it, and
+     clips back to the pick when one is — the same rule `ServantFilters` matches on. */
+  _classScope() {
+    return ServantFilters.rowScope(this.state.groupClassFilters);
+  },
 
-    const { standard, extra } = CLASS_FILTERS;
-
-    container.replaceChildren();
-
-    const selected = new Set(this.state.classFilters);
-
-    const buildRow = (classes) => {
-      classes.forEach((cls) => {
-        const btn = DOMFactory.el("div", "class-btn" + (selected.has(cls.id) ? " active" : ""));
-        btn.dataset.traitId = cls.id;
-        const img = DOMFactory.el("img", "", {
-          src: `icons/classes/${cls.icon}.webp`,
-          alt: cls.label,
-          title: cls.label,
-        });
-        btn.appendChild(img);
-        btn.addEventListener("click", () => {
-          if (selected.has(cls.id)) {
-            selected.delete(cls.id);
-            btn.classList.remove("active");
-          } else {
-            selected.add(cls.id);
-            btn.classList.add("active");
-          }
-          this.state.classFilters = [...selected];
-          this.state.currentPage = 1;
-          this._debouncedRender();
-        });
-        container.appendChild(btn);
+  /* The six trait rows, in modal order, on the page the results grid is showing: a class or rarity nobody
+     in the CE-filtered results has is hidden, and a class outside the chosen group is greyed rather than
+     removed, so the row cannot be escaped by accident and comes back whole when the group is cleared. */
+  _renderFilterRows() {
+    const base = this._lastCEFiltered || [];
+    const avail = { class: new Set(), rarity: new Set() };
+    base.forEach((entry) => {
+      this._traitsOf(entry).forEach((t) => {
+        if (t.startsWith("01")) avail.class.add(t);
+        if (t.startsWith("04")) avail.rarity.add(t);
       });
+    });
+    const has = (set, chip) => set.size === 0 || set.has(chip.id);
+    const scope = this._classScope();
+    const toggle = (key) => (ids) => {
+      this.state[key] = ids;
+      this.state.currentPage = 1;
+      this._debouncedRender();
     };
 
-    buildRow(standard);
-    buildRow(extra);
-    this._classBtns = Array.from(container.querySelectorAll(".class-btn"));
-  },
-
-  buildRarityFilter() {
-    const container = document.getElementById("cefilterRarityFilter");
-    if (!container) return;
-
-    const rarities = RARITY_FILTERS;
-
-    container.replaceChildren();
-    const selected = new Set(this.state.rarityFilters);
-
-    rarities.forEach((rarity) => {
-      const btn = DOMFactory.el("div", "rarity-btn" + (selected.has(rarity.id) ? " active" : ""));
-      btn.dataset.traitId = rarity.id;
-      btn.textContent = rarity.label;
-      btn.addEventListener("click", () => {
-        if (selected.has(rarity.id)) {
-          selected.delete(rarity.id);
-          btn.classList.remove("active");
-        } else {
-          selected.add(rarity.id);
-          btn.classList.add("active");
-        }
-        this.state.rarityFilters = [...selected];
-        this.state.currentPage = 1;
-        this._debouncedRender();
-      });
-      container.appendChild(btn);
-    });
-    this._rarityBtns = Array.from(container.querySelectorAll(".rarity-btn"));
+    FilterSections.renderRow(
+      document.getElementById("cefilterRarityFilter"),
+      RARITY_FILTERS,
+      this.state.rarityFilters,
+      toggle("rarityFilters"),
+      {
+        disabled: (chip) => !has(avail.rarity, chip),
+      },
+    );
+    FilterSections.renderRow(
+      document.getElementById("cefilterClassFilter"),
+      [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
+      this.state.classFilters,
+      toggle("classFilters"),
+      { disabled: (chip) => !has(avail.class, chip) || (scope !== null && !scope.includes(chip.id)) },
+    );
+    FilterSections.renderRow(
+      document.getElementById("cefilterGroupFilter"),
+      CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true })),
+      this.state.groupClassFilters,
+      toggle("groupClassFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("cefilterAliFilter"),
+      ALIGNMENT_LNC_FILTERS,
+      this.state.aliFilters,
+      toggle("aliFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("cefilterSubAliFilter"),
+      ALIGNMENT_GBE_FILTERS,
+      this.state.subAliFilters,
+      toggle("subAliFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("cefilterAttrFilter"),
+      SUB_ATTR_FILTERS,
+      this.state.subAttrFilters,
+      toggle("subAttrFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("cefilterGenderFilter"),
+      GENDER_FILTERS,
+      this.state.genderFilters,
+      toggle("genderFilters"),
+    );
   },
 
   filterByCEs(results) {
@@ -492,27 +495,19 @@ export const CEFilterApp = {
     // Remove stale selections
     this.state.matchCounts = this.state.matchCounts.filter((n) => availableCounts.has(n));
 
-    container.replaceChildren();
-
-    const selected = new Set(this.state.matchCounts);
+    /* One chip per count that actually occurs: the row is built from the results, so a count nobody
+       reaches is never offered, and the ceiling follows however many CEs are picked. */
     const maxCount = Math.max(...availableCounts);
-
+    const chips = [];
     for (let n = 0; n <= maxCount; n++) {
       if (!availableCounts.has(n)) continue;
-      const btn = DOMFactory.el("div", "ce-count-btn" + (selected.has(n) ? " active" : ""));
-      btn.textContent = n + " CE";
-      btn.addEventListener("click", () => {
-        if (selected.has(n)) {
-          selected.delete(n);
-        } else {
-          selected.add(n);
-        }
-        this.state.matchCounts = [...selected];
-        this.state.currentPage = 1;
-        this._debouncedRender();
-      });
-      container.appendChild(btn);
+      chips.push({ id: n, value: n, label: n + " CE", count: true });
     }
+    FilterSections.renderRow(container, chips, this.state.matchCounts, (counts) => {
+      this.state.matchCounts = counts;
+      this.state.currentPage = 1;
+      this._debouncedRender();
+    });
   },
 
   /* Bulk empty of the selected CEs — the same contract as ServantSelect.clearAll(): the label
@@ -586,30 +581,21 @@ export const CEFilterApp = {
 
     const base = ceFiltered || this._lastCEFiltered || [];
 
-    // Hide class/rarity buttons not present in CE-filtered results
+    // Hide class/rarity chips not present in CE-filtered results, and re-read what that leaves selected
     const availableClassIds = new Set();
     const availableRarityIds = new Set();
-    base.forEach(({ servant }) => {
-      servant.traits.forEach((t) => {
+    base.forEach((entry) => {
+      this._traitsOf(entry).forEach((t) => {
         if (t.startsWith("01")) availableClassIds.add(t);
         if (t.startsWith("04")) availableRarityIds.add(t);
       });
     });
-    (this._classBtns || []).forEach((btn) => {
-      const avail = availableClassIds.has(btn.dataset.traitId);
-      btn.style.display = avail ? "" : "none";
-      if (!avail) btn.classList.remove("active");
-    });
-    (this._rarityBtns || []).forEach((btn) => {
-      const avail = availableRarityIds.has(btn.dataset.traitId);
-      btn.style.display = avail ? "" : "none";
-      if (!avail) btn.classList.remove("active");
-    });
     this.state.classFilters = this.state.classFilters.filter((id) => availableClassIds.has(id));
     this.state.rarityFilters = this.state.rarityFilters.filter((id) => availableRarityIds.has(id));
+    this._renderFilterRows();
 
-    // Apply search, class, and rarity filters
-    let filtered = this._applySearchClassRarity(base);
+    // Apply search and every Filter Settings row
+    let filtered = this._applyFilters(base);
 
     // Apply match count filter
     if (this.state.matchCounts.length > 0) {
@@ -786,53 +772,25 @@ export const CEFilterApp = {
     });
   },
 
-  _getEntryRarity(entry) {
+  /* A result card is a servant plus the ascension its traits were matched on, and that list is what both
+     the sort keys and every filter row reads. With no ascension named the card shows no single form, so it
+     reads every form: a sub-attribute that arrives with an ascension (415's Earth, from her 3rd) is not on
+     `servant.traits`, which is the intersection of her stages. */
+  _traitsOf(entry) {
     const traits = entry.primaryAscension
       ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
-      : entry.servant.traits;
-    const r = (traits || entry.servant.traits).filter((t) => t.startsWith("04"));
-    return r.length > 0 ? Math.max(...r.map((t) => parseInt(t.slice(2), 10))) : 0;
-  },
-
-  _getEntryClassIndex(entry) {
-    const traits = entry.primaryAscension
-      ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
-      : entry.servant.traits;
-    const c = (traits || entry.servant.traits).find((t) => t.startsWith("01"));
-    const orderMap = getClassOrderMap();
-    return c && orderMap.has(c) ? orderMap.get(c) : 99;
+      : ServantData.getAllTraits(entry.servant.id);
+    return traits || ServantData.getAllTraits(entry.servant.id);
   },
 
   _sortEntries(entries) {
-    const sortBy = this.state.sortBy || "id";
-    const sortOrder = this.state.sortOrder || "asc";
-    const isDesc = sortOrder === "desc";
-
-    return [...entries].sort((a, b) => {
-      let cmp;
-      if (sortBy === "rarity") {
-        const rarityA = this._getEntryRarity(a);
-        const rarityB = this._getEntryRarity(b);
-        cmp = rarityA - rarityB;
-      } else if (sortBy === "class") {
-        const classA = this._getEntryClassIndex(a);
-        const classB = this._getEntryClassIndex(b);
-        cmp = classA - classB;
-      } else {
-        const idA = parseInt(a.servant.id, 10) || 0;
-        const idB = parseInt(b.servant.id, 10) || 0;
-        cmp = idA - idB;
-      }
-
-      if (cmp !== 0) {
-        return isDesc ? -cmp : cmp;
-      }
-
-      const idA = parseInt(a.servant.id, 10) || 0;
-      const idB = parseInt(b.servant.id, 10) || 0;
-      const idCmp = idA !== idB ? idA - idB : a.servant.id.localeCompare(b.servant.id);
-      return isDesc ? -idCmp : idCmp;
-    });
+    return ServantSort.sorted(
+      entries,
+      this.state.sortBy,
+      this.state.sortOrder,
+      (entry) => entry.servant.id,
+      (entry) => this._traitsOf(entry),
+    );
   },
 
   computeAllCEMatches() {

@@ -1,6 +1,21 @@
 import { ServantData, CEList, TraitCEs } from "./data.js";
-import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
+import {
+  CLASS_FILTERS,
+  CLASS_GROUPS,
+  RARITY_FILTERS,
+  ALIGNMENT_LNC_FILTERS,
+  ALIGNMENT_GBE_FILTERS,
+  SUB_ATTR_FILTERS,
+  GENDER_FILTERS,
+  DEBOUNCE_MS,
+} from "./constants.js";
+import { ServantSort, ServantFilters } from "./domain.js";
+import { FilterSections } from "./filter-sections.js";
 import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
+
+/* Longest search the servant picker keeps. Names top out well under this, so it only trims a paste someone
+   has no hope of matching, and the box itself is left free to hold what the player typed. */
+const MAX_SEARCH = 40;
 
 /* ============================================
    SERVANT SELECTOR MODAL
@@ -12,8 +27,21 @@ export const ServantSelector = {
   _multi: false,
   _selectedIds: new Set(),
   classFilters: [],
+  /* Set by a Grand Duel quest: the party is limited to these class ids, so the grid is pre-filtered to
+     them and the class row offers nothing outside them — greyed, never absent. null = no bound. */
+  lockedClasses: null,
   rarityFilters: [],
+  /* The other four Filter Settings rows. Like class and rarity they are kept across a close and a reopen
+     for the page, are never saved, and are ANDed with it by ServantFilters.match. */
+  groupClassFilters: [],
+  aliFilters: [],
+  subAliFilters: [],
+  subAttrFilters: [],
+  genderFilters: [],
   _searchQuery: "",
+  /* Sort sits with the rest of the picker row: kept for the page, blank after a refresh, and never saved. */
+  sortBy: "id",
+  sortOrder: "asc",
   _callbacks: null,
 
   _listenersBound: false,
@@ -26,9 +54,57 @@ export const ServantSelector = {
 
     const modal = document.getElementById("servantModal");
     const closeBtn = document.getElementById("servantModalClose");
+    const subModal = document.getElementById("servantFilterModal");
 
     if (closeBtn) {
       closeBtn.addEventListener("click", () => this.close());
+    }
+
+    /* Search sits outside the filters and the sort row sits beside them, like the Bond Gain CE tab: the
+       controls live in the page, so they are wired once here and only read back on every open(). */
+    const searchInput = document.getElementById("servantPickerSearch");
+    if (searchInput) {
+      const debouncedSearch = debounce((query) => {
+        // Bounded, so a pasted wall of text cannot become the matcher's input or the reopened box.
+        this._searchQuery = query.slice(0, MAX_SEARCH);
+        this.filter();
+      }, DEBOUNCE_MS);
+      searchInput.addEventListener("input", (e) => debouncedSearch(e.target.value));
+    }
+
+    const filterBtn = document.getElementById("servantPickerFilterBtn");
+    if (filterBtn && subModal) {
+      filterBtn.addEventListener("click", () => subModal.classList.add("open"));
+    }
+
+    const subClose = document.getElementById("servantFilterModalClose");
+    if (subClose && subModal) {
+      subClose.addEventListener("click", () => subModal.classList.remove("open"));
+    }
+
+    if (subModal) {
+      subModal.addEventListener("click", (e) => {
+        if (e.target === subModal) subModal.classList.remove("open");
+      });
+    }
+
+    const sortSelect = document.getElementById("servantPickerSortBy");
+    if (sortSelect) {
+      sortSelect.addEventListener("change", () => {
+        this.sortBy = sortSelect.value;
+        sortSelect.blur();
+        this.filter();
+      });
+    }
+
+    const orderBtn = document.getElementById("servantPickerSortOrder");
+    if (orderBtn) {
+      orderBtn.addEventListener("click", () => {
+        this.sortOrder = this.sortOrder === "asc" ? "desc" : "asc";
+        this._paintSortOrder();
+        this.filter();
+      });
+      this._paintSortOrder();
     }
 
     if (modal) {
@@ -36,9 +112,27 @@ export const ServantSelector = {
         if (e.target === modal) this.close();
       });
       document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && modal.classList.contains("open")) this.close();
+        if (e.key !== "Escape" || !modal.classList.contains("open")) return;
+        // The filter modal sits on top of this one, so Escape takes the top layer off first.
+        if (subModal && subModal.classList.contains("open")) {
+          subModal.classList.remove("open");
+          return;
+        }
+        this.close();
       });
     }
+  },
+
+  _paintSortOrder() {
+    const btn = document.getElementById("servantPickerSortOrder");
+    if (!btn) return;
+    const isDesc = this.sortOrder === "desc";
+    const label = isDesc ? "Sort descending" : "Sort ascending";
+    btn.dataset.order = this.sortOrder;
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
+    const icon = btn.querySelector(".cefilter-sort-order-icon");
+    if (icon) icon.textContent = isDesc ? "▼" : "▲";
   },
 
   open(slotIndex, pending = false, callbacks = null, options = {}) {
@@ -50,12 +144,12 @@ export const ServantSelector = {
     // Multi keeps the modal open and marks items like the CE picker does.
     this._multi = options.multi === true;
     this._selectedIds = new Set(this._multi ? options.selected : []);
-    this.classFilters = [];
-    this.rarityFilters = [];
-    this._searchQuery = "";
+    this.lockedClasses = Array.isArray(options.lockClasses) && options.lockClasses.length ? options.lockClasses : null;
+    // The row is kept as the player left it for the rest of the page, and starts blank again after a refresh.
 
-    this.buildFilterArea();
-    this.renderGrid(ServantData.servants);
+    this.syncPickerControls();
+    // Filtered, not raw: a locked party has to be filtered from the first paint, not after a click.
+    this.renderGrid(this.getFilteredServants());
 
     const modal = document.getElementById("servantModal");
     if (modal) modal.classList.add("open");
@@ -68,6 +162,9 @@ export const ServantSelector = {
     }
     const modal = document.getElementById("servantModal");
     if (modal) modal.classList.remove("open");
+    // The filter sub-modal belongs to this one: never leave it sitting over the tab behind.
+    const subModal = document.getElementById("servantFilterModal");
+    if (subModal) subModal.classList.remove("open");
     this.activeSlotIndex = null;
     this.pendingSlot = false;
   },
@@ -143,93 +240,99 @@ export const ServantSelector = {
           ServantData.getAllNames(s.id).some((n) => n.toLowerCase().includes(query)),
       );
     }
-    if (this.classFilters.length > 0) {
-      const classSet = new Set(this.classFilters);
-      result = result.filter((s) => s.traits.some((t) => classSet.has(t)));
-    }
-    if (this.rarityFilters.length > 0) {
-      const raritySet = new Set(this.rarityFilters);
-      result = result.filter((s) => s.traits.some((t) => raritySet.has(t)));
-    }
-    return result;
+    /* Every row at once, the class row included: a locked party is bound by its group whether or not the
+       player picked a class in it, a pick inside the group narrows it, and a pick from outside is ignored.
+       Read across the servant's forms — the picker names no ascension, and a sub-attribute can arrive with
+       one (415 is Human in her 1st form and Earth in her 3rd). */
+    result = result.filter((s) => ServantFilters.match(ServantData.getAllTraits(s.id), this));
+    // Ordered last: what the player sorted by is a property of the rows the grid shows, never of the filter.
+    return ServantSort.sorted(result, this.sortBy, this.sortOrder);
   },
 
-  buildFilterArea() {
-    const container = document.getElementById("servantFilterArea");
-    if (!container) return;
-    CollapsibleFactory.populateFilterArea(
-      container,
-      this._searchQuery,
-      (query) => {
-        this._searchQuery = query;
-        this.filter();
-      },
-      (content) => {
-        this._buildClassFilter(content);
-        this._buildRarityFilter(content);
-      },
-    );
+  /* The controls live in the page, so an open() only reads the player's row back into them. What it does
+     rebuild is the two rows the filter sub-modal shows: a Grand Duel group decides which classes exist
+     there, and a pick made while another quest was active must not show as active now. */
+  syncPickerControls() {
+    const searchInput = document.getElementById("servantPickerSearch");
+    if (searchInput) searchInput.value = this._searchQuery;
+
+    /* A Grand Duel choice that names exactly one class has nothing to sort by class — that class is the
+       whole party, and the class row can only ever show it greyed but selectable-in-effect — so the option
+       goes grey and a remembered "class" sort falls back to ID. The three Extra groups span several
+       classes, so theirs stay usable. */
+    const singleClass = Boolean(this.lockedClasses) && this.lockedClasses.length === 1;
+    const sortSelect = document.getElementById("servantPickerSortBy");
+    if (sortSelect) {
+      const classOption = sortSelect.querySelector('option[value="class"]');
+      if (classOption) {
+        if (singleClass) classOption.setAttribute("disabled", "");
+        else classOption.removeAttribute("disabled");
+      }
+      if (singleClass && this.sortBy === "class") this.sortBy = "id";
+      sortSelect.value = this.sortBy;
+    }
+    this._paintSortOrder();
+
+    this._renderFilterRows();
   },
 
-  _buildClassFilter(container) {
-    const { standard, extra } = CLASS_FILTERS;
-
-    const filterDiv = DOMFactory.el("div", "class-filter");
-    const selected = new Set(this.classFilters);
-
-    const buildRow = (classes) => {
-      classes.forEach((cls) => {
-        const btn = DOMFactory.el("div", "class-btn" + (selected.has(cls.id) ? " active" : ""));
-        const img = DOMFactory.el("img", "", {
-          dataset: { src: "icons/classes/" + cls.icon + ".webp" },
-          alt: cls.label,
-          title: cls.label,
-        });
-        btn.appendChild(img);
-        btn.addEventListener("click", () => {
-          if (selected.has(cls.id)) {
-            selected.delete(cls.id);
-            btn.classList.remove("active");
-          } else {
-            selected.add(cls.id);
-            btn.classList.add("active");
-          }
-          this.classFilters = [...selected];
-          this.filter();
-        });
-        filterDiv.appendChild(btn);
-      });
+  /* The six rows, rebuilt on every open so what shows as active is what is in force for the quest that
+     opened the picker. The class row is always built: outside the group or the quest's lock its chips are
+     greyed rather than absent, so the row cannot be escaped by a stale pick and comes back whole when the
+     group is cleared. */
+  _renderFilterRows() {
+    const scope = ServantFilters.rowScope(this.groupClassFilters, this.lockedClasses);
+    const lock = this.lockedClasses;
+    const toggle = (key) => (ids) => {
+      this[key] = ids;
+      this.filter();
     };
 
-    buildRow(standard);
-    buildRow(extra);
-    container.appendChild(filterDiv);
-  },
-
-  _buildRarityFilter(container) {
-    const rarities = RARITY_FILTERS;
-
-    const filterDiv = DOMFactory.el("div", "rarity-filter");
-    const selected = new Set(this.rarityFilters);
-
-    rarities.forEach((rarity) => {
-      const btn = DOMFactory.el("div", "rarity-btn" + (selected.has(rarity.id) ? " active" : ""));
-      btn.textContent = rarity.label;
-      btn.addEventListener("click", () => {
-        if (selected.has(rarity.id)) {
-          selected.delete(rarity.id);
-          btn.classList.remove("active");
-        } else {
-          selected.add(rarity.id);
-          btn.classList.add("active");
-        }
-        this.rarityFilters = [...selected];
-        this.filter();
-      });
-      filterDiv.appendChild(btn);
-    });
-
-    container.appendChild(filterDiv);
+    FilterSections.renderRow(
+      document.getElementById("servantRarityFilter"),
+      RARITY_FILTERS,
+      this.rarityFilters,
+      toggle("rarityFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantClassFilter"),
+      [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
+      this.classFilters,
+      toggle("classFilters"),
+      { disabled: (chip) => scope !== null && !scope.includes(chip.id) },
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantGroupFilter"),
+      CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true, classes: g.classes })),
+      this.groupClassFilters,
+      toggle("groupClassFilters"),
+      { disabled: (chip) => Boolean(lock) && !chip.classes.some((id) => lock.includes(id)) },
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantAliFilter"),
+      ALIGNMENT_LNC_FILTERS,
+      this.aliFilters,
+      toggle("aliFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantSubAliFilter"),
+      ALIGNMENT_GBE_FILTERS,
+      this.subAliFilters,
+      toggle("subAliFilters"),
+      { disabled: () => this.subAliFilters.includes(ServantFilters.SUB_ALI_OTHER) },
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantAttrFilter"),
+      SUB_ATTR_FILTERS,
+      this.subAttrFilters,
+      toggle("subAttrFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantGenderFilter"),
+      GENDER_FILTERS,
+      this.genderFilters,
+      toggle("genderFilters"),
+    );
   },
 };
 

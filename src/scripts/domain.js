@@ -1,4 +1,16 @@
-import { TIERS, TIER_FIELDS, MAX_ITERATIONS, EPSILON, BOND_CONSTANTS } from "./constants.js";
+import {
+  TIERS,
+  TIER_FIELDS,
+  MAX_ITERATIONS,
+  EPSILON,
+  BOND_CONSTANTS,
+  CLASS_FILTERS,
+  CLASS_GROUPS,
+  ALIGNMENT_GBE_FILTERS,
+  FREE_QUESTS,
+  GRAND_CLASSES,
+  GRAND_DIFFICULTIES,
+} from "./constants.js";
 
 export const Schema = {
   tier: {
@@ -104,10 +116,12 @@ export const BondLevelCalculator = {
      growth[i] = bond points needed while standing at level i to reach level i+1.
      typedCost replaces the cost of the starting level only — that is the figure the game shows for
      the player's partial progress, while every level above it comes from the table.
-     Returns { rows: [{ from, to, runs }], total, spansLevels }. */
-  plan({ growth, current, target, bondPerRun, typedCost = 0 }) {
+     runBudget caps the runs the plan may spend (a Stargazer's Teapot stock); when it binds, the walk
+     stops where the money ran out and reports that level so the caller can continue at another rate.
+     Returns { rows: [{ from, to, runs }], total, spansLevels, stopLevel, stopRuns, stopOwed }. */
+  plan({ growth, current, target, bondPerRun, typedCost = 0, runBudget = Infinity }) {
     const rows = [];
-    const none = { rows, total: 0, spansLevels: false };
+    const none = { rows, total: 0, spansLevels: false, stopLevel: null, stopRuns: 0, stopOwed: 0 };
     if (!Array.isArray(growth) || growth.length === 0 || !(bondPerRun > 0)) return none;
 
     const start = Math.round(
@@ -118,13 +132,25 @@ export const BondLevelCalculator = {
 
     let level = start;
     let carry = 0;
+    let budget = runBudget;
+    let stopLevel = null;
+    let stopRuns = 0;
+    let stopOwed = 0;
     let iterations = 0;
 
     while (level < goal && iterations++ < MAX_ITERATIONS) {
       const rowStart = level;
       const cost = level === start && typedCost > 0 ? typedCost : growth[level];
       const runs = Math.max(0, Math.ceil((cost - carry) / bondPerRun));
+      if (runs > budget) {
+        // The budget dies inside this level: where it stopped, how far it got, what the level still owes.
+        stopLevel = level;
+        stopRuns = budget;
+        stopOwed = cost - carry - budget * bondPerRun;
+        break;
+      }
       carry += runs * bondPerRun - cost;
+      budget -= runs;
       level += 1;
       if (level >= BOND_CONSTANTS.BOND_CARRY_LIMIT) carry = 0;
 
@@ -139,7 +165,103 @@ export const BondLevelCalculator = {
     }
 
     const total = rows.reduce((sum, row) => sum + row.runs, 0);
-    return { rows, total, spansLevels: rows.length > 1 || (rows.length === 1 && rows[0].to - rows[0].from > 1) };
+    return {
+      rows,
+      total,
+      spansLevels: rows.length > 1 || (rows.length === 1 && rows[0].to - rows[0].from > 1),
+      stopLevel,
+      stopRuns,
+      stopOwed,
+    };
+  },
+};
+
+/* ============================================
+   STARGAZER'S TEAPOT (Bond Calculator ×2 item)
+   ============================================ */
+/* One teapot per quest run, and a run pays every servant in the party, so the stock is counted in
+   party runs and a servant who finishes early costs no extra teapots. */
+export const Teapot = {
+  /* Split one servant's plan across the party's stock. The boosted walk spends the teapots and reports
+     the level it died on; the ordinary walk continues from that level owing what the boosted runs left
+     unpaid. stock 0 means no teapot: one ordinary plan, `out` false, `off` null.
+     Returns { on, off, out, runs } — two BondLevelCalculator plans, whether the stock fell short, and
+     the boosted runs actually paid. `on.rows` names only the levels those runs really cleared: a
+     teapot spent inside a level the stock never finished adds to `runs` but to no row, because the
+     servant is still on that level when the teapots end and the continuation owns it. */
+  plan({ growth, current, target, onPerRun, offPerRun, typedCost, stock }) {
+    const spend = stock > 0 && offPerRun > 0;
+    const on = BondLevelCalculator.plan({
+      growth,
+      current,
+      target,
+      bondPerRun: onPerRun,
+      typedCost,
+      runBudget: spend ? stock : Infinity,
+    });
+    const planRuns = on.spansLevels ? on.total : onPerRun > 0 ? Math.ceil(typedCost / onPerRun) : 0;
+    if (!spend || on.stopLevel === null) return { on, off: null, out: false, runs: planRuns };
+
+    const off = BondLevelCalculator.plan({
+      growth,
+      current: on.stopLevel,
+      target,
+      bondPerRun: offPerRun,
+      typedCost: on.stopOwed,
+    });
+    return { on, off, out: true, runs: on.total + on.stopRuns };
+  },
+};
+
+/* ============================================
+   SLOT CEs (Bond Calculator per-slot craft essences)
+   ============================================ */
+/* Each servant slot owns its essences: one normally, two when the player ticks Grand Servant. The
+   party maths does not move — every equipped essence still boosts every servant — so the bonus comes
+   from the pool of every slot's list, not from a list the player keeps beside the party. */
+export const SlotCEs = {
+  capacity(slot) {
+    return slot && slot.grand ? BOND_CONSTANTS.GRAND_MAX_CE_SLOTS : BOND_CONSTANTS.MAX_CE_SLOTS;
+  },
+
+  /* Shortens the slot's own list in place, keeping the leading entries: unticking Grand removes the
+     second essence, never the first. */
+  trim(slot) {
+    if (slot && Array.isArray(slot.ces)) {
+      slot.ces.length = Math.min(slot.ces.length, this.capacity(slot));
+    }
+    return slot;
+  },
+
+  /* Each pooled essence keeps the flag of the servant wearing it: a borrowed support's essence pays that
+     CE's friend-side rate (`supportBonus`, e.g. 0910 Chaldea Teatime 15% instead of the self 5%), so the
+     maths needs to know whose servant it sits on. */
+  partyPool(slots) {
+    const pool = [];
+    (slots || []).forEach((slot) => {
+      (slot && slot.ces ? slot.ces : []).forEach((entry) => {
+        if (entry) pool.push({ entry, isSupport: slot.type === "support" }); // a pending null hole belongs to the picker, not to the party
+      });
+    });
+    return pool;
+  },
+
+  /* What one equipped essence contributes to a party: the CE's friend-side rate when a borrowed support
+     servant wears it, its own rate otherwise. */
+  rate(ce, isSupport) {
+    return isSupport && ce.supportBonus ? ce.supportBonus : ce.bonus;
+  },
+
+  /* The shape rule loadState() already applied to the old flat pool: a non-empty string id, or a
+     group entry carrying both its groupId and the optionId picked from it. */
+  isValidEntry(entry) {
+    if (typeof entry === "string") return entry.length > 0;
+    return !!(entry && typeof entry === "object" && entry.groupId && entry.optionId);
+  },
+
+  sanitize(rawCes, rawGrand) {
+    const ces = (Array.isArray(rawCes) ? rawCes : []).filter((entry) => this.isValidEntry(entry));
+    return this.trim({ ces, grand: Boolean(rawGrand) });
   },
 };
 
@@ -283,5 +405,181 @@ export const ServantComboCalculator = {
     // returned rows may still share CEs with another — claim nothing rather than name falsely.
     const unshared = truncated ? [] : picked.filter((id) => !covered.has(id));
     return { groups, unshared, truncated };
+  },
+};
+
+/* ============================================
+   QUEST (Bond tab quest picker)
+   ============================================ */
+export const Quest = {
+  /* What one run of the quest the player picked pays in bond points. A Grand Duel plan pays its
+     difficulty's figure whatever the class is; only the Free Quest family carries a custom figure, and
+     that comes from `customBond`. 0 means nothing is chosen yet. */
+  bondPerRun({ questMain = "", questSub = "", questDiff = "" }, customBond = 0) {
+    if (questMain === "fq") {
+      if (questSub === "custom") {
+        return Validator.clamp(customBond, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND);
+      }
+      const quest = FREE_QUESTS.find((q) => q.key === questSub);
+      return quest ? quest.bond : 0;
+    }
+    if (questMain === "gd") {
+      const difficulty = GRAND_DIFFICULTIES.find((d) => d.key === questDiff);
+      return difficulty ? difficulty.bond : 0;
+    }
+    return 0;
+  },
+
+  /* The class trait ids a Grand Duel choice allows, or null when the party is unrestricted — "All",
+     and every quest outside Grand Duel. */
+  classIds(questClass = "") {
+    const group = GRAND_CLASSES.find((c) => c.key === questClass);
+    return group && group.classes ? group.classes : null;
+  },
+
+  /* What the servant picker actually filters on: the classes the player left selected, kept inside the
+     quest's group. A selection carried over from somewhere else (the party filter persisted, then the
+     quest changed) is ignored, and nothing picked inside a group means the whole group — never the
+     roster. Without a group the picker's own selection rules, empty meaning no class filter at all. */
+  pickedClassIds(classFilters, lockedClasses) {
+    const picked = (classFilters || []).filter((id) => !lockedClasses || lockedClasses.includes(id));
+    return picked.length > 0 ? picked : lockedClasses || [];
+  },
+
+  /* Does this servant's class belong to the party restriction? `traits` is the servant's own class
+     trait id list (the same list the picker filters on). */
+  matchesClass(traits, questClass) {
+    const ids = this.classIds(questClass);
+    if (!ids) return true;
+    const allowed = new Set(ids);
+    return (traits || []).some((t) => allowed.has(t));
+  },
+};
+
+/* ============================================
+   SERVANT FILTERS (Filter Settings modal rows)
+   ============================================ */
+
+/* One row is a union — any chip in it passes — and the rows are ANDed together; a row with nothing
+   selected is no filter at all. `traits` is always the same merged list the class and rarity rows
+   already read: the servant's own in the picker, the resolved ascension's on a result card. */
+export const ServantFilters = {
+  /* The Good/Balanced/Evil row's last chip is a complement, not a trait: it stands for every servant
+     with none of the three, which is where Madness and Summer alignments land. */
+  SUB_ALI_OTHER: "other",
+  GBE: ALIGNMENT_GBE_FILTERS.filter((c) => c.id).map((c) => c.id),
+
+  /* The Class row's bound, for display: only the group chips and a quest's party lock narrow what a
+     player may select, so ticking Saber never greys Archer — the row stays a union. null is no bound. */
+  rowScope(groupClassFilters, lockedClasses) {
+    const keys = (groupClassFilters || []).filter((k) => CLASS_GROUPS.some((g) => g.key === k));
+    const group = [...new Set(keys.flatMap((k) => CLASS_GROUPS.find((g) => g.key === k).classes))];
+    const lock = lockedClasses && lockedClasses.length ? lockedClasses : null;
+    if (!group.length) return lock ? [...lock] : null;
+    if (!lock) return group;
+    const clipped = group.filter((id) => lock.includes(id));
+    return clipped.length ? clipped : [...lock];
+  },
+
+  /* What the Class row filters on: the row's bound, narrowed by a pick inside it. A pick from outside the
+     bound — carried in from another group or another quest — is ignored rather than honoured, and a row
+     with nothing selected is no filter at all. */
+  effectiveClassIds(filters = {}) {
+    const scope = this.rowScope(filters.groupClassFilters, filters.lockedClasses);
+    const picked = (filters.classFilters || []).filter((id) => !scope || scope.includes(id));
+    if (picked.length) return picked;
+    return scope;
+  },
+
+  /* Nothing selected in a row is no filter, and an untouched row holds an empty array: no bound ever
+     reaches this as [] — the impossible combination is spelled null, which means "nothing selected". */
+  rowMatches(traits, selected, { other } = {}) {
+    if (!selected || selected.length === 0) return true;
+    /* `other` is one chip among the row's own, so it takes the same union test as the rest: it is simply
+       met by a servant with none of Good, Balanced or Evil rather than by a trait it carries. */
+    if (
+      other &&
+      selected.includes(ServantFilters.SUB_ALI_OTHER) &&
+      !(traits || []).some((t) => ServantFilters.GBE.includes(t))
+    ) {
+      return true;
+    }
+    return (traits || []).some((t) => selected.includes(t));
+  },
+
+  match(traits, filters = {}) {
+    const { rarityFilters, aliFilters, subAliFilters, subAttrFilters, genderFilters } = filters;
+    /* The class row reads the group, the quest's lock and the player's picks together, and a pick from
+       outside the bound is ignored rather than honoured. */
+    const ids = this.effectiveClassIds(filters);
+    return (
+      this.rowMatches(traits, ids) &&
+      this.rowMatches(traits, rarityFilters) &&
+      this.rowMatches(traits, aliFilters) &&
+      this.rowMatches(traits, subAliFilters, { other: true }) &&
+      this.rowMatches(traits, subAttrFilters) &&
+      this.rowMatches(traits, genderFilters)
+    );
+  },
+};
+
+/* ============================================
+   SERVANT SORT (picker rows and result cards)
+   ============================================ */
+
+/* Class rank follows the order the filter rows show classes, built once per process. */
+let _classOrder = null;
+const classOrder = () => {
+  if (!_classOrder) {
+    _classOrder = new Map();
+    [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].forEach((cls, idx) => {
+      _classOrder.set(cls.id, idx);
+    });
+  }
+  return _classOrder;
+};
+
+/* Both keys read the trait list the class and rarity filters already read — the servant's base traits in
+   the picker, and the resolved ascension's in a Bond Gain CE result card — so what a row sorts by is what
+   filters it. */
+export const ServantSort = {
+  KEYS: ["id", "rarity", "class"],
+
+  /* The `04xx` rarity trait as a number; a servant with none ranks 0 rather than vanishing. */
+  rarity(traits) {
+    const found = (traits || []).filter((t) => t.startsWith("04"));
+    return found.length > 0 ? Math.max(...found.map((t) => parseInt(t.slice(2), 10))) : 0;
+  },
+
+  /* Rank in the picker's own class order. 99 keeps a class nobody lists at the end of ascending order
+     instead of folding it in with Saber. */
+  classIndex(traits) {
+    const found = (traits || []).find((t) => t.startsWith("01"));
+    const rank = classOrder().get(found);
+    return rank === undefined ? 99 : rank;
+  },
+
+  /* A sorted copy. ID breaks every tie, and the direction applies to that tie-break too, so the same list
+     re-sorted the other way round comes back exactly reversed.
+
+     A Bond Gain CE result card is not a servant — it is a servant plus the ascension its traits came from —
+     so the two readers say where a row's id and trait list live instead of this code guessing. */
+  sorted(rows, sortBy = "id", order = "asc", idOf = (row) => row.id, traitsOf = (row) => row.traits) {
+    const key = this.KEYS.includes(sortBy) ? sortBy : "id";
+    const dir = order === "desc" ? -1 : 1;
+    const value = (row) => {
+      const traits = traitsOf(row);
+      return key === "rarity" ? this.rarity(traits) : key === "class" ? this.classIndex(traits) : 0;
+    };
+    const numId = (row) => parseInt(idOf(row), 10) || 0;
+
+    return [...rows].sort((a, b) => {
+      if (key !== "id") {
+        const cmp = value(a) - value(b);
+        if (cmp !== 0) return cmp * dir;
+      }
+      const idCmp = numId(a) !== numId(b) ? numId(a) - numId(b) : String(idOf(a)).localeCompare(String(idOf(b)));
+      return idCmp * dir;
+    });
   },
 };

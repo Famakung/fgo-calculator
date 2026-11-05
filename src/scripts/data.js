@@ -17,6 +17,7 @@ export const CEList = (() => {
         id,
         name: data.name || `CE ${id}`,
         bonus: data.bonus || 0,
+        supportBonus: data.supportBonus || 0,
         traits: Array.isArray(data.traits) ? data.traits : [],
         matchAll: !!data.matchAll,
         traitGroups: Array.isArray(data.traitGroups) ? data.traitGroups : [],
@@ -147,6 +148,22 @@ export const ServantData = {
     const base = raw.base || [];
     if (!ascension || !raw[ascension]) return base;
     return [...base, ...raw[ascension]];
+  },
+
+  /* The traits of every form a servant has, in one list. A filter that does not choose an ascension — the
+     party picker, which prices whichever form the player later puts in the slot — must read this and not
+     `traits`: `traits` is the intersection of the stages, and four servants (415, 416, 444, 465) hold their
+     sub-attribute only in a stage diff, so the base list names them no attribute at all. A card that does
+     show one form still reads getTraitsForAscension, which says that form and nothing else. */
+  getAllTraits(id) {
+    const servant = this.byId.get(id);
+    if (!servant) return [];
+    if (!servant.hasAscensions) return servant.traits;
+    if (!servant._allTraits) {
+      const sets = servant._ascTraits ? Object.values(servant._ascTraits) : [];
+      servant._allTraits = [...new Set([...servant.traits, ...sets.flat()])];
+    }
+    return servant._allTraits;
   },
 
   getImageForAscension(id, ascension) {

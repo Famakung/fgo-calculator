@@ -90,9 +90,7 @@ UNOFFICIAL_JP_TRANSLATIONS = {
     "2701": "Gun Dealer",
 }
 
-CE_OVERRIDES = {
-    "0910": {"bonus": 15},
-}
+CE_OVERRIDES = {}
 
 KNOWN_COSTUME_LABELS = {
     "301330": "Piercing Bunny",
@@ -329,6 +327,13 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
 
     asc_add = svt_data.get("ascensionAdd", {})
     indiv_asc = asc_add.get("individuality", {}).get("ascension", {})
+    # A servant's sub-attribute is NOT in the individuality lists: the server stores it in its own field,
+    # where a late ascension overwrites it (415 Kuonji Alice is `human` at base and `earth` from her 3rd
+    # ascension on; 465 Demeter `star`; 416 Hibiki & Chikagi `earth` then `star`; 444 U-Olga Marie
+    # `human`). Reading only `individuality` loses it, which is why the Sub-Attribute row could never name
+    # them. Same stage keys as individuality: 0/1 -> 000, 2 (or 1/0) -> 001, 3/4 (or 2) -> 002.
+    attr_asc = asc_add.get("attribute", {}).get("ascension", {})
+    ATTRIBUTE_TRAIT_IDS = {"sky": "0200", "earth": "0201", "human": "0202", "star": "0203", "beast": "0204"}
     name_asc = asc_add.get("overWriteServantName", {}).get("ascension", {})
     indiv_costume = asc_add.get("individuality", {}).get("costume", {})
     costumes_profile = svt_data.get("profile", {}).get("costume", {})
@@ -342,6 +347,28 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
     stage_sets["000"] = parse_traits(raw_0) if raw_0 else set(default_set)
     stage_sets["001"] = parse_traits(raw_1) if raw_1 else set(default_set)
     stage_sets["002"] = parse_traits(raw_2) if raw_2 else set(default_set)
+
+    # `attribute.ascension` is keyed 1..4 (the in-game ascension number), NOT individuality's 0..4, and
+    # each stage says for itself: 1 -> 000, 2 -> 001, 3 or 4 -> 002. No fallback — 416 says earth for 1
+    # and 2 but star for 3 and 4, and borrowing a later stage's word would invent an attribute she lacks.
+    def attr_for(*api_stages):
+        for st in api_stages:
+            got = ATTRIBUTE_TRAIT_IDS.get(attr_asc.get(st))
+            if got:
+                return got
+        return None
+
+    def apply_attribute_overwrite(traits: set, trait_id) -> set:
+        if not trait_id:
+            return traits
+        return {t for t in traits if not t.startswith("02")} | {trait_id}
+
+    # The attribute replaces the family rather than joining it, so it is applied to the finished stage
+    # lists. shortcut: a stage that changes attribute still carries the base one in the diff model, because
+    # diffs are additive at runtime (see ServantData.load) — upgrade when a stage needs the old one gone.
+    stage_sets["000"] = apply_attribute_overwrite(stage_sets["000"], attr_for("1"))
+    stage_sets["001"] = apply_attribute_overwrite(stage_sets["001"], attr_for("2"))
+    stage_sets["002"] = apply_attribute_overwrite(stage_sets["002"], attr_for("3", "4"))
 
     # Costumes
     sorted_cids = sorted(
@@ -988,6 +1015,21 @@ def sync_bond_growth(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"),
 # Craft Essence Synchronization Engine
 # ==============================================================================
 
+def _bond_rates(vals: List[dict]) -> Tuple[float, int]:
+    """Max bond percentage and flat gain over the non-event entries of one effect's value list."""
+    max_rate = 0
+    max_add = 0
+    for sv in vals or []:
+        if sv.get("EventId"):
+            continue
+        if "RateCount" in sv:
+            val = sv["RateCount"] / 10
+            max_rate = max(max_rate, int(val) if val.is_integer() else val)
+        if "AddCount" in sv:
+            max_add = max(max_add, sv["AddCount"])
+    return max_rate, max_add
+
+
 def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str, str]] = None) -> List[dict]:
     """Extract permanent Bond Gain CEs, parse traits/bonuses, and auto-group same-effect campaign series."""
     parsed_ces = []
@@ -1006,16 +1048,10 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             continue
 
         last_skill, f = bond_funcs[-1]
-        max_rate = 0
-        max_add = 0
-        for sv in f.get("svals", []):
-            if not sv.get("EventId"):
-                if "RateCount" in sv:
-                    val = sv["RateCount"] / 10
-                    rate_val = int(val) if val.is_integer() else val
-                    max_rate = max(max_rate, rate_val)
-                if "AddCount" in sv:
-                    max_add = max(max_add, sv["AddCount"])
+        max_rate, max_add = _bond_rates(f.get("svals"))
+        # followerVals is the effect when the wearer is borrowed as a support servant (e.g. 0910).
+        # shortcut: only the percentage differs today, no followerVals carries AddCount, so flat gains ignore it.
+        support_rate, _support_add = _bond_rates(f.get("followerVals"))
 
         cid_str = f"{cid:04d}"
         if cid_str in CE_OVERRIDES and "bonus" in CE_OVERRIDES[cid_str]:
@@ -1065,6 +1101,7 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             "base_title": base_title,
             "flag": ce.get("flag"),
             "bonus": max_rate,
+            "supportBonus": support_rate if support_rate and support_rate != max_rate else 0,
             "flatBonus": max_add,
             "traits": traits,
             "matchAll": match_all,
@@ -1084,6 +1121,7 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
         prev = curr[-1]
         same_eff = (
             ce["bonus"] == prev["bonus"]
+            and ce["supportBonus"] == prev["supportBonus"]
             and ce["flatBonus"] == prev["flatBonus"]
             and ce["traits"] == prev["traits"]
             and ce["matchAll"] == prev["matchAll"]
@@ -1131,6 +1169,8 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
                 entry["flatBonus"] = first["flatBonus"]
             if first["bonus"]:
                 entry["bonus"] = first["bonus"]
+            if first["supportBonus"]:
+                entry["supportBonus"] = first["supportBonus"]
             if first["traits"]:
                 entry["traits"] = first["traits"]
             if first["matchAll"]:
@@ -1147,6 +1187,8 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             }
             if first["bonus"]:
                 entry["bonus"] = first["bonus"]
+            if first["supportBonus"]:
+                entry["supportBonus"] = first["supportBonus"]
             if first["flatBonus"]:
                 entry["flatBonus"] = first["flatBonus"]
             if first["traits"] is not None and not first["traitGroups"]:
@@ -1283,6 +1325,8 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
                 lines.append(f'    flatBonus: {entry["flatBonus"]},')
             if entry.get("bonus"):
                 lines.append(f'    bonus: {entry["bonus"]},')
+            if entry.get("supportBonus"):
+                lines.append(f'    supportBonus: {entry["supportBonus"]},')
             if entry.get("traits"):
                 lines.append(f'    traits: {json.dumps(entry["traits"])},')
             if entry.get("groupImage"):
@@ -1296,6 +1340,8 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
         else:
             if entry.get("bonus"):
                 lines.append(f'    bonus: {entry["bonus"]},')
+            if entry.get("supportBonus"):
+                lines.append(f'    supportBonus: {entry["supportBonus"]},')
             if entry.get("flatBonus"):
                 lines.append(f'    flatBonus: {entry["flatBonus"]},')
             if entry.get("traits") is not None and not entry.get("traitGroups"):

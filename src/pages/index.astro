@@ -414,25 +414,29 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <section class="tab-panel" id="panel-bond">
           <div class="card">
             <div class="card-inner">
-              <div class="card-title">Bond Points Requirements</div>
-            <div class="servant-grid grid" id="servantGrid"></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-inner">
-              <div class="card-title">Craft Essences Bonus</div>
-            <div class="ce-grid" id="ceGrid"></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-inner">
               <div class="card-title">Select Quest</div>
             <div class="input-row">
-              <label class="input-label" for="bondQuestSelect">Quest</label>
+              <label class="input-label" for="bondQuestSelect">Main</label>
               <select class="select-field" id="bondQuestSelect">
                 <option value="">-- Select a Quest --</option>
+              </select>
+            </div>
+            <div class="input-row">
+              <label class="input-label" for="bondFreeQuestSelect">Quest</label>
+              <select class="select-field" id="bondFreeQuestSelect">
+                <option value="">-- Select --</option>
+              </select>
+            </div>
+            <div class="input-row">
+              <label class="input-label" for="bondGrandClassSelect">Class</label>
+              <select class="select-field" id="bondGrandClassSelect">
+                <option value="">-- Select --</option>
+              </select>
+            </div>
+            <div class="input-row">
+              <label class="input-label" for="bondGrandDiffSelect">Difficulty</label>
+              <select class="select-field" id="bondGrandDiffSelect">
+                <option value="">-- Select --</option>
               </select>
             </div>
             <div id="customQuestSection" class="custom-quest-section">
@@ -454,9 +458,43 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             </div>
           </div>
 
-          <button class="calculate-btn" id="bondCalculateBtn" type="button">
-            Calculate Quest Runs
-          </button>
+          <div class="card">
+            <div class="card-inner">
+              <div class="card-title">Party Setup</div>
+            <div class="servant-grid grid" id="servantGrid"></div>
+            <div class="bond-card-actions">
+              <div class="bond-teapot">
+                <img
+                  class="bond-teapot-img"
+                  src="icons/teapot.webp"
+                  alt="Stargazer's Teapot"
+                  width="142"
+                  height="155"
+                />
+                <div class="bond-input-box bond-teapot-box">
+                  <label class="bond-input-box-label" for="teapotCountInput">Stargazer's Teapot</label>
+                  <input
+                    class="bond-input-box-field bond-teapot-input"
+                    id="teapotCountInput"
+                    type="number"
+                    min="0"
+                    max="9999"
+                    step="1"
+                    value="0"
+                    inputmode="numeric"
+                  />
+                </div>
+                <label class="bond-teapot-switch" for="teapotToggle">
+                  <input type="checkbox" id="teapotToggle" aria-label="Use Stargazer's Teapot" />
+                  <span class="bond-teapot-slider" aria-hidden="true"></span>
+                </label>
+              </div>
+              <button class="calculate-btn" id="bondCalculateBtn" type="button">
+                Calculate Quest Runs
+              </button>
+            </div>
+            </div>
+          </div>
 
           <div class="results" id="bondResults">
             <div class="card results-card">
@@ -609,8 +647,95 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 &#10005;
               </button>
             </div>
-            <div id="servantFilterArea"></div>
+            <div class="cefilter-search-container">
+              <input
+                type="text"
+                class="search-filter cefilter-search-input"
+                id="servantPickerSearch"
+                placeholder="Search by ID or name..."
+                autocomplete="off"
+              />
+            </div>
+            <div class="cefilter-sort-row">
+              <button
+                type="button"
+                class="cefilter-filter-btn"
+                id="servantPickerFilterBtn"
+                aria-haspopup="dialog"
+                aria-label="Open filter settings modal"
+              >
+                Filter
+              </button>
+              <select class="select-field cefilter-sort-select" id="servantPickerSortBy" aria-label="Sort by">
+                <option value="id" selected>ID</option>
+                <option value="rarity">Rarity</option>
+                <option value="class">Class</option>
+              </select>
+              <button
+                type="button"
+                class="cefilter-sort-order-btn"
+                id="servantPickerSortOrder"
+                data-order="asc"
+                aria-label="Sort ascending"
+                title="Sort ascending"
+              >
+                <span class="cefilter-sort-order-icon">&#9650;</span>
+              </button>
+            </div>
             <div class="servant-picker-grid grid-sm servant-picker-grid--servant" id="servantPickerGrid"></div>
+          </div>
+        </div>
+
+        <!-- Servant Picker Filter Modal (nested under #servantModal, so it must come after it to paint on top) -->
+        <div class="servant-modal" id="servantFilterModal" role="dialog" aria-modal="true" aria-labelledby="servantFilterModalTitle">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <span class="ascension-modal-title" id="servantFilterModalTitle">Filter Settings</span>
+              <button
+                class="servant-modal-close"
+                id="servantFilterModalClose"
+                type="button"
+                aria-label="Close"
+              >
+                &#10005;
+              </button>
+            </div>
+            <div class="cefilter-modal-body">
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantRarityLabel">Rarity</div>
+                <div class="rarity-filter" id="servantRarityFilter" role="group" aria-labelledby="servantRarityLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantClassLabel">Class</div>
+                <div class="class-filter" id="servantClassFilter" role="group" aria-labelledby="servantClassLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantGroupLabel">Class (Group)</div>
+                <div class="rarity-filter cefilter-modal-row" id="servantGroupFilter" role="group" aria-labelledby="servantGroupLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantAliLabel">Alignment (Lawful/Neutral/Chaotic)</div>
+                <div class="rarity-filter" id="servantAliFilter" role="group" aria-labelledby="servantAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantSubAliLabel">Alignment (Good/Balanced/Evil)</div>
+                <div class="rarity-filter" id="servantSubAliFilter" role="group" aria-labelledby="servantSubAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantAttrLabel">Sub-Attribute</div>
+                <div class="rarity-filter" id="servantAttrFilter" role="group" aria-labelledby="servantAttrLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantGenderLabel">Gender</div>
+                <div class="rarity-filter" id="servantGenderFilter" role="group" aria-labelledby="servantGenderLabel"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -728,10 +853,44 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               </button>
             </div>
             <div class="cefilter-modal-body">
-              <div class="filter-group">
-                <div class="class-filter" id="cefilterClassFilter"></div>
-                <div class="rarity-filter" id="cefilterRarityFilter"></div>
-                <div class="ce-count-filter" id="cefilterMatchCount"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterRarityLabel">Rarity</div>
+                <div class="rarity-filter" id="cefilterRarityFilter" role="group" aria-labelledby="cefilterRarityLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterClassLabel">Class</div>
+                <div class="class-filter" id="cefilterClassFilter" role="group" aria-labelledby="cefilterClassLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterGroupLabel">Class (Group)</div>
+                <div class="rarity-filter cefilter-modal-row" id="cefilterGroupFilter" role="group" aria-labelledby="cefilterGroupLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterAliLabel">Alignment (Lawful/Neutral/Chaotic)</div>
+                <div class="rarity-filter" id="cefilterAliFilter" role="group" aria-labelledby="cefilterAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterSubAliLabel">Alignment (Good/Balanced/Evil)</div>
+                <div class="rarity-filter" id="cefilterSubAliFilter" role="group" aria-labelledby="cefilterSubAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterAttrLabel">Sub-Attribute</div>
+                <div class="rarity-filter" id="cefilterAttrFilter" role="group" aria-labelledby="cefilterAttrLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterGenderLabel">Gender</div>
+                <div class="rarity-filter" id="cefilterGenderFilter" role="group" aria-labelledby="cefilterGenderLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterMatchLabel">CE Bonus</div>
+                <div class="ce-count-filter" id="cefilterMatchCount" role="group" aria-labelledby="cefilterMatchLabel"></div>
               </div>
             </div>
           </div>

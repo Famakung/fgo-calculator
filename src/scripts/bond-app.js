@@ -1,5 +1,13 @@
-import { BOND_CONSTANTS, SERVANT_MAX_SLOTS, BOND_QUESTS, BOND_STORAGE_KEY } from "./constants.js";
-import { Validator, TraitMatcher, BondLevelCalculator } from "./domain.js";
+import {
+  BOND_CONSTANTS,
+  SERVANT_MAX_SLOTS,
+  QUEST_FAMILIES,
+  FREE_QUESTS,
+  GRAND_CLASSES,
+  GRAND_DIFFICULTIES,
+  BOND_STORAGE_KEY,
+} from "./constants.js";
+import { Validator, TraitMatcher, SlotCEs, Teapot, Quest } from "./domain.js";
 import { ServantData, CEById, TraitNames } from "./data.js";
 import { DOMFactory } from "./presentation.js";
 
@@ -15,6 +23,8 @@ function defaultSlot(overrides = {}) {
     maxBond: false,
     bond15: false,
     ascension: null,
+    ces: [],
+    grand: false,
     ...overrides,
   };
 }
@@ -23,6 +33,9 @@ export const BondApp = {
   state: null,
   elements: {},
   _refs: null,
+  /* The teapot count box and its switch live in the page markup, not in buildServantSlots(), so they
+     are kept apart from `elements`, which that builder clears on every re-render. */
+  _teapotInputs: null,
 
   configure(refs) {
     // refs = { ServantSelector, AscensionSelector, CESelector, CESubSelector, ServantDrag }
@@ -41,31 +54,24 @@ export const BondApp = {
         this._refs.AscensionSelector.open(servant, idx, {
           onSelect: (_si, servantId, asc) => this.setServant(idx, servantId, asc),
           onBack: (backIdx) => {
-            this._refs.ServantSelector.open(backIdx, false, this._createServantCallbacks(backIdx));
+            this._refs.ServantSelector.open(
+              backIdx,
+              false,
+              this._createServantCallbacks(backIdx),
+              this._pickerOptions(),
+            );
           },
         });
       },
     };
   },
 
-  _createCECallbacks(slotIndex) {
+  /* One callback set per (slot, position). The selectors only carry a number through to
+     onPendingRemove, so the position they hand back is ignored in favour of the closed-over one. */
+  _createCECallbacks(slotIndex, position) {
     return {
-      onSelect: (_slotIdx, ceId, optionId) => this.setCE(slotIndex, ceId, optionId),
-      onPendingRemove: () => {
-        this.state.ces.splice(slotIndex, 1);
-        this.saveState();
-        this.buildCESlots();
-      },
-      onOpenSubSelector: (groupCE, idx) => {
-        this._refs.CESubSelector.open(groupCE, idx, {
-          onSelect: (_si, ceId, optionId) => this.setCE(idx, ceId, optionId),
-          onPendingRemove: () => {
-            this.state.ces.splice(idx, 1);
-            this.saveState();
-            this.buildCESlots();
-          },
-        });
-      },
+      onSelect: (_position, ceId, optionId) => this.setCE(slotIndex, position, ceId, optionId),
+      onPendingRemove: () => this.removeCE(slotIndex, position),
     };
   },
 
@@ -75,62 +81,44 @@ export const BondApp = {
     const saved = this.loadState();
     this.state = saved || {
       slots: Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot()),
-      selectedQuest: "",
+      questMain: "",
+      questSub: "",
+      questClass: "",
+      questDiff: "",
       customBond: 0,
-      ces: [],
+      teapotCount: 0,
+      teapotOn: false,
+      // Parties filed by quest choice; the live one is `slots`, so its own key is absent here.
+      parties: {},
     };
 
-    const select = document.getElementById("bondQuestSelect");
-    const customInput = document.getElementById("customBondPerRun");
-    const customSection = document.getElementById("customQuestSection");
+    this.initQuestSelects();
 
-    // Populate presets
-    BOND_QUESTS.forEach((q) => {
-      const opt = DOMFactory.el("option", null, { value: q.key });
-      opt.textContent = `${q.name} (${q.bond} pts)`;
-      select.appendChild(opt);
-    });
-
-    // Custom option
-    const customOpt = DOMFactory.el("option", null, { value: "custom" });
-    customOpt.textContent = "-- Custom --";
-    select.appendChild(customOpt);
-
-    // Build servant slots
+    // Build servant slots (each card renders its own essences)
     this.buildServantSlots();
-
-    // Build CE slots
-    this.buildCESlots();
-
-    // Restore quest state
-    select.value = this.state.selectedQuest;
-    if (this.state.selectedQuest === "custom") {
-      customInput.disabled = false;
-      customInput.value = this.state.customBond;
-      customSection.style.display = "block";
-    } else if (this.state.selectedQuest) {
-      customInput.disabled = true;
-      customSection.style.display = "none";
-    } else {
-      customSection.style.display = "none";
-    }
-
-    // Quest select handler
-    select.addEventListener("change", () => {
-      const val = select.value;
-      if (val === "custom") {
-        customInput.disabled = false;
-        customSection.style.display = "block";
-      } else {
-        customInput.disabled = true;
-        customSection.style.display = "none";
-      }
-    });
 
     // Calculate button
     const calcBtn = document.getElementById("bondCalculateBtn");
     if (calcBtn) {
       calcBtn.addEventListener("click", () => this.calculate());
+    }
+
+    // Stargazer's Teapot: how many the player holds, and whether the plan spends them.
+    const teapotCount = document.getElementById("teapotCountInput");
+    const teapotToggle = document.getElementById("teapotToggle");
+    if (teapotCount && teapotToggle) {
+      this._teapotInputs = { count: teapotCount, toggle: teapotToggle };
+      teapotCount.value = this.state.teapotCount;
+      teapotToggle.checked = this.state.teapotOn;
+      // Saving only: the teapot changes what the *next* plan costs, so pricing stays the Calculate button's job.
+      const syncTeapot = () => {
+        this.state.teapotCount = Validator.clamp(teapotCount.value, 0, BOND_CONSTANTS.MAX_TEAPOT_COUNT);
+        teapotCount.value = this.state.teapotCount;
+        this.state.teapotOn = teapotToggle.checked;
+        this.saveState();
+      };
+      teapotCount.addEventListener("change", syncTeapot);
+      teapotToggle.addEventListener("change", syncTeapot);
     }
 
     // Init servant selector
@@ -156,6 +144,127 @@ export const BondApp = {
     this._refs.CESubSelector.init();
   },
 
+  /* ============================================
+     QUEST SELECTS
+     ============================================ */
+  /* The Select Quest card cascades: a family first (Free Quest or Grand Duel), then the choice inside it —
+     one of the two free quests or a custom figure, or a class group plus a Rank-Up Training Battle level.
+     Every label and every bond figure comes from constants.js, so a number has one home. */
+  initQuestSelects() {
+    const main = document.getElementById("bondQuestSelect");
+    const free = document.getElementById("bondFreeQuestSelect");
+    const gdClass = document.getElementById("bondGrandClassSelect");
+    const gdDiff = document.getElementById("bondGrandDiffSelect");
+    const customInput = document.getElementById("customBondPerRun");
+    if (!main || !free || !gdClass || !gdDiff) return;
+
+    const addOptions = (select, items) => {
+      const frag = document.createDocumentFragment();
+      items.forEach(({ value, label }) => {
+        const opt = DOMFactory.el("option", null, { value });
+        opt.textContent = label;
+        frag.appendChild(opt);
+      });
+      select.appendChild(frag);
+    };
+
+    addOptions(
+      main,
+      QUEST_FAMILIES.map((f) => ({ value: f.key, label: f.name })),
+    );
+    addOptions(free, [
+      ...FREE_QUESTS.map((q) => ({ value: q.key, label: `${q.name} (${q.bond} pts)` })),
+      { value: "custom", label: "-- Custom --" },
+    ]);
+    addOptions(
+      gdClass,
+      GRAND_CLASSES.map((c) => ({ value: c.key, label: c.name })),
+    );
+    addOptions(
+      gdDiff,
+      GRAND_DIFFICULTIES.map((d) => ({
+        value: d.key,
+        label: `Rank-Up Training Battle ${d.roman} ${d.lv} (${d.bond} pts)`,
+      })),
+    );
+
+    this._questSelects = { main, free, gdClass, gdDiff };
+
+    /* Each select owns one state field and saves it on change — the class limit has to survive a reload
+       even if the player never presses Calculate. The two fields that decide which party is on screen
+       also swap it, so the old one is put away before the new one is named. */
+    const bind = (key, select) => {
+      const swaps = key === "questMain" || key === "questClass";
+      select.value = this.state[key];
+      select.addEventListener("change", () => {
+        if (swaps) this.stashParty();
+        this.state[key] = select.value;
+        if (swaps) this.applyParty();
+        this.saveState();
+        this.syncQuestRows();
+      });
+    };
+    bind("questMain", main);
+    bind("questSub", free);
+    bind("questClass", gdClass);
+    bind("questDiff", gdDiff);
+
+    if (customInput) customInput.value = this.state.customBond;
+    this.syncQuestRows();
+  },
+
+  /* Only the rows belonging to the chosen family show, and the custom bond box only under Custom.
+     `hidden` cannot do this job: `.input-row` declares a display, which outranks the UA rule. */
+  syncQuestRows() {
+    const { free, gdClass, gdDiff } = this._questSelects;
+    const customRow = document.getElementById("customQuestSection");
+    const customInput = document.getElementById("customBondPerRun");
+    const freeOn = this.state.questMain === "fq";
+    const grandOn = this.state.questMain === "gd";
+    free.closest(".input-row").style.display = freeOn ? "flex" : "none";
+    gdClass.closest(".input-row").style.display = grandOn ? "flex" : "none";
+    gdDiff.closest(".input-row").style.display = grandOn ? "flex" : "none";
+    const customOn = freeOn && this.state.questSub === "custom";
+    if (customInput) customInput.disabled = !customOn;
+    if (customRow) customRow.style.display = customOn ? "block" : "none";
+  },
+
+  /* A Grand Duel class choice limits the party, so the servant picker opens already filtered to those
+     classes and locked to them. Everywhere else the player filters the list themselves. */
+  _pickerOptions() {
+    return this.state.questMain === "gd" ? { lockClasses: Quest.classIds(this.state.questClass) } : {};
+  },
+
+  /* ============================================
+     PARTY PER QUEST CHOICE
+     ============================================ */
+  /* Which party is on screen: one per Grand Duel choice, and the shared one (`""`) for Free Quest or no
+     quest at all. A class not picked yet counts as "all", so entering Grand Duel never opens an orphan. */
+  _partyKey() {
+    return this.state.questMain === "gd" ? this.state.questClass || "all" : "";
+  },
+
+  /* Put the party on screen away under its own key before the quest moves off it. Copied, so the stored
+     party and the live array stop sharing slot objects the moment the rack is rebuilt. */
+  stashParty() {
+    this.flushInputsToState();
+    const party = this.state.slots.map((slot) => ({ ...slot, ces: [...slot.ces] }));
+    // A rack with nobody in it carries nothing worth filing — an absent key already means empty, and
+    // twelve of these per save would only bloat localStorage.
+    if (party.some((slot) => slot.servantId)) this.state.parties[this._partyKey()] = party;
+  },
+
+  /* The other choice's party, or an empty rack: a save from before parties existed has nothing filed by
+     class, so every Grand Duel choice starts blank and fills itself up. */
+  applyParty() {
+    const key = this._partyKey();
+    const stored = this.state.parties[key];
+    this.state.slots = stored || Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot());
+    // The live party travels as `state.slots`, so its key must not be written twice.
+    if (stored) delete this.state.parties[key];
+    this.buildServantSlots();
+  },
+
   removeSlot(index) {
     this.flushInputsToState();
     this.state.slots[index] = defaultSlot();
@@ -163,141 +272,153 @@ export const BondApp = {
     this.buildServantSlots();
   },
 
-  buildCESlots() {
-    const grid = document.getElementById("ceGrid");
-    if (!grid) return;
-    grid.replaceChildren();
-
-    const count = this.state.ces.length;
-
-    for (let i = 0; i < count; i++) {
-      const ceEntry = this.state.ces[i];
-      if (!ceEntry) continue; // skip pending null slots
-
-      // Resolve CE entry (string or group object)
-      let ce, ceName, ceImage, ceBonusText;
-      if (typeof ceEntry === "object" && ceEntry.groupId) {
-        ce = CEById.get(ceEntry.groupId);
-        const selectedOption = ce && ce.options ? ce.options.find((o) => o.id === ceEntry.optionId) : null;
-        ceName = selectedOption ? selectedOption.name : ce ? ce.name : ceEntry.groupId;
-        ceImage = selectedOption ? selectedOption.image : ce ? ce.image : null;
-        ceBonusText = ce ? (ce.flatBonus > 0 ? `+${ce.flatBonus} pts All` : `+${ce.bonus}% All`) : "";
-      } else {
-        ce = CEById.get(ceEntry);
-        ceName = ce ? ce.name : ceEntry;
-        ceImage = ce ? ce.image : null;
-        ceBonusText = null;
-      }
-
-      const slot = DOMFactory.el("div", "ce-slot");
-      slot.dataset.slotIndex = i;
-
-      // Portrait
-      const portraitArea = DOMFactory.el("div");
-      if (ceImage) {
-        const img = DOMFactory.createLazyImg(ceImage, "ce-portrait", { alt: ceName });
-        DOMFactory.addSimpleFallback(
-          img,
-          "ce-portrait-fallback",
-          typeof ceEntry === "object" ? ceEntry.groupId : ceEntry,
-        );
-        portraitArea.appendChild(img);
-      } else {
-        const fb = DOMFactory.el("div", "ce-portrait-fallback");
-        fb.textContent = typeof ceEntry === "object" ? ceEntry.groupId : ceEntry;
-        portraitArea.appendChild(fb);
-      }
-      slot.appendChild(portraitArea);
-
-      // Name + bonus
-      const info = DOMFactory.el("div");
-      if (ce) {
-        const nameEl = DOMFactory.el("div", "ce-slot-name");
-        nameEl.textContent = ceName;
-        info.appendChild(nameEl);
-        const bonusEl = DOMFactory.el("div", "ce-slot-bonus");
-        if (ceBonusText !== null) {
-          // Grouped CE (pre-computed bonus text)
-          bonusEl.textContent = ceBonusText;
-        } else if (ce.traitGroups.length > 0) {
-          const groups = ce.traitGroups.map((group) => group.map((t) => TraitNames[t] || t).join(" or ")).join(" and ");
-          bonusEl.textContent = `+${ce.bonus}% ${groups}`;
-        } else if (ce.traits.length === 0) {
-          bonusEl.textContent = `+${ce.bonus}% All`;
-        } else {
-          const traitNames = ce.traits.map((t) => TraitNames[t] || t);
-          const joiner = ce.matchAll ? " and " : " or ";
-          bonusEl.textContent = `+${ce.bonus}% ${traitNames.join(joiner)}`;
-        }
-        info.appendChild(bonusEl);
-      }
-      slot.appendChild(info);
-
-      // Click slot to re-select
-      const ceSlotIndex = i;
-      slot.style.cursor = "pointer";
-      slot.addEventListener("click", () => {
-        if (ce && ce.isGroup) {
-          this._refs.CESubSelector.open(ce, ceSlotIndex, {
-            onSelect: (_si, ceId, optionId) => this.setCE(ceSlotIndex, ceId, optionId),
-            onPendingRemove: () => {
-              this.state.ces.splice(ceSlotIndex, 1);
-              this.saveState();
-              this.buildCESlots();
-            },
-          });
-        } else {
-          this._refs.CESelector.open(ceSlotIndex, false, this._createCECallbacks(ceSlotIndex));
-        }
-      });
-
-      // Remove button
-      const removeBtn = DOMFactory.el("button", "servant-remove-btn", { type: "button" });
-      removeBtn.textContent = "\u2715";
-      removeBtn.title = "Remove CE";
-      removeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.removeCE(ceSlotIndex);
-      });
-      slot.appendChild(removeBtn);
-
-      grid.appendChild(slot);
+  /* The bonus line the old CE card printed under each portrait. It now only feeds the chip's title and
+     alt text, since the card keeps the essence to a portrait. */
+  _ceBonusText(ce, ceEntry, isSupport) {
+    const bonus = SlotCEs.rate(ce, isSupport);
+    if (typeof ceEntry === "object" && ceEntry.groupId) {
+      return ce.flatBonus > 0 ? `+${ce.flatBonus} pts All` : `+${bonus}% All`;
     }
-
-    // Add button
-    const addSlot = DOMFactory.el("div", ["ce-slot", "ce-add-slot"]);
-    const addPortrait = DOMFactory.el("div", "ce-portrait-fallback");
-    addPortrait.textContent = "+";
-    addSlot.appendChild(addPortrait);
-    const addInfo = DOMFactory.el("div");
-    const addLabel = DOMFactory.el("div", "ce-slot-name");
-    addLabel.textContent = "Add Craft Essence";
-    addInfo.appendChild(addLabel);
-    addSlot.appendChild(addInfo);
-    addSlot.addEventListener("click", () => {
-      this.state.ces.push(null);
-      this.buildCESlots();
-      const idx = this.state.ces.length - 1;
-      this._refs.CESelector.open(idx, true, this._createCECallbacks(idx));
-    });
-    grid.appendChild(addSlot);
+    if (ce.traitGroups.length > 0) {
+      const groups = ce.traitGroups.map((group) => group.map((t) => TraitNames[t] || t).join(" or ")).join(" and ");
+      return `+${bonus}% ${groups}`;
+    }
+    if (ce.traits.length === 0) return `+${bonus}% All`;
+    const traitNames = ce.traits.map((t) => TraitNames[t] || t);
+    const joiner = ce.matchAll ? " and " : " or ";
+    return `+${bonus}% ${traitNames.join(joiner)}`;
   },
 
-  setCE(slotIndex, ceId, optionId) {
-    if (slotIndex < 0 || slotIndex >= this.state.ces.length) return;
-    if (optionId) {
-      this.state.ces[slotIndex] = { groupId: ceId, optionId: optionId };
+  /* A blank position, or a pending hole the picker owns. */
+  _buildCEAddChip(slotIndex, position) {
+    const chip = DOMFactory.el("div", ["ce-chip", "ce-chip--add"]);
+    chip.textContent = "+";
+    chip.title = "Add craft essence";
+    chip.addEventListener("click", () => this.addCE(slotIndex, position));
+    return chip;
+  },
+
+  /* One position of the slot's essence list: a 64px portrait and nothing else \u2014 the name and the bonus
+     live in the chip's title and in the results card. An id that no longer resolves still gets a chip
+     (the id as its text) so the player can always remove it. */
+  _buildCEChip(slotData, slotIndex, position) {
+    const ceEntry = slotData.ces[position];
+    if (!ceEntry) return this._buildCEAddChip(slotIndex, position);
+
+    const grouped = typeof ceEntry === "object" && ceEntry.groupId;
+    const ce = CEById.get(grouped ? ceEntry.groupId : ceEntry);
+    const option = grouped && ce && ce.options ? ce.options.find((o) => o.id === ceEntry.optionId) : null;
+    const ceName = grouped ? (option ? option.name : ce ? ce.name : ceEntry.groupId) : ce ? ce.name : ceEntry;
+    const ceImage = grouped ? (option ? option.image : ce ? ce.image : null) : ce ? ce.image : null;
+    const idText = grouped ? ceEntry.groupId : ceEntry;
+
+    const chip = DOMFactory.el("div", "ce-chip");
+    chip.title = ce ? `${ceName} \u00b7 ${this._ceBonusText(ce, ceEntry, slotData.type === "support")}` : ceName;
+    if (ceImage) {
+      const img = DOMFactory.createLazyImg(ceImage, "ce-chip-img", { alt: ceName });
+      DOMFactory.addSimpleFallback(img, "ce-chip-fallback", idText);
+      chip.appendChild(img);
     } else {
-      this.state.ces[slotIndex] = ceId;
+      const fb = DOMFactory.el("div", "ce-chip-fallback");
+      fb.textContent = idText;
+      chip.appendChild(fb);
     }
-    this.saveState();
-    this.buildCESlots();
+
+    // Click to re-pick this position, straight to the options when it is a grouped essence.
+    chip.addEventListener("click", () => {
+      const callbacks = this._createCECallbacks(slotIndex, position);
+      if (ce && ce.isGroup) {
+        this._refs.CESubSelector.open(ce, position, callbacks);
+      } else {
+        this._refs.CESelector.open(position, false, callbacks);
+      }
+    });
+
+    const removeBtn = DOMFactory.el("button", "ce-chip-x", { type: "button" });
+    removeBtn.textContent = "\u2715";
+    removeBtn.title = "Remove craft essence";
+    removeBtn.setAttribute("aria-label", `Remove ${ceName}`);
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.removeCE(slotIndex, position);
+    });
+    chip.appendChild(removeBtn);
+
+    return chip;
   },
 
-  removeCE(index) {
-    this.state.ces.splice(index, 1);
+  /* The card's own essence block: a bordered field labelled "Craft Essence" holding the Grand Servant
+     tick and one chip per position the slot can wear. The tick belongs to Grand Duel alone — a Free Quest
+     party never wears two essences, so it is not offered the choice. Building the row or leaving it out
+     (never hiding it) is what the house does for fields a state cannot use, and a quest change already
+     rebuilds the rack through applyParty(), so the tick appears and goes with it. */
+  _buildSlotCEs(slotData, slotIndex) {
+    const block = DOMFactory.el("div", "slot-ce-block");
+    const grandOn = this.state.questMain === "gd";
+
+    const label = DOMFactory.el("label", "bond-input-box-label", grandOn ? { for: `slotGrand_${slotIndex}` } : {});
+    label.textContent = "Craft Essence";
+    block.appendChild(label);
+
+    if (grandOn) {
+      const grandCheckbox = DOMFactory.el("input", "bond-checkbox", {
+        type: "checkbox",
+        id: `slotGrand_${slotIndex}`,
+      });
+      if (slotData.grand) grandCheckbox.checked = true;
+      const grandText = DOMFactory.el("span");
+      grandText.textContent = "Grand Servant";
+      const grandLabel = DOMFactory.el("label", "bond-checkbox-label");
+      grandLabel.appendChild(grandCheckbox);
+      grandLabel.appendChild(grandText);
+      const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
+      checkboxRow.appendChild(grandLabel);
+      block.appendChild(checkboxRow);
+
+      grandCheckbox.addEventListener("change", () => {
+        this.flushInputsToState();
+        slotData.grand = grandCheckbox.checked;
+        SlotCEs.trim(slotData); // unticking drops the second essence, no confirmation, no restore
+        this.saveState();
+        this.buildServantSlots();
+      });
+    }
+
+    const strip = DOMFactory.el("div", "slot-ce-strip");
+    const chips = document.createDocumentFragment();
+    for (let position = 0; position < SlotCEs.capacity(slotData); position++) {
+      chips.appendChild(this._buildCEChip(slotData, slotIndex, position));
+    }
+    strip.replaceChildren(chips);
+    block.appendChild(strip);
+
+    return block;
+  },
+
+  setCE(slotIndex, position, ceId, optionId) {
+    const slot = this.state.slots[slotIndex];
+    if (!slot || position < 0 || position >= SlotCEs.capacity(slot)) return;
+    slot.ces[position] = optionId ? { groupId: ceId, optionId: optionId } : ceId;
     this.saveState();
-    this.buildCESlots();
+    this.buildServantSlots();
+  },
+
+  removeCE(slotIndex, position) {
+    const slot = this.state.slots[slotIndex];
+    if (!slot) return;
+    slot.ces.splice(position, 1);
+    this.saveState();
+    this.buildServantSlots();
+  },
+
+  /* Pending Slot: the hole is a null in the slot's own list, so partyPool skips it while the picker is
+     open and cancelling splices it back out. */
+  addCE(slotIndex, position) {
+    const slot = this.state.slots[slotIndex];
+    if (!slot) return;
+    slot.ces[position] = null;
+    this.buildServantSlots();
+    this._refs.CESelector.open(position, true, this._createCECallbacks(slotIndex, position));
   },
 
   flushInputsToState() {
@@ -366,7 +487,12 @@ export const BondApp = {
               this._refs.AscensionSelector.open(servant, ascSlotIndex, {
                 onSelect: (_si, servantId, asc) => this.setServant(ascSlotIndex, servantId, asc),
                 onBack: (backIdx) => {
-                  this._refs.ServantSelector.open(backIdx, false, this._createServantCallbacks(backIdx));
+                  this._refs.ServantSelector.open(
+                    backIdx,
+                    false,
+                    this._createServantCallbacks(backIdx),
+                    this._pickerOptions(),
+                  );
                 },
               });
             });
@@ -380,7 +506,12 @@ export const BondApp = {
         if (!servantHasAscensions) {
           const selectorSlotIndex = i;
           portraitArea.addEventListener("click", () => {
-            this._refs.ServantSelector.open(selectorSlotIndex, false, this._createServantCallbacks(selectorSlotIndex));
+            this._refs.ServantSelector.open(
+              selectorSlotIndex,
+              false,
+              this._createServantCallbacks(selectorSlotIndex),
+              this._pickerOptions(),
+            );
           });
           portraitArea.style.cursor = "pointer";
         }
@@ -483,49 +614,37 @@ export const BondApp = {
         const isSupport = slotType === "support";
         const isBondHidden = isSupport || !!slotData.maxBond;
 
-        // Checkboxes row: "Max Bond" and "Bond >=15"
-        const checkboxRowClass = isSupport ? "bond-checkbox-row bond-checkbox-row--hidden" : "bond-checkbox-row";
-        const checkboxRow = DOMFactory.el("div", checkboxRowClass);
-
-        // Max Bond checkbox
-        const maxBondLabel = DOMFactory.el("label", "bond-checkbox-label");
-        const maxBondAttrs = {
-          type: "checkbox",
-          id: `slotMaxBond_${i}`,
-        };
-        if (isSupport) {
-          maxBondAttrs.disabled = true;
-          maxBondAttrs.tabIndex = -1;
-        }
-        const maxBondCheckbox = DOMFactory.el("input", "bond-checkbox", maxBondAttrs);
-        if (slotData.maxBond) maxBondCheckbox.checked = true;
-        const maxBondText = DOMFactory.el("span");
-        maxBondText.textContent = "Max Bond";
-        maxBondLabel.appendChild(maxBondCheckbox);
-        maxBondLabel.appendChild(maxBondText);
-        checkboxRow.appendChild(maxBondLabel);
-
-        // Bond >=15 checkbox
-        const bond15Label = DOMFactory.el("label", "bond-checkbox-label");
-        const bond15Attrs = {
-          type: "checkbox",
-          id: `slotBond15_${i}`,
-        };
-        if (isSupport) {
-          bond15Attrs.disabled = true;
-          bond15Attrs.tabIndex = -1;
-        }
-        const bond15Checkbox = DOMFactory.el("input", "bond-checkbox", bond15Attrs);
-        if (slotData.bond15) bond15Checkbox.checked = true;
-        const bond15Text = DOMFactory.el("span");
-        bond15Text.textContent = "Bond \u226515";
-        bond15Label.appendChild(bond15Checkbox);
-        bond15Label.appendChild(bond15Text);
-        checkboxRow.appendChild(bond15Label);
-
-        info.appendChild(checkboxRow);
-
+        /* Checkboxes row: "Max Bond" and "Bond >=15". A support servant has neither, so the row is not
+           built at all; it used to sit here invisible, holding the height of a row nobody can reach. */
         if (!isSupport) {
+          const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
+
+          const maxBondLabel = DOMFactory.el("label", "bond-checkbox-label");
+          const maxBondCheckbox = DOMFactory.el("input", "bond-checkbox", {
+            type: "checkbox",
+            id: `slotMaxBond_${i}`,
+          });
+          if (slotData.maxBond) maxBondCheckbox.checked = true;
+          const maxBondText = DOMFactory.el("span");
+          maxBondText.textContent = "Max Bond";
+          maxBondLabel.appendChild(maxBondCheckbox);
+          maxBondLabel.appendChild(maxBondText);
+          checkboxRow.appendChild(maxBondLabel);
+
+          const bond15Label = DOMFactory.el("label", "bond-checkbox-label");
+          const bond15Checkbox = DOMFactory.el("input", "bond-checkbox", {
+            type: "checkbox",
+            id: `slotBond15_${i}`,
+          });
+          if (slotData.bond15) bond15Checkbox.checked = true;
+          const bond15Text = DOMFactory.el("span");
+          bond15Text.textContent = "Bond \u226515";
+          bond15Label.appendChild(bond15Checkbox);
+          bond15Label.appendChild(bond15Text);
+          checkboxRow.appendChild(bond15Label);
+
+          info.appendChild(checkboxRow);
+
           maxBondCheckbox.addEventListener("change", () => {
             this.flushInputsToState();
             slotData.maxBond = maxBondCheckbox.checked;
@@ -541,8 +660,9 @@ export const BondApp = {
           });
         }
 
-        /* Bond level selects, then the point box the player reads off the in-game bond screen.
-           All three hide together for support and Max Bond slots, as the point box always did. */
+        /* Bond level selects, then the point box the player reads off the in-game bond screen. A support
+           or Max Bond slot prices nothing level by level, so those fields are never built for it — and
+           the essence block below moves up into the space they used to reserve. */
         const bondGrowth = ServantData.getBondGrowth(slotData.servantId);
         const maxLevel = bondGrowth ? bondGrowth.length - 1 : BOND_CONSTANTS.MAX_BOND_LEVEL - 1;
         const currentLevel = Math.min(Validator.clamp(slotData.bondLevel, 0, maxLevel), maxLevel);
@@ -554,96 +674,88 @@ export const BondApp = {
           this.saveState();
         }
 
-        const levelBox = (refKey, labelText, id, values, selected, onChange) => {
-          const box = DOMFactory.el("div", isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box");
-          const label = DOMFactory.el("label", "bond-input-box-label", { for: id });
-          label.textContent = labelText;
-          const select = DOMFactory.el("select", "bond-input-box-field bond-level-select", { id });
-          if (isBondHidden) {
-            select.disabled = true;
-            select.tabIndex = -1;
-          }
-          values.forEach((value) => {
-            const opt = DOMFactory.el("option", null, { value: String(value) });
-            opt.textContent = String(value);
-            if (value === selected) opt.selected = true;
-            select.appendChild(opt);
-          });
-          select.addEventListener("change", () => onChange(select.value));
-          if (!isBondHidden) this.elements[refKey] = select;
-          box.appendChild(label);
-          box.appendChild(select);
-          return box;
-        };
-
         const levelValues = (from, to) => {
           const out = [];
           for (let v = from; v <= to; v++) out.push(v);
           return out;
         };
 
-        // Moving off a level always re-prices the box from the table — the old level's figure is stale.
-        const currentBox = levelBox(
-          `slotBondLv_${i}`,
-          "Current Lv.",
-          `slotBondLv_${i}`,
-          levelValues(0, maxLevel),
-          currentLevel,
-          (value) => {
-            this.flushInputsToState();
-            const next = Math.round(Validator.clamp(value, 0, maxLevel));
-            slotData.bondLevel = next;
-            if (slotData.targetLevel <= next) slotData.targetLevel = next + 1;
-            if (bondGrowth) slotData.bondNeeded = bondGrowth[next];
-            // The +25% all-servant bonus belongs to bond 15+, so the box follows the level both ways.
-            slotData.bond15 = next >= BOND_CONSTANTS.BOND_BONUS_LEVEL;
-            this.saveState();
-            this.buildServantSlots();
-          },
-        );
-
-        const targetBox = levelBox(
-          `slotBondTgt_${i}`,
-          "Target Lv.",
-          `slotBondTgt_${i}`,
-          levelValues(currentLevel + 1, maxLevel + 1),
-          targetLevel,
-          (value) => {
-            this.flushInputsToState();
-            slotData.targetLevel = Math.round(Validator.clamp(value, currentLevel + 1, maxLevel + 1));
-            this.saveState();
-          },
-        );
-
-        const levelRow = DOMFactory.el("div", "bond-level-row");
-        levelRow.appendChild(currentBox);
-        levelRow.appendChild(targetBox);
-        info.appendChild(levelRow);
-
-        // Bond input box with border label (always created to preserve height, hidden if max bond or support)
-        const inputBoxClass = isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box";
-        const inputBox = DOMFactory.el("div", inputBoxClass);
-        const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
-        inputLabel.textContent = "Next Lv. Required";
-        const inputAttrs = {
-          type: "number",
-          id: `slotBond_${i}`,
-          min: "0",
-          max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
-          value: String(slotData.bondNeeded || 0),
-        };
-        if (isBondHidden) {
-          inputAttrs.disabled = true;
-          inputAttrs.tabIndex = -1;
-        }
-        const input = DOMFactory.el("input", "bond-input-box-field", inputAttrs);
-        inputBox.appendChild(inputLabel);
-        inputBox.appendChild(input);
-        info.appendChild(inputBox);
-
         if (!isBondHidden) {
+          const levelBox = (refKey, labelText, id, values, selected, onChange) => {
+            const box = DOMFactory.el("div", "bond-input-box");
+            const label = DOMFactory.el("label", "bond-input-box-label", { for: id });
+            label.textContent = labelText;
+            const select = DOMFactory.el("select", "bond-input-box-field bond-level-select", { id });
+            values.forEach((value) => {
+              const opt = DOMFactory.el("option", null, { value: String(value) });
+              opt.textContent = String(value);
+              if (value === selected) opt.selected = true;
+              select.appendChild(opt);
+            });
+            select.addEventListener("change", () => onChange(select.value));
+            this.elements[refKey] = select;
+            box.appendChild(label);
+            box.appendChild(select);
+            return box;
+          };
+
+          // Moving off a level always re-prices the box from the table — the old level's figure is stale.
+          const currentBox = levelBox(
+            `slotBondLv_${i}`,
+            "Current Lv.",
+            `slotBondLv_${i}`,
+            levelValues(0, maxLevel),
+            currentLevel,
+            (value) => {
+              this.flushInputsToState();
+              const next = Math.round(Validator.clamp(value, 0, maxLevel));
+              slotData.bondLevel = next;
+              if (slotData.targetLevel <= next) slotData.targetLevel = next + 1;
+              if (bondGrowth) slotData.bondNeeded = bondGrowth[next];
+              // The +25% all-servant bonus belongs to bond 15+, so the box follows the level both ways.
+              slotData.bond15 = next >= BOND_CONSTANTS.BOND_BONUS_LEVEL;
+              this.saveState();
+              this.buildServantSlots();
+            },
+          );
+
+          const targetBox = levelBox(
+            `slotBondTgt_${i}`,
+            "Target Lv.",
+            `slotBondTgt_${i}`,
+            levelValues(currentLevel + 1, maxLevel + 1),
+            targetLevel,
+            (value) => {
+              this.flushInputsToState();
+              slotData.targetLevel = Math.round(Validator.clamp(value, currentLevel + 1, maxLevel + 1));
+              this.saveState();
+            },
+          );
+
+          const levelRow = DOMFactory.el("div", "bond-level-row");
+          levelRow.appendChild(currentBox);
+          levelRow.appendChild(targetBox);
+          info.appendChild(levelRow);
+
+          // Bond input box with border label
+          const inputBox = DOMFactory.el("div", "bond-input-box");
+          const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
+          inputLabel.textContent = "Next Lv. Required";
+          const input = DOMFactory.el("input", "bond-input-box-field", {
+            type: "number",
+            id: `slotBond_${i}`,
+            min: "0",
+            max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
+            value: String(slotData.bondNeeded || 0),
+          });
+          inputBox.appendChild(inputLabel);
+          inputBox.appendChild(input);
+          info.appendChild(inputBox);
           this.elements[`slotBond_${i}`] = input;
         }
+
+        // The essences belong to this card, so they follow the point box — or take its place.
+        info.appendChild(this._buildSlotCEs(slotData, i));
 
         // Remove button
         const removeSlotIndex = i;
@@ -674,7 +786,12 @@ export const BondApp = {
 
         const selectorSlotIndex = i;
         slot.addEventListener("click", () => {
-          this._refs.ServantSelector.open(selectorSlotIndex, true, this._createServantCallbacks(selectorSlotIndex));
+          this._refs.ServantSelector.open(
+            selectorSlotIndex,
+            true,
+            this._createServantCallbacks(selectorSlotIndex),
+            this._pickerOptions(),
+          );
         });
       }
 
@@ -698,27 +815,32 @@ export const BondApp = {
   },
 
   calculate() {
-    // Determine quest bond/run
-    const select = document.getElementById("bondQuestSelect");
-    const questKey = select.value;
-    let bondPerRun = 0;
-
-    if (questKey && questKey !== "custom") {
-      const preset = BOND_QUESTS.find((q) => q.key === questKey);
-      if (preset) {
-        bondPerRun = preset.bond;
-      }
-    } else if (questKey === "custom") {
-      bondPerRun = Validator.clamp(
-        document.getElementById("customBondPerRun").value,
-        0,
-        BOND_CONSTANTS.MAX_CUSTOM_BOND,
-      );
+    // Determine quest bond/run: the selects own the choice, the custom box owns its own figure.
+    const customInput = document.getElementById("customBondPerRun");
+    if (customInput) {
+      this.state.customBond = Validator.clamp(customInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND);
+      customInput.value = this.state.customBond;
     }
+    const bondPerRun = Quest.bondPerRun(this.state, this.state.customBond);
 
     if (bondPerRun <= 0) {
       alert("Please select a quest or enter bond points per run.");
       return;
+    }
+
+    /* Grand Duel lets only the chosen class into the party. The picker filters to it, but a restored save
+       or a class switched after the picks can leave a servant who does not belong — say so instead of
+       pricing a party the game would not allow. */
+    if (this.state.questMain === "gd" && Quest.classIds(this.state.questClass)) {
+      const group = GRAND_CLASSES.find((c) => c.key === this.state.questClass);
+      for (let i = 0; i < this.state.slots.length; i++) {
+        const slot = this.state.slots[i];
+        if (!slot.servantId) continue;
+        const servant = ServantData.getServant(slot.servantId);
+        if (!servant || Quest.matchesClass(servant.traits, this.state.questClass)) continue;
+        alert(`${servant.name} cannot join a Grand Duel ${group.name} party.`);
+        return;
+      }
     }
 
     // Read all slot inputs
@@ -778,6 +900,10 @@ export const BondApp = {
       }
     }
 
+    // Stargazer's Teapot: one spent per run, and a run pays every servant in the party.
+    const teapotStock = this.state.teapotOn ? Math.floor(this.state.teapotCount || 0) : 0;
+    const boosted = teapotStock > 0;
+
     // Calculate for normal servants only
     const slotResults = [];
     for (let i = 0; i < count; i++) {
@@ -819,7 +945,8 @@ export const BondApp = {
       const servantTraits = servant ? ServantData.getTraitsForAscension(servantId, ascension) : [];
       const traitSet = new Set(servantTraits);
       let flatBonus = 0;
-      this.state.ces.forEach((ceEntry) => {
+      SlotCEs.partyPool(this.state.slots).forEach((pooled) => {
+        const ceEntry = pooled.entry;
         // Resolve CE from entry (string or group object)
         let ceId, optionId;
         if (typeof ceEntry === "object" && ceEntry.groupId) {
@@ -832,6 +959,8 @@ export const BondApp = {
 
         const ce = CEById.get(ceId);
         if (!ce) return;
+
+        const rate = SlotCEs.rate(ce, pooled.isSupport);
 
         if (ce.isGroup) {
           // Grouped CE: universal bonus (percentage or flat)
@@ -847,12 +976,12 @@ export const BondApp = {
                 thumbImage: option.thumbImage,
                 isFlatBonus: true,
               });
-            } else if (ce.bonus > 0) {
-              ceBonusPercent += ce.bonus;
+            } else if (rate > 0) {
+              ceBonusPercent += rate;
               appliedCEs.push({
                 id: option.id,
                 name: option.name,
-                bonus: ce.bonus,
+                bonus: rate,
                 image: option.image,
                 thumbImage: option.thumbImage,
               });
@@ -863,8 +992,8 @@ export const BondApp = {
           const matched = TraitMatcher.matches(traitSet, ce);
 
           if (matched) {
-            ceBonusPercent += ce.bonus;
-            appliedCEs.push(ce);
+            ceBonusPercent += rate;
+            appliedCEs.push({ ...ce, bonus: rate });
           }
         }
       });
@@ -887,14 +1016,23 @@ export const BondApp = {
       totalBonus += flatBonus;
       // Step 4: effectiveBond = base + totalBonus
       const effectiveBond = bondPerRun + totalBonus;
+      // Step 5: a teapot-powered run pays that whole amount again, until the stock is gone.
+      const perRun = boosted ? effectiveBond * BOND_CONSTANTS.TEAPOT_MULTIPLIER : effectiveBond;
       // The typed figure prices the level the player stands on; the table prices every one above it.
-      const bondPlan = BondLevelCalculator.plan({
+      const teapot = Teapot.plan({
         growth: ServantData.getBondGrowth(servantId),
         current: slot.bondLevel || 0,
         target: slot.targetLevel || 0,
-        bondPerRun: effectiveBond,
+        onPerRun: perRun,
+        offPerRun: effectiveBond,
         typedCost: bondNeeded,
+        stock: teapotStock,
       });
+      const bondPlan = teapot.on;
+      // What the stock left unpaid, the ordinary rate finishes.
+      const offPlan = teapot.off;
+      const teapotOut = teapot.out;
+      const runs = teapot.runs;
       slotResults.push({
         index: i,
         servantId,
@@ -903,8 +1041,13 @@ export const BondApp = {
         bondNeeded,
         effectiveBond,
         totalBonus,
-        runs: bondPlan.spansLevels ? bondPlan.total : effectiveBond > 0 ? Math.ceil(bondNeeded / effectiveBond) : 0,
+        runs,
         bondPlan,
+        teapotRuns: boosted ? runs : 0,
+        teapotOffRuns: offPlan ? offPlan.total : 0,
+        teapotBonus: boosted ? effectiveBond : 0,
+        teapotOut,
+        offPlan,
         ceBonus: ceBonusPercent,
         appliedCEs,
         isFrontline,
@@ -916,16 +1059,16 @@ export const BondApp = {
       return;
     }
 
-    this.state.selectedQuest = questKey;
-    this.state.customBond = questKey === "custom" ? bondPerRun : 0;
     this.saveState();
 
     // Show results
     const container = document.getElementById("bondResultContent");
 
-    // Per-servant results grid
-    const resultGrid = DOMFactory.el("div", "bond-result-servant-grid");
-    slotResults.forEach((sr) => {
+    /* One servant's result card. A teapot plan the stock cannot finish is drawn twice: the boosted
+       stretch first, then what the ordinary rate still owes once the teapots are gone. */
+    const buildCard = (sr, afterTeapot = false) => {
+      const runs = afterTeapot ? sr.teapotOffRuns : sr.teapotOut ? sr.teapotRuns : sr.runs;
+      const bonus = afterTeapot ? sr.totalBonus : sr.totalBonus + sr.teapotBonus;
       const card = DOMFactory.el("div", "bond-result-servant-card");
 
       // Portrait
@@ -945,8 +1088,8 @@ export const BondApp = {
       nameEl.textContent = sr.name;
       card.appendChild(nameEl);
 
-      // Applied CE images grid
-      if (sr.appliedCEs.length > 0) {
+      // Applied CE images grid, with the teapot last while it still pays for this servant's runs
+      if (sr.appliedCEs.length > 0 || (!afterTeapot && sr.teapotRuns > 0)) {
         const ceImgGrid = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
         sr.appliedCEs.forEach((ce) => {
           if (ce.isMaxBond) {
@@ -1003,25 +1146,42 @@ export const BondApp = {
             ceImgGrid.appendChild(ceImg);
           }
         });
+        if (!afterTeapot && sr.teapotRuns > 0) {
+          const paid = `${sr.teapotRuns} ${sr.teapotRuns === 1 ? "run" : "runs"}`;
+          const teapotTitle = sr.teapotOut
+            ? `Stargazer's Teapot: ×2 bond for ${paid}, then the ordinary rate`
+            : "Stargazer's Teapot: ×2 bond";
+          const teapotImg = DOMFactory.createLazyImg("icons/teapot.webp", "bond-result-ce-img", {
+            alt: "Stargazer's Teapot",
+            title: teapotTitle,
+          });
+          DOMFactory.addSimpleFallback(teapotImg, "bond-result-ce-fallback", "×2");
+          ceImgGrid.appendChild(teapotImg);
+        }
         card.appendChild(ceImgGrid);
       }
 
       // Bond breakdown: base(+total bonus)
       const bondInfo = DOMFactory.el("div", "bond-result-bond-info");
       bondInfo.textContent =
-        sr.totalBonus > 0
-          ? `${bondPerRun.toLocaleString()}(+${sr.totalBonus.toLocaleString()})`
-          : `${bondPerRun.toLocaleString()}`;
+        bonus > 0 ? `${bondPerRun.toLocaleString()}(+${bonus.toLocaleString()})` : `${bondPerRun.toLocaleString()}`;
       card.appendChild(bondInfo);
 
       // Runs count — the plain number, or one line per stretch of bond levels when the plan crosses more than one
       const runsEl = DOMFactory.el("div", "bond-result-runs");
-      runsEl.textContent = `${sr.runs} ${sr.runs === 1 ? "run" : "runs"}`;
+      runsEl.textContent = `${runs} ${runs === 1 ? "run" : "runs"}`;
       card.appendChild(runsEl);
 
-      if (sr.bondPlan.spansLevels) {
+      /* Each block names only the levels its own runs actually cleared. Runs that died inside a level
+         — the last teapot spent on a stretch it never finished — belong to no row here: the servant is
+         still on that level, and the continuation block below owns it. A split plan prints its rows even
+         for one cleared level; an unsplit one keeps the old rule of naming the stretch only when it
+         crosses more than one level. */
+      const phasePlan = afterTeapot ? sr.offPlan : sr.bondPlan;
+      const phaseRows = phasePlan.rows;
+      if (phaseRows.length > 0 && (sr.teapotOut || phasePlan.spansLevels)) {
         const levelList = DOMFactory.el("div", "bond-result-levels");
-        sr.bondPlan.rows.forEach((row) => {
+        phaseRows.forEach((row) => {
           const label = DOMFactory.el("div", "bond-result-level-label");
           label.textContent = `Bond Lv.${row.from}->${row.to}`;
           const rowRuns = DOMFactory.el("div", "bond-result-level-runs");
@@ -1032,9 +1192,53 @@ export const BondApp = {
         card.appendChild(levelList);
       }
 
-      resultGrid.appendChild(card);
-    });
-    container.replaceChildren(resultGrid);
+      return card;
+    };
+
+    /* The control that sits between the two blocks once the teapots run out: clicking it takes the
+       toggle off, so the plan is priced at the ordinary rate alone. */
+    const buildTeapotExhaust = () => {
+      const row = DOMFactory.el("div", "bond-teapot-exhaust");
+      const btn = DOMFactory.el("button", "bond-teapot-remove", { type: "button" });
+      const label = DOMFactory.el("span", null);
+      label.textContent = "Out of Stargazer's Teapot";
+      // The name is already in the label, so the picture is decoration and stays out of the chip's name.
+      const img = DOMFactory.el("img", null, {
+        src: "icons/teapot.webp",
+        alt: "",
+        width: "142",
+        height: "155",
+      });
+      img.onerror = () => {
+        img.style.display = "none";
+      };
+      btn.append(label, img);
+      btn.addEventListener("click", () => {
+        this.state.teapotOn = false;
+        if (this._teapotInputs) this._teapotInputs.toggle.checked = false;
+        this.saveState();
+        this.calculate();
+      });
+      row.appendChild(btn);
+      return row;
+    };
+
+    const boostedGrid = DOMFactory.el("div", "bond-result-servant-grid");
+    slotResults.forEach((sr) => boostedGrid.appendChild(buildCard(sr)));
+    const frag = document.createDocumentFragment();
+    frag.appendChild(boostedGrid);
+
+    if (slotResults.some((sr) => sr.teapotOut)) {
+      frag.appendChild(buildTeapotExhaust());
+      const rest = slotResults.filter((sr) => sr.teapotOffRuns > 0);
+      if (rest.length > 0) {
+        const plainGrid = DOMFactory.el("div", "bond-result-servant-grid");
+        rest.forEach((sr) => plainGrid.appendChild(buildCard(sr, true)));
+        frag.appendChild(plainGrid);
+      }
+    }
+
+    container.replaceChildren(frag);
 
     const results = document.getElementById("bondResults");
     results.classList.add("visible");
@@ -1059,12 +1263,14 @@ export const BondApp = {
       const data = JSON.parse(raw);
       if (!data || typeof data !== "object") return null;
 
-      // Migrate old format (single bondNeeded) to new slots format
-      let slots;
       /* Levels are rounded and re-clamped here because a saved slot could carry anything: an old
          save without the fields, or a level past what the servant's table covers. */
       const level = (value, max) => Math.round(Validator.clamp(value, 0, max));
-      const sanitize = (s) => {
+      /* `grandOn` is the rule the card already shows: only a Grand Duel rack can widen to two essences, so
+         a party filed outside Grand Duel is stripped of the flag on load — and `SlotCEs.sanitize` then
+         trims it to one, which is the fallback an old save (ticked under Free Quest, before this rule)
+         needs, or it would keep a second chip nothing can untick. */
+      const sanitize = (s, grandOn) => {
         const bondLevel = level(s.bondLevel || 0, BOND_CONSTANTS.MAX_BOND_LEVEL - 1);
         return defaultSlot({
           servantId: s.servantId || null,
@@ -1078,34 +1284,85 @@ export const BondApp = {
           maxBond: s.type === "maxbond" ? true : Boolean(s.maxBond),
           bond15: s.type === "maxbond" ? true : Boolean(s.bond15),
           ascension: typeof s.ascension === "string" && s.ascension ? s.ascension : null,
+          ...SlotCEs.sanitize(s.ces, grandOn && s.grand),
         });
       };
 
-      if (data.slots && Array.isArray(data.slots)) {
-        slots = data.slots.map(sanitize);
-      } else {
-        slots = [];
-        if (data.bondNeeded) {
-          slots.push(defaultSlot({ bondNeeded: Validator.clamp(data.bondNeeded, 0, BOND_CONSTANTS.MAX_BOND_NEEDED) }));
+      // A party is a full rack of six slots, padded and sanitized whoever wrote it.
+      const partyOf = (raw, grandOn) => {
+        const list = Array.isArray(raw) ? raw.map((s) => sanitize(s, grandOn)) : [];
+        // The one save shape older than slots[]: a single bond figure.
+        if (list.length === 0 && !Array.isArray(raw) && data.bondNeeded) {
+          list.push(defaultSlot({ bondNeeded: Validator.clamp(data.bondNeeded, 0, BOND_CONSTANTS.MAX_BOND_NEEDED) }));
+        }
+        while (list.length < SERVANT_MAX_SLOTS) {
+          list.push(defaultSlot());
+        }
+        return list;
+      };
+
+      /* Quest choices are keys into the constant tables, so a save naming a quest that no longer exists
+         falls back to nothing rather than to a stale figure. */
+      const oneOf = (value, keys) => (keys.includes(value) ? value : "");
+      let questMain = oneOf(
+        data.questMain,
+        QUEST_FAMILIES.map((f) => f.key),
+      );
+      let questSub = oneOf(data.questSub, [...FREE_QUESTS.map((q) => q.key), "custom"]);
+      let questClass = oneOf(
+        data.questClass,
+        GRAND_CLASSES.map((c) => c.key),
+      );
+      let questDiff = oneOf(
+        data.questDiff,
+        GRAND_DIFFICULTIES.map((d) => d.key),
+      );
+
+      // A save from before the family selects spelled the whole quest as one key; land it in the new fields.
+      if (!questMain) {
+        const legacy = data.selectedQuest;
+        if (legacy === "custom") {
+          questMain = "fq";
+          questSub = "custom";
+        } else if (
+          oneOf(
+            legacy,
+            FREE_QUESTS.map((q) => q.key),
+          )
+        ) {
+          questMain = "fq";
+          questSub = legacy;
+        } else if (legacy === "gd100") {
+          questMain = "gd";
+          questClass = "all";
+          questDiff = GRAND_DIFFICULTIES[GRAND_DIFFICULTIES.length - 1].key;
         }
       }
 
-      // Pad to SERVANT_MAX_SLOTS
-      while (slots.length < SERVANT_MAX_SLOTS) {
-        slots.push(defaultSlot());
-      }
+      /* A Grand Duel choice owns its party; `""` is the shared party Free Quest and an empty quest use.
+         The party on screen is stored as `slots`, so its own key is read from `parties` only when it is
+         parked, and a save that never had `parties` leaves every class starting empty. */
+      const liveKey = questMain === "gd" ? questClass || "all" : "";
+      const stored = data.parties && typeof data.parties === "object" ? data.parties : {};
+      const parties = {};
+      ["", ...GRAND_CLASSES.map((c) => c.key)].forEach((key) => {
+        // Any other key a tampered save carries is dropped, not bloated into storage.
+        if (Array.isArray(stored[key])) parties[key] = partyOf(stored[key], Boolean(key));
+      });
+      const slots = parties[liveKey] || partyOf(data.slots, liveKey !== "");
+      delete parties[liveKey];
 
       return {
-        slots: slots.map(sanitize),
-        selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",
+        slots,
+        parties,
+        questMain,
+        questSub,
+        questClass,
+        questDiff,
         customBond: Validator.clamp(data.customBond || 0, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND),
-        ces: Array.isArray(data.ces)
-          ? data.ces.filter((entry) => {
-              if (typeof entry === "string" && entry) return true;
-              if (entry && typeof entry === "object" && entry.groupId && entry.optionId) return true;
-              return false;
-            })
-          : [],
+        // Teapots are counted in whole items; a save that never had them simply starts empty.
+        teapotCount: Math.floor(Validator.clamp(data.teapotCount || 0, 0, BOND_CONSTANTS.MAX_TEAPOT_COUNT)),
+        teapotOn: Boolean(data.teapotOn),
       };
     } catch (_e) {
       return null;
