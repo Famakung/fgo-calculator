@@ -255,7 +255,8 @@ try {
     unsharedHidden: document.getElementById("cefilterComboUnshared").hidden,
   }));
   console.log(
-    `NOTE: servant select ${combos.chips} chip(s), ${combos.cards} card(s) at ${Math.round(combos.cardWidth)}px, ${combos.ceImages} CE image(s) at ${Math.round(combos.ceImageHeight)}px, ${combos.servantBadges} servant badge(s)`,
+    // These px figures are measured element sizes at the default 800x600 viewport, not viewport widths.
+    `NOTE: servant select ${combos.chips} chip(s), ${combos.cards} card(s) ${Math.round(combos.cardWidth)}px wide, ${combos.ceImages} CE image(s) ${Math.round(combos.ceImageHeight)}px tall, ${combos.servantBadges} servant badge(s)`,
   );
   if (combos.chips !== 2) errors.push(`servant select: expected 2 chips, saw ${combos.chips}`);
   if (combos.cards < 1) errors.push("servant select: Mash and U-Olga Marie share 4 CEs but no card rendered");
