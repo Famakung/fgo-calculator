@@ -55,6 +55,8 @@
 - **Worker**: `ce-match-worker.js` standalone chunk, TraitMatcher inlined; double-rAF + worker for first render
 - **CLS prevention**: `.drop-value` `min-width:4ch; tabular-nums`; `.cefilter-search-container` static layout; `.cefilter-sort-row` `gap:8px`; `.cefilter-pagination` `min-height:52px`; `.cefilter-servant-card` `content-visibility:auto; min-height:208px; contain-intrinsic-size:auto 208px`; `font-display:swap` (swap is safe: layout shifts prevented by `min-height`)
 - **Pagination**: `_getPageSize()` via `window.innerWidth` (>=1120→6, >=940→5, >=760→4, >=580→3, else 2) × 5; `currentPage` resets on reload; filters reset to 1; buttons use cached `_lastCEFiltered`
+- **Servant sort**: `ServantSort.sorted(rows, sortBy, order, idOf, traitsOf)` (`domain.js`) is the one comparator — ID / Rarity / Class, ID tie-break, direction applied to the tie-break. The picker calls it with plain servants (`.id`, `.traits`); `CEFilterApp._sortEntries` passes the card's own id and trait resolvers, since a result card is a servant plus the ascension it matched on
+- **Modal stacking**: every `.servant-modal` shares `z-index: 1000`, so a modal that must cover another is written after it in `index.astro` — `#servantFilterModal` follows `#servantModal` for exactly that reason
 
 ## CSS
 - Shipped CSS: the single `<style is:inline>` block in BaseLayout.astro `<head>` (font-face, tokens, reset, layout, every component rule). Nothing else provides CSS — no `<link rel=stylesheet>`, no `.css` in `dist/`

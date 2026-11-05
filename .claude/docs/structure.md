@@ -97,6 +97,8 @@ Domain rule: if fn touches `document`, belongs in Layer 3.
 ## Bond Gain CE UI (top→bottom, second card)
 Servants card: search bar (top) → controls row (Filter button + Sort By / Sort Order controls) → top pagination → results grid → bottom pagination. Clicking "Filter" opens "Filter Settings" popup modal (class, rarity, match count filters).
 
+The servant picker modal (`#servantModal`) repeats that shape for its own grid — search bar → Filter button + Sort By / Sort Order → picker grid, class and rarity in a nested `#servantFilterModal` — so one comparator orders both lists: `ServantSort` (`domain.js`).
+
 Sub-tabs (`#cefilterSubtabs`, top-right of the controls card) swap one panel per card: `ce` = Craft Essence Select (the chain above), `servant` = Servant Select (Add Servant + Clear all (N) buttons and chips → shared-CE cards in `#cefilterComboResults`, rendered by `ce-servant-select.js`; the pick list is the one Bond Gain CE state that survives a refresh).
 
 ## Adding Features
