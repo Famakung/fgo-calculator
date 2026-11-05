@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Merge a source branch into main carrying code only.
 #
-# The agent-doc tree (.claude/, AGENTS.md, GEMINI.md) and this script itself
-# are tracked on develop alone: a plain `git merge develop` would drag them
+# The agent-doc tree (.claude/, AGENTS.md, GEMINI.md), this script itself and
+# the browser gate (scripts/verify_render.js, which CI never runs) are tracked on
+# develop alone: a plain `git merge develop` would drag them
 # onto the public branch. This script runs the merge and drops those paths
 # from the merge result before the commit, and keeps main's own .gitignore —
 # its blanket `.claude` line and its `scripts/merge_code_only.sh` line are
@@ -15,7 +16,8 @@ set -euo pipefail
 SRC="${1:-develop}"
 TARGET="main"
 # develop-only paths; HIDDEN must stay a subset of '$TARGET's .gitignore entries.
-HIDDEN_PATHS=(.claude AGENTS.md GEMINI.md scripts/merge_code_only.sh)
+# scripts/fetch_bordered_ces.py stays public: sync_atlas_data.py imports it at build time.
+HIDDEN_PATHS=(.claude AGENTS.md GEMINI.md scripts/merge_code_only.sh scripts/verify_render.js)
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -61,7 +63,7 @@ git checkout --quiet HEAD -- .gitignore
 git rm --quiet -r -f --cached --ignore-unmatch -- "${HIDDEN_PATHS[@]}"
 
 # An ignore rule missing from '$TARGET' would leave a dropped path untracked-dirty.
-for path in .claude AGENTS.md GEMINI.md scripts/merge_code_only.sh; do
+for path in "${HIDDEN_PATHS[@]}"; do
   git check-ignore --no-index -q "$path" || {
     echo "merge_code_only: '$TARGET' does not ignore '$path' — add that line to its .gitignore" >&2
     exit 1
