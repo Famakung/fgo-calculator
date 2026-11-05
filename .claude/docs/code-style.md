@@ -43,7 +43,7 @@
 ## Patterns
 - **Pending slot**: add servant/CE → push `null` to state → open modal; cancel removes null
 - **Single slot shape**: `defaultSlot(overrides)` in `bond-app.js` is the only place a servant slot's fields are spelled out — init, `removeSlot`, `onPendingRemove`, the build fallback, the `loadState` padding and both its maps call it. A new slot field goes there once, then gets clamped in `loadState`'s `sanitize()`
-- **Data-owned input**: the Bond Point Required box belongs to the data until the player types in it. `Current Lv.` and a servant pick re-price it from that servant's table; `buildServantSlots()` fills only an empty box, so a typed figure survives every other re-render
+- **Data-owned input**: the Next Lv. Required box belongs to the data until the player types in it. `Current Lv.` and a servant pick re-price it from that servant's table; `buildServantSlots()` fills only an empty box, so a typed figure survives every other re-render
 - **Debounce**: inputs `DEBOUNCE_MS=100ms`; filter renders 50ms
 - **Loop guard**: `MAX_ITERATIONS=10000`
 - **Lazy tab init**: Bond + Event tabs via dynamic `import()` on first visit

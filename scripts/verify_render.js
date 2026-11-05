@@ -554,6 +554,39 @@ try {
       JSON.stringify(subtabRestore.buttons),
   );
 
+  // The bond slot's point-box label sits inside a 160px card, where the earlier longer
+  // labels collided. It only exists once a slot holds a servant, so fill one, then assert
+  // the shipped text and that nothing clips or overflows at each layout tier.
+  await page.click('.tab-btn[data-tab="bond"]');
+  await page.waitForSelector(".servant-add-slot");
+  await page.click(".servant-add-slot");
+  await page.waitForSelector("#servantModal.open .servant-picker-item");
+  await page.click("#servantModal .servant-picker-item");
+  await page.waitForFunction(() => document.querySelectorAll(".bond-input-box-label").length > 0, { timeout: 15000 });
+  for (const width of [320, 800, 1120]) {
+    await page.setViewport({ width, height: 800 });
+    const m = await page.evaluate(() => {
+      const labels = Array.from(document.querySelectorAll(".bond-input-box-label"));
+      const grid = document.querySelector("#servantGrid");
+      return {
+        texts: [...new Set(labels.map((l) => l.textContent))],
+        clipped: labels.filter((l) => l.scrollWidth > l.clientWidth + 1).length,
+        gridOverflow: grid.scrollWidth - grid.clientWidth,
+        docOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    if (!m.texts.includes("Next Lv. Required")) {
+      errors.push(`bond slot @${width}px: labels ${JSON.stringify(m.texts)}, want "Next Lv. Required"`);
+    }
+    if (m.clipped) errors.push(`bond slot @${width}px: ${m.clipped} label(s) clipped`);
+    if (m.docOverflow > 0) errors.push(`bond slot @${width}px: page scrolls sideways by ${m.docOverflow}px`);
+    console.log(
+      `NOTE: bond slot @${width}px — ${m.texts.join(" / ")} — ${m.clipped} clipped, ` +
+        `grid +${m.gridOverflow}px, doc +${m.docOverflow}px`,
+    );
+  }
+  await page.setViewport({ width: 800, height: 600 });
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();

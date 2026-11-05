@@ -624,7 +624,7 @@ export const BondApp = {
         const inputBoxClass = isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box";
         const inputBox = DOMFactory.el("div", inputBoxClass);
         const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
-        inputLabel.textContent = "Bond Point Required";
+        inputLabel.textContent = "Next Lv. Required";
         const inputAttrs = {
           type: "number",
           id: `slotBond_${i}`,
