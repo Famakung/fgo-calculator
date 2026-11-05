@@ -1,4 +1,13 @@
-import { TIERS, TIER_FIELDS, MAX_ITERATIONS, EPSILON, BOND_CONSTANTS } from "./constants.js";
+import {
+  TIERS,
+  TIER_FIELDS,
+  MAX_ITERATIONS,
+  EPSILON,
+  BOND_CONSTANTS,
+  FREE_QUESTS,
+  GRAND_CLASSES,
+  GRAND_DIFFICULTIES,
+} from "./constants.js";
 
 export const Schema = {
   tier: {
@@ -393,5 +402,53 @@ export const ServantComboCalculator = {
     // returned rows may still share CEs with another — claim nothing rather than name falsely.
     const unshared = truncated ? [] : picked.filter((id) => !covered.has(id));
     return { groups, unshared, truncated };
+  },
+};
+
+/* ============================================
+   QUEST (Bond tab quest picker)
+   ============================================ */
+export const Quest = {
+  /* What one run of the quest the player picked pays in bond points. A Grand Duel plan pays its
+     difficulty's figure whatever the class is; only the Free Quest family carries a custom figure, and
+     that comes from `customBond`. 0 means nothing is chosen yet. */
+  bondPerRun({ questMain = "", questSub = "", questDiff = "" }, customBond = 0) {
+    if (questMain === "fq") {
+      if (questSub === "custom") {
+        return Validator.clamp(customBond, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND);
+      }
+      const quest = FREE_QUESTS.find((q) => q.key === questSub);
+      return quest ? quest.bond : 0;
+    }
+    if (questMain === "gd") {
+      const difficulty = GRAND_DIFFICULTIES.find((d) => d.key === questDiff);
+      return difficulty ? difficulty.bond : 0;
+    }
+    return 0;
+  },
+
+  /* The class trait ids a Grand Duel choice allows, or null when the party is unrestricted — "All",
+     and every quest outside Grand Duel. */
+  classIds(questClass = "") {
+    const group = GRAND_CLASSES.find((c) => c.key === questClass);
+    return group && group.classes ? group.classes : null;
+  },
+
+  /* What the servant picker actually filters on: the classes the player left selected, kept inside the
+     quest's group. A selection carried over from somewhere else (the party filter persisted, then the
+     quest changed) is ignored, and nothing picked inside a group means the whole group — never the
+     roster. Without a group the picker's own selection rules, empty meaning no class filter at all. */
+  pickedClassIds(classFilters, lockedClasses) {
+    const picked = (classFilters || []).filter((id) => !lockedClasses || lockedClasses.includes(id));
+    return picked.length > 0 ? picked : lockedClasses || [];
+  },
+
+  /* Does this servant's class belong to the party restriction? `traits` is the servant's own class
+     trait id list (the same list the picker filters on). */
+  matchesClass(traits, questClass) {
+    const ids = this.classIds(questClass);
+    if (!ids) return true;
+    const allowed = new Set(ids);
+    return (traits || []).some((t) => allowed.has(t));
   },
 };

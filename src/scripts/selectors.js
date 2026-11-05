@@ -1,6 +1,11 @@
 import { ServantData, CEList, TraitCEs } from "./data.js";
 import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
+import { Quest } from "./domain.js";
 import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
+
+/* Longest search the servant picker keeps. Names top out well under this, so it only trims a paste someone
+   has no hope of matching, and the box itself is left free to hold what the player typed. */
+const MAX_SEARCH = 40;
 
 /* ============================================
    SERVANT SELECTOR MODAL
@@ -12,6 +17,9 @@ export const ServantSelector = {
   _multi: false,
   _selectedIds: new Set(),
   classFilters: [],
+  /* Set by a Grand Duel quest: the party is limited to these class ids, so the grid is pre-filtered to
+     them and the class row only offers them. null = the player picks classes themselves. */
+  lockedClasses: null,
   rarityFilters: [],
   _searchQuery: "",
   _callbacks: null,
@@ -50,12 +58,12 @@ export const ServantSelector = {
     // Multi keeps the modal open and marks items like the CE picker does.
     this._multi = options.multi === true;
     this._selectedIds = new Set(this._multi ? options.selected : []);
-    this.classFilters = [];
-    this.rarityFilters = [];
-    this._searchQuery = "";
+    this.lockedClasses = Array.isArray(options.lockClasses) && options.lockClasses.length ? options.lockClasses : null;
+    // The row is kept as the player left it for the rest of the page, and starts blank again after a refresh.
 
     this.buildFilterArea();
-    this.renderGrid(ServantData.servants);
+    // Filtered, not raw: a locked party has to be filtered from the first paint, not after a click.
+    this.renderGrid(this.getFilteredServants());
 
     const modal = document.getElementById("servantModal");
     if (modal) modal.classList.add("open");
@@ -143,8 +151,11 @@ export const ServantSelector = {
           ServantData.getAllNames(s.id).some((n) => n.toLowerCase().includes(query)),
       );
     }
-    if (this.classFilters.length > 0) {
-      const classSet = new Set(this.classFilters);
+    /* A locked party is bound by its group whether or not the player picked a class in it — nothing picked
+       inside the group means all of the group, and a pick that came from outside it is ignored. */
+    const classIds = Quest.pickedClassIds(this.classFilters, this.lockedClasses);
+    if (classIds.length > 0) {
+      const classSet = new Set(classIds);
       result = result.filter((s) => s.traits.some((t) => classSet.has(t)));
     }
     if (this.rarityFilters.length > 0) {
@@ -161,11 +172,15 @@ export const ServantSelector = {
       container,
       this._searchQuery,
       (query) => {
-        this._searchQuery = query;
+        // Bounded, so a pasted wall of text cannot become the matcher's input or the reopened box.
+        this._searchQuery = query.slice(0, MAX_SEARCH);
         this.filter();
       },
       (content) => {
-        this._buildClassFilter(content);
+        /* A Grand Duel choice that names exactly one class has nothing to filter: that class is the whole
+           party rule, so the row is not built at all. The three Extra groups span several classes, so
+           theirs stays — narrowed to those classes, and still usable. */
+        if (!this.lockedClasses || this.lockedClasses.length > 1) this._buildClassFilter(content);
         this._buildRarityFilter(content);
       },
     );
@@ -176,6 +191,11 @@ export const ServantSelector = {
 
     const filterDiv = DOMFactory.el("div", "class-filter");
     const selected = new Set(this.classFilters);
+
+    /* Inside a group the quest still decides which classes exist here: the row offers only them, opens
+       unselected, and one picked class narrows the grid to it — the set can never reach outside the group. */
+    const locked = this.lockedClasses;
+    const rows = locked ? [[...standard, ...extra].filter((cls) => locked.includes(cls.id))] : [standard, extra];
 
     const buildRow = (classes) => {
       classes.forEach((cls) => {
@@ -201,8 +221,7 @@ export const ServantSelector = {
       });
     };
 
-    buildRow(standard);
-    buildRow(extra);
+    rows.forEach(buildRow);
     container.appendChild(filterDiv);
   },
 

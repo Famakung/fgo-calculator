@@ -1,5 +1,13 @@
-import { BOND_CONSTANTS, SERVANT_MAX_SLOTS, BOND_QUESTS, BOND_STORAGE_KEY } from "./constants.js";
-import { Validator, TraitMatcher, SlotCEs, Teapot } from "./domain.js";
+import {
+  BOND_CONSTANTS,
+  SERVANT_MAX_SLOTS,
+  QUEST_FAMILIES,
+  FREE_QUESTS,
+  GRAND_CLASSES,
+  GRAND_DIFFICULTIES,
+  BOND_STORAGE_KEY,
+} from "./constants.js";
+import { Validator, TraitMatcher, SlotCEs, Teapot, Quest } from "./domain.js";
 import { ServantData, CEById, TraitNames } from "./data.js";
 import { DOMFactory } from "./presentation.js";
 
@@ -46,7 +54,12 @@ export const BondApp = {
         this._refs.AscensionSelector.open(servant, idx, {
           onSelect: (_si, servantId, asc) => this.setServant(idx, servantId, asc),
           onBack: (backIdx) => {
-            this._refs.ServantSelector.open(backIdx, false, this._createServantCallbacks(backIdx));
+            this._refs.ServantSelector.open(
+              backIdx,
+              false,
+              this._createServantCallbacks(backIdx),
+              this._pickerOptions(),
+            );
           },
         });
       },
@@ -68,55 +81,21 @@ export const BondApp = {
     const saved = this.loadState();
     this.state = saved || {
       slots: Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot()),
-      selectedQuest: "",
+      questMain: "",
+      questSub: "",
+      questClass: "",
+      questDiff: "",
       customBond: 0,
       teapotCount: 0,
       teapotOn: false,
+      // Parties filed by quest choice; the live one is `slots`, so its own key is absent here.
+      parties: {},
     };
 
-    const select = document.getElementById("bondQuestSelect");
-    const customInput = document.getElementById("customBondPerRun");
-    const customSection = document.getElementById("customQuestSection");
-
-    // Populate presets
-    BOND_QUESTS.forEach((q) => {
-      const opt = DOMFactory.el("option", null, { value: q.key });
-      opt.textContent = `${q.name} (${q.bond} pts)`;
-      select.appendChild(opt);
-    });
-
-    // Custom option
-    const customOpt = DOMFactory.el("option", null, { value: "custom" });
-    customOpt.textContent = "-- Custom --";
-    select.appendChild(customOpt);
+    this.initQuestSelects();
 
     // Build servant slots (each card renders its own essences)
     this.buildServantSlots();
-
-    // Restore quest state
-    select.value = this.state.selectedQuest;
-    if (this.state.selectedQuest === "custom") {
-      customInput.disabled = false;
-      customInput.value = this.state.customBond;
-      customSection.style.display = "block";
-    } else if (this.state.selectedQuest) {
-      customInput.disabled = true;
-      customSection.style.display = "none";
-    } else {
-      customSection.style.display = "none";
-    }
-
-    // Quest select handler
-    select.addEventListener("change", () => {
-      const val = select.value;
-      if (val === "custom") {
-        customInput.disabled = false;
-        customSection.style.display = "block";
-      } else {
-        customInput.disabled = true;
-        customSection.style.display = "none";
-      }
-    });
 
     // Calculate button
     const calcBtn = document.getElementById("bondCalculateBtn");
@@ -163,6 +142,127 @@ export const BondApp = {
     // Init CE selector
     this._refs.CESelector.init();
     this._refs.CESubSelector.init();
+  },
+
+  /* ============================================
+     QUEST SELECTS
+     ============================================ */
+  /* The Select Quest card cascades: a family first (Free Quest or Grand Duel), then the choice inside it —
+     one of the two free quests or a custom figure, or a class group plus a Rank-Up Training Battle level.
+     Every label and every bond figure comes from constants.js, so a number has one home. */
+  initQuestSelects() {
+    const main = document.getElementById("bondQuestSelect");
+    const free = document.getElementById("bondFreeQuestSelect");
+    const gdClass = document.getElementById("bondGrandClassSelect");
+    const gdDiff = document.getElementById("bondGrandDiffSelect");
+    const customInput = document.getElementById("customBondPerRun");
+    if (!main || !free || !gdClass || !gdDiff) return;
+
+    const addOptions = (select, items) => {
+      const frag = document.createDocumentFragment();
+      items.forEach(({ value, label }) => {
+        const opt = DOMFactory.el("option", null, { value });
+        opt.textContent = label;
+        frag.appendChild(opt);
+      });
+      select.appendChild(frag);
+    };
+
+    addOptions(
+      main,
+      QUEST_FAMILIES.map((f) => ({ value: f.key, label: f.name })),
+    );
+    addOptions(free, [
+      ...FREE_QUESTS.map((q) => ({ value: q.key, label: `${q.name} (${q.bond} pts)` })),
+      { value: "custom", label: "-- Custom --" },
+    ]);
+    addOptions(
+      gdClass,
+      GRAND_CLASSES.map((c) => ({ value: c.key, label: c.name })),
+    );
+    addOptions(
+      gdDiff,
+      GRAND_DIFFICULTIES.map((d) => ({
+        value: d.key,
+        label: `Rank-Up Training Battle ${d.roman} ${d.lv} (${d.bond} pts)`,
+      })),
+    );
+
+    this._questSelects = { main, free, gdClass, gdDiff };
+
+    /* Each select owns one state field and saves it on change — the class limit has to survive a reload
+       even if the player never presses Calculate. The two fields that decide which party is on screen
+       also swap it, so the old one is put away before the new one is named. */
+    const bind = (key, select) => {
+      const swaps = key === "questMain" || key === "questClass";
+      select.value = this.state[key];
+      select.addEventListener("change", () => {
+        if (swaps) this.stashParty();
+        this.state[key] = select.value;
+        if (swaps) this.applyParty();
+        this.saveState();
+        this.syncQuestRows();
+      });
+    };
+    bind("questMain", main);
+    bind("questSub", free);
+    bind("questClass", gdClass);
+    bind("questDiff", gdDiff);
+
+    if (customInput) customInput.value = this.state.customBond;
+    this.syncQuestRows();
+  },
+
+  /* Only the rows belonging to the chosen family show, and the custom bond box only under Custom.
+     `hidden` cannot do this job: `.input-row` declares a display, which outranks the UA rule. */
+  syncQuestRows() {
+    const { free, gdClass, gdDiff } = this._questSelects;
+    const customRow = document.getElementById("customQuestSection");
+    const customInput = document.getElementById("customBondPerRun");
+    const freeOn = this.state.questMain === "fq";
+    const grandOn = this.state.questMain === "gd";
+    free.closest(".input-row").style.display = freeOn ? "flex" : "none";
+    gdClass.closest(".input-row").style.display = grandOn ? "flex" : "none";
+    gdDiff.closest(".input-row").style.display = grandOn ? "flex" : "none";
+    const customOn = freeOn && this.state.questSub === "custom";
+    if (customInput) customInput.disabled = !customOn;
+    if (customRow) customRow.style.display = customOn ? "block" : "none";
+  },
+
+  /* A Grand Duel class choice limits the party, so the servant picker opens already filtered to those
+     classes and locked to them. Everywhere else the player filters the list themselves. */
+  _pickerOptions() {
+    return this.state.questMain === "gd" ? { lockClasses: Quest.classIds(this.state.questClass) } : {};
+  },
+
+  /* ============================================
+     PARTY PER QUEST CHOICE
+     ============================================ */
+  /* Which party is on screen: one per Grand Duel choice, and the shared one (`""`) for Free Quest or no
+     quest at all. A class not picked yet counts as "all", so entering Grand Duel never opens an orphan. */
+  _partyKey() {
+    return this.state.questMain === "gd" ? this.state.questClass || "all" : "";
+  },
+
+  /* Put the party on screen away under its own key before the quest moves off it. Copied, so the stored
+     party and the live array stop sharing slot objects the moment the rack is rebuilt. */
+  stashParty() {
+    this.flushInputsToState();
+    const party = this.state.slots.map((slot) => ({ ...slot, ces: [...slot.ces] }));
+    // A rack with nobody in it carries nothing worth filing — an absent key already means empty, and
+    // twelve of these per save would only bloat localStorage.
+    if (party.some((slot) => slot.servantId)) this.state.parties[this._partyKey()] = party;
+  },
+
+  /* The other choice's party, or an empty rack: a save from before parties existed has nothing filed by
+     class, so every Grand Duel choice starts blank and fills itself up. */
+  applyParty() {
+    const key = this._partyKey();
+    const stored = this.state.parties[key];
+    this.state.slots = stored || Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot());
+    // The live party travels as `state.slots`, so its key must not be written twice.
+    if (stored) delete this.state.parties[key];
+    this.buildServantSlots();
   },
 
   removeSlot(index) {
@@ -381,7 +481,12 @@ export const BondApp = {
               this._refs.AscensionSelector.open(servant, ascSlotIndex, {
                 onSelect: (_si, servantId, asc) => this.setServant(ascSlotIndex, servantId, asc),
                 onBack: (backIdx) => {
-                  this._refs.ServantSelector.open(backIdx, false, this._createServantCallbacks(backIdx));
+                  this._refs.ServantSelector.open(
+                    backIdx,
+                    false,
+                    this._createServantCallbacks(backIdx),
+                    this._pickerOptions(),
+                  );
                 },
               });
             });
@@ -395,7 +500,12 @@ export const BondApp = {
         if (!servantHasAscensions) {
           const selectorSlotIndex = i;
           portraitArea.addEventListener("click", () => {
-            this._refs.ServantSelector.open(selectorSlotIndex, false, this._createServantCallbacks(selectorSlotIndex));
+            this._refs.ServantSelector.open(
+              selectorSlotIndex,
+              false,
+              this._createServantCallbacks(selectorSlotIndex),
+              this._pickerOptions(),
+            );
           });
           portraitArea.style.cursor = "pointer";
         }
@@ -670,7 +780,12 @@ export const BondApp = {
 
         const selectorSlotIndex = i;
         slot.addEventListener("click", () => {
-          this._refs.ServantSelector.open(selectorSlotIndex, true, this._createServantCallbacks(selectorSlotIndex));
+          this._refs.ServantSelector.open(
+            selectorSlotIndex,
+            true,
+            this._createServantCallbacks(selectorSlotIndex),
+            this._pickerOptions(),
+          );
         });
       }
 
@@ -694,27 +809,32 @@ export const BondApp = {
   },
 
   calculate() {
-    // Determine quest bond/run
-    const select = document.getElementById("bondQuestSelect");
-    const questKey = select.value;
-    let bondPerRun = 0;
-
-    if (questKey && questKey !== "custom") {
-      const preset = BOND_QUESTS.find((q) => q.key === questKey);
-      if (preset) {
-        bondPerRun = preset.bond;
-      }
-    } else if (questKey === "custom") {
-      bondPerRun = Validator.clamp(
-        document.getElementById("customBondPerRun").value,
-        0,
-        BOND_CONSTANTS.MAX_CUSTOM_BOND,
-      );
+    // Determine quest bond/run: the selects own the choice, the custom box owns its own figure.
+    const customInput = document.getElementById("customBondPerRun");
+    if (customInput) {
+      this.state.customBond = Validator.clamp(customInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND);
+      customInput.value = this.state.customBond;
     }
+    const bondPerRun = Quest.bondPerRun(this.state, this.state.customBond);
 
     if (bondPerRun <= 0) {
       alert("Please select a quest or enter bond points per run.");
       return;
+    }
+
+    /* Grand Duel lets only the chosen class into the party. The picker filters to it, but a restored save
+       or a class switched after the picks can leave a servant who does not belong — say so instead of
+       pricing a party the game would not allow. */
+    if (this.state.questMain === "gd" && Quest.classIds(this.state.questClass)) {
+      const group = GRAND_CLASSES.find((c) => c.key === this.state.questClass);
+      for (let i = 0; i < this.state.slots.length; i++) {
+        const slot = this.state.slots[i];
+        if (!slot.servantId) continue;
+        const servant = ServantData.getServant(slot.servantId);
+        if (!servant || Quest.matchesClass(servant.traits, this.state.questClass)) continue;
+        alert(`${servant.name} cannot join a Grand Duel ${group.name} party.`);
+        return;
+      }
     }
 
     // Read all slot inputs
@@ -933,8 +1053,6 @@ export const BondApp = {
       return;
     }
 
-    this.state.selectedQuest = questKey;
-    this.state.customBond = questKey === "custom" ? bondPerRun : 0;
     this.saveState();
 
     // Show results
@@ -1139,8 +1257,6 @@ export const BondApp = {
       const data = JSON.parse(raw);
       if (!data || typeof data !== "object") return null;
 
-      // Migrate old format (single bondNeeded) to new slots format
-      let slots;
       /* Levels are rounded and re-clamped here because a saved slot could carry anything: an old
          save without the fields, or a level past what the servant's table covers. */
       const level = (value, max) => Math.round(Validator.clamp(value, 0, max));
@@ -1162,23 +1278,77 @@ export const BondApp = {
         });
       };
 
-      if (data.slots && Array.isArray(data.slots)) {
-        slots = data.slots.map(sanitize);
-      } else {
-        slots = [];
-        if (data.bondNeeded) {
-          slots.push(defaultSlot({ bondNeeded: Validator.clamp(data.bondNeeded, 0, BOND_CONSTANTS.MAX_BOND_NEEDED) }));
+      // A party is a full rack of six slots, padded and sanitized whoever wrote it.
+      const partyOf = (raw) => {
+        const list = Array.isArray(raw) ? raw.map(sanitize) : [];
+        // The one save shape older than slots[]: a single bond figure.
+        if (list.length === 0 && !Array.isArray(raw) && data.bondNeeded) {
+          list.push(defaultSlot({ bondNeeded: Validator.clamp(data.bondNeeded, 0, BOND_CONSTANTS.MAX_BOND_NEEDED) }));
+        }
+        while (list.length < SERVANT_MAX_SLOTS) {
+          list.push(defaultSlot());
+        }
+        return list;
+      };
+
+      /* Quest choices are keys into the constant tables, so a save naming a quest that no longer exists
+         falls back to nothing rather than to a stale figure. */
+      const oneOf = (value, keys) => (keys.includes(value) ? value : "");
+      let questMain = oneOf(
+        data.questMain,
+        QUEST_FAMILIES.map((f) => f.key),
+      );
+      let questSub = oneOf(data.questSub, [...FREE_QUESTS.map((q) => q.key), "custom"]);
+      let questClass = oneOf(
+        data.questClass,
+        GRAND_CLASSES.map((c) => c.key),
+      );
+      let questDiff = oneOf(
+        data.questDiff,
+        GRAND_DIFFICULTIES.map((d) => d.key),
+      );
+
+      // A save from before the family selects spelled the whole quest as one key; land it in the new fields.
+      if (!questMain) {
+        const legacy = data.selectedQuest;
+        if (legacy === "custom") {
+          questMain = "fq";
+          questSub = "custom";
+        } else if (
+          oneOf(
+            legacy,
+            FREE_QUESTS.map((q) => q.key),
+          )
+        ) {
+          questMain = "fq";
+          questSub = legacy;
+        } else if (legacy === "gd100") {
+          questMain = "gd";
+          questClass = "all";
+          questDiff = GRAND_DIFFICULTIES[GRAND_DIFFICULTIES.length - 1].key;
         }
       }
 
-      // Pad to SERVANT_MAX_SLOTS
-      while (slots.length < SERVANT_MAX_SLOTS) {
-        slots.push(defaultSlot());
-      }
+      /* A Grand Duel choice owns its party; `""` is the shared party Free Quest and an empty quest use.
+         The party on screen is stored as `slots`, so its own key is read from `parties` only when it is
+         parked, and a save that never had `parties` leaves every class starting empty. */
+      const liveKey = questMain === "gd" ? questClass || "all" : "";
+      const stored = data.parties && typeof data.parties === "object" ? data.parties : {};
+      const parties = {};
+      ["", ...GRAND_CLASSES.map((c) => c.key)].forEach((key) => {
+        // Any other key a tampered save carries is dropped, not bloated into storage.
+        if (Array.isArray(stored[key])) parties[key] = partyOf(stored[key]);
+      });
+      const slots = parties[liveKey] || partyOf(data.slots);
+      delete parties[liveKey];
 
       return {
-        slots: slots.map(sanitize),
-        selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",
+        slots,
+        parties,
+        questMain,
+        questSub,
+        questClass,
+        questDiff,
         customBond: Validator.clamp(data.customBond || 0, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND),
         // Teapots are counted in whole items; a save that never had them simply starts empty.
         teapotCount: Math.floor(Validator.clamp(data.teapotCount || 0, 0, BOND_CONSTANTS.MAX_TEAPOT_COUNT)),

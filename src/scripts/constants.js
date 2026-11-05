@@ -76,8 +76,41 @@ export const RARITY_FILTERS = [
   { id: "0405", label: "5 \u2605" },
 ];
 
-export const BOND_QUESTS = [
-  { key: "fq83", name: "Free Quest Lv.83", bond: 835 },
+/* The quest a Bond plan is priced on. The player picks a family first, then one choice inside it:
+   Free Quest names a single quest (or its own custom figure), Grand Duel names a class group and then
+   the Rank-Up Training Battle level of that class. */
+export const QUEST_FAMILIES = [
+  { key: "fq", name: "Free Quest" },
+  { key: "gd", name: "Grand Duel" },
+];
+
+export const FREE_QUESTS = [
+  { key: "fq83", name: "Free Quest Lv.83", bond: 845 },
   { key: "fq84", name: "Free Quest Lv.84", bond: 855 },
-  { key: "gd100", name: "Grand Duel Lv.100\u2605\u2605\u2605", bond: 4748 },
+];
+
+/* Grand Duel party classes. `classes` is the set of class trait ids the party is limited to; null means
+   every class is allowed, so the picker keeps its own class filter. The extra rows group the eight
+   non-standard classes: Extra I and Extra II are the halves, Extra is both. */
+export const GRAND_EXTRA_I = ["0107", "0108", "0110", "0115"]; // Shielder, Ruler, Avenger, Moon Cancer
+export const GRAND_EXTRA_II = ["0109", "0117", "0120", "0124"]; // Alter Ego, Foreigner, Pretender, Beast
+
+export const GRAND_CLASSES = [
+  { key: "all", name: "All", classes: null },
+  ...CLASS_FILTERS.standard.map((c) => ({ key: c.id, name: c.label, classes: [c.id] })),
+  { key: "extra1", name: "Extra I", classes: GRAND_EXTRA_I },
+  { key: "extra2", name: "Extra II", classes: GRAND_EXTRA_II },
+  { key: "extra", name: "Extra", classes: [...GRAND_EXTRA_I, ...GRAND_EXTRA_II] },
+];
+
+/* The seven Rank-Up Training Battle levels. Each pays more bond than the one below it, so the level is
+   the only thing a Grand Duel plan needs besides the class. */
+export const GRAND_DIFFICULTIES = [
+  { key: "1", roman: "I", lv: "Lv.100", bond: 3164 },
+  { key: "2", roman: "II", lv: "Lv.100+", bond: 3385 },
+  { key: "3", roman: "III", lv: "Lv.100++", bond: 3622 },
+  { key: "4", roman: "IV", lv: "Lv.100+++", bond: 3876 },
+  { key: "5", roman: "V", lv: "Lv.100\u2605", bond: 4147 },
+  { key: "6", roman: "VI", lv: "Lv.100\u2605\u2605", bond: 4438 },
+  { key: "7", roman: "VII", lv: "Lv.100\u2605\u2605\u2605", bond: 4748 },
 ];
