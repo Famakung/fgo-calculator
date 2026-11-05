@@ -1,9 +1,12 @@
 ---
+import { IMAGE_VERSION } from "../scripts/constants.js";
+
 interface Props {
   title?: string;
   description?: string;
 }
 
+// One source for the asset cache-buster: the preload script below takes it from define:vars, so a bump here reaches the preloads and the runtime src together.
 const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop optimizer, Bond Point calculator, and Bond Gain CE for Fate/Grand Order farming.' } = Astro.props;
 ---
 <!doctype html>
@@ -69,7 +72,20 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
       window.addEventListener("focus", check);
     })();
     </script>
-    <script is:inline>(function(){var v="2";var t="cefilter";try{var s=localStorage.getItem("fgo_active_tab");if(s)t=s}catch(e){}if(t!=="cefilter")document.documentElement.setAttribute("data-tab",t);try{var f=JSON.parse(localStorage.getItem("fgo_ce_filter_data"));if(f&&f.subTab==="servant")document.documentElement.setAttribute("data-subtab","servant")}catch(e){}function p(h){var l=document.createElement("link");l.rel="preload";l.as="image";l.fetchPriority="high";l.href=h;return l}if(t==="bond"){try{var b=JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));if(b&&Array.isArray(b.slots)){for(var i=0;i<b.slots.length;i++){if(b.slots[i]&&b.slots[i].servantId){document.head.appendChild(p("servants/"+b.slots[i].servantId+"/"+(b.slots[i].ascension||"000")+".webp?v="+v));break}}}}catch(e){}}if(t==="cefilter"){var mq=window.matchMedia;var cols=mq("(min-width:1120px)").matches?6:mq("(min-width:940px)").matches?5:mq("(min-width:760px)").matches?4:mq("(min-width:580px)").matches?3:2;var count=cols*5;var f=document.createDocumentFragment();for(var i=1;i<=count;i++){var id=i<10?"00"+i:i<100?"0"+i:""+i;f.appendChild(p("servants/"+id+"/000.webp?v="+v))}var ce=["2020","2052","2209","2233","2437","2509","2583"];if(cols>=3)ce.push("1949");if(cols>=5)ce.push("2142");for(var j=0;j<ce.length;j++){f.appendChild(p("craft_essences/"+ce[j]+".webp?v="+v))}document.head.appendChild(f)}})();</script>
+    {/* define:vars binds `v` to IMAGE_VERSION above. Never declare a local `var v` in this script: it would shadow the build constant, and every preload would miss the URL the page actually requests.
+
+    The cefilter block preloads the first row only — servants 001..cols — which is the tile row the LCP
+    portrait comes from. It used to be cols*5 portraits plus 9 first-page CE badges (39 links, ~870 KB at
+    fetchpriority=high): those preloads outrank the tab's own chunks, so the 33-byte entry script finished at
+    2191 ms instead of ~350 ms and LCP landed at 2944 ms. Throttled (1.6 Mbps / RTT 150 ms / CPU 4x,
+    1200x900) the row-only list measures 1684 ms, and disabling the block entirely 1964 ms — warming the row
+    is worth more than the ~6 links cost. `cols` must stay in step with CEFilterApp._getCols().
+
+    Any saved cePicks reshuffles the first page (_applyFilters -> _sortEntries -> pageSlice) and a saved
+    servant sub-tab shows combo rows instead, so `plain` skips the block in those two states rather than
+    warming portraits the page will never render. currentPage, class/rarity filters and search are not
+    persisted, so they cannot make the guess wrong. */}
+    <script is:inline define:vars={{ v: IMAGE_VERSION }}>(function(){var t="cefilter";try{var s=localStorage.getItem("fgo_active_tab");if(s)t=s}catch(e){}if(t!=="cefilter")document.documentElement.setAttribute("data-tab",t);var plain=1;try{var f=JSON.parse(localStorage.getItem("fgo_ce_filter_data"));if(f){if(f.subTab==="servant"){document.documentElement.setAttribute("data-subtab","servant");plain=0}if(f.cePicks&&f.cePicks.length)plain=0}}catch(e){}function p(h){var l=document.createElement("link");l.rel="preload";l.as="image";l.fetchPriority="high";l.href=h;return l}if(t==="bond"){try{var b=JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));if(b&&Array.isArray(b.slots)){for(var i=0;i<b.slots.length;i++){if(b.slots[i]&&b.slots[i].servantId){document.head.appendChild(p("servants/"+b.slots[i].servantId+"/"+(b.slots[i].ascension||"000")+".webp?v="+v));break}}}}catch(e){}}if(t==="cefilter"&&plain){var mq=window.matchMedia;var cols=mq("(min-width:1120px)").matches?6:mq("(min-width:940px)").matches?5:mq("(min-width:760px)").matches?4:mq("(min-width:580px)").matches?3:2;var f=document.createDocumentFragment();for(var i=1;i<=cols;i++){var id=i<10?"00"+i:i<100?"0"+i:""+i;f.appendChild(p("servants/"+id+"/000.webp?v="+v))}document.head.appendChild(f)}})();</script>
   </head>
   <body>
     <slot />

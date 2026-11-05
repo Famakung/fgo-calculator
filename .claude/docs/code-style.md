@@ -29,7 +29,7 @@
 - Trait IDs sorted numerically in arrays
 - New CE fields → whitelist in `CEList` IIFE `src/scripts/data.js`
 - New servant fields → handle in `ServantData.load()` `src/scripts/data.js`
-- Servant and CE images use `?v=${IMAGE_VERSION}` from `constants.js`; bump when assets update and sync in `BaseLayout.astro`
+- Servant and CE images use `?v=${IMAGE_VERSION}` from `constants.js`; bump it when assets update — it is the only copy. `BaseLayout.astro`'s head preload script takes the same constant through `define:vars={{ v: IMAGE_VERSION }}` (imported in the frontmatter) and refers to `v`, so it can never drift behind; declaring a local `var v` inside that script would shadow it and every preload would miss.
 
 ## Astro-Specific
 - `index.astro` imports all JS modules — Astro/Vite automatically bundles and code-splits

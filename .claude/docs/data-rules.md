@@ -64,4 +64,4 @@
 - Servants: `public/servants/{ID}/{ascension}.webp` (142×155 WebP, bordered in-game card frame, e.g. `public/servants/001/000.webp`)
 - CEs: `public/craft_essences/{ID}.webp` (142×155 bordered WebP, unified for all display sizes)
 - Icons: `public/icons/*.webp`, `public/icons/{category}/*.webp`
-- Astro copies `public/` to `dist/` preserving paths — all servant and CE image references use relative URLs with `IMAGE_VERSION` cache busting query parameter (e.g. `servants/001/000.webp?v=2`)
+- Astro copies `public/` to `dist/` preserving paths — all servant and CE image references use relative URLs with `IMAGE_VERSION` cache busting query parameter (e.g. `servants/001/000.webp?v=${IMAGE_VERSION}` — never a literal number, `BaseLayout.astro`'s preload reads the same constant)

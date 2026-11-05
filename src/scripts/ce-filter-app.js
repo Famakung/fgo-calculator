@@ -96,10 +96,14 @@ export const CEFilterApp = {
   _debouncedRender: null,
   _callbacks: null,
 
-  _getPageSize() {
+  // The same width staircase as the LCP preload in BaseLayout.astro's head script — keep the two in step.
+  _getCols() {
     const w = window.innerWidth;
-    const cols = w >= 1120 ? 6 : w >= 940 ? 5 : w >= 760 ? 4 : w >= 580 ? 3 : 2;
-    return cols * 5;
+    return w >= 1120 ? 6 : w >= 940 ? 5 : w >= 760 ? 4 : w >= 580 ? 3 : 2;
+  },
+
+  _getPageSize() {
+    return this._getCols() * 5;
   },
 
   init(callbacks) {
@@ -616,16 +620,20 @@ export const CEFilterApp = {
 
     const frag = document.createDocumentFragment();
     const isFirstPage = this.state.currentPage === 1;
-    const eagerAttrs = isFirstPage ? { loading: "eager" } : {};
-    let isFirstCard = isFirstPage;
+    const cols = this._getCols();
 
     // Reuse existing placeholder cards from inline script to avoid LCP render delay
     const existingCards = isFirstPage ? grid.querySelectorAll(":scope > .cefilter-servant-card") : null;
 
     pageSlice.forEach(
       ({ servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll, primaryAscension }, idx) => {
-        const cardAttrs = isFirstCard ? { ...eagerAttrs, fetchpriority: "high" } : eagerAttrs;
-        isFirstCard = false;
+        // Only the first row can be inside the tile. Eager-loading all pageSize cards puts ~100 portraits
+        // and CE badges in the same pipe as the chunks that build them, so the LCP portrait queues behind them.
+        const cardAttrs = !isFirstPage
+          ? {}
+          : idx < cols
+            ? { loading: "eager", fetchpriority: "high" }
+            : { loading: "lazy" };
         const existing = existingCards && existingCards[idx];
         frag.appendChild(
           this._buildCard(
