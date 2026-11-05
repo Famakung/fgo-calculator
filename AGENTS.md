@@ -60,6 +60,8 @@ node --version       # must be >= 22.23.4 (.nvmrc); npm only WARNS on EBADENGINE
 
 Browser gate (local only, needs Chromium): `npx astro preview`, then `node scripts/verify_render.js`.
 
+Unit tests (`npm run test`) run only in the `develop` clone: `tests/` is tracked there and not on `main`, and CI never runs it — `deploy.yml`'s only test steps are `npm run check:build` and the Python self-checks `scripts/test_*.py`, which stay public. A fresh `main` clone has no `tests/` directory.
+
 **`astro build` fails on this repo's `/mnt/storage` (ntfs3) mount** — Vite bundles Astro's dev-toolbar entrypoint and dies on `[MISSING_EXPORT] "loadDevToolbarApps"`. See "Which folder to work in". That copy's `node_modules` holds Astro 5.18.2 installed with `--no-save`, which is why it shows a `__vite__injectQuery` console error.
 
 ## Layout map
@@ -75,7 +77,7 @@ Browser gate (local only, needs Chromium): `npx astro preview`, then `node scrip
 | `scripts/` | data sync (`sync_atlas_data.py`), build/render gates, tests |
 | `.github/workflows/` | Pages deploy, 10-min ETag-gated data schedule |
 
-`develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never plain-merge `develop` into `main`** (`git pull origin develop` is the same merge) — these docs (`.claude/**`, `AGENTS.md`, `GEMINI.md`), the browser gate `scripts/verify_render.js` (CI never runs it) and that script itself are deliberately `develop`-only and must not become public; every other file under `scripts/` stays public because CI or `npm run build` needs it; ship code to `main` with `scripts/merge_code_only.sh` (merges the code, drops those paths — itself included — from the merge commit, keeps `main`'s `.gitignore`, pushes nothing) or by cherry-picking the code commits.
+`develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never plain-merge `develop` into `main`** (`git pull origin develop` is the same merge) — these docs (`.claude/**`, `AGENTS.md`, `GEMINI.md`), the browser gate `scripts/verify_render.js` (CI never runs it), the unit tests `tests/` (CI never runs them either) and that script itself are deliberately `develop`-only and must not become public; every other file under `scripts/` stays public because CI or `npm run build` needs it; ship code to `main` with `scripts/merge_code_only.sh` (merges the code, drops those paths — itself included — from the merge commit, keeps `main`'s `.gitignore`, pushes nothing) or by cherry-picking the code commits.
 
 ## Which folder to work in
 
