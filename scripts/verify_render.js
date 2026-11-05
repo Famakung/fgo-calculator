@@ -588,6 +588,214 @@ try {
   }
   await page.setViewport({ width: 800, height: 600 });
 
+  /* The essences belong to the card: a bordered Craft Essence block under the point box, holding one
+     64px portrait chip (two when Grand Servant is ticked) and none of the old name/bonus lines, while
+     the separate Craft Essences Bonus card is gone. A blank card carries no block at all. */
+  const chipState = () =>
+    page.evaluate(() => {
+      const block = document.querySelector(".servant-slot .slot-ce-block");
+      const chips = block ? [...block.querySelectorAll(".ce-chip")] : [];
+      return {
+        present: !!block,
+        chips: chips.length,
+        addTiles: chips.filter((c) => c.classList.contains("ce-chip--add")).length,
+        removeBtns: chips.filter((c) => c.querySelector(".ce-chip-x")).length,
+        /* What each chip shows, so the survivor of an untick can be recognised: an equipped essence
+           carries its name (alt) or its id (fallback text), a blank position carries nothing. */
+        keys: chips.map((c) => {
+          const img = c.querySelector("img");
+          const fb = c.querySelector(".ce-chip-fallback");
+          return img ? img.alt : fb ? fb.textContent : "";
+        }),
+        chipH: chips.length ? Math.round(chips[0].getBoundingClientRect().height) : 0,
+      };
+    });
+
+  const ce = await page.evaluate(() => {
+    const card = document.querySelector(".servant-slot:not(.servant-add-slot)");
+    const block = card && card.querySelector(".slot-ce-block");
+    const pointBox = card && card.querySelector(".bond-input-box");
+    const chips = block ? block.querySelectorAll(".ce-chip").length : 0;
+    return {
+      grid: !!document.getElementById("ceGrid"),
+      inCard: !!block,
+      afterPointBox:
+        !!block &&
+        !!pointBox &&
+        Boolean(block.compareDocumentPosition(pointBox) & Node.DOCUMENT_POSITION_PRECEDING),
+      chipH: chips ? Math.round(block.querySelector(".ce-chip").getBoundingClientRect().height) : 0,
+      chips,
+      names: block ? block.querySelectorAll(".ce-slot-name, .ce-slot-bonus").length : -1,
+      labels: block ? [...block.querySelectorAll(".bond-input-box-label, .bond-checkbox-label")].map((l) => l.textContent) : [],
+      blankBlocks: document.querySelectorAll(".servant-add-slot .slot-ce-block").length,
+    };
+  });
+  if (ce.grid) errors.push("bond slot CEs: #ceGrid is still in the page — the Craft Essences Bonus card must be gone");
+  if (!ce.inCard) errors.push("bond slot CEs: no .slot-ce-block inside the servant slot");
+  if (!ce.afterPointBox) errors.push("bond slot CEs: the essence block does not sit after the point box");
+  if (ce.chipH !== 64) errors.push(`bond slot CEs: chip measures ${ce.chipH}px tall, want 64px`);
+  if (ce.chips !== 1) errors.push(`bond slot CEs: a normal slot shows ${ce.chips} chip(s), want 1`);
+  if (ce.names !== 0) errors.push(`bond slot CEs: ${ce.names} name/bonus element(s) inside the block, want 0`);
+  if (!ce.labels.includes("Craft Essence")) {
+    errors.push(`bond slot CEs: block labels ${JSON.stringify(ce.labels)}, want a "Craft Essence" label`);
+  }
+  if (!ce.labels.includes("Grand Servant")) {
+    errors.push(`bond slot CEs: block labels ${JSON.stringify(ce.labels)}, want a "Grand Servant" checkbox`);
+  }
+  if (ce.blankBlocks !== 0) errors.push(`bond slot CEs: ${ce.blankBlocks} essence block(s) on an empty slot, want 0`);
+
+  // Equip through the picker, which the card now owns: one filled chip, still removable.
+  await page.click(".servant-slot .slot-ce-block .ce-chip--add");
+  await page.waitForSelector("#ceModal.open .servant-picker-item");
+  await page.click("#ceModal .servant-picker-item");
+  const groupPick = await page.evaluate(() => !!document.querySelector("#ceSubModal.open"));
+  if (groupPick) await page.click("#ceSubModal .servant-picker-item");
+  await page.waitForFunction(() => document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip-x").length === 1, {
+    timeout: 15000,
+  });
+  const equipped = await chipState();
+  if (equipped.chips !== 1 || equipped.addTiles !== 0) {
+    errors.push(`bond slot CEs: after equipping, ${equipped.chips} chip(s) / ${equipped.addTiles} blank tile(s), want 1 filled`);
+  }
+  if (!equipped.keys[0]) errors.push("bond slot CEs: the equipped chip shows no portrait");
+
+  // Grand raises the capacity to two; unticking drops the second and keeps the first.
+  await page.click(".servant-slot .slot-ce-block .bond-checkbox");
+  await page.waitForFunction(() => document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip").length === 2, {
+    timeout: 15000,
+  });
+  const grand = await chipState();
+  if (grand.chips !== 2 || grand.addTiles !== 1 || grand.keys[0] !== equipped.keys[0]) {
+    errors.push(
+      `bond slot CEs: ticking Grand gave ${grand.chips} chip(s) (${grand.addTiles} blank), first=${JSON.stringify(grand.keys[0])}`,
+    );
+  }
+  await page.click(".servant-slot .slot-ce-block .bond-checkbox");
+  await page.waitForFunction(() => document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip").length === 1, {
+    timeout: 15000,
+  });
+  const trimmed = await chipState();
+  if (trimmed.chips !== 1 || trimmed.keys[0] !== equipped.keys[0]) {
+    errors.push(`bond slot CEs: unticking Grand left ${trimmed.chips} chip(s) first=${JSON.stringify(trimmed.keys[0])}`);
+  }
+
+  // And the card's own remove button empties it again.
+  await page.click(".servant-slot .slot-ce-block .ce-chip-x");
+  await page.waitForFunction(() => document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip-x").length === 0, {
+    timeout: 15000,
+  });
+  const removed = await chipState();
+  if (removed.chips !== 1 || removed.addTiles !== 1) {
+    errors.push(`bond slot CEs: removing the essence left ${removed.chips} chip(s) / ${removed.addTiles} blank tile(s), want 1 blank`);
+  }
+
+  /* Support and Max Bond cards must stop reserving the height of the fields they hide: those elements
+     leave the layout entirely, the essence block stays the card's last element, and switching back to
+     Normal brings the player's own figures with it. The tick row is read as a direct child of the info
+     column so the Grand Servant row inside the essence block cannot be mistaken for it. */
+  const slotInfo = (index) =>
+    page.evaluate((i) => {
+      const slot = document.querySelector(`.servant-slot[data-slot-index="${i}"]`);
+      const info = slot && slot.querySelector(".servant-slot-info");
+      const block = info && info.querySelector(".slot-ce-block");
+      const box = info.querySelector(":scope > .bond-input-box input");
+      return {
+        collapsed: !!block && block === info.lastElementChild,
+        chips: block ? block.querySelectorAll(".ce-chip").length : 0,
+        levelRow: !!info.querySelector(":scope > .bond-level-row"),
+        pointBox: !!info.querySelector(":scope > .bond-input-box"),
+        tickRow: !!info.querySelector(":scope > .bond-checkbox-row"),
+        points: box ? box.value : "",
+        height: Math.round(slot.getBoundingClientRect().height),
+      };
+    }, index);
+
+  const TICK_ROW = '.servant-slot[data-slot-index="0"] .servant-slot-info > .bond-checkbox-row .bond-checkbox';
+
+  // Max Bond keeps its tick row (the tick has to stay undoable) and loses the level selects and the box.
+  // Every handler rebuilds the cards synchronously, so there is nothing to wait for after a click.
+  const normal = await slotInfo(0);
+  await page.click(TICK_ROW);
+  const maxBond = await slotInfo(0);
+  if (maxBond.levelRow || maxBond.pointBox) {
+    errors.push(`bond slot Max Bond: level row=${maxBond.levelRow} point box=${maxBond.pointBox}, want both gone`);
+  }
+  if (!maxBond.tickRow) errors.push("bond slot Max Bond: the Max Bond / Bond ≥15 row disappeared — the tick is stuck");
+  if (!maxBond.collapsed) errors.push("bond slot Max Bond: the essence block is no longer the card's last element");
+  if (maxBond.chips !== normal.chips) errors.push(`bond slot Max Bond: ${maxBond.chips} chip(s), want ${normal.chips}`);
+  if (!(maxBond.height < normal.height)) {
+    errors.push(`bond slot Max Bond: card is ${maxBond.height}px, no shorter than Normal ${normal.height}px`);
+  }
+
+  await page.click(TICK_ROW);
+
+  // Support has no tick row at all, and still wears its essences.
+  await page.select("#slotType_0", "support");
+  const support = await slotInfo(0);
+  if (support.levelRow || support.pointBox) {
+    errors.push(`bond slot Support: level row=${support.levelRow} point box=${support.pointBox}, want both gone`);
+  }
+  if (support.tickRow) errors.push("bond slot Support: the Max Bond / Bond ≥15 row is still reserved");
+  if (!support.collapsed) errors.push("bond slot Support: the essence block is no longer the card's last element");
+  if (support.chips !== normal.chips) {
+    errors.push(`bond slot Support: ${support.chips} chip(s), want ${normal.chips} — collapsing fields must keep the essences`);
+  }
+  if (!(support.height < normal.height)) {
+    errors.push(`bond slot Support: card is ${support.height}px, no shorter than Normal ${normal.height}px`);
+  }
+
+  // Back to Normal: the fields come back, with the figures the player had.
+  await page.select("#slotType_0", "normal");
+  const backToNormal = await slotInfo(0);
+  if (!backToNormal.levelRow || !backToNormal.pointBox || !backToNormal.tickRow) {
+    errors.push(`bond slot back to Normal: level row=${backToNormal.levelRow} point box=${backToNormal.pointBox} tick row=${backToNormal.tickRow}`);
+  }
+  console.log(
+    `NOTE: bond slot card height — Normal ${normal.height}px, Max Bond ${maxBond.height}px, ` +
+      `Support ${support.height}px, back to Normal ${backToNormal.height}px (${backToNormal.points} pts in the box)`,
+  );
+  if (backToNormal.points !== normal.points) {
+    errors.push(`bond slot back to Normal: point box shows ${JSON.stringify(backToNormal.points)}, was ${JSON.stringify(normal.points)}`);
+  }
+
+  /* The Bond tab reads quest first, then the party it is spent on, and the calculate button belongs to
+     the party card — bottom right of it, not a full-width bar across the page. The Event Shop button is
+     measured too, because it shares .calculate-btn and must keep stretching. */
+  const order = await page.evaluate(() => {
+    const quest = document.getElementById("bondQuestSelect").closest(".card");
+    const party = document.getElementById("servantGrid").closest(".card");
+    const btn = document.getElementById("bondCalculateBtn");
+    const partyInner = party.querySelector(".card-inner");
+    return {
+      questFirst: Boolean(quest.compareDocumentPosition(party) & Node.DOCUMENT_POSITION_FOLLOWING),
+      inPartyCard: partyInner.contains(btn),
+      label: btn.textContent.trim(),
+      ratio: btn.getBoundingClientRect().width / btn.parentElement.clientWidth,
+    };
+  });
+  if (!order.questFirst) errors.push("bond order: the Select Quest card does not come before the Party Setup card");
+  if (!order.inPartyCard) errors.push("bond order: #bondCalculateBtn is not inside the Party Setup card");
+  if (order.label !== "Calculate Quest Runs") {
+    errors.push(`bond order: the button reads ${JSON.stringify(order.label)}, want "Calculate Quest Runs"`);
+  }
+  if (!(order.ratio > 0 && order.ratio <= 0.5)) {
+    errors.push(`bond order: the button spans ${(order.ratio * 100).toFixed(0)}% of its row, want at most half`);
+  }
+
+  await page.click('.tab-btn[data-tab="event"]');
+  const eventRatio = await page.evaluate(() => {
+    const btn = document.getElementById("calculateBtn");
+    return btn.getBoundingClientRect().width / btn.parentElement.clientWidth;
+  });
+  await page.click('.tab-btn[data-tab="bond"]');
+  if (!(eventRatio > 0.9)) {
+    errors.push(`event tab: #calculateBtn spans ${(eventRatio * 100).toFixed(0)}% of its row, want full width`);
+  }
+  console.log(
+    `NOTE: bond tab order — quest card first, button ${JSON.stringify(order.label)} at ` +
+      `${(order.ratio * 100).toFixed(0)}% of the party card; event button ${(eventRatio * 100).toFixed(0)}%`,
+  );
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();

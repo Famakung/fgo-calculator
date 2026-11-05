@@ -414,20 +414,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         <section class="tab-panel" id="panel-bond">
           <div class="card">
             <div class="card-inner">
-              <div class="card-title">Party Setup</div>
-            <div class="servant-grid grid" id="servantGrid"></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-inner">
-              <div class="card-title">Craft Essences Bonus</div>
-            <div class="ce-grid" id="ceGrid"></div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-inner">
               <div class="card-title">Select Quest</div>
             <div class="input-row">
               <label class="input-label" for="bondQuestSelect">Quest</label>
@@ -454,9 +440,17 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             </div>
           </div>
 
-          <button class="calculate-btn" id="bondCalculateBtn" type="button">
-            Calculate Quest Runs
-          </button>
+          <div class="card">
+            <div class="card-inner">
+              <div class="card-title">Party Setup</div>
+            <div class="servant-grid grid" id="servantGrid"></div>
+            <div class="bond-card-actions">
+              <button class="calculate-btn" id="bondCalculateBtn" type="button">
+                Calculate Quest Runs
+              </button>
+            </div>
+            </div>
+          </div>
 
           <div class="results" id="bondResults">
             <div class="card results-card">

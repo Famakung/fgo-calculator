@@ -1,5 +1,5 @@
 import { BOND_CONSTANTS, SERVANT_MAX_SLOTS, BOND_QUESTS, BOND_STORAGE_KEY } from "./constants.js";
-import { Validator, TraitMatcher, BondLevelCalculator } from "./domain.js";
+import { Validator, TraitMatcher, BondLevelCalculator, SlotCEs } from "./domain.js";
 import { ServantData, CEById, TraitNames } from "./data.js";
 import { DOMFactory } from "./presentation.js";
 
@@ -15,6 +15,8 @@ function defaultSlot(overrides = {}) {
     maxBond: false,
     bond15: false,
     ascension: null,
+    ces: [],
+    grand: false,
     ...overrides,
   };
 }
@@ -48,24 +50,12 @@ export const BondApp = {
     };
   },
 
-  _createCECallbacks(slotIndex) {
+  /* One callback set per (slot, position). The selectors only carry a number through to
+     onPendingRemove, so the position they hand back is ignored in favour of the closed-over one. */
+  _createCECallbacks(slotIndex, position) {
     return {
-      onSelect: (_slotIdx, ceId, optionId) => this.setCE(slotIndex, ceId, optionId),
-      onPendingRemove: () => {
-        this.state.ces.splice(slotIndex, 1);
-        this.saveState();
-        this.buildCESlots();
-      },
-      onOpenSubSelector: (groupCE, idx) => {
-        this._refs.CESubSelector.open(groupCE, idx, {
-          onSelect: (_si, ceId, optionId) => this.setCE(idx, ceId, optionId),
-          onPendingRemove: () => {
-            this.state.ces.splice(idx, 1);
-            this.saveState();
-            this.buildCESlots();
-          },
-        });
-      },
+      onSelect: (_position, ceId, optionId) => this.setCE(slotIndex, position, ceId, optionId),
+      onPendingRemove: () => this.removeCE(slotIndex, position),
     };
   },
 
@@ -77,7 +67,6 @@ export const BondApp = {
       slots: Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot()),
       selectedQuest: "",
       customBond: 0,
-      ces: [],
     };
 
     const select = document.getElementById("bondQuestSelect");
@@ -96,11 +85,8 @@ export const BondApp = {
     customOpt.textContent = "-- Custom --";
     select.appendChild(customOpt);
 
-    // Build servant slots
+    // Build servant slots (each card renders its own essences)
     this.buildServantSlots();
-
-    // Build CE slots
-    this.buildCESlots();
 
     // Restore quest state
     select.value = this.state.selectedQuest;
@@ -163,141 +149,146 @@ export const BondApp = {
     this.buildServantSlots();
   },
 
-  buildCESlots() {
-    const grid = document.getElementById("ceGrid");
-    if (!grid) return;
-    grid.replaceChildren();
-
-    const count = this.state.ces.length;
-
-    for (let i = 0; i < count; i++) {
-      const ceEntry = this.state.ces[i];
-      if (!ceEntry) continue; // skip pending null slots
-
-      // Resolve CE entry (string or group object)
-      let ce, ceName, ceImage, ceBonusText;
-      if (typeof ceEntry === "object" && ceEntry.groupId) {
-        ce = CEById.get(ceEntry.groupId);
-        const selectedOption = ce && ce.options ? ce.options.find((o) => o.id === ceEntry.optionId) : null;
-        ceName = selectedOption ? selectedOption.name : ce ? ce.name : ceEntry.groupId;
-        ceImage = selectedOption ? selectedOption.image : ce ? ce.image : null;
-        ceBonusText = ce ? (ce.flatBonus > 0 ? `+${ce.flatBonus} pts All` : `+${ce.bonus}% All`) : "";
-      } else {
-        ce = CEById.get(ceEntry);
-        ceName = ce ? ce.name : ceEntry;
-        ceImage = ce ? ce.image : null;
-        ceBonusText = null;
-      }
-
-      const slot = DOMFactory.el("div", "ce-slot");
-      slot.dataset.slotIndex = i;
-
-      // Portrait
-      const portraitArea = DOMFactory.el("div");
-      if (ceImage) {
-        const img = DOMFactory.createLazyImg(ceImage, "ce-portrait", { alt: ceName });
-        DOMFactory.addSimpleFallback(
-          img,
-          "ce-portrait-fallback",
-          typeof ceEntry === "object" ? ceEntry.groupId : ceEntry,
-        );
-        portraitArea.appendChild(img);
-      } else {
-        const fb = DOMFactory.el("div", "ce-portrait-fallback");
-        fb.textContent = typeof ceEntry === "object" ? ceEntry.groupId : ceEntry;
-        portraitArea.appendChild(fb);
-      }
-      slot.appendChild(portraitArea);
-
-      // Name + bonus
-      const info = DOMFactory.el("div");
-      if (ce) {
-        const nameEl = DOMFactory.el("div", "ce-slot-name");
-        nameEl.textContent = ceName;
-        info.appendChild(nameEl);
-        const bonusEl = DOMFactory.el("div", "ce-slot-bonus");
-        if (ceBonusText !== null) {
-          // Grouped CE (pre-computed bonus text)
-          bonusEl.textContent = ceBonusText;
-        } else if (ce.traitGroups.length > 0) {
-          const groups = ce.traitGroups.map((group) => group.map((t) => TraitNames[t] || t).join(" or ")).join(" and ");
-          bonusEl.textContent = `+${ce.bonus}% ${groups}`;
-        } else if (ce.traits.length === 0) {
-          bonusEl.textContent = `+${ce.bonus}% All`;
-        } else {
-          const traitNames = ce.traits.map((t) => TraitNames[t] || t);
-          const joiner = ce.matchAll ? " and " : " or ";
-          bonusEl.textContent = `+${ce.bonus}% ${traitNames.join(joiner)}`;
-        }
-        info.appendChild(bonusEl);
-      }
-      slot.appendChild(info);
-
-      // Click slot to re-select
-      const ceSlotIndex = i;
-      slot.style.cursor = "pointer";
-      slot.addEventListener("click", () => {
-        if (ce && ce.isGroup) {
-          this._refs.CESubSelector.open(ce, ceSlotIndex, {
-            onSelect: (_si, ceId, optionId) => this.setCE(ceSlotIndex, ceId, optionId),
-            onPendingRemove: () => {
-              this.state.ces.splice(ceSlotIndex, 1);
-              this.saveState();
-              this.buildCESlots();
-            },
-          });
-        } else {
-          this._refs.CESelector.open(ceSlotIndex, false, this._createCECallbacks(ceSlotIndex));
-        }
-      });
-
-      // Remove button
-      const removeBtn = DOMFactory.el("button", "servant-remove-btn", { type: "button" });
-      removeBtn.textContent = "\u2715";
-      removeBtn.title = "Remove CE";
-      removeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.removeCE(ceSlotIndex);
-      });
-      slot.appendChild(removeBtn);
-
-      grid.appendChild(slot);
+  /* The bonus line the old CE card printed under each portrait. It now only feeds the chip's title and
+     alt text, since the card keeps the essence to a portrait. */
+  _ceBonusText(ce, ceEntry) {
+    if (typeof ceEntry === "object" && ceEntry.groupId) {
+      return ce.flatBonus > 0 ? `+${ce.flatBonus} pts All` : `+${ce.bonus}% All`;
     }
-
-    // Add button
-    const addSlot = DOMFactory.el("div", ["ce-slot", "ce-add-slot"]);
-    const addPortrait = DOMFactory.el("div", "ce-portrait-fallback");
-    addPortrait.textContent = "+";
-    addSlot.appendChild(addPortrait);
-    const addInfo = DOMFactory.el("div");
-    const addLabel = DOMFactory.el("div", "ce-slot-name");
-    addLabel.textContent = "Add Craft Essence";
-    addInfo.appendChild(addLabel);
-    addSlot.appendChild(addInfo);
-    addSlot.addEventListener("click", () => {
-      this.state.ces.push(null);
-      this.buildCESlots();
-      const idx = this.state.ces.length - 1;
-      this._refs.CESelector.open(idx, true, this._createCECallbacks(idx));
-    });
-    grid.appendChild(addSlot);
+    if (ce.traitGroups.length > 0) {
+      const groups = ce.traitGroups.map((group) => group.map((t) => TraitNames[t] || t).join(" or ")).join(" and ");
+      return `+${ce.bonus}% ${groups}`;
+    }
+    if (ce.traits.length === 0) return `+${ce.bonus}% All`;
+    const traitNames = ce.traits.map((t) => TraitNames[t] || t);
+    const joiner = ce.matchAll ? " and " : " or ";
+    return `+${ce.bonus}% ${traitNames.join(joiner)}`;
   },
 
-  setCE(slotIndex, ceId, optionId) {
-    if (slotIndex < 0 || slotIndex >= this.state.ces.length) return;
-    if (optionId) {
-      this.state.ces[slotIndex] = { groupId: ceId, optionId: optionId };
+  /* A blank position, or a pending hole the picker owns. */
+  _buildCEAddChip(slotIndex, position) {
+    const chip = DOMFactory.el("div", ["ce-chip", "ce-chip--add"]);
+    chip.textContent = "+";
+    chip.title = "Add craft essence";
+    chip.addEventListener("click", () => this.addCE(slotIndex, position));
+    return chip;
+  },
+
+  /* One position of the slot's essence list: a 64px portrait and nothing else \u2014 the name and the bonus
+     live in the chip's title and in the results card. An id that no longer resolves still gets a chip
+     (the id as its text) so the player can always remove it. */
+  _buildCEChip(slotData, slotIndex, position) {
+    const ceEntry = slotData.ces[position];
+    if (!ceEntry) return this._buildCEAddChip(slotIndex, position);
+
+    const grouped = typeof ceEntry === "object" && ceEntry.groupId;
+    const ce = CEById.get(grouped ? ceEntry.groupId : ceEntry);
+    const option = grouped && ce && ce.options ? ce.options.find((o) => o.id === ceEntry.optionId) : null;
+    const ceName = grouped ? (option ? option.name : ce ? ce.name : ceEntry.groupId) : ce ? ce.name : ceEntry;
+    const ceImage = grouped ? (option ? option.image : ce ? ce.image : null) : ce ? ce.image : null;
+    const idText = grouped ? ceEntry.groupId : ceEntry;
+
+    const chip = DOMFactory.el("div", "ce-chip");
+    chip.title = ce ? `${ceName} \u00b7 ${this._ceBonusText(ce, ceEntry)}` : ceName;
+    if (ceImage) {
+      const img = DOMFactory.createLazyImg(ceImage, "ce-chip-img", { alt: ceName });
+      DOMFactory.addSimpleFallback(img, "ce-chip-fallback", idText);
+      chip.appendChild(img);
     } else {
-      this.state.ces[slotIndex] = ceId;
+      const fb = DOMFactory.el("div", "ce-chip-fallback");
+      fb.textContent = idText;
+      chip.appendChild(fb);
     }
-    this.saveState();
-    this.buildCESlots();
+
+    // Click to re-pick this position, straight to the options when it is a grouped essence.
+    chip.addEventListener("click", () => {
+      const callbacks = this._createCECallbacks(slotIndex, position);
+      if (ce && ce.isGroup) {
+        this._refs.CESubSelector.open(ce, position, callbacks);
+      } else {
+        this._refs.CESelector.open(position, false, callbacks);
+      }
+    });
+
+    const removeBtn = DOMFactory.el("button", "ce-chip-x", { type: "button" });
+    removeBtn.textContent = "\u2715";
+    removeBtn.title = "Remove craft essence";
+    removeBtn.setAttribute("aria-label", `Remove ${ceName}`);
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.removeCE(slotIndex, position);
+    });
+    chip.appendChild(removeBtn);
+
+    return chip;
   },
 
-  removeCE(index) {
-    this.state.ces.splice(index, 1);
+  /* The card's own essence block: a bordered field labelled "Craft Essence" holding the Grand Servant
+     tick and one chip per position the slot can wear. */
+  _buildSlotCEs(slotData, slotIndex) {
+    const block = DOMFactory.el("div", "slot-ce-block");
+
+    const label = DOMFactory.el("label", "bond-input-box-label", { for: `slotGrand_${slotIndex}` });
+    label.textContent = "Craft Essence";
+    block.appendChild(label);
+
+    const grandCheckbox = DOMFactory.el("input", "bond-checkbox", {
+      type: "checkbox",
+      id: `slotGrand_${slotIndex}`,
+    });
+    if (slotData.grand) grandCheckbox.checked = true;
+    const grandText = DOMFactory.el("span");
+    grandText.textContent = "Grand Servant";
+    const grandLabel = DOMFactory.el("label", "bond-checkbox-label");
+    grandLabel.appendChild(grandCheckbox);
+    grandLabel.appendChild(grandText);
+    const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
+    checkboxRow.appendChild(grandLabel);
+    block.appendChild(checkboxRow);
+
+    grandCheckbox.addEventListener("change", () => {
+      this.flushInputsToState();
+      slotData.grand = grandCheckbox.checked;
+      SlotCEs.trim(slotData); // unticking drops the second essence, no confirmation, no restore
+      this.saveState();
+      this.buildServantSlots();
+    });
+
+    const strip = DOMFactory.el("div", "slot-ce-strip");
+    const chips = document.createDocumentFragment();
+    for (let position = 0; position < SlotCEs.capacity(slotData); position++) {
+      chips.appendChild(this._buildCEChip(slotData, slotIndex, position));
+    }
+    strip.replaceChildren(chips);
+    block.appendChild(strip);
+
+    return block;
+  },
+
+  setCE(slotIndex, position, ceId, optionId) {
+    const slot = this.state.slots[slotIndex];
+    if (!slot || position < 0 || position >= SlotCEs.capacity(slot)) return;
+    slot.ces[position] = optionId ? { groupId: ceId, optionId: optionId } : ceId;
     this.saveState();
-    this.buildCESlots();
+    this.buildServantSlots();
+  },
+
+  removeCE(slotIndex, position) {
+    const slot = this.state.slots[slotIndex];
+    if (!slot) return;
+    slot.ces.splice(position, 1);
+    this.saveState();
+    this.buildServantSlots();
+  },
+
+  /* Pending Slot: the hole is a null in the slot's own list, so partyPool skips it while the picker is
+     open and cancelling splices it back out. */
+  addCE(slotIndex, position) {
+    const slot = this.state.slots[slotIndex];
+    if (!slot) return;
+    slot.ces[position] = null;
+    this.buildServantSlots();
+    this._refs.CESelector.open(position, true, this._createCECallbacks(slotIndex, position));
   },
 
   flushInputsToState() {
@@ -483,49 +474,37 @@ export const BondApp = {
         const isSupport = slotType === "support";
         const isBondHidden = isSupport || !!slotData.maxBond;
 
-        // Checkboxes row: "Max Bond" and "Bond >=15"
-        const checkboxRowClass = isSupport ? "bond-checkbox-row bond-checkbox-row--hidden" : "bond-checkbox-row";
-        const checkboxRow = DOMFactory.el("div", checkboxRowClass);
-
-        // Max Bond checkbox
-        const maxBondLabel = DOMFactory.el("label", "bond-checkbox-label");
-        const maxBondAttrs = {
-          type: "checkbox",
-          id: `slotMaxBond_${i}`,
-        };
-        if (isSupport) {
-          maxBondAttrs.disabled = true;
-          maxBondAttrs.tabIndex = -1;
-        }
-        const maxBondCheckbox = DOMFactory.el("input", "bond-checkbox", maxBondAttrs);
-        if (slotData.maxBond) maxBondCheckbox.checked = true;
-        const maxBondText = DOMFactory.el("span");
-        maxBondText.textContent = "Max Bond";
-        maxBondLabel.appendChild(maxBondCheckbox);
-        maxBondLabel.appendChild(maxBondText);
-        checkboxRow.appendChild(maxBondLabel);
-
-        // Bond >=15 checkbox
-        const bond15Label = DOMFactory.el("label", "bond-checkbox-label");
-        const bond15Attrs = {
-          type: "checkbox",
-          id: `slotBond15_${i}`,
-        };
-        if (isSupport) {
-          bond15Attrs.disabled = true;
-          bond15Attrs.tabIndex = -1;
-        }
-        const bond15Checkbox = DOMFactory.el("input", "bond-checkbox", bond15Attrs);
-        if (slotData.bond15) bond15Checkbox.checked = true;
-        const bond15Text = DOMFactory.el("span");
-        bond15Text.textContent = "Bond \u226515";
-        bond15Label.appendChild(bond15Checkbox);
-        bond15Label.appendChild(bond15Text);
-        checkboxRow.appendChild(bond15Label);
-
-        info.appendChild(checkboxRow);
-
+        /* Checkboxes row: "Max Bond" and "Bond >=15". A support servant has neither, so the row is not
+           built at all; it used to sit here invisible, holding the height of a row nobody can reach. */
         if (!isSupport) {
+          const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
+
+          const maxBondLabel = DOMFactory.el("label", "bond-checkbox-label");
+          const maxBondCheckbox = DOMFactory.el("input", "bond-checkbox", {
+            type: "checkbox",
+            id: `slotMaxBond_${i}`,
+          });
+          if (slotData.maxBond) maxBondCheckbox.checked = true;
+          const maxBondText = DOMFactory.el("span");
+          maxBondText.textContent = "Max Bond";
+          maxBondLabel.appendChild(maxBondCheckbox);
+          maxBondLabel.appendChild(maxBondText);
+          checkboxRow.appendChild(maxBondLabel);
+
+          const bond15Label = DOMFactory.el("label", "bond-checkbox-label");
+          const bond15Checkbox = DOMFactory.el("input", "bond-checkbox", {
+            type: "checkbox",
+            id: `slotBond15_${i}`,
+          });
+          if (slotData.bond15) bond15Checkbox.checked = true;
+          const bond15Text = DOMFactory.el("span");
+          bond15Text.textContent = "Bond \u226515";
+          bond15Label.appendChild(bond15Checkbox);
+          bond15Label.appendChild(bond15Text);
+          checkboxRow.appendChild(bond15Label);
+
+          info.appendChild(checkboxRow);
+
           maxBondCheckbox.addEventListener("change", () => {
             this.flushInputsToState();
             slotData.maxBond = maxBondCheckbox.checked;
@@ -541,8 +520,9 @@ export const BondApp = {
           });
         }
 
-        /* Bond level selects, then the point box the player reads off the in-game bond screen.
-           All three hide together for support and Max Bond slots, as the point box always did. */
+        /* Bond level selects, then the point box the player reads off the in-game bond screen. A support
+           or Max Bond slot prices nothing level by level, so those fields are never built for it — and
+           the essence block below moves up into the space they used to reserve. */
         const bondGrowth = ServantData.getBondGrowth(slotData.servantId);
         const maxLevel = bondGrowth ? bondGrowth.length - 1 : BOND_CONSTANTS.MAX_BOND_LEVEL - 1;
         const currentLevel = Math.min(Validator.clamp(slotData.bondLevel, 0, maxLevel), maxLevel);
@@ -554,96 +534,88 @@ export const BondApp = {
           this.saveState();
         }
 
-        const levelBox = (refKey, labelText, id, values, selected, onChange) => {
-          const box = DOMFactory.el("div", isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box");
-          const label = DOMFactory.el("label", "bond-input-box-label", { for: id });
-          label.textContent = labelText;
-          const select = DOMFactory.el("select", "bond-input-box-field bond-level-select", { id });
-          if (isBondHidden) {
-            select.disabled = true;
-            select.tabIndex = -1;
-          }
-          values.forEach((value) => {
-            const opt = DOMFactory.el("option", null, { value: String(value) });
-            opt.textContent = String(value);
-            if (value === selected) opt.selected = true;
-            select.appendChild(opt);
-          });
-          select.addEventListener("change", () => onChange(select.value));
-          if (!isBondHidden) this.elements[refKey] = select;
-          box.appendChild(label);
-          box.appendChild(select);
-          return box;
-        };
-
         const levelValues = (from, to) => {
           const out = [];
           for (let v = from; v <= to; v++) out.push(v);
           return out;
         };
 
-        // Moving off a level always re-prices the box from the table — the old level's figure is stale.
-        const currentBox = levelBox(
-          `slotBondLv_${i}`,
-          "Current Lv.",
-          `slotBondLv_${i}`,
-          levelValues(0, maxLevel),
-          currentLevel,
-          (value) => {
-            this.flushInputsToState();
-            const next = Math.round(Validator.clamp(value, 0, maxLevel));
-            slotData.bondLevel = next;
-            if (slotData.targetLevel <= next) slotData.targetLevel = next + 1;
-            if (bondGrowth) slotData.bondNeeded = bondGrowth[next];
-            // The +25% all-servant bonus belongs to bond 15+, so the box follows the level both ways.
-            slotData.bond15 = next >= BOND_CONSTANTS.BOND_BONUS_LEVEL;
-            this.saveState();
-            this.buildServantSlots();
-          },
-        );
-
-        const targetBox = levelBox(
-          `slotBondTgt_${i}`,
-          "Target Lv.",
-          `slotBondTgt_${i}`,
-          levelValues(currentLevel + 1, maxLevel + 1),
-          targetLevel,
-          (value) => {
-            this.flushInputsToState();
-            slotData.targetLevel = Math.round(Validator.clamp(value, currentLevel + 1, maxLevel + 1));
-            this.saveState();
-          },
-        );
-
-        const levelRow = DOMFactory.el("div", "bond-level-row");
-        levelRow.appendChild(currentBox);
-        levelRow.appendChild(targetBox);
-        info.appendChild(levelRow);
-
-        // Bond input box with border label (always created to preserve height, hidden if max bond or support)
-        const inputBoxClass = isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box";
-        const inputBox = DOMFactory.el("div", inputBoxClass);
-        const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
-        inputLabel.textContent = "Next Lv. Required";
-        const inputAttrs = {
-          type: "number",
-          id: `slotBond_${i}`,
-          min: "0",
-          max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
-          value: String(slotData.bondNeeded || 0),
-        };
-        if (isBondHidden) {
-          inputAttrs.disabled = true;
-          inputAttrs.tabIndex = -1;
-        }
-        const input = DOMFactory.el("input", "bond-input-box-field", inputAttrs);
-        inputBox.appendChild(inputLabel);
-        inputBox.appendChild(input);
-        info.appendChild(inputBox);
-
         if (!isBondHidden) {
+          const levelBox = (refKey, labelText, id, values, selected, onChange) => {
+            const box = DOMFactory.el("div", "bond-input-box");
+            const label = DOMFactory.el("label", "bond-input-box-label", { for: id });
+            label.textContent = labelText;
+            const select = DOMFactory.el("select", "bond-input-box-field bond-level-select", { id });
+            values.forEach((value) => {
+              const opt = DOMFactory.el("option", null, { value: String(value) });
+              opt.textContent = String(value);
+              if (value === selected) opt.selected = true;
+              select.appendChild(opt);
+            });
+            select.addEventListener("change", () => onChange(select.value));
+            this.elements[refKey] = select;
+            box.appendChild(label);
+            box.appendChild(select);
+            return box;
+          };
+
+          // Moving off a level always re-prices the box from the table — the old level's figure is stale.
+          const currentBox = levelBox(
+            `slotBondLv_${i}`,
+            "Current Lv.",
+            `slotBondLv_${i}`,
+            levelValues(0, maxLevel),
+            currentLevel,
+            (value) => {
+              this.flushInputsToState();
+              const next = Math.round(Validator.clamp(value, 0, maxLevel));
+              slotData.bondLevel = next;
+              if (slotData.targetLevel <= next) slotData.targetLevel = next + 1;
+              if (bondGrowth) slotData.bondNeeded = bondGrowth[next];
+              // The +25% all-servant bonus belongs to bond 15+, so the box follows the level both ways.
+              slotData.bond15 = next >= BOND_CONSTANTS.BOND_BONUS_LEVEL;
+              this.saveState();
+              this.buildServantSlots();
+            },
+          );
+
+          const targetBox = levelBox(
+            `slotBondTgt_${i}`,
+            "Target Lv.",
+            `slotBondTgt_${i}`,
+            levelValues(currentLevel + 1, maxLevel + 1),
+            targetLevel,
+            (value) => {
+              this.flushInputsToState();
+              slotData.targetLevel = Math.round(Validator.clamp(value, currentLevel + 1, maxLevel + 1));
+              this.saveState();
+            },
+          );
+
+          const levelRow = DOMFactory.el("div", "bond-level-row");
+          levelRow.appendChild(currentBox);
+          levelRow.appendChild(targetBox);
+          info.appendChild(levelRow);
+
+          // Bond input box with border label
+          const inputBox = DOMFactory.el("div", "bond-input-box");
+          const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
+          inputLabel.textContent = "Next Lv. Required";
+          const input = DOMFactory.el("input", "bond-input-box-field", {
+            type: "number",
+            id: `slotBond_${i}`,
+            min: "0",
+            max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
+            value: String(slotData.bondNeeded || 0),
+          });
+          inputBox.appendChild(inputLabel);
+          inputBox.appendChild(input);
+          info.appendChild(inputBox);
           this.elements[`slotBond_${i}`] = input;
         }
+
+        // The essences belong to this card, so they follow the point box — or take its place.
+        info.appendChild(this._buildSlotCEs(slotData, i));
 
         // Remove button
         const removeSlotIndex = i;
@@ -819,7 +791,7 @@ export const BondApp = {
       const servantTraits = servant ? ServantData.getTraitsForAscension(servantId, ascension) : [];
       const traitSet = new Set(servantTraits);
       let flatBonus = 0;
-      this.state.ces.forEach((ceEntry) => {
+      SlotCEs.partyPool(this.state.slots).forEach((ceEntry) => {
         // Resolve CE from entry (string or group object)
         let ceId, optionId;
         if (typeof ceEntry === "object" && ceEntry.groupId) {
@@ -1078,6 +1050,7 @@ export const BondApp = {
           maxBond: s.type === "maxbond" ? true : Boolean(s.maxBond),
           bond15: s.type === "maxbond" ? true : Boolean(s.bond15),
           ascension: typeof s.ascension === "string" && s.ascension ? s.ascension : null,
+          ...SlotCEs.sanitize(s.ces, s.grand),
         });
       };
 
@@ -1099,13 +1072,6 @@ export const BondApp = {
         slots: slots.map(sanitize),
         selectedQuest: typeof data.selectedQuest === "string" ? data.selectedQuest : "",
         customBond: Validator.clamp(data.customBond || 0, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND),
-        ces: Array.isArray(data.ces)
-          ? data.ces.filter((entry) => {
-              if (typeof entry === "string" && entry) return true;
-              if (entry && typeof entry === "object" && entry.groupId && entry.optionId) return true;
-              return false;
-            })
-          : [],
       };
     } catch (_e) {
       return null;

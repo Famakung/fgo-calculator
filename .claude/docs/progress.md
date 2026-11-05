@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-11-05 — feat(bond): craft essences moved into the servant slot
+
+Plan `.claude/docs/archive/2026-11-05-bond-slot-ce-rework-plan.md`, spec `.claude/bond-grand-ce-slot.html`, executed inline on `feat/bond-slot-ce` (commits `50e745e..` — six commits, one per task).
+
+The "Craft Essences Bonus" card became a block inside every servant card. Each slot owns `ces: []` + `grand: false`; capacity 1, 2 under **Grand Servant**; chips portrait only at 64px. The maths is untouched — `calculate()` walks `SlotCEs.partyPool(slots)` — which is the whole reason `SlotCEs` exists as a domain object instead of rendering logic: `tests/bond-slot-ces.test.js` pins capacity, trim, pool order, the shape rule and the clamp without a browser.
+
+Non-obvious bits:
+- **Task order had to bend.** Dropping `state.ces` in Task 2 while `buildCESlots()` (`this.state.ces.length`) and `calculate()` (`this.state.ces.forEach`) still read it would ship a Bond tab that throws on init, and no unit test can see that — the DOM has no unit harness here. Task 2 therefore also took Task 3's `partyPool` swap and the removal of `buildCESlots()`'s call, so no intermediate commit is broken. The dead functions went in Task 3.
+- **Collapsed, not hidden.** Support and Max Bond slots used to build the level selects, the point box and (for Support) the tick row, then hide them with `visibility: hidden` — the card kept the height. Creation is gated on `isSupport` / `isBondHidden` now, and the essence block moves up: 415px Normal, 317px Max Bond, 298px Support, which is the mock's 98px/117px saving to the pixel. The hidden-state `--hidden` classes are gone from CSS and JS. Nothing resets `slot.bondLevel`/`targetLevel`/`bondNeeded`, so a Support round trip returns the player's own figures (the gate reads the box value to prove it).
+- **Old saves load empty.** `data.ces` is dropped rather than dealt out to the cards, and each slot's own list goes through `SlotCEs.sanitize`, which is the same shape rule the old pool filter used (non-empty string, or `{groupId, optionId}` — a `groupId` alone is dropped) plus a clamp to capacity, so a hand-edited three-chip save with `grand: false` comes back as one chip.
+- **`#ceGrid` has two remaining references and both are the guard**: `scripts/verify_render.js` asserts it is *absent*. `grep -rn "ceGrid\|buildCESlots\|state\.ces" src/ scripts/` finding only those two lines is the expected state, not a miss.
+- `.calculate-btn` is shared with the Event Shop tab, so the smaller bond button is scoped to `.bond-card-actions` and the gate measures both widths (bond 31% of its row, event 100%) rather than trusting the cascade.
+- The dead `onOpenSubSelector` callback went with `buildCESlots()` — nothing has ever called it; `CESelector.renderGrid` opens `CESubSelector` itself.
+
+Verification: `npm run test` 35/35 · `npm run lint` exit 0 · `npm run build` ✓ · `npm run check:build` SUCCESS after `--write` (the page text lost "Craft Essences Bonus" and reordered, so both signatures moved; `bond-lazy` shrank, `ce-filter-chunk` grew) · `node scripts/verify_render.js` SUCCESS, including the new bond-slot blocks: chip height 64px, one chip Normal / two on Grand / one again after untick, equip and remove through the picker, no block on an empty slot, field collapse and height, tab order and button widths.
+Not checked by the gate: an unresolvable CE id rendering the fallback tile (needs a seeded save plus reload — pinned only by the code path and `SlotCEs.sanitize`), and the picker-cancel path that splices a pending hole. Both were eyeballed at `localhost:3000` by the owner.
+
 ## 2026-11-05 — feat(bond): "Party Setup" card title
 
 Asked as "in bond calculator tab change *Bond Points Requirements* to *Party Setup*". One string, one place: `src/pages/index.astro:417`, the `card-title` of the first card in `#panel-bond` (the servant-grid card). A case-insensitive repo-wide grep found no other occurrence — no test, doc, or gate asserted the old wording, so nothing else needed rewording. `scripts/verify_render.js` asserts the slot point box's label (`Next Lv. Required`), a different element, and was untouched.
