@@ -33,3 +33,5 @@ lighthouse-runner.js
 scripts/merge_code_only.sh
 # local browser gate: CI never runs it (needs a Chromium download)
 scripts/verify_render.js
+# unit tests: CI never runs npm run test, so they live on develop only
+/tests/
