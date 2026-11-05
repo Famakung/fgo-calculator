@@ -15,9 +15,9 @@ Mandatory — read the ones that cover your change (25 KB total):
 
 On demand, do **not** load them by default (they are big):
 
-- [.claude/CLAUDE.md](.claude/CLAUDE.md) (33 KB) — full architecture, build/deploy pipeline, Known Issues. Read the section matching your task; it is the deepest source of truth.
-- [.claude/docs/progress.md](.claude/docs/progress.md) (163 KB) — implementation log, per-feature status, testing checklists. Read the tail and grep for your feature, not the whole file.
-- [.claude/docs/fetch-data-guideline.md](.claude/docs/fetch-data-guideline.md) (62 KB) — only for Atlas Academy data-sync work.
+- [.claude/CLAUDE.md](.claude/CLAUDE.md) (39 KB) — full architecture, build/deploy pipeline, Known Issues. Read the section matching your task; it is the deepest source of truth.
+- [.claude/docs/progress.md](.claude/docs/progress.md) (172 KB) — implementation log, per-feature status, testing checklists. Read the tail and grep for your feature, not the whole file.
+- [.claude/docs/fetch-data-guideline.md](.claude/docs/fetch-data-guideline.md) (63 KB) — only for Atlas Academy data-sync work.
 
 ## The rules that break the site if ignored
 
@@ -27,6 +27,23 @@ On demand, do **not** load them by default (they are big):
 - **JS style**: ES modules, 2-space indent, semicolons, **double quotes** (Prettier `printWidth: 120`, `trailingComma: "all"`). Files kebab-case.
 - **Trait IDs are 4-digit zero-padded strings** (`"0100"`, `"0002"`), sorted ascending in arrays.
 - **Generated data is gitignored**: `src/scripts/data/*.js`, `public/servants/`, `public/craft_essences/`. Fresh clone → `npm run data:sync` before anything builds (`predev`/`prebuild` call `scripts/ensure_data.js`).
+
+## Token spend — ask before a big burn (owner rule, applies to every repo)
+
+The owner decides what a run costs. Name the step in one line and **wait for approval** before:
+
+- dispatching a reviewer, auditor or any other subagent, and any parallel fan-out of agents
+- running a multi-agent workflow
+- reading one of the large docs above whole instead of grepping it for the feature
+- repeating `npm run build` + `node scripts/verify_render.js` when no source file changed
+
+No approval needed for the cheap checks a task already calls for: `npm run test`, `npm run lint`,
+`npm run check:build`, `git` reads, targeted greps.
+
+Never auto-run a final whole-branch code review — the owner tests by hand (currently `localhost:3000` against
+a served build) and reads the diff themselves. Report gate evidence and stop. Do not substitute your own
+self-review pass for it. This is not permission to pause between tasks asking "should I continue?" — progress
+prompts are still forbidden.
 
 ## Build & verify
 
