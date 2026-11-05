@@ -344,10 +344,7 @@ export const CEFilterApp = {
   /* The classes the Class row may offer. A group is the whole row when no class is picked inside it, and
      clips back to the pick when one is — the same rule `ServantFilters` matches on. */
   _classScope() {
-    const scope = ServantFilters.classScope(this.state.groupClassFilters);
-    if (!scope) return null;
-    const picked = this.state.classFilters.filter((id) => scope.includes(id));
-    return picked.length > 0 ? picked : scope;
+    return ServantFilters.rowScope(this.state.groupClassFilters);
   },
 
   /* The six trait rows, in modal order, on the page the results grid is showing: a class or rarity nobody

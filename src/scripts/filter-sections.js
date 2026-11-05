@@ -52,8 +52,13 @@ export const FilterSections = {
       const btn = this.chipEl(chip, chosen.has(value), isDisabled, opts.className);
       if (!isDisabled) {
         btn.addEventListener("click", () => {
-          if (chosen.has(value)) chosen.delete(value);
-          else chosen.add(value);
+          const nowActive = !chosen.has(value);
+          if (nowActive) chosen.add(value);
+          else chosen.delete(value);
+          /* Paint the chip itself: a row is only rebuilt when something else asks for it, so the row
+             cannot wait for a render to show what the click it just made actually did. */
+          btn.classList.toggle("active", nowActive);
+          btn.setAttribute("aria-pressed", String(nowActive));
           onToggle([...chosen]);
         });
       }
