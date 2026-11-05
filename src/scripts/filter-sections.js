@@ -9,8 +9,11 @@ import { ServantFilters } from "./domain.js";
    not touch it", and the class row now has to say exactly that for every class outside the chosen group,
    so a chip is a button and carries aria-pressed, disabled and the --disabled class together. */
 export const FilterSections = {
-  chipEl(chip, isActive, isDisabled) {
-    const cls = chip.icon ? "class-btn" : chip.count ? "ce-count-btn" : chip.group ? "ce-group-btn" : "rarity-btn";
+  /* `className` wins, then icon / group / count decide: the CE Bonus row counts numbers, not traits, and
+     the house `ce-count-btn` box is the one that sizes it. */
+  chipEl(chip, isActive, isDisabled, className) {
+    const cls =
+      className || (chip.icon ? "class-btn" : chip.count ? "ce-count-btn" : chip.group ? "ce-group-btn" : "rarity-btn");
     const btn = DOMFactory.el(
       "button",
       cls + (isActive ? " active" : "") + (isDisabled ? " " + cls + "--disabled" : ""),
@@ -44,9 +47,9 @@ export const FilterSections = {
     const chosen = selected instanceof Set ? selected : new Set(selected || []);
     const frag = document.createDocumentFragment();
     chips.forEach((chip) => {
-      const value = chip.other ? ServantFilters.SUB_ALI_OTHER : chip.id;
+      const value = chip.value !== undefined ? chip.value : chip.other ? ServantFilters.SUB_ALI_OTHER : chip.id;
       const isDisabled = opts.disabled ? opts.disabled(chip) : false;
-      const btn = this.chipEl(chip, chosen.has(value), isDisabled);
+      const btn = this.chipEl(chip, chosen.has(value), isDisabled, opts.className);
       if (!isDisabled) {
         btn.addEventListener("click", () => {
           if (chosen.has(value)) chosen.delete(value);
