@@ -24,6 +24,9 @@ export const BOND_CONSTANTS = {
   BOND_CARRY_LIMIT: 10,
   /* The level at which a servant starts granting the +25% all-servant bond bonus. */
   BOND_BONUS_LEVEL: 15,
+  /* Essences one slot can wear — two once the player ticks Grand Servant. */
+  MAX_CE_SLOTS: 1,
+  GRAND_MAX_CE_SLOTS: 2,
 };
 
 export const TIER_COLORS = {

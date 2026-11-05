@@ -143,6 +143,49 @@ export const BondLevelCalculator = {
   },
 };
 
+/* ============================================
+   SLOT CEs (Bond Calculator per-slot craft essences)
+   ============================================ */
+/* Each servant slot owns its essences: one normally, two when the player ticks Grand Servant. The
+   party maths does not move — every equipped essence still boosts every servant — so the bonus comes
+   from the pool of every slot's list, not from a list the player keeps beside the party. */
+export const SlotCEs = {
+  capacity(slot) {
+    return slot && slot.grand ? BOND_CONSTANTS.GRAND_MAX_CE_SLOTS : BOND_CONSTANTS.MAX_CE_SLOTS;
+  },
+
+  /* Shortens the slot's own list in place, keeping the leading entries: unticking Grand removes the
+     second essence, never the first. */
+  trim(slot) {
+    if (slot && Array.isArray(slot.ces)) {
+      slot.ces.length = Math.min(slot.ces.length, this.capacity(slot));
+    }
+    return slot;
+  },
+
+  partyPool(slots) {
+    const pool = [];
+    (slots || []).forEach((slot) => {
+      (slot && slot.ces ? slot.ces : []).forEach((entry) => {
+        if (entry) pool.push(entry); // a pending null hole belongs to the picker, not to the party
+      });
+    });
+    return pool;
+  },
+
+  /* The shape rule loadState() already applied to the old flat pool: a non-empty string id, or a
+     group entry carrying both its groupId and the optionId picked from it. */
+  isValidEntry(entry) {
+    if (typeof entry === "string") return entry.length > 0;
+    return !!(entry && typeof entry === "object" && entry.groupId && entry.optionId);
+  },
+
+  sanitize(rawCes, rawGrand) {
+    const ces = (Array.isArray(rawCes) ? rawCes : []).filter((entry) => this.isValidEntry(entry));
+    return this.trim({ ces, grand: Boolean(rawGrand) });
+  },
+};
+
 // Optimized: accepts Set for O(1) trait lookups
 export const TraitMatcher = {
   matches(servantTraitSet, ce) {
