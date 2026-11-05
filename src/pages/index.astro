@@ -701,9 +701,34 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               </button>
             </div>
             <div class="cefilter-modal-body">
-              <div class="filter-group">
-                <div class="class-filter" id="servantClassFilter"></div>
-                <div class="rarity-filter" id="servantRarityFilter"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantRarityLabel">Rarity / Category</div>
+                <div class="rarity-filter" id="servantRarityFilter" role="group" aria-labelledby="servantRarityLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantClassLabel">Class</div>
+                <div class="class-filter" id="servantClassFilter" role="group" aria-labelledby="servantClassLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantGroupLabel">Class (Group)</div>
+                <div class="rarity-filter" id="servantGroupFilter" role="group" aria-labelledby="servantGroupLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantAliLabel">Alignment (Lawful/Neutral/Chaotic)</div>
+                <div class="rarity-filter" id="servantAliFilter" role="group" aria-labelledby="servantAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantSubAliLabel">Alignment (Good/Balanced/Evil)</div>
+                <div class="rarity-filter" id="servantSubAliFilter" role="group" aria-labelledby="servantSubAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantAttrLabel">Sub-Attribute</div>
+                <div class="rarity-filter" id="servantAttrFilter" role="group" aria-labelledby="servantAttrLabel"></div>
               </div>
             </div>
           </div>
@@ -823,10 +848,39 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               </button>
             </div>
             <div class="cefilter-modal-body">
-              <div class="filter-group">
-                <div class="class-filter" id="cefilterClassFilter"></div>
-                <div class="rarity-filter" id="cefilterRarityFilter"></div>
-                <div class="ce-count-filter" id="cefilterMatchCount"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterRarityLabel">Rarity / Category</div>
+                <div class="rarity-filter" id="cefilterRarityFilter" role="group" aria-labelledby="cefilterRarityLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterClassLabel">Class</div>
+                <div class="class-filter" id="cefilterClassFilter" role="group" aria-labelledby="cefilterClassLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterGroupLabel">Class (Group)</div>
+                <div class="rarity-filter" id="cefilterGroupFilter" role="group" aria-labelledby="cefilterGroupLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterAliLabel">Alignment (Lawful/Neutral/Chaotic)</div>
+                <div class="rarity-filter" id="cefilterAliFilter" role="group" aria-labelledby="cefilterAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterSubAliLabel">Alignment (Good/Balanced/Evil)</div>
+                <div class="rarity-filter" id="cefilterSubAliFilter" role="group" aria-labelledby="cefilterSubAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterAttrLabel">Sub-Attribute</div>
+                <div class="rarity-filter" id="cefilterAttrFilter" role="group" aria-labelledby="cefilterAttrLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="cefilterMatchLabel">CE Bonus</div>
+                <div class="ce-count-filter" id="cefilterMatchCount" role="group" aria-labelledby="cefilterMatchLabel"></div>
               </div>
             </div>
           </div>
