@@ -5,6 +5,8 @@ import {
   EPSILON,
   BOND_CONSTANTS,
   CLASS_FILTERS,
+  CLASS_GROUPS,
+  ALIGNMENT_GBE_FILTERS,
   FREE_QUESTS,
   GRAND_CLASSES,
   GRAND_DIFFICULTIES,
@@ -451,6 +453,73 @@ export const Quest = {
     if (!ids) return true;
     const allowed = new Set(ids);
     return (traits || []).some((t) => allowed.has(t));
+  },
+};
+
+/* ============================================
+   SERVANT FILTERS (Filter Settings modal rows)
+   ============================================ */
+
+/* One row is a union — any chip in it passes — and the rows are ANDed together; a row with nothing
+   selected is no filter at all. `traits` is always the same merged list the class and rarity rows
+   already read: the servant's own in the picker, the resolved ascension's on a result card. */
+export const ServantFilters = {
+  /* The Good/Balanced/Evil row's last chip is a complement, not a trait: it stands for every servant
+     with none of the three, which is where Madness and Summer alignments land. */
+  SUB_ALI_OTHER: "other",
+  GBE: ALIGNMENT_GBE_FILTERS.filter((c) => c.id).map((c) => c.id),
+
+  /* The Class row's bound, for display: only the group chips and a quest's party lock narrow what a
+     player may select, so ticking Saber never greys Archer — the row stays a union. null is no bound. */
+  rowScope(groupClassFilters, lockedClasses) {
+    const keys = (groupClassFilters || []).filter((k) => CLASS_GROUPS.some((g) => g.key === k));
+    const group = [...new Set(keys.flatMap((k) => CLASS_GROUPS.find((g) => g.key === k).classes))];
+    const lock = lockedClasses && lockedClasses.length ? lockedClasses : null;
+    if (!group.length) return lock ? [...lock] : null;
+    if (!lock) return group;
+    const clipped = group.filter((id) => lock.includes(id));
+    return clipped.length ? clipped : [...lock];
+  },
+
+  /* What the Class row filters on: the row's bound, narrowed by a pick inside it. A pick from outside the
+     bound — carried in from another group or another quest — is ignored rather than honoured, and a row
+     with nothing selected is no filter at all. */
+  effectiveClassIds(filters = {}) {
+    const scope = this.rowScope(filters.groupClassFilters, filters.lockedClasses);
+    const picked = (filters.classFilters || []).filter((id) => !scope || scope.includes(id));
+    if (picked.length) return picked;
+    return scope;
+  },
+
+  /* Nothing selected in a row is no filter, and an untouched row holds an empty array: no bound ever
+     reaches this as [] — the impossible combination is spelled null, which means "nothing selected". */
+  rowMatches(traits, selected, { other } = {}) {
+    if (!selected || selected.length === 0) return true;
+    /* `other` is one chip among the row's own, so it takes the same union test as the rest: it is simply
+       met by a servant with none of Good, Balanced or Evil rather than by a trait it carries. */
+    if (
+      other &&
+      selected.includes(ServantFilters.SUB_ALI_OTHER) &&
+      !(traits || []).some((t) => ServantFilters.GBE.includes(t))
+    ) {
+      return true;
+    }
+    return (traits || []).some((t) => selected.includes(t));
+  },
+
+  match(traits, filters = {}) {
+    const { rarityFilters, aliFilters, subAliFilters, subAttrFilters, genderFilters } = filters;
+    /* The class row reads the group, the quest's lock and the player's picks together, and a pick from
+       outside the bound is ignored rather than honoured. */
+    const ids = this.effectiveClassIds(filters);
+    return (
+      this.rowMatches(traits, ids) &&
+      this.rowMatches(traits, rarityFilters) &&
+      this.rowMatches(traits, aliFilters) &&
+      this.rowMatches(traits, subAliFilters, { other: true }) &&
+      this.rowMatches(traits, subAttrFilters) &&
+      this.rowMatches(traits, genderFilters)
+    );
   },
 };
 

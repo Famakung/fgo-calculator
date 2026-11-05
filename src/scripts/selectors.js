@@ -1,6 +1,16 @@
 import { ServantData, CEList, TraitCEs } from "./data.js";
-import { CLASS_FILTERS, RARITY_FILTERS, DEBOUNCE_MS } from "./constants.js";
-import { Quest, ServantSort } from "./domain.js";
+import {
+  CLASS_FILTERS,
+  CLASS_GROUPS,
+  RARITY_FILTERS,
+  ALIGNMENT_LNC_FILTERS,
+  ALIGNMENT_GBE_FILTERS,
+  SUB_ATTR_FILTERS,
+  GENDER_FILTERS,
+  DEBOUNCE_MS,
+} from "./constants.js";
+import { ServantSort, ServantFilters } from "./domain.js";
+import { FilterSections } from "./filter-sections.js";
 import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
 
 /* Longest search the servant picker keeps. Names top out well under this, so it only trims a paste someone
@@ -18,9 +28,16 @@ export const ServantSelector = {
   _selectedIds: new Set(),
   classFilters: [],
   /* Set by a Grand Duel quest: the party is limited to these class ids, so the grid is pre-filtered to
-     them and the class row only offers them. null = the player picks classes themselves. */
+     them and the class row offers nothing outside them — greyed, never absent. null = no bound. */
   lockedClasses: null,
   rarityFilters: [],
+  /* The other four Filter Settings rows. Like class and rarity they are kept across a close and a reopen
+     for the page, are never saved, and are ANDed with it by ServantFilters.match. */
+  groupClassFilters: [],
+  aliFilters: [],
+  subAliFilters: [],
+  subAttrFilters: [],
+  genderFilters: [],
   _searchQuery: "",
   /* Sort sits with the rest of the picker row: kept for the page, blank after a refresh, and never saved. */
   sortBy: "id",
@@ -223,17 +240,11 @@ export const ServantSelector = {
           ServantData.getAllNames(s.id).some((n) => n.toLowerCase().includes(query)),
       );
     }
-    /* A locked party is bound by its group whether or not the player picked a class in it — nothing picked
-       inside the group means all of the group, and a pick that came from outside it is ignored. */
-    const classIds = Quest.pickedClassIds(this.classFilters, this.lockedClasses);
-    if (classIds.length > 0) {
-      const classSet = new Set(classIds);
-      result = result.filter((s) => s.traits.some((t) => classSet.has(t)));
-    }
-    if (this.rarityFilters.length > 0) {
-      const raritySet = new Set(this.rarityFilters);
-      result = result.filter((s) => s.traits.some((t) => raritySet.has(t)));
-    }
+    /* Every row at once, the class row included: a locked party is bound by its group whether or not the
+       player picked a class in it, a pick inside the group narrows it, and a pick from outside is ignored.
+       Read across the servant's forms — the picker names no ascension, and a sub-attribute can arrive with
+       one (415 is Human in her 1st form and Earth in her 3rd). */
+    result = result.filter((s) => ServantFilters.match(ServantData.getAllTraits(s.id), this));
     // Ordered last: what the player sorted by is a property of the rows the grid shows, never of the filter.
     return ServantSort.sorted(result, this.sortBy, this.sortOrder);
   },
@@ -246,9 +257,9 @@ export const ServantSelector = {
     if (searchInput) searchInput.value = this._searchQuery;
 
     /* A Grand Duel choice that names exactly one class has nothing to sort by class — that class is the
-       whole party — so the option goes grey and a remembered "class" sort falls back to ID, for the same
-       reason its class row is not built at all. The three Extra groups span several classes, so theirs
-       stay usable. */
+       whole party, and the class row can only ever show it greyed but selectable-in-effect — so the option
+       goes grey and a remembered "class" sort falls back to ID. The three Extra groups span several
+       classes, so theirs stay usable. */
     const singleClass = Boolean(this.lockedClasses) && this.lockedClasses.length === 1;
     const sortSelect = document.getElementById("servantPickerSortBy");
     if (sortSelect) {
@@ -262,81 +273,66 @@ export const ServantSelector = {
     }
     this._paintSortOrder();
 
-    const classRow = document.getElementById("servantClassFilter");
-    if (classRow) {
-      classRow.replaceChildren();
-      if (!this.lockedClasses || this.lockedClasses.length > 1) this._buildClassFilter(classRow);
-    }
-
-    const rarityRow = document.getElementById("servantRarityFilter");
-    if (rarityRow) {
-      rarityRow.replaceChildren();
-      this._buildRarityFilter(rarityRow);
-    }
+    this._renderFilterRows();
   },
 
-  /* `container` is the modal's `.class-filter` row itself: it is emptied and refilled, never wrapped. */
-  _buildClassFilter(container) {
-    const { standard, extra } = CLASS_FILTERS;
-
-    const selected = new Set(this.classFilters);
-
-    /* Inside a group the quest still decides which classes exist here: the row offers only them, opens
-       unselected, and one picked class narrows the grid to it — the set can never reach outside the group. */
-    const locked = this.lockedClasses;
-    const rows = locked ? [[...standard, ...extra].filter((cls) => locked.includes(cls.id))] : [standard, extra];
-
-    const buildRow = (classes) => {
-      classes.forEach((cls) => {
-        const btn = DOMFactory.el("div", "class-btn" + (selected.has(cls.id) ? " active" : ""));
-        /* src, not data-src: nothing promotes it any more now that the row sits in a modal instead of a
-           collapsed filter, so a deferred icon would never load. */
-        const img = DOMFactory.el("img", "", {
-          src: `icons/classes/${cls.icon}.webp`,
-          alt: cls.label,
-          title: cls.label,
-        });
-        btn.appendChild(img);
-        btn.addEventListener("click", () => {
-          if (selected.has(cls.id)) {
-            selected.delete(cls.id);
-            btn.classList.remove("active");
-          } else {
-            selected.add(cls.id);
-            btn.classList.add("active");
-          }
-          this.classFilters = [...selected];
-          this.filter();
-        });
-        container.appendChild(btn);
-      });
+  /* The six rows, rebuilt on every open so what shows as active is what is in force for the quest that
+     opened the picker. The class row is always built: outside the group or the quest's lock its chips are
+     greyed rather than absent, so the row cannot be escaped by a stale pick and comes back whole when the
+     group is cleared. */
+  _renderFilterRows() {
+    const scope = ServantFilters.rowScope(this.groupClassFilters, this.lockedClasses);
+    const lock = this.lockedClasses;
+    const toggle = (key) => (ids) => {
+      this[key] = ids;
+      this.filter();
     };
 
-    rows.forEach(buildRow);
-  },
-
-  /* `container` is the modal's `.rarity-filter` row itself, emptied and refilled like the class row. */
-  _buildRarityFilter(container) {
-    const rarities = RARITY_FILTERS;
-
-    const selected = new Set(this.rarityFilters);
-
-    rarities.forEach((rarity) => {
-      const btn = DOMFactory.el("div", "rarity-btn" + (selected.has(rarity.id) ? " active" : ""));
-      btn.textContent = rarity.label;
-      btn.addEventListener("click", () => {
-        if (selected.has(rarity.id)) {
-          selected.delete(rarity.id);
-          btn.classList.remove("active");
-        } else {
-          selected.add(rarity.id);
-          btn.classList.add("active");
-        }
-        this.rarityFilters = [...selected];
-        this.filter();
-      });
-      container.appendChild(btn);
-    });
+    FilterSections.renderRow(
+      document.getElementById("servantRarityFilter"),
+      RARITY_FILTERS,
+      this.rarityFilters,
+      toggle("rarityFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantClassFilter"),
+      [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
+      this.classFilters,
+      toggle("classFilters"),
+      { disabled: (chip) => scope !== null && !scope.includes(chip.id) },
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantGroupFilter"),
+      CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true, classes: g.classes })),
+      this.groupClassFilters,
+      toggle("groupClassFilters"),
+      { disabled: (chip) => Boolean(lock) && !chip.classes.some((id) => lock.includes(id)) },
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantAliFilter"),
+      ALIGNMENT_LNC_FILTERS,
+      this.aliFilters,
+      toggle("aliFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantSubAliFilter"),
+      ALIGNMENT_GBE_FILTERS,
+      this.subAliFilters,
+      toggle("subAliFilters"),
+      { disabled: () => this.subAliFilters.includes(ServantFilters.SUB_ALI_OTHER) },
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantAttrFilter"),
+      SUB_ATTR_FILTERS,
+      this.subAttrFilters,
+      toggle("subAttrFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantGenderFilter"),
+      GENDER_FILTERS,
+      this.genderFilters,
+      toggle("genderFilters"),
+    );
   },
 };
 

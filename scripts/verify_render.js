@@ -135,10 +135,8 @@ try {
   // The vertical rhythm the servant picker has to match: search bar to controls row.
   const ceSearchGap = await page.evaluate(() =>
     Math.round(
-      document
-        .querySelector("#cefilterSortBy")
-        .getBoundingClientRect()
-        .top - document.querySelector("#cefilterSearchInput").getBoundingClientRect().bottom,
+      document.querySelector("#cefilterSortBy").getBoundingClientRect().top -
+        document.querySelector("#cefilterSearchInput").getBoundingClientRect().bottom,
     ),
   );
   if (
@@ -437,6 +435,75 @@ try {
   if (!ceCleared.clearHidden) errors.push("ce clear: button still shown with an empty selection");
   if (ceCleared.clearLabel !== "Clear all") errors.push(`ce clear: label stayed "${ceCleared.clearLabel}"`);
   if (ceCleared.cards === 0) errors.push("ce clear: the servant grid emptied instead of falling back to all servants");
+
+  /* The eight-section Filter Settings modal: labels in order, a class pick that narrows the grid without
+     greying any sibling, and a group chip that greys the twelve classes outside it. Everything is toggled
+     back off before the blocks below run, since they read the grid unfiltered. */
+  await page.evaluate(() => document.getElementById("cefilterFilterBtn").click());
+  const ceFilter = await page.evaluate(async () => {
+    const wait = () => new Promise((r) => setTimeout(r, 700));
+    const row = (id) => [...document.querySelectorAll(`#${id} button`)];
+    const pages = () => document.querySelector("#cefilterPaginationTop .cefilter-page-indicator")?.textContent || "";
+    const before = pages();
+    const sab = row("cefilterClassFilter").find((b) => b.querySelector("img")?.alt === "Saber");
+    sab.click();
+    await wait();
+    const sabOn = {
+      pressed: sab.getAttribute("aria-pressed"),
+      active: sab.classList.contains("active"),
+      pages: pages(),
+    };
+    sab.click();
+    await wait();
+    const knight = row("cefilterGroupFilter").find((b) => b.textContent.trim() === "Three Knights");
+    knight.click();
+    await wait();
+    const seen = {
+      sections: [...document.querySelectorAll("#cefilterFilterModal .cefilter-modal-label")].map((l) => l.textContent),
+      dividers: document.querySelectorAll("#cefilterFilterModal .cefilter-modal-divider").length,
+      disabledUnderGroup: row("cefilterClassFilter").filter((b) => b.disabled).length,
+      sabPressed: sabOn.pressed,
+      sabActive: sabOn.active,
+      sabPages: sabOn.pages,
+      pagesBefore: before,
+      pagesBack: pages(),
+      ceBonusRow: row("cefilterMatchCount").length,
+    };
+    knight.click();
+    await wait();
+    seen.disabledCleared = row("cefilterClassFilter").filter((b) => b.disabled).length;
+    return seen;
+  });
+  await page.evaluate(() => document.getElementById("cefilterFilterModalClose").click());
+  const WANT_LABELS = [
+    "Rarity",
+    "Class",
+    "Class (Group)",
+    "Alignment (Lawful/Neutral/Chaotic)",
+    "Alignment (Good/Balanced/Evil)",
+    "Sub-Attribute",
+    "Gender",
+    "CE Bonus",
+  ];
+  if (ceFilter.sections.join() !== WANT_LABELS.join()) {
+    errors.push(`ce filter: sections read ${JSON.stringify(ceFilter.sections)}, want ${JSON.stringify(WANT_LABELS)}`);
+  }
+  if (ceFilter.dividers !== 7) errors.push(`ce filter: ${ceFilter.dividers} separators, want 7 between 8 sections`);
+  if (ceFilter.disabledUnderGroup !== 12) {
+    errors.push(`ce filter: Three Knights greyed ${ceFilter.disabledUnderGroup} class chips, want the 12 outside it`);
+  }
+  if (ceFilter.disabledCleared !== 0)
+    errors.push(`ce filter: clearing the group left ${ceFilter.disabledCleared} greyed`);
+  if (!ceFilter.sabPressed || !ceFilter.sabActive) {
+    errors.push("ce filter: a class pick did not paint its own chip pressed and active");
+  }
+  const pageCount = (s) => parseInt((s || "").split("/")[1], 10);
+  if (!(pageCount(ceFilter.sabPages) < pageCount(ceFilter.pagesBefore))) {
+    errors.push(
+      `ce filter: Saber did not change the result pages (${ceFilter.pagesBefore} → ${ceFilter.sabPages} → ${ceFilter.pagesBack})`,
+    );
+  }
+  if (ceFilter.ceBonusRow === 0) errors.push("ce filter: the CE Bonus row built no chips with CEs selected");
 
   // Re-select a CE from a card badge so the reload below also proves Craft Essence Select persists.
   await page.evaluate(() => document.querySelector("#cefilterResults .cefilter-match-badge")?.click());
@@ -1164,27 +1231,34 @@ try {
       classes: Array.from(document.querySelectorAll("#servantClassFilter .class-btn")).map((b) =>
         b.classList.contains("active"),
       ),
+      /* The class row always shows all fifteen; outside a group or a quest lock the chips are greyed,
+         never absent, so the count that is clickable is the count the bound allows. */
+      enabled: [...document.querySelectorAll("#servantClassFilter .class-btn")].filter((b) => !b.disabled).length,
+      disabled: document.querySelectorAll("#servantClassFilter .class-btn:disabled").length,
+      groups: document.querySelectorAll("#servantGroupFilter .ce-group-btn").length,
+      sections: document.querySelectorAll("#servantFilterModal .cefilter-modal-section").length,
       cards: document.getElementById("servantPickerGrid").children.length,
     }));
     await closePicker();
     return seen;
   };
 
-  /* The group row opens unselected and still shows only its group; picking one class narrows to that
-     class, and clearing it again returns to the whole group — never to the full roster. */
+  /* The group row opens unselected and still shows every class, the out-of-group ones greyed; picking the
+     first clickable class narrows to it, and clearing it returns to the group — never to the full roster. */
   const pickerNarrow = async () => {
     await page.click(".servant-add-slot");
     await page.waitForSelector("#servantModal.open", { timeout: 15000 });
     await openFilterSubModal();
     const seen = await page.evaluate(() => {
       const btns = [...document.querySelectorAll("#servantClassFilter .class-btn")];
+      const live = btns.filter((b) => !b.disabled);
       const grid = document.getElementById("servantPickerGrid");
       const active = () => btns.filter((b) => b.classList.contains("active")).length;
       const cards = () => grid.children.length;
       const start = { active: active(), cards: cards() };
-      btns[0].click();
-      const oneOn = { active: active(), cards: cards() };
-      btns[0].click();
+      live[0].click();
+      const oneOn = { active: active(), cards: cards(), painted: live[0].classList.contains("active") };
+      live[0].click();
       return { start, oneOn, cleared: { active: active(), cards: cards() } };
     });
     await closePicker();
@@ -1235,25 +1309,34 @@ try {
   const every = await pickerState();
   if (
     !extra1.row ||
-    extra1.classes.length !== 4 ||
+    extra1.classes.length !== 15 ||
+    extra1.enabled !== 4 ||
+    extra1.disabled !== 11 ||
+    extra1.groups !== 4 ||
+    extra1.sections !== 7 ||
     extra1.classes.some((a) => a) ||
     narrow.start.active !== 0 ||
     narrow.oneOn.active !== 1 ||
+    !narrow.oneOn.painted ||
     !(narrow.oneOn.cards < narrow.start.cards) ||
     narrow.cleared.active !== 0 ||
     narrow.cleared.cards !== narrow.start.cards ||
     !(narrow.start.cards > 0 && narrow.start.cards < every.cards) ||
-    saber.row ||
-    saber.classes.length !== 0 ||
+    !saber.row ||
+    saber.enabled !== 1 ||
+    saber.disabled !== 14 ||
     !(saber.cards > 0 && saber.cards < every.cards) ||
     every.classes.length !== 15 ||
+    every.enabled !== 15 ||
+    every.disabled !== 0 ||
     every.classes.some((a) => a) ||
     !(every.cards > saber.cards && every.cards > extra1.cards)
   ) {
     errors.push(
       `class filter: Extra I ${JSON.stringify([extra1, narrow])}, Saber ${JSON.stringify(saber)}, ` +
-        `All ${JSON.stringify(every)} — want 4 unselected buttons that narrow to one class and clear back ` +
-        `to the group, no row at all for a single class but still its own grid, and 15 free buttons on All`,
+        `All ${JSON.stringify(every)} — want all fifteen class chips present with only the four Extra I ones ` +
+        `clickable, one of them narrowing to a single class and clearing back to the group, a single-class ` +
+        `quest leaving exactly one clickable chip, and six labelled sections in the picker's filter modal`,
     );
   }
 
@@ -1288,7 +1371,7 @@ try {
   };
 
   const pfSame = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  const pfPicked = await pfOpen({ pick: ["Saber", "5 ★"] });
+  const pfPicked = await pfOpen({ pick: ["Saber", "★5"] });
   const pfReopen = await pfOpen();
   await page.reload({ waitUntil: "networkidle0" });
   await page.click('.tab-btn[data-tab="bond"]');
@@ -1300,7 +1383,7 @@ try {
   const pfGroup = await pfOpen();
   if (
     pfPicked.classes.join() !== "Saber" ||
-    pfPicked.rarities.join() !== "5 ★" ||
+    pfPicked.rarities.join() !== "★5" ||
     !(pfPicked.cards > 0 && pfPicked.cards < every.cards) ||
     !pfSame(pfReopen, pfPicked) ||
     pfReload.classes.length !== 0 ||
@@ -1311,7 +1394,7 @@ try {
     pfGroup.cards !== extra1.cards
   ) {
     errors.push(
-      `picker filters: ${JSON.stringify([pfPicked, pfReopen, pfReload, pfGroup])}, want Saber + 5 ★ held across a ` +
+      `picker filters: ${JSON.stringify([pfPicked, pfReopen, pfReload, pfGroup])}, want Saber + ★5 held across a ` +
         `reopen and wiped by a refresh, and Extra I showing its own ${extra1.cards} cards with the Saber pick ignored`,
     );
   }
@@ -1513,7 +1596,9 @@ try {
   await page.click("#bondCalculateBtn");
   const gdPlan = await readTeapot();
   if (!gdPlan.boosted || !/^3,164\(/.test(gdPlan.boosted.info)) {
-    errors.push(`quest table: Rank-Up Training Battle I priced ${JSON.stringify(gdPlan.boosted)}, want base "3,164(…)"`);
+    errors.push(
+      `quest table: Rank-Up Training Battle I priced ${JSON.stringify(gdPlan.boosted)}, want base "3,164(…)"`,
+    );
   }
   await page.reload({ waitUntil: "networkidle0" });
   await page.click('.tab-btn[data-tab="bond"]');
@@ -1530,7 +1615,9 @@ try {
   if (questRestored.servant !== 1) {
     errors.push(`party per class: after reload All held ${questRestored.servant} servant(s), want its own Mash`);
   }
-  const lv100 = await page.evaluate(() => document.getElementById("bondGrandDiffSelect").selectedOptions[0].textContent);
+  const lv100 = await page.evaluate(
+    () => document.getElementById("bondGrandDiffSelect").selectedOptions[0].textContent,
+  );
   if (!lv100.includes("3164")) {
     errors.push(`quest table: Lv.100 difficulty reads "${lv100}", want 3164 pts`);
   }

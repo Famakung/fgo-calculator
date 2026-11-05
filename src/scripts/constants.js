@@ -68,12 +68,46 @@ export const CLASS_FILTERS = {
 };
 
 export const RARITY_FILTERS = [
-  { id: "0400", label: "0 \u2605" },
-  { id: "0401", label: "1 \u2605" },
-  { id: "0402", label: "2 \u2605" },
-  { id: "0403", label: "3 \u2605" },
-  { id: "0404", label: "4 \u2605" },
-  { id: "0405", label: "5 \u2605" },
+  { id: "0400", label: "\u26050" },
+  { id: "0401", label: "\u26051" },
+  { id: "0402", label: "\u26052" },
+  { id: "0403", label: "\u26053" },
+  { id: "0404", label: "\u26054" },
+  { id: "0405", label: "\u26055" },
+];
+
+/* The Filter Settings modal's trait chip rows, read by `filter-sections.js` and matched by
+   `ServantFilters` (`domain.js`). One entry per axis value; a row with nothing selected is no filter. */
+export const ALIGNMENT_LNC_FILTERS = [
+  { id: "0300", label: "Lawful" },
+  { id: "0302", label: "Neutral" },
+  { id: "0301", label: "Chaotic" },
+];
+
+/* The second axis, Lawful/Neutral/Chaotic's counterpart. `other` is not a trait id: it is the row's
+   complement, the servants with neither Good, Balanced nor Evil \u2014 which is where Madness (0306) and
+   Summer (0308) land, because the modal offers no chip for a trait only three or twenty-eight have. */
+export const ALIGNMENT_GBE_FILTERS = [
+  { id: "0303", label: "Good" },
+  { id: "0305", label: "Balanced" },
+  { id: "0304", label: "Evil" },
+  { id: null, label: "Other", other: true },
+];
+
+export const SUB_ATTR_FILTERS = [
+  { id: "0200", label: "Heaven" },
+  { id: "0201", label: "Earth" },
+  { id: "0202", label: "Human" },
+  { id: "0203", label: "Star" },
+  { id: "0204", label: "Beast" },
+];
+
+/* Gender, the row under Sub-Attribute: the `00xx` family every servant carries (164 male, 288 female, 23
+   unknown), read by `filter-sections.js` and matched by `ServantFilters`. */
+export const GENDER_FILTERS = [
+  { id: "0001", label: "Male" },
+  { id: "0002", label: "Female" },
+  { id: "0003", label: "Unknown" },
 ];
 
 /* The quest a Bond plan is priced on. The player picks a family first, then one choice inside it:
@@ -94,6 +128,16 @@ export const FREE_QUESTS = [
    non-standard classes: Extra I and Extra II are the halves, Extra is both. */
 export const GRAND_EXTRA_I = ["0107", "0108", "0110", "0115"]; // Shielder, Ruler, Avenger, Moon Cancer
 export const GRAND_EXTRA_II = ["0109", "0117", "0120", "0124"]; // Alter Ego, Foreigner, Pretender, Beast
+
+/* The Filter Settings modal's Class (Group) row, read by `ServantFilters.rowScope`. Four chips tile the
+   fifteen classes: the three knight classes, the four cavalry classes, and Grand Duel's two Extra halves.
+   Only the two Extra groups are the Grand Duel party groups — this row is a filter, not a quest. */
+export const CLASS_GROUPS = [
+  { key: "knight", label: "Three Knights", classes: ["0100", "0102", "0101"] }, // Saber, Archer, Lancer
+  { key: "cavalry", label: "Four Cavalries", classes: ["0103", "0104", "0105", "0106"] }, // Rider…Berserker
+  { key: "extra1", label: "Extra I", classes: GRAND_EXTRA_I },
+  { key: "extra2", label: "Extra II", classes: GRAND_EXTRA_II },
+];
 
 export const GRAND_CLASSES = [
   { key: "all", name: "All", classes: null },
