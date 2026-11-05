@@ -588,6 +588,107 @@ try {
   }
   await page.setViewport({ width: 800, height: 600 });
 
+  /* The essences belong to the card: a bordered Craft Essence block under the point box, holding one
+     64px portrait chip (two when Grand Servant is ticked) and none of the old name/bonus lines, while
+     the separate Craft Essences Bonus card is gone. A blank card carries no block at all. */
+  const chipState = () =>
+    page.evaluate(() => {
+      const block = document.querySelector(".servant-slot .slot-ce-block");
+      const chips = block ? [...block.querySelectorAll(".ce-chip")] : [];
+      return {
+        present: !!block,
+        chips: chips.length,
+        addTiles: chips.filter((c) => c.classList.contains("ce-chip--add")).length,
+        removeBtns: chips.filter((c) => c.querySelector(".ce-chip-x")).length,
+        /* What each chip shows, so the survivor of an untick can be recognised: an equipped essence
+           carries its name (alt) or its id (fallback text), a blank position carries nothing. */
+        keys: chips.map((c) => {
+          const img = c.querySelector("img");
+          const fb = c.querySelector(".ce-chip-fallback");
+          return img ? img.alt : fb ? fb.textContent : "";
+        }),
+        chipH: chips.length ? Math.round(chips[0].getBoundingClientRect().height) : 0,
+      };
+    });
+
+  const ce = await page.evaluate(() => {
+    const card = document.querySelector(".servant-slot:not(.servant-add-slot)");
+    const block = card && card.querySelector(".slot-ce-block");
+    const pointBox = card && card.querySelector(".bond-input-box");
+    const chips = block ? block.querySelectorAll(".ce-chip").length : 0;
+    return {
+      grid: !!document.getElementById("ceGrid"),
+      inCard: !!block,
+      afterPointBox:
+        !!block &&
+        !!pointBox &&
+        Boolean(block.compareDocumentPosition(pointBox) & Node.DOCUMENT_POSITION_PRECEDING),
+      chipH: chips ? Math.round(block.querySelector(".ce-chip").getBoundingClientRect().height) : 0,
+      chips,
+      names: block ? block.querySelectorAll(".ce-slot-name, .ce-slot-bonus").length : -1,
+      labels: block ? [...block.querySelectorAll(".bond-input-box-label, .bond-checkbox-label")].map((l) => l.textContent) : [],
+      blankBlocks: document.querySelectorAll(".servant-add-slot .slot-ce-block").length,
+    };
+  });
+  if (ce.grid) errors.push("bond slot CEs: #ceGrid is still in the page — the Craft Essences Bonus card must be gone");
+  if (!ce.inCard) errors.push("bond slot CEs: no .slot-ce-block inside the servant slot");
+  if (!ce.afterPointBox) errors.push("bond slot CEs: the essence block does not sit after the point box");
+  if (ce.chipH !== 64) errors.push(`bond slot CEs: chip measures ${ce.chipH}px tall, want 64px`);
+  if (ce.chips !== 1) errors.push(`bond slot CEs: a normal slot shows ${ce.chips} chip(s), want 1`);
+  if (ce.names !== 0) errors.push(`bond slot CEs: ${ce.names} name/bonus element(s) inside the block, want 0`);
+  if (!ce.labels.includes("Craft Essence")) {
+    errors.push(`bond slot CEs: block labels ${JSON.stringify(ce.labels)}, want a "Craft Essence" label`);
+  }
+  if (!ce.labels.includes("Grand Servant")) {
+    errors.push(`bond slot CEs: block labels ${JSON.stringify(ce.labels)}, want a "Grand Servant" checkbox`);
+  }
+  if (ce.blankBlocks !== 0) errors.push(`bond slot CEs: ${ce.blankBlocks} essence block(s) on an empty slot, want 0`);
+
+  // Equip through the picker, which the card now owns: one filled chip, still removable.
+  await page.click(".servant-slot .slot-ce-block .ce-chip--add");
+  await page.waitForSelector("#ceModal.open .servant-picker-item");
+  await page.click("#ceModal .servant-picker-item");
+  const groupPick = await page.evaluate(() => !!document.querySelector("#ceSubModal.open"));
+  if (groupPick) await page.click("#ceSubModal .servant-picker-item");
+  await page.waitForFunction(() => document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip-x").length === 1, {
+    timeout: 15000,
+  });
+  const equipped = await chipState();
+  if (equipped.chips !== 1 || equipped.addTiles !== 0) {
+    errors.push(`bond slot CEs: after equipping, ${equipped.chips} chip(s) / ${equipped.addTiles} blank tile(s), want 1 filled`);
+  }
+  if (!equipped.keys[0]) errors.push("bond slot CEs: the equipped chip shows no portrait");
+
+  // Grand raises the capacity to two; unticking drops the second and keeps the first.
+  await page.click(".servant-slot .slot-ce-block .bond-checkbox");
+  await page.waitForFunction(() => document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip").length === 2, {
+    timeout: 15000,
+  });
+  const grand = await chipState();
+  if (grand.chips !== 2 || grand.addTiles !== 1 || grand.keys[0] !== equipped.keys[0]) {
+    errors.push(
+      `bond slot CEs: ticking Grand gave ${grand.chips} chip(s) (${grand.addTiles} blank), first=${JSON.stringify(grand.keys[0])}`,
+    );
+  }
+  await page.click(".servant-slot .slot-ce-block .bond-checkbox");
+  await page.waitForFunction(() => document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip").length === 1, {
+    timeout: 15000,
+  });
+  const trimmed = await chipState();
+  if (trimmed.chips !== 1 || trimmed.keys[0] !== equipped.keys[0]) {
+    errors.push(`bond slot CEs: unticking Grand left ${trimmed.chips} chip(s) first=${JSON.stringify(trimmed.keys[0])}`);
+  }
+
+  // And the card's own remove button empties it again.
+  await page.click(".servant-slot .slot-ce-block .ce-chip-x");
+  await page.waitForFunction(() => document.querySelectorAll(".servant-slot .slot-ce-block .ce-chip-x").length === 0, {
+    timeout: 15000,
+  });
+  const removed = await chipState();
+  if (removed.chips !== 1 || removed.addTiles !== 1) {
+    errors.push(`bond slot CEs: removing the essence left ${removed.chips} chip(s) / ${removed.addTiles} blank tile(s), want 1 blank`);
+  }
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();

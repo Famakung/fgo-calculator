@@ -50,24 +50,12 @@ export const BondApp = {
     };
   },
 
-  _createCECallbacks(slotIndex) {
+  /* One callback set per (slot, position). The selectors only carry a number through to
+     onPendingRemove, so the position they hand back is ignored in favour of the closed-over one. */
+  _createCECallbacks(slotIndex, position) {
     return {
-      onSelect: (_slotIdx, ceId, optionId) => this.setCE(slotIndex, ceId, optionId),
-      onPendingRemove: () => {
-        this.state.ces.splice(slotIndex, 1);
-        this.saveState();
-        this.buildCESlots();
-      },
-      onOpenSubSelector: (groupCE, idx) => {
-        this._refs.CESubSelector.open(groupCE, idx, {
-          onSelect: (_si, ceId, optionId) => this.setCE(idx, ceId, optionId),
-          onPendingRemove: () => {
-            this.state.ces.splice(idx, 1);
-            this.saveState();
-            this.buildCESlots();
-          },
-        });
-      },
+      onSelect: (_position, ceId, optionId) => this.setCE(slotIndex, position, ceId, optionId),
+      onPendingRemove: () => this.removeCE(slotIndex, position),
     };
   },
 
@@ -161,141 +149,146 @@ export const BondApp = {
     this.buildServantSlots();
   },
 
-  buildCESlots() {
-    const grid = document.getElementById("ceGrid");
-    if (!grid) return;
-    grid.replaceChildren();
-
-    const count = this.state.ces.length;
-
-    for (let i = 0; i < count; i++) {
-      const ceEntry = this.state.ces[i];
-      if (!ceEntry) continue; // skip pending null slots
-
-      // Resolve CE entry (string or group object)
-      let ce, ceName, ceImage, ceBonusText;
-      if (typeof ceEntry === "object" && ceEntry.groupId) {
-        ce = CEById.get(ceEntry.groupId);
-        const selectedOption = ce && ce.options ? ce.options.find((o) => o.id === ceEntry.optionId) : null;
-        ceName = selectedOption ? selectedOption.name : ce ? ce.name : ceEntry.groupId;
-        ceImage = selectedOption ? selectedOption.image : ce ? ce.image : null;
-        ceBonusText = ce ? (ce.flatBonus > 0 ? `+${ce.flatBonus} pts All` : `+${ce.bonus}% All`) : "";
-      } else {
-        ce = CEById.get(ceEntry);
-        ceName = ce ? ce.name : ceEntry;
-        ceImage = ce ? ce.image : null;
-        ceBonusText = null;
-      }
-
-      const slot = DOMFactory.el("div", "ce-slot");
-      slot.dataset.slotIndex = i;
-
-      // Portrait
-      const portraitArea = DOMFactory.el("div");
-      if (ceImage) {
-        const img = DOMFactory.createLazyImg(ceImage, "ce-portrait", { alt: ceName });
-        DOMFactory.addSimpleFallback(
-          img,
-          "ce-portrait-fallback",
-          typeof ceEntry === "object" ? ceEntry.groupId : ceEntry,
-        );
-        portraitArea.appendChild(img);
-      } else {
-        const fb = DOMFactory.el("div", "ce-portrait-fallback");
-        fb.textContent = typeof ceEntry === "object" ? ceEntry.groupId : ceEntry;
-        portraitArea.appendChild(fb);
-      }
-      slot.appendChild(portraitArea);
-
-      // Name + bonus
-      const info = DOMFactory.el("div");
-      if (ce) {
-        const nameEl = DOMFactory.el("div", "ce-slot-name");
-        nameEl.textContent = ceName;
-        info.appendChild(nameEl);
-        const bonusEl = DOMFactory.el("div", "ce-slot-bonus");
-        if (ceBonusText !== null) {
-          // Grouped CE (pre-computed bonus text)
-          bonusEl.textContent = ceBonusText;
-        } else if (ce.traitGroups.length > 0) {
-          const groups = ce.traitGroups.map((group) => group.map((t) => TraitNames[t] || t).join(" or ")).join(" and ");
-          bonusEl.textContent = `+${ce.bonus}% ${groups}`;
-        } else if (ce.traits.length === 0) {
-          bonusEl.textContent = `+${ce.bonus}% All`;
-        } else {
-          const traitNames = ce.traits.map((t) => TraitNames[t] || t);
-          const joiner = ce.matchAll ? " and " : " or ";
-          bonusEl.textContent = `+${ce.bonus}% ${traitNames.join(joiner)}`;
-        }
-        info.appendChild(bonusEl);
-      }
-      slot.appendChild(info);
-
-      // Click slot to re-select
-      const ceSlotIndex = i;
-      slot.style.cursor = "pointer";
-      slot.addEventListener("click", () => {
-        if (ce && ce.isGroup) {
-          this._refs.CESubSelector.open(ce, ceSlotIndex, {
-            onSelect: (_si, ceId, optionId) => this.setCE(ceSlotIndex, ceId, optionId),
-            onPendingRemove: () => {
-              this.state.ces.splice(ceSlotIndex, 1);
-              this.saveState();
-              this.buildCESlots();
-            },
-          });
-        } else {
-          this._refs.CESelector.open(ceSlotIndex, false, this._createCECallbacks(ceSlotIndex));
-        }
-      });
-
-      // Remove button
-      const removeBtn = DOMFactory.el("button", "servant-remove-btn", { type: "button" });
-      removeBtn.textContent = "\u2715";
-      removeBtn.title = "Remove CE";
-      removeBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.removeCE(ceSlotIndex);
-      });
-      slot.appendChild(removeBtn);
-
-      grid.appendChild(slot);
+  /* The bonus line the old CE card printed under each portrait. It now only feeds the chip's title and
+     alt text, since the card keeps the essence to a portrait. */
+  _ceBonusText(ce, ceEntry) {
+    if (typeof ceEntry === "object" && ceEntry.groupId) {
+      return ce.flatBonus > 0 ? `+${ce.flatBonus} pts All` : `+${ce.bonus}% All`;
     }
-
-    // Add button
-    const addSlot = DOMFactory.el("div", ["ce-slot", "ce-add-slot"]);
-    const addPortrait = DOMFactory.el("div", "ce-portrait-fallback");
-    addPortrait.textContent = "+";
-    addSlot.appendChild(addPortrait);
-    const addInfo = DOMFactory.el("div");
-    const addLabel = DOMFactory.el("div", "ce-slot-name");
-    addLabel.textContent = "Add Craft Essence";
-    addInfo.appendChild(addLabel);
-    addSlot.appendChild(addInfo);
-    addSlot.addEventListener("click", () => {
-      this.state.ces.push(null);
-      this.buildCESlots();
-      const idx = this.state.ces.length - 1;
-      this._refs.CESelector.open(idx, true, this._createCECallbacks(idx));
-    });
-    grid.appendChild(addSlot);
+    if (ce.traitGroups.length > 0) {
+      const groups = ce.traitGroups.map((group) => group.map((t) => TraitNames[t] || t).join(" or ")).join(" and ");
+      return `+${ce.bonus}% ${groups}`;
+    }
+    if (ce.traits.length === 0) return `+${ce.bonus}% All`;
+    const traitNames = ce.traits.map((t) => TraitNames[t] || t);
+    const joiner = ce.matchAll ? " and " : " or ";
+    return `+${ce.bonus}% ${traitNames.join(joiner)}`;
   },
 
-  setCE(slotIndex, ceId, optionId) {
-    if (slotIndex < 0 || slotIndex >= this.state.ces.length) return;
-    if (optionId) {
-      this.state.ces[slotIndex] = { groupId: ceId, optionId: optionId };
+  /* A blank position, or a pending hole the picker owns. */
+  _buildCEAddChip(slotIndex, position) {
+    const chip = DOMFactory.el("div", ["ce-chip", "ce-chip--add"]);
+    chip.textContent = "+";
+    chip.title = "Add craft essence";
+    chip.addEventListener("click", () => this.addCE(slotIndex, position));
+    return chip;
+  },
+
+  /* One position of the slot's essence list: a 64px portrait and nothing else \u2014 the name and the bonus
+     live in the chip's title and in the results card. An id that no longer resolves still gets a chip
+     (the id as its text) so the player can always remove it. */
+  _buildCEChip(slotData, slotIndex, position) {
+    const ceEntry = slotData.ces[position];
+    if (!ceEntry) return this._buildCEAddChip(slotIndex, position);
+
+    const grouped = typeof ceEntry === "object" && ceEntry.groupId;
+    const ce = CEById.get(grouped ? ceEntry.groupId : ceEntry);
+    const option = grouped && ce && ce.options ? ce.options.find((o) => o.id === ceEntry.optionId) : null;
+    const ceName = grouped ? (option ? option.name : ce ? ce.name : ceEntry.groupId) : ce ? ce.name : ceEntry;
+    const ceImage = grouped ? (option ? option.image : ce ? ce.image : null) : ce ? ce.image : null;
+    const idText = grouped ? ceEntry.groupId : ceEntry;
+
+    const chip = DOMFactory.el("div", "ce-chip");
+    chip.title = ce ? `${ceName} \u00b7 ${this._ceBonusText(ce, ceEntry)}` : ceName;
+    if (ceImage) {
+      const img = DOMFactory.createLazyImg(ceImage, "ce-chip-img", { alt: ceName });
+      DOMFactory.addSimpleFallback(img, "ce-chip-fallback", idText);
+      chip.appendChild(img);
     } else {
-      this.state.ces[slotIndex] = ceId;
+      const fb = DOMFactory.el("div", "ce-chip-fallback");
+      fb.textContent = idText;
+      chip.appendChild(fb);
     }
-    this.saveState();
-    this.buildCESlots();
+
+    // Click to re-pick this position, straight to the options when it is a grouped essence.
+    chip.addEventListener("click", () => {
+      const callbacks = this._createCECallbacks(slotIndex, position);
+      if (ce && ce.isGroup) {
+        this._refs.CESubSelector.open(ce, position, callbacks);
+      } else {
+        this._refs.CESelector.open(position, false, callbacks);
+      }
+    });
+
+    const removeBtn = DOMFactory.el("button", "ce-chip-x", { type: "button" });
+    removeBtn.textContent = "\u2715";
+    removeBtn.title = "Remove craft essence";
+    removeBtn.setAttribute("aria-label", `Remove ${ceName}`);
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.removeCE(slotIndex, position);
+    });
+    chip.appendChild(removeBtn);
+
+    return chip;
   },
 
-  removeCE(index) {
-    this.state.ces.splice(index, 1);
+  /* The card's own essence block: a bordered field labelled "Craft Essence" holding the Grand Servant
+     tick and one chip per position the slot can wear. */
+  _buildSlotCEs(slotData, slotIndex) {
+    const block = DOMFactory.el("div", "slot-ce-block");
+
+    const label = DOMFactory.el("label", "bond-input-box-label", { for: `slotGrand_${slotIndex}` });
+    label.textContent = "Craft Essence";
+    block.appendChild(label);
+
+    const grandCheckbox = DOMFactory.el("input", "bond-checkbox", {
+      type: "checkbox",
+      id: `slotGrand_${slotIndex}`,
+    });
+    if (slotData.grand) grandCheckbox.checked = true;
+    const grandText = DOMFactory.el("span");
+    grandText.textContent = "Grand Servant";
+    const grandLabel = DOMFactory.el("label", "bond-checkbox-label");
+    grandLabel.appendChild(grandCheckbox);
+    grandLabel.appendChild(grandText);
+    const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
+    checkboxRow.appendChild(grandLabel);
+    block.appendChild(checkboxRow);
+
+    grandCheckbox.addEventListener("change", () => {
+      this.flushInputsToState();
+      slotData.grand = grandCheckbox.checked;
+      SlotCEs.trim(slotData); // unticking drops the second essence, no confirmation, no restore
+      this.saveState();
+      this.buildServantSlots();
+    });
+
+    const strip = DOMFactory.el("div", "slot-ce-strip");
+    const chips = document.createDocumentFragment();
+    for (let position = 0; position < SlotCEs.capacity(slotData); position++) {
+      chips.appendChild(this._buildCEChip(slotData, slotIndex, position));
+    }
+    strip.replaceChildren(chips);
+    block.appendChild(strip);
+
+    return block;
+  },
+
+  setCE(slotIndex, position, ceId, optionId) {
+    const slot = this.state.slots[slotIndex];
+    if (!slot || position < 0 || position >= SlotCEs.capacity(slot)) return;
+    slot.ces[position] = optionId ? { groupId: ceId, optionId: optionId } : ceId;
     this.saveState();
-    this.buildCESlots();
+    this.buildServantSlots();
+  },
+
+  removeCE(slotIndex, position) {
+    const slot = this.state.slots[slotIndex];
+    if (!slot) return;
+    slot.ces.splice(position, 1);
+    this.saveState();
+    this.buildServantSlots();
+  },
+
+  /* Pending Slot: the hole is a null in the slot's own list, so partyPool skips it while the picker is
+     open and cancelling splices it back out. */
+  addCE(slotIndex, position) {
+    const slot = this.state.slots[slotIndex];
+    if (!slot) return;
+    slot.ces[position] = null;
+    this.buildServantSlots();
+    this._refs.CESelector.open(position, true, this._createCECallbacks(slotIndex, position));
   },
 
   flushInputsToState() {
@@ -638,6 +631,9 @@ export const BondApp = {
         inputBox.appendChild(inputLabel);
         inputBox.appendChild(input);
         info.appendChild(inputBox);
+
+        // The essences belong to this card, so they follow the point box it just made.
+        info.appendChild(this._buildSlotCEs(slotData, i));
 
         if (!isBondHidden) {
           this.elements[`slotBond_${i}`] = input;
