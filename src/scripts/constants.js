@@ -121,7 +121,7 @@ export const FREE_QUESTS = [
 export const GRAND_EXTRA_I = ["0107", "0108", "0110", "0115"]; // Shielder, Ruler, Avenger, Moon Cancer
 export const GRAND_EXTRA_II = ["0109", "0117", "0120", "0124"]; // Alter Ego, Foreigner, Pretender, Beast
 
-/* The Filter Settings modal's Class (Group) row, read by `ServantFilters.classScope`. Four chips tile the
+/* The Filter Settings modal's Class (Group) row, read by `ServantFilters.rowScope`. Four chips tile the
    fifteen classes: the three knight classes, the four cavalry classes, and Grand Duel's two Extra halves.
    Only the two Extra groups are the Grand Duel party groups — this row is a filter, not a quest. */
 export const CLASS_GROUPS = [

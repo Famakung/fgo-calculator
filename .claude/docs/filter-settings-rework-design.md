@@ -37,7 +37,7 @@ today duplicates the class and rarity rows by hand.
 
 | # | Label (centred) | Chips, in this order | State key | Trait ids |
 |---|---|---|---|---|
-| 1 | Rarity / Category | ★0 ★1 ★2 ★3 ★4 ★5 | `rarityFilters` (exists) | `0400`–`0405` |
+| 1 | Rarity | ★0 ★1 ★2 ★3 ★4 ★5 | `rarityFilters` (exists) | `0400`–`0405` |
 | 2 | Class | 7 standard then 8 extra icons | `classFilters` (exists) | `0100`…`0124` |
 | 3 | Class (Group) | Three Knights · Four Cavalries · Extra I · Extra II | `groupClassFilters` (new) | class ids |
 | 4 | Alignment (Lawful/Neutral/Chaotic) | Lawful · Neutral · Chaotic | `aliFilters` (new) | `0300` `0302` `0301` |

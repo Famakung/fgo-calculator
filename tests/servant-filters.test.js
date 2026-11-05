@@ -20,21 +20,66 @@ test("the four class groups tile the fifteen classes exactly once", () => {
   assert.deepEqual([...tiled].sort(), [...all].sort());
 });
 
-test("a class group is a scope of class ids, clipped by a lock", () => {
-  assert.equal(ServantFilters.classScope([]), null);
-  assert.equal(ServantFilters.classScope(undefined, null), null);
-  assert.deepEqual(ServantFilters.classScope(["knight"]), ["0100", "0102", "0101"]);
-  assert.equal(ServantFilters.classScope(["knight", "extra1"]).length, 7);
-  assert.deepEqual(ServantFilters.classScope(["nope"]), null);
-  // the quest's party lock clips the scope to what the two have in common
-  assert.deepEqual(ServantFilters.classScope(["knight"], ["0100", "0107"]), ["0100"]);
-  assert.deepEqual(ServantFilters.classScope(["cavalry"], ["0107"]), []);
-  // no group: the lock alone is the scope, so a single-class quest still bounds the row
-  assert.deepEqual(ServantFilters.classScope([], ["0100"]), ["0100"]);
+test("a class group is the row's bound, clipped by a lock", () => {
+  assert.equal(ServantFilters.rowScope([]), null);
+  assert.equal(ServantFilters.rowScope(undefined, null), null);
+  assert.deepEqual(ServantFilters.rowScope(["knight"]), ["0100", "0102", "0101"]);
+  assert.equal(ServantFilters.rowScope(["knight", "extra1"]).length, 7);
+  assert.deepEqual(ServantFilters.rowScope(["nope"]), null);
+  // the quest's party lock clips the bound to what the two have in common, and a group it clips to
+  // nothing leaves the lock itself — the party is still that class and nothing else
+  assert.deepEqual(ServantFilters.rowScope(["knight"], ["0100", "0107"]), ["0100"]);
+  assert.deepEqual(ServantFilters.rowScope(["cavalry"], ["0107"]), ["0107"]);
+  // no group: the lock alone is the bound, so a single-class quest still bounds the row
+  assert.deepEqual(ServantFilters.rowScope([], ["0100"]), ["0100"]);
+});
+
+test("a class pick filters to that pick inside the group, and is ignored from outside it", () => {
+  assert.deepEqual(ServantFilters.effectiveClassIds({ groupClassFilters: ["knight"], classFilters: ["0100"] }), [
+    "0100",
+  ]);
+  assert.deepEqual(
+    ServantFilters.effectiveClassIds({ groupClassFilters: ["knight"], classFilters: ["0100", "0101"] }),
+    ["0100", "0101"],
+  );
+  // the pick came from outside the group, so it narrows nothing
+  assert.deepEqual(ServantFilters.effectiveClassIds({ groupClassFilters: ["knight"], classFilters: ["0107"] }), [
+    "0100",
+    "0102",
+    "0101",
+  ]);
+  // a group clipped to nothing by the lock is still bound by the lock, pick or no pick
+  assert.deepEqual(
+    ServantFilters.effectiveClassIds({
+      groupClassFilters: ["cavalry"],
+      lockedClasses: ["0107"],
+      classFilters: ["0100"],
+    }),
+    ["0107"],
+  );
+  assert.equal(ServantFilters.effectiveClassIds({}), null);
+});
+
+test("picking a class greys nothing: only the group chips and a quest lock bound the row", () => {
+  assert.deepEqual(ServantFilters.rowScope(["knight"]), ServantFilters.rowScope(["knight"]));
+  assert.equal(ServantFilters.rowScope(["knight"], null).includes("0102"), true);
 });
 
 test("no row selected is no filter", () => {
   assert.equal(ServantFilters.match(sabers, {}), true);
+});
+
+test("a fresh state is six empty rows, and that is still no filter", () => {
+  const blank = {
+    classFilters: [],
+    rarityFilters: [],
+    groupClassFilters: [],
+    aliFilters: [],
+    subAliFilters: [],
+    subAttrFilters: [],
+  };
+  assert.equal(ServantFilters.match(sabers, blank), true);
+  assert.equal(ServantFilters.match(helena, blank), true);
 });
 
 test("one row is a union", () => {

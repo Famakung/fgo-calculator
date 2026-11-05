@@ -469,23 +469,32 @@ export const ServantFilters = {
   SUB_ALI_OTHER: "other",
   GBE: ALIGNMENT_GBE_FILTERS.filter((c) => c.id).map((c) => c.id),
 
-  /* Which classes the Class row may offer: the union of the chosen groups, clipped to a quest's party
-     lock when there is one. null means the row is unbounded — no group and no lock — and [] means a
-     group that shares nothing with the lock, which leaves the row with nothing it can offer. */
-  classScope(groupClassFilters, lockedClasses) {
+  /* The Class row's bound, for display: only the group chips and a quest's party lock narrow what a
+     player may select, so ticking Saber never greys Archer — the row stays a union. null is no bound. */
+  rowScope(groupClassFilters, lockedClasses) {
     const keys = (groupClassFilters || []).filter((k) => CLASS_GROUPS.some((g) => g.key === k));
-    const ids = keys.flatMap((k) => CLASS_GROUPS.find((g) => g.key === k).classes);
+    const group = [...new Set(keys.flatMap((k) => CLASS_GROUPS.find((g) => g.key === k).classes))];
     const lock = lockedClasses && lockedClasses.length ? lockedClasses : null;
-    if (ids.length === 0) return lock ? [...lock] : null;
-    if (!lock) return [...new Set(ids)];
-    return [...new Set(ids)].filter((id) => lock.includes(id));
+    if (!group.length) return lock ? [...lock] : null;
+    if (!lock) return group;
+    const clipped = group.filter((id) => lock.includes(id));
+    return clipped.length ? clipped : [...lock];
   },
 
-  /* An absent row is no filter; an empty array is a bound nothing can satisfy (the class scope after a
-     group and a lock that share no class). */
+  /* What the Class row filters on: the row's bound, narrowed by a pick inside it. A pick from outside the
+     bound — carried in from another group or another quest — is ignored rather than honoured, and a row
+     with nothing selected is no filter at all. */
+  effectiveClassIds(filters = {}) {
+    const scope = this.rowScope(filters.groupClassFilters, filters.lockedClasses);
+    const picked = (filters.classFilters || []).filter((id) => !scope || scope.includes(id));
+    if (picked.length) return picked;
+    return scope;
+  },
+
+  /* Nothing selected in a row is no filter, and an untouched row holds an empty array: no bound ever
+     reaches this as [] — the impossible combination is spelled null, which means "nothing selected". */
   rowMatches(traits, selected, { other } = {}) {
-    if (!selected) return true;
-    if (selected.length === 0) return false;
+    if (!selected || selected.length === 0) return true;
     if (other && selected.includes(ServantFilters.SUB_ALI_OTHER)) {
       const gbe = new Set(ServantFilters.GBE);
       if (!(traits || []).some((t) => gbe.has(t))) return true;
@@ -497,16 +506,12 @@ export const ServantFilters = {
   },
 
   match(traits, filters = {}) {
-    const { classFilters, rarityFilters, groupClassFilters, aliFilters, subAliFilters, subAttrFilters, lockedClasses } =
-      filters;
-    /* The same rule the Grand Duel lock uses: a class pick carried from outside the scope is ignored,
-       and nothing picked inside a scope means the whole scope. An empty non-null scope is a group that
-       shares nothing with the lock, and no servant can satisfy it. */
-    const scope = this.classScope(groupClassFilters, lockedClasses);
-    const classIds = Quest.pickedClassIds(classFilters, scope);
-    if (scope && classIds.length === 0) return false;
+    const { rarityFilters, aliFilters, subAliFilters, subAttrFilters } = filters;
+    /* The class row reads the group, the quest's lock and the player's picks together, and a pick from
+       outside the bound is ignored rather than honoured. */
+    const ids = this.effectiveClassIds(filters);
     return (
-      this.rowMatches(traits, classIds.length > 0 ? classIds : undefined) &&
+      this.rowMatches(traits, ids) &&
       this.rowMatches(traits, rarityFilters) &&
       this.rowMatches(traits, aliFilters) &&
       this.rowMatches(traits, subAliFilters, { other: true }) &&
