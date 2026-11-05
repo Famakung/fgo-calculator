@@ -13,7 +13,7 @@
     "tab-navigator-chunk"
   ],
   "chunkBytes": {
-    "bond-lazy": 19301,
+    "bond-lazy": 19012,
     "ce-filter-chunk": 26548,
     "ce-match-worker": 2788,
     "constants-chunk": 1689,
@@ -25,7 +25,7 @@
     "tab-navigator-chunk": 1709
   },
   "chunkMinBytes": {
-    "bond-lazy": 4825,
+    "bond-lazy": 4753,
     "ce-filter-chunk": 6637,
     "ce-match-worker": 697,
     "constants-chunk": 422,

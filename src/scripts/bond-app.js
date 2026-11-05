@@ -474,49 +474,37 @@ export const BondApp = {
         const isSupport = slotType === "support";
         const isBondHidden = isSupport || !!slotData.maxBond;
 
-        // Checkboxes row: "Max Bond" and "Bond >=15"
-        const checkboxRowClass = isSupport ? "bond-checkbox-row bond-checkbox-row--hidden" : "bond-checkbox-row";
-        const checkboxRow = DOMFactory.el("div", checkboxRowClass);
-
-        // Max Bond checkbox
-        const maxBondLabel = DOMFactory.el("label", "bond-checkbox-label");
-        const maxBondAttrs = {
-          type: "checkbox",
-          id: `slotMaxBond_${i}`,
-        };
-        if (isSupport) {
-          maxBondAttrs.disabled = true;
-          maxBondAttrs.tabIndex = -1;
-        }
-        const maxBondCheckbox = DOMFactory.el("input", "bond-checkbox", maxBondAttrs);
-        if (slotData.maxBond) maxBondCheckbox.checked = true;
-        const maxBondText = DOMFactory.el("span");
-        maxBondText.textContent = "Max Bond";
-        maxBondLabel.appendChild(maxBondCheckbox);
-        maxBondLabel.appendChild(maxBondText);
-        checkboxRow.appendChild(maxBondLabel);
-
-        // Bond >=15 checkbox
-        const bond15Label = DOMFactory.el("label", "bond-checkbox-label");
-        const bond15Attrs = {
-          type: "checkbox",
-          id: `slotBond15_${i}`,
-        };
-        if (isSupport) {
-          bond15Attrs.disabled = true;
-          bond15Attrs.tabIndex = -1;
-        }
-        const bond15Checkbox = DOMFactory.el("input", "bond-checkbox", bond15Attrs);
-        if (slotData.bond15) bond15Checkbox.checked = true;
-        const bond15Text = DOMFactory.el("span");
-        bond15Text.textContent = "Bond \u226515";
-        bond15Label.appendChild(bond15Checkbox);
-        bond15Label.appendChild(bond15Text);
-        checkboxRow.appendChild(bond15Label);
-
-        info.appendChild(checkboxRow);
-
+        /* Checkboxes row: "Max Bond" and "Bond >=15". A support servant has neither, so the row is not
+           built at all; it used to sit here invisible, holding the height of a row nobody can reach. */
         if (!isSupport) {
+          const checkboxRow = DOMFactory.el("div", "bond-checkbox-row");
+
+          const maxBondLabel = DOMFactory.el("label", "bond-checkbox-label");
+          const maxBondCheckbox = DOMFactory.el("input", "bond-checkbox", {
+            type: "checkbox",
+            id: `slotMaxBond_${i}`,
+          });
+          if (slotData.maxBond) maxBondCheckbox.checked = true;
+          const maxBondText = DOMFactory.el("span");
+          maxBondText.textContent = "Max Bond";
+          maxBondLabel.appendChild(maxBondCheckbox);
+          maxBondLabel.appendChild(maxBondText);
+          checkboxRow.appendChild(maxBondLabel);
+
+          const bond15Label = DOMFactory.el("label", "bond-checkbox-label");
+          const bond15Checkbox = DOMFactory.el("input", "bond-checkbox", {
+            type: "checkbox",
+            id: `slotBond15_${i}`,
+          });
+          if (slotData.bond15) bond15Checkbox.checked = true;
+          const bond15Text = DOMFactory.el("span");
+          bond15Text.textContent = "Bond \u226515";
+          bond15Label.appendChild(bond15Checkbox);
+          bond15Label.appendChild(bond15Text);
+          checkboxRow.appendChild(bond15Label);
+
+          info.appendChild(checkboxRow);
+
           maxBondCheckbox.addEventListener("change", () => {
             this.flushInputsToState();
             slotData.maxBond = maxBondCheckbox.checked;
@@ -532,8 +520,9 @@ export const BondApp = {
           });
         }
 
-        /* Bond level selects, then the point box the player reads off the in-game bond screen.
-           All three hide together for support and Max Bond slots, as the point box always did. */
+        /* Bond level selects, then the point box the player reads off the in-game bond screen. A support
+           or Max Bond slot prices nothing level by level, so those fields are never built for it — and
+           the essence block below moves up into the space they used to reserve. */
         const bondGrowth = ServantData.getBondGrowth(slotData.servantId);
         const maxLevel = bondGrowth ? bondGrowth.length - 1 : BOND_CONSTANTS.MAX_BOND_LEVEL - 1;
         const currentLevel = Math.min(Validator.clamp(slotData.bondLevel, 0, maxLevel), maxLevel);
@@ -545,99 +534,88 @@ export const BondApp = {
           this.saveState();
         }
 
-        const levelBox = (refKey, labelText, id, values, selected, onChange) => {
-          const box = DOMFactory.el("div", isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box");
-          const label = DOMFactory.el("label", "bond-input-box-label", { for: id });
-          label.textContent = labelText;
-          const select = DOMFactory.el("select", "bond-input-box-field bond-level-select", { id });
-          if (isBondHidden) {
-            select.disabled = true;
-            select.tabIndex = -1;
-          }
-          values.forEach((value) => {
-            const opt = DOMFactory.el("option", null, { value: String(value) });
-            opt.textContent = String(value);
-            if (value === selected) opt.selected = true;
-            select.appendChild(opt);
-          });
-          select.addEventListener("change", () => onChange(select.value));
-          if (!isBondHidden) this.elements[refKey] = select;
-          box.appendChild(label);
-          box.appendChild(select);
-          return box;
-        };
-
         const levelValues = (from, to) => {
           const out = [];
           for (let v = from; v <= to; v++) out.push(v);
           return out;
         };
 
-        // Moving off a level always re-prices the box from the table — the old level's figure is stale.
-        const currentBox = levelBox(
-          `slotBondLv_${i}`,
-          "Current Lv.",
-          `slotBondLv_${i}`,
-          levelValues(0, maxLevel),
-          currentLevel,
-          (value) => {
-            this.flushInputsToState();
-            const next = Math.round(Validator.clamp(value, 0, maxLevel));
-            slotData.bondLevel = next;
-            if (slotData.targetLevel <= next) slotData.targetLevel = next + 1;
-            if (bondGrowth) slotData.bondNeeded = bondGrowth[next];
-            // The +25% all-servant bonus belongs to bond 15+, so the box follows the level both ways.
-            slotData.bond15 = next >= BOND_CONSTANTS.BOND_BONUS_LEVEL;
-            this.saveState();
-            this.buildServantSlots();
-          },
-        );
-
-        const targetBox = levelBox(
-          `slotBondTgt_${i}`,
-          "Target Lv.",
-          `slotBondTgt_${i}`,
-          levelValues(currentLevel + 1, maxLevel + 1),
-          targetLevel,
-          (value) => {
-            this.flushInputsToState();
-            slotData.targetLevel = Math.round(Validator.clamp(value, currentLevel + 1, maxLevel + 1));
-            this.saveState();
-          },
-        );
-
-        const levelRow = DOMFactory.el("div", "bond-level-row");
-        levelRow.appendChild(currentBox);
-        levelRow.appendChild(targetBox);
-        info.appendChild(levelRow);
-
-        // Bond input box with border label (always created to preserve height, hidden if max bond or support)
-        const inputBoxClass = isBondHidden ? "bond-input-box bond-input-box--hidden" : "bond-input-box";
-        const inputBox = DOMFactory.el("div", inputBoxClass);
-        const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
-        inputLabel.textContent = "Next Lv. Required";
-        const inputAttrs = {
-          type: "number",
-          id: `slotBond_${i}`,
-          min: "0",
-          max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
-          value: String(slotData.bondNeeded || 0),
-        };
-        if (isBondHidden) {
-          inputAttrs.disabled = true;
-          inputAttrs.tabIndex = -1;
-        }
-        const input = DOMFactory.el("input", "bond-input-box-field", inputAttrs);
-        inputBox.appendChild(inputLabel);
-        inputBox.appendChild(input);
-        info.appendChild(inputBox);
-
-        // The essences belong to this card, so they follow the point box it just made.
-        info.appendChild(this._buildSlotCEs(slotData, i));
-
         if (!isBondHidden) {
+          const levelBox = (refKey, labelText, id, values, selected, onChange) => {
+            const box = DOMFactory.el("div", "bond-input-box");
+            const label = DOMFactory.el("label", "bond-input-box-label", { for: id });
+            label.textContent = labelText;
+            const select = DOMFactory.el("select", "bond-input-box-field bond-level-select", { id });
+            values.forEach((value) => {
+              const opt = DOMFactory.el("option", null, { value: String(value) });
+              opt.textContent = String(value);
+              if (value === selected) opt.selected = true;
+              select.appendChild(opt);
+            });
+            select.addEventListener("change", () => onChange(select.value));
+            this.elements[refKey] = select;
+            box.appendChild(label);
+            box.appendChild(select);
+            return box;
+          };
+
+          // Moving off a level always re-prices the box from the table — the old level's figure is stale.
+          const currentBox = levelBox(
+            `slotBondLv_${i}`,
+            "Current Lv.",
+            `slotBondLv_${i}`,
+            levelValues(0, maxLevel),
+            currentLevel,
+            (value) => {
+              this.flushInputsToState();
+              const next = Math.round(Validator.clamp(value, 0, maxLevel));
+              slotData.bondLevel = next;
+              if (slotData.targetLevel <= next) slotData.targetLevel = next + 1;
+              if (bondGrowth) slotData.bondNeeded = bondGrowth[next];
+              // The +25% all-servant bonus belongs to bond 15+, so the box follows the level both ways.
+              slotData.bond15 = next >= BOND_CONSTANTS.BOND_BONUS_LEVEL;
+              this.saveState();
+              this.buildServantSlots();
+            },
+          );
+
+          const targetBox = levelBox(
+            `slotBondTgt_${i}`,
+            "Target Lv.",
+            `slotBondTgt_${i}`,
+            levelValues(currentLevel + 1, maxLevel + 1),
+            targetLevel,
+            (value) => {
+              this.flushInputsToState();
+              slotData.targetLevel = Math.round(Validator.clamp(value, currentLevel + 1, maxLevel + 1));
+              this.saveState();
+            },
+          );
+
+          const levelRow = DOMFactory.el("div", "bond-level-row");
+          levelRow.appendChild(currentBox);
+          levelRow.appendChild(targetBox);
+          info.appendChild(levelRow);
+
+          // Bond input box with border label
+          const inputBox = DOMFactory.el("div", "bond-input-box");
+          const inputLabel = DOMFactory.el("label", "bond-input-box-label", { for: `slotBond_${i}` });
+          inputLabel.textContent = "Next Lv. Required";
+          const input = DOMFactory.el("input", "bond-input-box-field", {
+            type: "number",
+            id: `slotBond_${i}`,
+            min: "0",
+            max: String(BOND_CONSTANTS.MAX_BOND_NEEDED),
+            value: String(slotData.bondNeeded || 0),
+          });
+          inputBox.appendChild(inputLabel);
+          inputBox.appendChild(input);
+          info.appendChild(inputBox);
           this.elements[`slotBond_${i}`] = input;
         }
+
+        // The essences belong to this card, so they follow the point box — or take its place.
+        info.appendChild(this._buildSlotCEs(slotData, i));
 
         // Remove button
         const removeSlotIndex = i;

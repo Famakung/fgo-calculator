@@ -689,6 +689,75 @@ try {
     errors.push(`bond slot CEs: removing the essence left ${removed.chips} chip(s) / ${removed.addTiles} blank tile(s), want 1 blank`);
   }
 
+  /* Support and Max Bond cards must stop reserving the height of the fields they hide: those elements
+     leave the layout entirely, the essence block stays the card's last element, and switching back to
+     Normal brings the player's own figures with it. The tick row is read as a direct child of the info
+     column so the Grand Servant row inside the essence block cannot be mistaken for it. */
+  const slotInfo = (index) =>
+    page.evaluate((i) => {
+      const slot = document.querySelector(`.servant-slot[data-slot-index="${i}"]`);
+      const info = slot && slot.querySelector(".servant-slot-info");
+      const block = info && info.querySelector(".slot-ce-block");
+      const box = info.querySelector(":scope > .bond-input-box input");
+      return {
+        collapsed: !!block && block === info.lastElementChild,
+        chips: block ? block.querySelectorAll(".ce-chip").length : 0,
+        levelRow: !!info.querySelector(":scope > .bond-level-row"),
+        pointBox: !!info.querySelector(":scope > .bond-input-box"),
+        tickRow: !!info.querySelector(":scope > .bond-checkbox-row"),
+        points: box ? box.value : "",
+        height: Math.round(slot.getBoundingClientRect().height),
+      };
+    }, index);
+
+  const TICK_ROW = '.servant-slot[data-slot-index="0"] .servant-slot-info > .bond-checkbox-row .bond-checkbox';
+
+  // Max Bond keeps its tick row (the tick has to stay undoable) and loses the level selects and the box.
+  // Every handler rebuilds the cards synchronously, so there is nothing to wait for after a click.
+  const normal = await slotInfo(0);
+  await page.click(TICK_ROW);
+  const maxBond = await slotInfo(0);
+  if (maxBond.levelRow || maxBond.pointBox) {
+    errors.push(`bond slot Max Bond: level row=${maxBond.levelRow} point box=${maxBond.pointBox}, want both gone`);
+  }
+  if (!maxBond.tickRow) errors.push("bond slot Max Bond: the Max Bond / Bond ≥15 row disappeared — the tick is stuck");
+  if (!maxBond.collapsed) errors.push("bond slot Max Bond: the essence block is no longer the card's last element");
+  if (maxBond.chips !== normal.chips) errors.push(`bond slot Max Bond: ${maxBond.chips} chip(s), want ${normal.chips}`);
+  if (!(maxBond.height < normal.height)) {
+    errors.push(`bond slot Max Bond: card is ${maxBond.height}px, no shorter than Normal ${normal.height}px`);
+  }
+
+  await page.click(TICK_ROW);
+
+  // Support has no tick row at all, and still wears its essences.
+  await page.select("#slotType_0", "support");
+  const support = await slotInfo(0);
+  if (support.levelRow || support.pointBox) {
+    errors.push(`bond slot Support: level row=${support.levelRow} point box=${support.pointBox}, want both gone`);
+  }
+  if (support.tickRow) errors.push("bond slot Support: the Max Bond / Bond ≥15 row is still reserved");
+  if (!support.collapsed) errors.push("bond slot Support: the essence block is no longer the card's last element");
+  if (support.chips !== normal.chips) {
+    errors.push(`bond slot Support: ${support.chips} chip(s), want ${normal.chips} — collapsing fields must keep the essences`);
+  }
+  if (!(support.height < normal.height)) {
+    errors.push(`bond slot Support: card is ${support.height}px, no shorter than Normal ${normal.height}px`);
+  }
+
+  // Back to Normal: the fields come back, with the figures the player had.
+  await page.select("#slotType_0", "normal");
+  const backToNormal = await slotInfo(0);
+  if (!backToNormal.levelRow || !backToNormal.pointBox || !backToNormal.tickRow) {
+    errors.push(`bond slot back to Normal: level row=${backToNormal.levelRow} point box=${backToNormal.pointBox} tick row=${backToNormal.tickRow}`);
+  }
+  console.log(
+    `NOTE: bond slot card height — Normal ${normal.height}px, Max Bond ${maxBond.height}px, ` +
+      `Support ${support.height}px, back to Normal ${backToNormal.height}px (${backToNormal.points} pts in the box)`,
+  );
+  if (backToNormal.points !== normal.points) {
+    errors.push(`bond slot back to Normal: point box shows ${JSON.stringify(backToNormal.points)}, was ${JSON.stringify(normal.points)}`);
+  }
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();
