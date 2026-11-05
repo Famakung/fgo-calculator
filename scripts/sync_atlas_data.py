@@ -90,9 +90,7 @@ UNOFFICIAL_JP_TRANSLATIONS = {
     "2701": "Gun Dealer",
 }
 
-CE_OVERRIDES = {
-    "0910": {"bonus": 15},
-}
+CE_OVERRIDES = {}
 
 KNOWN_COSTUME_LABELS = {
     "301330": "Piercing Bunny",
@@ -988,6 +986,21 @@ def sync_bond_growth(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"),
 # Craft Essence Synchronization Engine
 # ==============================================================================
 
+def _bond_rates(vals: List[dict]) -> Tuple[float, int]:
+    """Max bond percentage and flat gain over the non-event entries of one effect's value list."""
+    max_rate = 0
+    max_add = 0
+    for sv in vals or []:
+        if sv.get("EventId"):
+            continue
+        if "RateCount" in sv:
+            val = sv["RateCount"] / 10
+            max_rate = max(max_rate, int(val) if val.is_integer() else val)
+        if "AddCount" in sv:
+            max_add = max(max_add, sv["AddCount"])
+    return max_rate, max_add
+
+
 def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str, str]] = None) -> List[dict]:
     """Extract permanent Bond Gain CEs, parse traits/bonuses, and auto-group same-effect campaign series."""
     parsed_ces = []
@@ -1006,16 +1019,10 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             continue
 
         last_skill, f = bond_funcs[-1]
-        max_rate = 0
-        max_add = 0
-        for sv in f.get("svals", []):
-            if not sv.get("EventId"):
-                if "RateCount" in sv:
-                    val = sv["RateCount"] / 10
-                    rate_val = int(val) if val.is_integer() else val
-                    max_rate = max(max_rate, rate_val)
-                if "AddCount" in sv:
-                    max_add = max(max_add, sv["AddCount"])
+        max_rate, max_add = _bond_rates(f.get("svals"))
+        # followerVals is the effect when the wearer is borrowed as a support servant (e.g. 0910).
+        # shortcut: only the percentage differs today, no followerVals carries AddCount, so flat gains ignore it.
+        support_rate, _support_add = _bond_rates(f.get("followerVals"))
 
         cid_str = f"{cid:04d}"
         if cid_str in CE_OVERRIDES and "bonus" in CE_OVERRIDES[cid_str]:
@@ -1065,6 +1072,7 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             "base_title": base_title,
             "flag": ce.get("flag"),
             "bonus": max_rate,
+            "supportBonus": support_rate if support_rate and support_rate != max_rate else 0,
             "flatBonus": max_add,
             "traits": traits,
             "matchAll": match_all,
@@ -1084,6 +1092,7 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
         prev = curr[-1]
         same_eff = (
             ce["bonus"] == prev["bonus"]
+            and ce["supportBonus"] == prev["supportBonus"]
             and ce["flatBonus"] == prev["flatBonus"]
             and ce["traits"] == prev["traits"]
             and ce["matchAll"] == prev["matchAll"]
@@ -1131,6 +1140,8 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
                 entry["flatBonus"] = first["flatBonus"]
             if first["bonus"]:
                 entry["bonus"] = first["bonus"]
+            if first["supportBonus"]:
+                entry["supportBonus"] = first["supportBonus"]
             if first["traits"]:
                 entry["traits"] = first["traits"]
             if first["matchAll"]:
@@ -1147,6 +1158,8 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             }
             if first["bonus"]:
                 entry["bonus"] = first["bonus"]
+            if first["supportBonus"]:
+                entry["supportBonus"] = first["supportBonus"]
             if first["flatBonus"]:
                 entry["flatBonus"] = first["flatBonus"]
             if first["traits"] is not None and not first["traitGroups"]:
@@ -1283,6 +1296,8 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
                 lines.append(f'    flatBonus: {entry["flatBonus"]},')
             if entry.get("bonus"):
                 lines.append(f'    bonus: {entry["bonus"]},')
+            if entry.get("supportBonus"):
+                lines.append(f'    supportBonus: {entry["supportBonus"]},')
             if entry.get("traits"):
                 lines.append(f'    traits: {json.dumps(entry["traits"])},')
             if entry.get("groupImage"):
@@ -1296,6 +1311,8 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
         else:
             if entry.get("bonus"):
                 lines.append(f'    bonus: {entry["bonus"]},')
+            if entry.get("supportBonus"):
+                lines.append(f'    supportBonus: {entry["supportBonus"]},')
             if entry.get("flatBonus"):
                 lines.append(f'    flatBonus: {entry["flatBonus"]},')
             if entry.get("traits") is not None and not entry.get("traitGroups"):

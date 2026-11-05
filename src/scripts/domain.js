@@ -163,14 +163,23 @@ export const SlotCEs = {
     return slot;
   },
 
+  /* Each pooled essence keeps the flag of the servant wearing it: a borrowed support's essence pays that
+     CE's friend-side rate (`supportBonus`, e.g. 0910 Chaldea Teatime 15% instead of the self 5%), so the
+     maths needs to know whose servant it sits on. */
   partyPool(slots) {
     const pool = [];
     (slots || []).forEach((slot) => {
       (slot && slot.ces ? slot.ces : []).forEach((entry) => {
-        if (entry) pool.push(entry); // a pending null hole belongs to the picker, not to the party
+        if (entry) pool.push({ entry, isSupport: slot.type === "support" }); // a pending null hole belongs to the picker, not to the party
       });
     });
     return pool;
+  },
+
+  /* What one equipped essence contributes to a party: the CE's friend-side rate when a borrowed support
+     servant wears it, its own rate otherwise. */
+  rate(ce, isSupport) {
+    return isSupport && ce.supportBonus ? ce.supportBonus : ce.bonus;
   },
 
   /* The shape rule loadState() already applied to the old flat pool: a non-empty string id, or a

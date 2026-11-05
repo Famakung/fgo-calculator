@@ -151,18 +151,19 @@ export const BondApp = {
 
   /* The bonus line the old CE card printed under each portrait. It now only feeds the chip's title and
      alt text, since the card keeps the essence to a portrait. */
-  _ceBonusText(ce, ceEntry) {
+  _ceBonusText(ce, ceEntry, isSupport) {
+    const bonus = SlotCEs.rate(ce, isSupport);
     if (typeof ceEntry === "object" && ceEntry.groupId) {
-      return ce.flatBonus > 0 ? `+${ce.flatBonus} pts All` : `+${ce.bonus}% All`;
+      return ce.flatBonus > 0 ? `+${ce.flatBonus} pts All` : `+${bonus}% All`;
     }
     if (ce.traitGroups.length > 0) {
       const groups = ce.traitGroups.map((group) => group.map((t) => TraitNames[t] || t).join(" or ")).join(" and ");
-      return `+${ce.bonus}% ${groups}`;
+      return `+${bonus}% ${groups}`;
     }
-    if (ce.traits.length === 0) return `+${ce.bonus}% All`;
+    if (ce.traits.length === 0) return `+${bonus}% All`;
     const traitNames = ce.traits.map((t) => TraitNames[t] || t);
     const joiner = ce.matchAll ? " and " : " or ";
-    return `+${ce.bonus}% ${traitNames.join(joiner)}`;
+    return `+${bonus}% ${traitNames.join(joiner)}`;
   },
 
   /* A blank position, or a pending hole the picker owns. */
@@ -189,7 +190,7 @@ export const BondApp = {
     const idText = grouped ? ceEntry.groupId : ceEntry;
 
     const chip = DOMFactory.el("div", "ce-chip");
-    chip.title = ce ? `${ceName} \u00b7 ${this._ceBonusText(ce, ceEntry)}` : ceName;
+    chip.title = ce ? `${ceName} \u00b7 ${this._ceBonusText(ce, ceEntry, slotData.type === "support")}` : ceName;
     if (ceImage) {
       const img = DOMFactory.createLazyImg(ceImage, "ce-chip-img", { alt: ceName });
       DOMFactory.addSimpleFallback(img, "ce-chip-fallback", idText);
@@ -791,7 +792,8 @@ export const BondApp = {
       const servantTraits = servant ? ServantData.getTraitsForAscension(servantId, ascension) : [];
       const traitSet = new Set(servantTraits);
       let flatBonus = 0;
-      SlotCEs.partyPool(this.state.slots).forEach((ceEntry) => {
+      SlotCEs.partyPool(this.state.slots).forEach((pooled) => {
+        const ceEntry = pooled.entry;
         // Resolve CE from entry (string or group object)
         let ceId, optionId;
         if (typeof ceEntry === "object" && ceEntry.groupId) {
@@ -804,6 +806,8 @@ export const BondApp = {
 
         const ce = CEById.get(ceId);
         if (!ce) return;
+
+        const rate = SlotCEs.rate(ce, pooled.isSupport);
 
         if (ce.isGroup) {
           // Grouped CE: universal bonus (percentage or flat)
@@ -819,12 +823,12 @@ export const BondApp = {
                 thumbImage: option.thumbImage,
                 isFlatBonus: true,
               });
-            } else if (ce.bonus > 0) {
-              ceBonusPercent += ce.bonus;
+            } else if (rate > 0) {
+              ceBonusPercent += rate;
               appliedCEs.push({
                 id: option.id,
                 name: option.name,
-                bonus: ce.bonus,
+                bonus: rate,
                 image: option.image,
                 thumbImage: option.thumbImage,
               });
@@ -835,8 +839,8 @@ export const BondApp = {
           const matched = TraitMatcher.matches(traitSet, ce);
 
           if (matched) {
-            ceBonusPercent += ce.bonus;
-            appliedCEs.push(ce);
+            ceBonusPercent += rate;
+            appliedCEs.push({ ...ce, bonus: rate });
           }
         }
       });

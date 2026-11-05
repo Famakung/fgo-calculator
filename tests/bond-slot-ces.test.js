@@ -32,13 +32,29 @@ test("trim never touches a list already inside its capacity", () => {
 
 test("the party pool keeps every slot's essence, in slot then position order", () => {
   const slots = [slot(["2645", "2198"], true), slot([], false), slot(["3031"], false)];
-  assert.deepEqual(SlotCEs.partyPool(slots), ["2645", "2198", "3031"]);
+  assert.deepEqual(
+    SlotCEs.partyPool(slots).map((pooled) => pooled.entry),
+    ["2645", "2198", "3031"],
+  );
 });
 
-test("a support slot's essence still joins the pool", () => {
+test("a support slot's essence still joins the pool, tagged as borrowed", () => {
   const slots = [slot(["2645"], false), slot(["3031"], false)];
   slots[1].type = "support";
-  assert.deepEqual(SlotCEs.partyPool(slots), ["2645", "3031"]);
+  assert.deepEqual(
+    SlotCEs.partyPool(slots).map((pooled) => [pooled.entry, pooled.isSupport]),
+    [
+      ["2645", false],
+      ["3031", true],
+    ],
+  );
+});
+
+test("a borrowed essence pays the friend-side rate, a self-worn one its own", () => {
+  const teatime = { bonus: 5, supportBonus: 15 };
+  assert.equal(SlotCEs.rate(teatime, true), 15);
+  assert.equal(SlotCEs.rate(teatime, false), 5);
+  assert.equal(SlotCEs.rate({ bonus: 10 }, true), 10); // no friend-side rate on this essence
 });
 
 test("a missing or non-array list sanitises to empty", () => {

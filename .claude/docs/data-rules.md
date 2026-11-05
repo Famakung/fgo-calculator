@@ -32,6 +32,7 @@
 - Keys: zero-padded CE ID strings (`"0330"`, `"1973"`, `"2509"`)
 - Fully synchronized from Atlas Academy API (`nice_equip_lang_en.json`) via `npm run data:sync`
 - Simple CE: `{ "name": "...", "bonus": N, "traits": [...] }`
+- `"supportBonus": N` — only when Atlas's `followerVals` differs from its `svals`: the percentage the essence pays when a **borrowed support servant** wears it (0910 Chaldea Teatime: `bonus: 5`, `supportBonus: 15`). `SlotCEs.rate(ce, isSupport)` (`domain.js`) is the one place that picks between the two; 0910 is currently the only bond CE that carries it
 - Match modes:
   - Default (OR): servant needs ANY trait in `traits`
   - `"matchAll": true` (AND): servant needs ALL traits

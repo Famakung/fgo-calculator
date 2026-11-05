@@ -4,6 +4,21 @@
 
 ---
 
+## 2026-11-05 — feat(sync): bond CEs that differ on a support servant (`supportBonus`)
+
+`scripts/sync_atlas_data.py` now reads the `followerVals` of the chosen `servantFriendshipUp` function next to its `svals`. When the two differ, the CE ships `bonus` (worn by your own servant) **and** `supportBonus` (worn by a servant you borrowed as support). Of the 59 detected bond CEs exactly one differs — **0910 Chaldea Teatime, 5% self vs 15% support** — and it was carried by the `CE_OVERRIDES = {"0910": {"bonus": 15}}` hardcode, which is deleted; the override dict itself stays for future holes in Atlas's data. `_bond_rates()` is the one parser for both value lists.
+
+- `supportBonus` joins the same-effect signature used for grouping, so a campaign series can never group variants whose support rates disagree.
+- `CEList` (`src/scripts/data.js`) whitelists the field — without that line the value is silently stripped at load.
+- `SlotCEs.partyPool()` returns `{ entry, isSupport }` instead of bare entries: the rule needs to know *whose* servant wears the essence, and the pool is the only place that knows. `SlotCEs.rate(ce, isSupport)` (`domain.js`) is the single chooser, used by `calculate()` and by `_ceBonusText()`, so the chip title, the results badge and the maths agree.
+- The applied-CE literal became a copy `{ ...ce, bonus: rate }` and deliberately carries **no** `isSupport` flag — the results renderer already uses that name for "this badge is a frontline support *servant*" (`+4% All`), and a borrowed essence is not one.
+- Follower `AddCount` (flat bond) is not parsed: no CE in Atlas has one today. `shortcut:` comment at the call site.
+- **Numbers move for the player**: a Teatime on your own servant is now 5%, not the 15% the hardcode printed. A friend's support servant wearing it still gives your party 15%.
+
+Verification: `npm run test` 36/36 (two `partyPool` asserts updated, one new `rate` test) · `npm run lint` exit 0 · Prettier clean · `npm run build` ✓ · `npm run check:build` SUCCESS, baseline re-captured with `--write` (`bond-lazy` 19012 → 19051 B, `ce-filter-chunk` 26548 → 26644 B, no chunk renamed, no head marker moved) · `node scripts/verify_render.js` SUCCESS.
+The 5%/15% split was proved against the served production build with a throwaway Puppeteer probe (`fgo_bond_calculator_data` seeded with CE `0910` in slot 0 Normal and slot 1 support, custom quest 1,000 pts/run): chip titles `Chaldea Teatime · +5% All` and `Chaldea Teatime · +15% All`, result badges `Chaldea Teatime +5%` and `+15%`, and `1,000(+488)` on the card — which is `floor(200 × 1.24) + 200 + 40`, i.e. the 20% the two essences contribute, not the 30% the old hardcode would have paid (612) or the 10% a both-self reading would (364). `RUNS: 4` = `ceil(5000 / 1488)`. The probe is not kept and nothing in `scripts/verify_render.js` covers the split, so the permanent gate still never equips a CE on a Support slot.
+Not checked by any gate: the fetcher's live network path — `extract_bond_craft_essences()` and `update_craft_essences_js()` were run against the cached `.cache/atlas/nice_equip_lang_en.json`, whose only diff against the shipped file was the 0910 pair.
+
 ## 2026-11-05 — feat(bond): craft essences moved into the servant slot
 
 Plan `.claude/docs/archive/2026-11-05-bond-slot-ce-rework-plan.md`, spec `.claude/bond-grand-ce-slot.html`, executed inline on `feat/bond-slot-ce` (commits `50e745e..` — six commits, one per task).

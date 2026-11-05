@@ -17,6 +17,7 @@ export const CEList = (() => {
         id,
         name: data.name || `CE ${id}`,
         bonus: data.bonus || 0,
+        supportBonus: data.supportBonus || 0,
         traits: Array.isArray(data.traits) ? data.traits : [],
         matchAll: !!data.matchAll,
         traitGroups: Array.isArray(data.traitGroups) ? data.traitGroups : [],
