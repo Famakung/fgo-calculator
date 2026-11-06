@@ -164,7 +164,16 @@ export const ServantSelector = {
     // Multi keeps the modal open and marks items like the CE picker does.
     this._multi = options.multi === true;
     this._selectedIds = new Set(this._multi ? options.selected : []);
-    this.lockedClasses = Array.isArray(options.lockClasses) && options.lockClasses.length ? options.lockClasses : null;
+    const newLock = Array.isArray(options.lockClasses) && options.lockClasses.length ? options.lockClasses : null;
+    const lockChanged =
+      (this.lockedClasses === null) !== (newLock === null) ||
+      (Boolean(this.lockedClasses) &&
+        Boolean(newLock) &&
+        (this.lockedClasses.length !== newLock.length || !this.lockedClasses.every((id, i) => id === newLock[i])));
+    if (lockChanged) {
+      this.resetFilters();
+    }
+    this.lockedClasses = newLock;
     // The row is kept as the player left it for the rest of the page, and starts blank again after a refresh.
 
     this.syncPickerControls();
@@ -173,6 +182,25 @@ export const ServantSelector = {
 
     const modal = document.getElementById("servantModal");
     if (modal) modal.classList.add("open");
+  },
+
+  resetFilters() {
+    this.classFilters = [];
+    this.rarityFilters = [];
+    this.groupClassFilters = [];
+    this.aliFilters = [];
+    this.subAliFilters = [];
+    this.subAttrFilters = [];
+    this.genderFilters = [];
+    this.draftFilters = null;
+    this._searchQuery = "";
+    const searchInput = document.getElementById("servantPickerSearch");
+    if (searchInput) searchInput.value = "";
+    const modal = document.getElementById("servantModal");
+    if (modal && modal.classList.contains("open")) {
+      this.syncPickerControls();
+      this.filter();
+    }
   },
 
   close() {

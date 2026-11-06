@@ -213,7 +213,10 @@ export const BondApp = {
       select.addEventListener("change", () => {
         if (swaps) this.stashParty();
         this.state[key] = select.value;
-        if (swaps) this.applyParty();
+        if (swaps) {
+          this.applyParty();
+          this._refs?.ServantSelector?.resetFilters?.();
+        }
         this.saveState();
         this.syncQuestRows();
       });
