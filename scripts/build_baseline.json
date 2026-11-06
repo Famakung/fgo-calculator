@@ -21,7 +21,7 @@
     "event-lazy": 5194,
     "index.astro_astro_type_script_index_0_lang": 33,
     "main-entry": 3251,
-    "selectors-chunk": 36379,
+    "selectors-chunk": 37138,
     "tab-navigator-chunk": 1709
   },
   "chunkMinBytes": {
@@ -33,9 +33,9 @@
     "event-lazy": 1298,
     "index.astro_astro_type_script_index_0_lang": 8,
     "main-entry": 812,
-    "selectors-chunk": 9094,
+    "selectors-chunk": 9284,
     "tab-navigator-chunk": 427
   },
-  "rawTextSha": "6580191ee99901ce3c1b60432c94192e153347ea4f25852ba453136e109d12ab",
-  "normalisedTextSha": "c986175d705ef3258af045d112c8d46fbf3165e18a06b0091d5940fb225fedd2"
+  "rawTextSha": "a94130736a9b69af304533bb335408999f984cb0cb560d627e4e755f1172edee",
+  "normalisedTextSha": "6d837cad1ae5bd8da9cb4157f1927ad41d48fb0da978ba57d6e3ab9480ec4a85"
 }

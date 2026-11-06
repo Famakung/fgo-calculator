@@ -200,3 +200,85 @@ test("duplicate picked ids", () => {
 
   assert.deepStrictEqual(withDupes, clean);
 });
+
+test("buildServantOverlapGroups prunes combinations with no other servant match", () => {
+  // S1 matches CE1, CE2. S2 matches only CE1.
+  // Combo [CE1, CE2] matches only S1 -> pruned!
+  // Combo [CE1] matches S1 and S2 -> kept!
+  const s1 = entry("001", ["0001", "0002"]);
+  const s2 = entry("002", ["0001"]);
+  const allMatches = [s1, s2];
+
+  const groups = ServantComboCalculator.buildServantOverlapGroups(allMatches, s1);
+  assert.equal(groups.length, 1);
+  assert.deepStrictEqual(groups[0].ceIds, ["0001"]);
+  assert.deepStrictEqual(
+    groups[0].otherMembers.map((m) => m.servant.id),
+    ["002"],
+  );
+});
+
+test("buildServantOverlapGroups prunes combinations with same servant group keeping maximal CEs", () => {
+  // S1 matches CE1, CE2. S2 matches CE1, CE2.
+  // Combos:
+  // [CE1, CE2] -> otherMembers: [S2]
+  // [CE1] -> otherMembers: [S2] (same servant in group)
+  // [CE2] -> otherMembers: [S2] (same servant in group)
+  // Prunes [CE1] and [CE2], keeps maximal [CE1, CE2].
+  const s1 = entry("001", ["0001", "0002"]);
+  const s2 = entry("002", ["0001", "0002"]);
+  const allMatches = [s1, s2];
+
+  const groups = ServantComboCalculator.buildServantOverlapGroups(allMatches, s1);
+  assert.equal(groups.length, 1);
+  assert.deepStrictEqual(groups[0].ceIds, ["0001", "0002"]);
+  assert.deepStrictEqual(
+    groups[0].otherMembers.map((m) => m.servant.id),
+    ["002"],
+  );
+});
+
+test("buildServantOverlapGroups keeps distinct servant groups and sorts by CE count then servant count", () => {
+  // S1 matches CE1, CE2, CE3.
+  // S2 matches CE1, CE2, CE3.
+  // S3 matches CE1, CE2.
+  // S4 matches CE1.
+  // Combinations:
+  // [CE1, CE2, CE3] -> otherMembers: [S2] (3 CEs)
+  // [CE1, CE2] -> otherMembers: [S2, S3] (2 CEs, distinct group!)
+  // [CE1] -> otherMembers: [S2, S3, S4] (1 CE, distinct group!)
+  const s1 = entry("001", ["0001", "0002", "0003"]);
+  const s2 = entry("002", ["0001", "0002", "0003"]);
+  const s3 = entry("003", ["0001", "0002"]);
+  const s4 = entry("004", ["0001"]);
+  const allMatches = [s1, s2, s3, s4];
+
+  const groups = ServantComboCalculator.buildServantOverlapGroups(allMatches, s1);
+  assert.equal(groups.length, 3);
+  // Sort order: most CEs first
+  assert.deepStrictEqual(groups[0].ceIds, ["0001", "0002", "0003"]);
+  assert.deepStrictEqual(
+    groups[0].otherMembers.map((m) => m.servant.id),
+    ["002"],
+  );
+
+  assert.deepStrictEqual(groups[1].ceIds, ["0001", "0002"]);
+  assert.deepStrictEqual(
+    groups[1].otherMembers.map((m) => m.servant.id),
+    ["002", "003"],
+  );
+
+  assert.deepStrictEqual(groups[2].ceIds, ["0001"]);
+  assert.deepStrictEqual(
+    groups[2].otherMembers.map((m) => m.servant.id),
+    ["002", "003", "004"],
+  );
+});
+
+test("buildServantOverlapGroups returns empty array when no CEs or no other matches", () => {
+  const s1 = entry("001", []);
+  assert.deepStrictEqual(ServantComboCalculator.buildServantOverlapGroups([s1], s1), []);
+
+  const s2 = entry("001", ["0001"]);
+  assert.deepStrictEqual(ServantComboCalculator.buildServantOverlapGroups([s2], s2), []);
+});
