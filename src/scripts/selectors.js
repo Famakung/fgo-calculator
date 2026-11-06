@@ -1,4 +1,4 @@
-import { ServantData, CEList, TraitCEs } from "./data.js";
+import { ServantData, CEList, TraitCEs, CEById } from "./data.js";
 import {
   CLASS_FILTERS,
   CLASS_GROUPS,
@@ -9,7 +9,7 @@ import {
   GENDER_FILTERS,
   DEBOUNCE_MS,
 } from "./constants.js";
-import { ServantSort, ServantFilters } from "./domain.js";
+import { ServantSort, ServantFilters, ServantComboCalculator } from "./domain.js";
 import { FilterSections } from "./filter-sections.js";
 import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
 
@@ -73,19 +73,39 @@ export const ServantSelector = {
     }
 
     const filterBtn = document.getElementById("servantPickerFilterBtn");
-    if (filterBtn && subModal) {
-      filterBtn.addEventListener("click", () => subModal.classList.add("open"));
+    if (filterBtn) {
+      filterBtn.addEventListener("click", () => this._openFilterModal());
     }
 
     const subClose = document.getElementById("servantFilterModalClose");
-    if (subClose && subModal) {
-      subClose.addEventListener("click", () => subModal.classList.remove("open"));
+    if (subClose) {
+      subClose.addEventListener("click", () => this._cancelFilterModal());
     }
 
     if (subModal) {
       subModal.addEventListener("click", (e) => {
-        if (e.target === subModal) subModal.classList.remove("open");
+        if (e.target === subModal) this._cancelFilterModal();
       });
+    }
+
+    const defaultBtn = document.getElementById("servantFilterDefaultBtn");
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", () => this._defaultFilterModal());
+    }
+
+    const selectAllBtn = document.getElementById("servantFilterSelectAllBtn");
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => this._selectAllFilterModal());
+    }
+
+    const cancelBtn = document.getElementById("servantFilterCancelBtn");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", () => this._cancelFilterModal());
+    }
+
+    const okBtn = document.getElementById("servantFilterOkBtn");
+    if (okBtn) {
+      okBtn.addEventListener("click", () => this._okFilterModal());
     }
 
     const sortSelect = document.getElementById("servantPickerSortBy");
@@ -115,7 +135,7 @@ export const ServantSelector = {
         if (e.key !== "Escape" || !modal.classList.contains("open")) return;
         // The filter modal sits on top of this one, so Escape takes the top layer off first.
         if (subModal && subModal.classList.contains("open")) {
-          subModal.classList.remove("open");
+          this._cancelFilterModal();
           return;
         }
         this.close();
@@ -280,59 +300,132 @@ export const ServantSelector = {
      opened the picker. The class row is always built: outside the group or the quest's lock its chips are
      greyed rather than absent, so the row cannot be escaped by a stale pick and comes back whole when the
      group is cleared. */
-  _renderFilterRows() {
-    const scope = ServantFilters.rowScope(this.groupClassFilters, this.lockedClasses);
+  _renderFilterRows(customFilters = null) {
+    const filterState = customFilters || this.draftFilters || this;
+    const scope = ServantFilters.rowScope(filterState.groupClassFilters, this.lockedClasses);
     const lock = this.lockedClasses;
     const toggle = (key) => (ids) => {
-      this[key] = ids;
-      this.filter();
+      if (this.draftFilters) {
+        this.draftFilters[key] = ids;
+        if (key === "groupClassFilters") {
+          this._renderFilterRows(this.draftFilters);
+        }
+      } else {
+        this[key] = ids;
+        this.filter();
+      }
     };
 
     FilterSections.renderRow(
       document.getElementById("servantRarityFilter"),
       RARITY_FILTERS,
-      this.rarityFilters,
+      filterState.rarityFilters,
       toggle("rarityFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("servantClassFilter"),
       [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
-      this.classFilters,
+      filterState.classFilters,
       toggle("classFilters"),
       { disabled: (chip) => scope !== null && !scope.includes(chip.id) },
     );
     FilterSections.renderRow(
       document.getElementById("servantGroupFilter"),
       CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true, classes: g.classes })),
-      this.groupClassFilters,
+      filterState.groupClassFilters,
       toggle("groupClassFilters"),
       { disabled: (chip) => Boolean(lock) && !chip.classes.some((id) => lock.includes(id)) },
     );
     FilterSections.renderRow(
       document.getElementById("servantAliFilter"),
       ALIGNMENT_LNC_FILTERS,
-      this.aliFilters,
+      filterState.aliFilters,
       toggle("aliFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("servantSubAliFilter"),
       ALIGNMENT_GBE_FILTERS,
-      this.subAliFilters,
+      filterState.subAliFilters,
       toggle("subAliFilters"),
-      { disabled: () => this.subAliFilters.includes(ServantFilters.SUB_ALI_OTHER) },
+      { disabled: () => (filterState.subAliFilters || []).includes(ServantFilters.SUB_ALI_OTHER) },
     );
     FilterSections.renderRow(
       document.getElementById("servantAttrFilter"),
       SUB_ATTR_FILTERS,
-      this.subAttrFilters,
+      filterState.subAttrFilters,
       toggle("subAttrFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("servantGenderFilter"),
       GENDER_FILTERS,
-      this.genderFilters,
+      filterState.genderFilters,
       toggle("genderFilters"),
     );
+  },
+
+  _openFilterModal() {
+    const subModal = document.getElementById("servantFilterModal");
+    if (!subModal) return;
+    this.draftFilters = {
+      rarityFilters: [...this.rarityFilters],
+      classFilters: [...this.classFilters],
+      groupClassFilters: [...this.groupClassFilters],
+      aliFilters: [...this.aliFilters],
+      subAliFilters: [...this.subAliFilters],
+      subAttrFilters: [...this.subAttrFilters],
+      genderFilters: [...this.genderFilters],
+    };
+    this._renderFilterRows(this.draftFilters);
+    subModal.classList.add("open");
+  },
+
+  _cancelFilterModal() {
+    this.draftFilters = null;
+    this._renderFilterRows();
+    const subModal = document.getElementById("servantFilterModal");
+    if (subModal) subModal.classList.remove("open");
+  },
+
+  _okFilterModal() {
+    if (this.draftFilters) {
+      this.rarityFilters = [...this.draftFilters.rarityFilters];
+      this.classFilters = [...this.draftFilters.classFilters];
+      this.groupClassFilters = [...this.draftFilters.groupClassFilters];
+      this.aliFilters = [...this.draftFilters.aliFilters];
+      this.subAliFilters = [...this.draftFilters.subAliFilters];
+      this.subAttrFilters = [...this.draftFilters.subAttrFilters];
+      this.genderFilters = [...this.draftFilters.genderFilters];
+      this.draftFilters = null;
+    }
+    this.filter();
+    const subModal = document.getElementById("servantFilterModal");
+    if (subModal) subModal.classList.remove("open");
+  },
+
+  _defaultFilterModal() {
+    if (!this.draftFilters) return;
+    this.draftFilters.rarityFilters = [];
+    this.draftFilters.classFilters = [];
+    this.draftFilters.groupClassFilters = [];
+    this.draftFilters.aliFilters = [];
+    this.draftFilters.subAliFilters = [];
+    this.draftFilters.subAttrFilters = [];
+    this.draftFilters.genderFilters = [];
+    this._renderFilterRows(this.draftFilters);
+  },
+
+  _selectAllFilterModal() {
+    if (!this.draftFilters) return;
+    this.draftFilters.rarityFilters = RARITY_FILTERS.map((c) => c.id);
+    this.draftFilters.groupClassFilters = CLASS_GROUPS.map((g) => g.key);
+    const scope = ServantFilters.rowScope(this.draftFilters.groupClassFilters, this.lockedClasses);
+    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].map((c) => c.id);
+    this.draftFilters.classFilters = scope ? allClasses.filter((id) => scope.includes(id)) : allClasses;
+    this.draftFilters.aliFilters = ALIGNMENT_LNC_FILTERS.map((c) => c.id);
+    this.draftFilters.subAliFilters = ALIGNMENT_GBE_FILTERS.map((c) => (c.other ? ServantFilters.SUB_ALI_OTHER : c.id));
+    this.draftFilters.subAttrFilters = SUB_ATTR_FILTERS.map((c) => c.id);
+    this.draftFilters.genderFilters = GENDER_FILTERS.map((c) => c.id);
+    this._renderFilterRows(this.draftFilters);
   },
 };
 
@@ -714,17 +807,29 @@ export const CEFilterPicker = {
   init() {
     const modal = document.getElementById("ceFilterModal");
     const closeBtn = document.getElementById("ceFilterModalClose");
+    const defaultBtn = document.getElementById("ceFilterDefaultBtn");
+    const cancelBtn = document.getElementById("ceFilterCancelBtn");
+    const okBtn = document.getElementById("ceFilterOkBtn");
 
     if (closeBtn) {
-      closeBtn.addEventListener("click", () => this.close());
+      closeBtn.addEventListener("click", () => this.cancel());
+    }
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", () => this.default());
+    }
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", () => this.cancel());
+    }
+    if (okBtn) {
+      okBtn.addEventListener("click", () => this.ok());
     }
     if (modal) {
       modal.addEventListener("click", (e) => {
-        if (e.target === modal) this.close();
+        if (e.target === modal) this.cancel();
       });
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && modal.classList.contains("open")) {
-          this.close();
+          this.cancel();
         }
       });
     }
@@ -769,6 +874,26 @@ export const CEFilterPicker = {
     this.tempSelected = new Set();
   },
 
+  cancel() {
+    this.close();
+  },
+
+  default() {
+    this.tempSelected.clear();
+    const grid = document.getElementById("ceFilterPickerGrid");
+    if (grid) {
+      grid.querySelectorAll(".ce-filter-picker-item.selected").forEach((item) => {
+        item.classList.remove("selected");
+      });
+    }
+    this.updateNoMatchState();
+  },
+
+  ok() {
+    this._callbacks?.onApply?.([...this.tempSelected]);
+    this.close();
+  },
+
   renderGrid(ces) {
     const grid = document.getElementById("ceFilterPickerGrid");
     if (!grid) return;
@@ -799,7 +924,6 @@ export const CEFilterPicker = {
           item.classList.add("selected");
         }
         this.updateNoMatchState();
-        this._callbacks?.onApply?.([...this.tempSelected]);
       });
 
       frag.appendChild(item);
@@ -870,21 +994,35 @@ export const CEFilterPicker = {
    ============================================ */
 
 export const CEServantOverlap = {
-  _allEntries: [],
-  _clickedCEIds: new Set(),
-  _clickedCEs: [],
-  _selectedCEFilter: new Set(),
-  _selectedCounts: new Set(),
-  _searchQuery: "",
-  _classFilters: [],
-  _rarityFilters: [],
-  _debouncedUpdateFilters: null,
   _modal: null,
+  _subModal: null,
   _getCEMatches: null,
+  _groups: [],
+  _listenersBound: false,
+  draftFilters: null,
+  filterState: {
+    rarityFilters: [],
+    classFilters: [],
+    groupClassFilters: [],
+    aliFilters: [],
+    subAliFilters: [],
+    subAttrFilters: [],
+    genderFilters: [],
+  },
 
   init(getCEMatches) {
+    if (this._listenersBound) {
+      this._getCEMatches = getCEMatches;
+      return;
+    }
+    this._listenersBound = true;
+
     const modal = document.getElementById("ceOverlapModal");
     const closeBtn = document.getElementById("ceOverlapClose");
+    const subModal = document.getElementById("ceOverlapFilterModal");
+    const subCloseBtn = document.getElementById("ceOverlapFilterModalClose");
+    const filterBtn = document.getElementById("ceOverlapFilterBtn");
+
     if (closeBtn) {
       closeBtn.addEventListener("click", () => this.close());
     }
@@ -893,382 +1031,301 @@ export const CEServantOverlap = {
         if (e.target === modal) this.close();
       });
     }
+
+    if (filterBtn) {
+      filterBtn.addEventListener("click", () => this._openFilterModal());
+    }
+    if (subCloseBtn) {
+      subCloseBtn.addEventListener("click", () => this._cancelFilterModal());
+    }
+    if (subModal) {
+      subModal.addEventListener("click", (e) => {
+        if (e.target === subModal) this._cancelFilterModal();
+      });
+    }
+
+    const defaultBtn = document.getElementById("ceOverlapFilterDefaultBtn");
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", () => this._defaultFilterModal());
+    }
+    const selectAllBtn = document.getElementById("ceOverlapFilterSelectAllBtn");
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => this._selectAllFilterModal());
+    }
+    const cancelBtn = document.getElementById("ceOverlapFilterCancelBtn");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", () => this._cancelFilterModal());
+    }
+    const okBtn = document.getElementById("ceOverlapFilterOkBtn");
+    if (okBtn) {
+      okBtn.addEventListener("click", () => this._okFilterModal());
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (this._subModal && this._subModal.classList.contains("open")) {
+          this._cancelFilterModal();
+          return;
+        }
+        if (this._modal && this._modal.classList.contains("open")) {
+          this.close();
+        }
+      }
+    });
+
     this._modal = modal;
+    this._subModal = subModal;
     this._getCEMatches = getCEMatches;
   },
 
   open(entry) {
-    if (!this._modal) return;
-    const clickedCEIds = new Set(entry.matchingCEs.map((c) => c.id));
-    const totalCEs = clickedCEIds.size;
-    if (totalCEs === 0) return;
-
-    this._clickedCEIds = clickedCEIds;
-    this._clickedCEs = entry.matchingCEs;
-    this._selectedCEFilter = new Set();
-    this._selectedCounts = new Set();
-    this._searchQuery = "";
-    this._classFilters = [];
-    this._rarityFilters = [];
-    this._debouncedUpdateFilters = debounce(() => this.updateFilters(), 50);
+    if (!this._modal || !entry) return;
 
     const titleEl = document.getElementById("ceOverlapTitle");
     if (titleEl) {
-      titleEl.textContent = entry.servant.name;
+      const imgAsc =
+        !entry.baseMatchesAll && entry.matchedAscensions && entry.matchedAscensions.length > 0
+          ? entry.primaryAscension || entry.matchedAscensions[0]
+          : null;
+      const displayName = imgAsc
+        ? ServantData.getAscensionName(entry.servant.id, imgAsc) || entry.servant.name
+        : entry.servant.name;
+      titleEl.textContent = displayName;
     }
 
-    const allMatches = this._getCEMatches();
-    this._allEntries = [];
-    allMatches.forEach((other) => {
-      if (other.servant.id === entry.servant.id) return;
-      const overlap = other.matchingCEs.filter((ce) => clickedCEIds.has(ce.id)).length;
-      if (overlap > 0) {
-        this._allEntries.push({ entry: other, overlap: overlap });
-      }
-    });
+    const allMatches = this._getCEMatches ? this._getCEMatches() : [];
+    this._groups = ServantComboCalculator.buildServantOverlapGroups(allMatches, entry);
 
-    this.buildFilterArea();
+    this.renderGrid();
     this._modal.classList.add("open");
   },
 
   close() {
+    if (this._subModal) {
+      this._subModal.classList.remove("open");
+    }
     if (this._modal) {
       this._modal.classList.remove("open");
     }
   },
 
-  buildFilterArea() {
-    const container = document.getElementById("ceOverlapFilterArea");
-    if (!container) return;
-    container.replaceChildren();
+  _openFilterModal() {
+    if (!this._subModal) return;
+    this.draftFilters = {
+      rarityFilters: [...this.filterState.rarityFilters],
+      classFilters: [...this.filterState.classFilters],
+      groupClassFilters: [...this.filterState.groupClassFilters],
+      aliFilters: [...this.filterState.aliFilters],
+      subAliFilters: [...this.filterState.subAliFilters],
+      subAttrFilters: [...this.filterState.subAttrFilters],
+      genderFilters: [...this.filterState.genderFilters],
+    };
+    this._renderFilterRows(this.draftFilters);
+    this._subModal.classList.add("open");
+  },
 
-    if (this._allEntries.length === 0) {
-      const msg = DOMFactory.el("div", "ceoverlap-empty");
-      msg.textContent = "No other servants share these CEs.";
-      container.appendChild(msg);
-      return;
+  _cancelFilterModal() {
+    this.draftFilters = null;
+    if (this._subModal) this._subModal.classList.remove("open");
+  },
+
+  _defaultFilterModal() {
+    if (!this.draftFilters) return;
+    this.draftFilters.rarityFilters = [];
+    this.draftFilters.classFilters = [];
+    this.draftFilters.groupClassFilters = [];
+    this.draftFilters.aliFilters = [];
+    this.draftFilters.subAliFilters = [];
+    this.draftFilters.subAttrFilters = [];
+    this.draftFilters.genderFilters = [];
+    this._renderFilterRows(this.draftFilters);
+  },
+
+  _selectAllFilterModal() {
+    if (!this.draftFilters) return;
+    this.draftFilters.rarityFilters = RARITY_FILTERS.map((c) => c.id);
+    this.draftFilters.groupClassFilters = CLASS_GROUPS.map((g) => g.key);
+    const scope = ServantFilters.rowScope(this.draftFilters.groupClassFilters);
+    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].map((c) => c.id);
+    this.draftFilters.classFilters = scope ? allClasses.filter((id) => scope.includes(id)) : allClasses;
+    this.draftFilters.aliFilters = ALIGNMENT_LNC_FILTERS.map((c) => c.id);
+    this.draftFilters.subAliFilters = ALIGNMENT_GBE_FILTERS.map((c) => (c.other ? ServantFilters.SUB_ALI_OTHER : c.id));
+    this.draftFilters.subAttrFilters = SUB_ATTR_FILTERS.map((c) => c.id);
+    this.draftFilters.genderFilters = GENDER_FILTERS.map((c) => c.id);
+    this._renderFilterRows(this.draftFilters);
+  },
+
+  _okFilterModal() {
+    if (this.draftFilters) {
+      this.filterState.rarityFilters = [...this.draftFilters.rarityFilters];
+      this.filterState.classFilters = [...this.draftFilters.classFilters];
+      this.filterState.groupClassFilters = [...this.draftFilters.groupClassFilters];
+      this.filterState.aliFilters = [...this.draftFilters.aliFilters];
+      this.filterState.subAliFilters = [...this.draftFilters.subAliFilters];
+      this.filterState.subAttrFilters = [...this.draftFilters.subAttrFilters];
+      this.filterState.genderFilters = [...this.draftFilters.genderFilters];
+      this.draftFilters = null;
     }
-
-    this._buildCEFilter(container);
-
-    const content = DOMFactory.el("div", "filter-content");
-
-    content.appendChild(
-      CollapsibleFactory.createSearchInput(this._searchQuery, (query) => {
-        this._searchQuery = query;
-        this.updateFilters();
-      }),
-    );
-
-    const group = DOMFactory.el("div", "filter-group");
-
-    const availableClassIds = new Set();
-    const availableRarityIds = new Set();
-    this._allEntries.forEach(({ entry }) => {
-      entry.servant.traits.forEach((t) => {
-        if (t.startsWith("01")) availableClassIds.add(t);
-        if (t.startsWith("04")) availableRarityIds.add(t);
-      });
-    });
-    this._buildClassFilter(group, availableClassIds);
-    this._buildRarityFilter(group, availableRarityIds);
-
-    this._buildCountFilter(group, this._getFilteredEntries());
-    content.appendChild(group);
-    container.appendChild(CollapsibleFactory.build("Filters", content));
-
-    // Cache button refs for fast visibility updates
-    this._overlapClassBtns = Array.from(container.querySelectorAll(".class-btn"));
-    this._overlapRarityBtns = Array.from(container.querySelectorAll(".rarity-btn"));
-
+    if (this._subModal) this._subModal.classList.remove("open");
     this.renderGrid();
   },
 
-  _buildCEFilter(container) {
-    const filterDiv = DOMFactory.el("div", ["ceoverlap-ce-filter", "grid-mini"]);
-    const selected = this._selectedCEFilter;
+  _renderFilterRows(customFilters = null) {
+    const filterState = customFilters || this.draftFilters || this.filterState;
+    const scope = ServantFilters.rowScope(filterState.groupClassFilters);
 
-    this._clickedCEs.forEach((ce) => {
-      const btn = DOMFactory.el(
-        "div",
-        "servant-picker-item ce-filter-picker-item" + (selected.has(ce.id) ? " selected" : ""),
-      );
-      DOMFactory.appendCheckMark(btn);
-      const img = DOMFactory.createLazyImg(ce.image, null, { alt: ce.name });
-      DOMFactory.addSimpleFallback(img, "servant-slot-portrait-fallback", ce.id);
-      btn.appendChild(img);
-
-      const name = DOMFactory.el("div", "servant-picker-name");
-      name.textContent = ce.name;
-      btn.appendChild(name);
-      btn.addEventListener("click", () => {
-        if (selected.has(ce.id)) {
-          selected.delete(ce.id);
-          btn.classList.remove("selected");
-        } else {
-          selected.add(ce.id);
-          btn.classList.add("selected");
+    const toggle = (key) => (ids) => {
+      if (this.draftFilters) {
+        this.draftFilters[key] = ids;
+        if (key === "groupClassFilters") {
+          this._renderFilterRows(this.draftFilters);
         }
-        this._debouncedUpdateFilters();
-      });
-      filterDiv.appendChild(btn);
-    });
-
-    container.appendChild(filterDiv);
-  },
-
-  _getFilteredEntries(options) {
-    let filtered = this._allEntries;
-
-    if (this._selectedCEFilter.size > 0) {
-      filtered = filtered.filter(({ entry }) =>
-        [...this._selectedCEFilter].every((id) => entry.matchingCEs.some((ce) => ce.id === id)),
-      );
-    }
-
-    const query = this._searchQuery.toLowerCase().trim();
-    if (query) {
-      filtered = filtered.filter(
-        ({ entry }) =>
-          entry.servant.id.toLowerCase().includes(query) ||
-          entry.servant.name.toLowerCase().includes(query) ||
-          ServantData.getAllNames(entry.servant.id).some((n) => n.toLowerCase().includes(query)),
-      );
-    }
-
-    if (!options?.skipClassRarity) {
-      if (this._classFilters.length > 0) {
-        const classSet = new Set(this._classFilters);
-        filtered = filtered.filter(({ entry }) => entry.servant.traits.some((t) => classSet.has(t)));
-      }
-
-      if (this._rarityFilters.length > 0) {
-        const raritySet = new Set(this._rarityFilters);
-        filtered = filtered.filter(({ entry }) => entry.servant.traits.some((t) => raritySet.has(t)));
-      }
-    }
-
-    return filtered;
-  },
-
-  updateFilters() {
-    const forVisibility = this._getFilteredEntries({ skipClassRarity: true });
-    const preFiltered = this._getFilteredEntries();
-    this._updateClassRarityVisibility(forVisibility);
-    this._rebuildCountFilter(preFiltered);
-    this.renderGrid(preFiltered);
-  },
-
-  _updateClassRarityVisibility(preFiltered) {
-    const availableClassIds = new Set();
-    const availableRarityIds = new Set();
-    preFiltered.forEach(({ entry }) => {
-      entry.servant.traits.forEach((t) => {
-        if (t.startsWith("01")) availableClassIds.add(t);
-        if (t.startsWith("04")) availableRarityIds.add(t);
-      });
-    });
-
-    (this._overlapClassBtns || []).forEach((btn) => {
-      const avail = availableClassIds.has(btn.dataset.traitId);
-      btn.style.display = avail ? "" : "none";
-      if (!avail) btn.classList.remove("active");
-    });
-    (this._overlapRarityBtns || []).forEach((btn) => {
-      const avail = availableRarityIds.has(btn.dataset.traitId);
-      btn.style.display = avail ? "" : "none";
-      if (!avail) btn.classList.remove("active");
-    });
-
-    this._classFilters = this._classFilters.filter((id) => availableClassIds.has(id));
-    this._rarityFilters = this._rarityFilters.filter((id) => availableRarityIds.has(id));
-  },
-
-  _buildCountFilter(container, preFiltered) {
-    const availableCounts = new Set(preFiltered.map((e) => e.entry.matchingCEs.length));
-    if (availableCounts.size === 0) return;
-
-    this._selectedCounts.forEach((n) => {
-      if (!availableCounts.has(n)) this._selectedCounts.delete(n);
-    });
-
-    const filterRow = DOMFactory.el("div", "ce-count-filter");
-    const selected = this._selectedCounts;
-
-    for (let n = 1; n <= Math.max(...availableCounts); n++) {
-      if (!availableCounts.has(n)) continue;
-      const btn = DOMFactory.el("div", "ce-count-btn" + (selected.has(n) ? " active" : ""));
-      btn.textContent = n + " CE";
-      btn.addEventListener("click", () => {
-        if (selected.has(n)) {
-          selected.delete(n);
-        } else {
-          selected.add(n);
-        }
-        btn.classList.toggle("active", selected.has(n));
+      } else {
+        this.filterState[key] = ids;
         this.renderGrid();
-      });
-      filterRow.appendChild(btn);
-    }
-
-    container.appendChild(filterRow);
-  },
-
-  _rebuildCountFilter(preFiltered) {
-    const container = document.getElementById("ceOverlapFilterArea");
-    if (!container) return;
-
-    const group = container.querySelector(".filter-group");
-    const oldRow = (group || container).querySelector(".ce-count-filter");
-    if (oldRow) oldRow.remove();
-
-    this._buildCountFilter(group || container, preFiltered);
-    const grid = document.getElementById("ceOverlapGrid");
-    if (grid) grid.replaceChildren();
-  },
-
-  _buildClassFilter(container, availableClassIds) {
-    const { standard, extra } = CLASS_FILTERS;
-
-    const filterDiv = DOMFactory.el("div", "class-filter");
-
-    const buildRow = (classes) => {
-      classes.forEach((cls) => {
-        if (!availableClassIds.has(cls.id)) return;
-        const btn = DOMFactory.el("div", "class-btn" + (this._classFilters.includes(cls.id) ? " active" : ""));
-        btn.dataset.traitId = cls.id;
-        const img = DOMFactory.el("img", "", {
-          dataset: { src: "icons/classes/" + cls.icon + ".webp" },
-          alt: cls.label,
-          title: cls.label,
-        });
-        btn.appendChild(img);
-        btn.addEventListener("click", () => {
-          const selected = new Set(this._classFilters);
-          if (selected.has(cls.id)) {
-            selected.delete(cls.id);
-            btn.classList.remove("active");
-          } else {
-            selected.add(cls.id);
-            btn.classList.add("active");
-          }
-          this._classFilters = [...selected];
-          this._debouncedUpdateFilters();
-        });
-        filterDiv.appendChild(btn);
-      });
+      }
     };
 
-    buildRow(standard);
-    buildRow(extra);
-    container.appendChild(filterDiv);
+    FilterSections.renderRow(
+      document.getElementById("ceOverlapRarityFilter"),
+      RARITY_FILTERS,
+      filterState.rarityFilters,
+      toggle("rarityFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("ceOverlapClassFilter"),
+      [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
+      filterState.classFilters,
+      toggle("classFilters"),
+      { disabled: (chip) => scope !== null && !scope.includes(chip.id) },
+    );
+    FilterSections.renderRow(
+      document.getElementById("ceOverlapGroupFilter"),
+      CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true, classes: g.classes })),
+      filterState.groupClassFilters,
+      toggle("groupClassFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("ceOverlapAliFilter"),
+      ALIGNMENT_LNC_FILTERS,
+      filterState.aliFilters,
+      toggle("aliFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("ceOverlapSubAliFilter"),
+      ALIGNMENT_GBE_FILTERS,
+      filterState.subAliFilters,
+      toggle("subAliFilters"),
+      { disabled: () => (filterState.subAliFilters || []).includes(ServantFilters.SUB_ALI_OTHER) },
+    );
+    FilterSections.renderRow(
+      document.getElementById("ceOverlapAttrFilter"),
+      SUB_ATTR_FILTERS,
+      filterState.subAttrFilters,
+      toggle("subAttrFilters"),
+    );
+    FilterSections.renderRow(
+      document.getElementById("ceOverlapGenderFilter"),
+      GENDER_FILTERS,
+      filterState.genderFilters,
+      toggle("genderFilters"),
+    );
   },
 
-  _buildRarityFilter(container, availableRarityIds) {
-    const rarities = RARITY_FILTERS;
-
-    const filterDiv = DOMFactory.el("div", "rarity-filter");
-
-    rarities.forEach((rarity) => {
-      if (!availableRarityIds.has(rarity.id)) return;
-      const btn = DOMFactory.el("div", "rarity-btn" + (this._rarityFilters.includes(rarity.id) ? " active" : ""));
-      btn.dataset.traitId = rarity.id;
-      btn.textContent = rarity.label;
-      btn.addEventListener("click", () => {
-        const selected = new Set(this._rarityFilters);
-        if (selected.has(rarity.id)) {
-          selected.delete(rarity.id);
-          btn.classList.remove("active");
-        } else {
-          selected.add(rarity.id);
-          btn.classList.add("active");
-        }
-        this._rarityFilters = [...selected];
-        this._debouncedUpdateFilters();
-      });
-      filterDiv.appendChild(btn);
-    });
-
-    container.appendChild(filterDiv);
+  _traitsOf(entry) {
+    const traits = entry.primaryAscension
+      ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
+      : ServantData.getAllTraits(entry.servant.id);
+    return traits || ServantData.getAllTraits(entry.servant.id);
   },
 
-  renderGrid(preFiltered) {
+  renderGrid() {
     const grid = document.getElementById("ceOverlapGrid");
     if (!grid) return;
     grid.replaceChildren();
 
-    if (this._allEntries.length === 0) return;
+    const visibleCards = [];
+    (this._groups || []).forEach((group) => {
+      const filteredMembers = (group.otherMembers || []).filter((entry) =>
+        ServantFilters.match(this._traitsOf(entry), this.filterState),
+      );
+      if (filteredMembers.length > 0) {
+        visibleCards.push({
+          ceIds: group.ceIds,
+          otherMembers: filteredMembers,
+        });
+      }
+    });
 
-    let filtered = preFiltered || this._getFilteredEntries();
-
-    if (this._selectedCounts.size > 0) {
-      filtered = filtered.filter((e) => this._selectedCounts.has(e.entry.matchingCEs.length));
-    }
-
-    if (filtered.length === 0) {
+    if (visibleCards.length === 0) {
       const msg = DOMFactory.el("div", "ceoverlap-empty");
-      msg.textContent = "No servants match selected filter.";
+      msg.textContent =
+        this._groups && this._groups.length > 0
+          ? "No other servants match selected filter."
+          : "No other servants share these CEs.";
       grid.appendChild(msg);
       return;
     }
 
     const frag = document.createDocumentFragment();
-    filtered.forEach(({ entry }) => {
-      frag.appendChild(this.createServantMiniCard(entry, this._clickedCEIds));
+    visibleCards.forEach((group) => {
+      frag.appendChild(this._buildCard(group));
     });
     grid.replaceChildren(frag);
   },
 
-  createServantMiniCard(entry, overlapCEIds) {
-    const card = DOMFactory.el("div", "cefilter-servant-card");
+  _buildCard(group) {
+    const card = DOMFactory.el("div", ["cefilter-servant-card", "cefilter-combo-card"]);
 
-    const imgAsc =
-      !entry.baseMatchesAll && entry.matchedAscensions && entry.matchedAscensions.length > 0
-        ? entry.primaryAscension || entry.matchedAscensions[0]
-        : null;
-    const imgSrc = imgAsc ? ServantData.getImageForAscension(entry.servant.id, imgAsc) : entry.servant.image;
-
-    const img = DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", { alt: entry.servant.name });
-    DOMFactory.addAscensionFallback(img, entry.servant.id);
-    card.appendChild(img);
-
-    const displayName = imgAsc
-      ? ServantData.getAscensionName(entry.servant.id, imgAsc) || entry.servant.name
-      : entry.servant.name;
-    const nameEl = DOMFactory.el("div", "cefilter-servant-name");
-    nameEl.textContent = displayName;
-    card.appendChild(nameEl);
-
-    const spiritronLabel = ServantData.getSpiritronLabel(
-      entry.servant.id,
-      entry.matchingCEs,
-      entry.matchedAscensions,
-      entry.baseMatchesAll,
-    );
-    const labelParts = (entry.matchedAscensions || []).map((key) =>
-      ServantData.getAscensionLabel(entry.servant.id, key),
-    );
-    if (spiritronLabel) labelParts.push(spiritronLabel);
-    if (labelParts.length > 0) {
-      const ascLabel = DOMFactory.el("div", "cefilter-ascension-label");
-      ascLabel.textContent = labelParts.join("\n");
-      card.appendChild(ascLabel);
-    }
-
-    if (entry.matchingCEs && entry.matchingCEs.length > 0) {
-      const badges = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
-      entry.matchingCEs.forEach((ce) => {
-        const badge = DOMFactory.createLazyImg(
-          ce.thumbImage,
-          "cefilter-match-badge" + (overlapCEIds.has(ce.id) ? "" : " cefilter-match-badge--nonshared"),
-          { alt: ce.name, title: ce.name },
-        );
-        DOMFactory.addSimpleFallback(badge, "cefilter-match-badge-fallback", ce.id);
-        badges.appendChild(badge);
+    // Unclickable CE row
+    const ceRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-ce-row"]);
+    group.ceIds.forEach((ceId) => {
+      const ce = CEById.get(ceId);
+      if (!ce) return;
+      const cell = DOMFactory.el("div", "cefilter-combo-ce", {
+        title: ce.name,
       });
-      card.appendChild(badges);
-    }
+      const img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-combo-ce-img", { alt: ce.name, title: ce.name });
+      DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
+      cell.appendChild(img);
+      ceRow.appendChild(cell);
+    });
+    card.appendChild(ceRow);
+
+    // Unclickable servant row showing only other servants
+    const servantRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-servant-row"]);
+    const rowCEs = group.ceIds.map((ceId) => CEById.get(ceId)).filter(Boolean);
+    group.otherMembers.forEach((entry) => {
+      if (!entry || !entry.servant) return;
+      servantRow.appendChild(this._buildServantCell(entry, rowCEs));
+    });
+    card.appendChild(servantRow);
 
     return card;
+  },
+
+  _buildServantCell(entry, rowCEs) {
+    const servant = entry.servant;
+    const matchedAscensions = entry.matchedAscensions || [];
+    const imgAsc =
+      !entry.baseMatchesAll && matchedAscensions.length > 0 ? entry.primaryAscension || matchedAscensions[0] : null;
+    const imgSrc = imgAsc ? ServantData.getImageForAscension(servant.id, imgAsc) : servant.image;
+
+    const labelParts = matchedAscensions.map((key) => ServantData.getAscensionLabel(servant.id, key));
+    const spiritronLabel = ServantData.getSpiritronLabel(servant.id, rowCEs, matchedAscensions, entry.baseMatchesAll);
+    if (spiritronLabel) labelParts.push(spiritronLabel);
+
+    const displayName = imgAsc ? ServantData.getAscensionName(servant.id, imgAsc) || servant.name : servant.name;
+    const name = labelParts.length > 0 ? `${displayName} (${labelParts.join(", ")})` : displayName;
+
+    const cell = DOMFactory.el("div", "cefilter-combo-servant");
+    const img = DOMFactory.createLazyImg(imgSrc, ["cefilter-match-badge", "cefilter-combo-servant-badge"], {
+      alt: name,
+      title: name,
+    });
+    DOMFactory.addAscensionFallback(img, servant.id);
+    cell.appendChild(img);
+
+    return cell;
   },
 };

@@ -203,29 +203,43 @@ export const CEFilterApp = {
     const filterModal = document.getElementById("cefilterFilterModal");
     const filterModalClose = document.getElementById("cefilterFilterModalClose");
 
-    if (filterBtn && filterModal) {
-      filterBtn.addEventListener("click", () => {
-        filterModal.classList.add("open");
-      });
+    if (filterBtn) {
+      filterBtn.addEventListener("click", () => this._openFilterModal());
     }
 
-    if (filterModalClose && filterModal) {
-      filterModalClose.addEventListener("click", () => {
-        filterModal.classList.remove("open");
-      });
+    if (filterModalClose) {
+      filterModalClose.addEventListener("click", () => this._cancelFilterModal());
     }
 
     if (filterModal) {
       filterModal.addEventListener("click", (e) => {
-        if (e.target === filterModal) {
-          filterModal.classList.remove("open");
-        }
+        if (e.target === filterModal) this._cancelFilterModal();
       });
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && filterModal.classList.contains("open")) {
-          filterModal.classList.remove("open");
+          this._cancelFilterModal();
         }
       });
+    }
+
+    const defaultBtn = document.getElementById("cefilterFilterDefaultBtn");
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", () => this._defaultFilterModal());
+    }
+
+    const selectAllBtn = document.getElementById("cefilterFilterSelectAllBtn");
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => this._selectAllFilterModal());
+    }
+
+    const cancelBtn = document.getElementById("cefilterFilterCancelBtn");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", () => this._cancelFilterModal());
+    }
+
+    const okBtn = document.getElementById("cefilterFilterOkBtn");
+    if (okBtn) {
+      okBtn.addEventListener("click", () => this._okFilterModal());
     }
 
     const subtabs = document.getElementById("cefilterSubtabs");
@@ -326,8 +340,6 @@ export const CEFilterApp = {
   _finishRender(allMatches) {
     const ceFiltered = this.filterByCEs(allMatches);
     this._lastCEFiltered = ceFiltered;
-    const preFiltered = this._applyFilters(ceFiltered);
-    this.buildMatchCountFilter(preFiltered);
     this.renderResults(ceFiltered);
   },
 
@@ -353,30 +365,40 @@ export const CEFilterApp = {
     return ServantFilters.rowScope(this.state.groupClassFilters);
   },
 
-  /* The six trait rows, in modal order, on the page the results grid is showing: a class or rarity nobody
-     in the CE-filtered results has is hidden, and a class outside the chosen group is greyed rather than
-     removed, so the row cannot be escaped by accident and comes back whole when the group is cleared. */
-  _renderFilterRows() {
+  /* The eight modal sections, in modal order, on the page the results grid is showing: a class, rarity
+     or CE bonus count nobody in the CE-filtered results has is greyed/disabled, and a class outside the
+     chosen group is greyed rather than removed, so the row cannot be escaped by accident and comes back
+     whole when the group is cleared. */
+  _renderFilterRows(customFilters = null) {
+    const filterState = customFilters || this.draftFilters || this.state;
     const base = this._lastCEFiltered || [];
-    const avail = { class: new Set(), rarity: new Set() };
+    const avail = { class: new Set(), rarity: new Set(), count: new Set() };
     base.forEach((entry) => {
+      avail.count.add(entry.matchingCEs.length);
       this._traitsOf(entry).forEach((t) => {
         if (t.startsWith("01")) avail.class.add(t);
         if (t.startsWith("04")) avail.rarity.add(t);
       });
     });
     const has = (set, chip) => set.size === 0 || set.has(chip.id);
-    const scope = this._classScope();
+    const scope = ServantFilters.rowScope(filterState.groupClassFilters);
     const toggle = (key) => (ids) => {
-      this.state[key] = ids;
-      this.state.currentPage = 1;
-      this._debouncedRender();
+      if (this.draftFilters) {
+        this.draftFilters[key] = ids;
+        if (key === "groupClassFilters") {
+          this._renderFilterRows(this.draftFilters);
+        }
+      } else {
+        this.state[key] = ids;
+        this.state.currentPage = 1;
+        this._debouncedRender();
+      }
     };
 
     FilterSections.renderRow(
       document.getElementById("cefilterRarityFilter"),
       RARITY_FILTERS,
-      this.state.rarityFilters,
+      filterState.rarityFilters,
       toggle("rarityFilters"),
       {
         disabled: (chip) => !has(avail.rarity, chip),
@@ -385,39 +407,54 @@ export const CEFilterApp = {
     FilterSections.renderRow(
       document.getElementById("cefilterClassFilter"),
       [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
-      this.state.classFilters,
+      filterState.classFilters,
       toggle("classFilters"),
       { disabled: (chip) => !has(avail.class, chip) || (scope !== null && !scope.includes(chip.id)) },
     );
     FilterSections.renderRow(
       document.getElementById("cefilterGroupFilter"),
       CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true })),
-      this.state.groupClassFilters,
+      filterState.groupClassFilters,
       toggle("groupClassFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("cefilterAliFilter"),
       ALIGNMENT_LNC_FILTERS,
-      this.state.aliFilters,
+      filterState.aliFilters,
       toggle("aliFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("cefilterSubAliFilter"),
       ALIGNMENT_GBE_FILTERS,
-      this.state.subAliFilters,
+      filterState.subAliFilters,
       toggle("subAliFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("cefilterAttrFilter"),
       SUB_ATTR_FILTERS,
-      this.state.subAttrFilters,
+      filterState.subAttrFilters,
       toggle("subAttrFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("cefilterGenderFilter"),
       GENDER_FILTERS,
-      this.state.genderFilters,
+      filterState.genderFilters,
       toggle("genderFilters"),
+    );
+
+    const maxCeCount = Math.max(5, ...(this._allCEMatchesCache || []).map((r) => r.matchingCEs.length));
+    const ceCountChips = [];
+    for (let n = 0; n <= maxCeCount; n++) {
+      ceCountChips.push({ id: n, value: n, label: n + " CE", count: true });
+    }
+    FilterSections.renderRow(
+      document.getElementById("cefilterMatchCount"),
+      ceCountChips,
+      filterState.matchCounts,
+      toggle("matchCounts"),
+      {
+        disabled: (chip) => !has(avail.count, chip),
+      },
     );
   },
 
@@ -486,32 +523,96 @@ export const CEFilterApp = {
     }
   },
 
-  buildMatchCountFilter(ceFiltered) {
-    const container = document.getElementById("cefilterMatchCount");
-    if (!container) return;
+  buildMatchCountFilter() {
+    this._renderFilterRows();
+  },
 
-    const availableCounts = new Set(ceFiltered.map((r) => r.matchingCEs.length));
-    if (availableCounts.size === 0) {
-      container.replaceChildren();
-      return;
+  _openFilterModal() {
+    const filterModal = document.getElementById("cefilterFilterModal");
+    if (!filterModal) return;
+    this.draftFilters = {
+      rarityFilters: [...this.state.rarityFilters],
+      classFilters: [...this.state.classFilters],
+      groupClassFilters: [...this.state.groupClassFilters],
+      aliFilters: [...this.state.aliFilters],
+      subAliFilters: [...this.state.subAliFilters],
+      subAttrFilters: [...this.state.subAttrFilters],
+      genderFilters: [...this.state.genderFilters],
+      matchCounts: [...this.state.matchCounts],
+    };
+    this._renderFilterRows(this.draftFilters);
+    filterModal.classList.add("open");
+  },
+
+  _cancelFilterModal() {
+    this.draftFilters = null;
+    this._renderFilterRows(this.state);
+    const filterModal = document.getElementById("cefilterFilterModal");
+    if (filterModal) filterModal.classList.remove("open");
+  },
+
+  _okFilterModal() {
+    if (this.draftFilters) {
+      Object.assign(this.state, {
+        rarityFilters: [...this.draftFilters.rarityFilters],
+        classFilters: [...this.draftFilters.classFilters],
+        groupClassFilters: [...this.draftFilters.groupClassFilters],
+        aliFilters: [...this.draftFilters.aliFilters],
+        subAliFilters: [...this.draftFilters.subAliFilters],
+        subAttrFilters: [...this.draftFilters.subAttrFilters],
+        genderFilters: [...this.draftFilters.genderFilters],
+        matchCounts: [...this.draftFilters.matchCounts],
+      });
+      this.draftFilters = null;
     }
+    this.state.currentPage = 1;
+    this.render();
+    const filterModal = document.getElementById("cefilterFilterModal");
+    if (filterModal) filterModal.classList.remove("open");
+  },
 
-    // Remove stale selections
-    this.state.matchCounts = this.state.matchCounts.filter((n) => availableCounts.has(n));
+  _defaultFilterModal() {
+    if (!this.draftFilters) return;
+    this.draftFilters.rarityFilters = [];
+    this.draftFilters.classFilters = [];
+    this.draftFilters.groupClassFilters = [];
+    this.draftFilters.aliFilters = [];
+    this.draftFilters.subAliFilters = [];
+    this.draftFilters.subAttrFilters = [];
+    this.draftFilters.genderFilters = [];
+    this.draftFilters.matchCounts = [];
+    this._renderFilterRows(this.draftFilters);
+  },
 
-    /* One chip per count that actually occurs: the row is built from the results, so a count nobody
-       reaches is never offered, and the ceiling follows however many CEs are picked. */
-    const maxCount = Math.max(...availableCounts);
-    const chips = [];
-    for (let n = 0; n <= maxCount; n++) {
-      if (!availableCounts.has(n)) continue;
-      chips.push({ id: n, value: n, label: n + " CE", count: true });
-    }
-    FilterSections.renderRow(container, chips, this.state.matchCounts, (counts) => {
-      this.state.matchCounts = counts;
-      this.state.currentPage = 1;
-      this._debouncedRender();
+  _selectAllFilterModal() {
+    if (!this.draftFilters) return;
+    const base = this._lastCEFiltered || [];
+    const avail = { class: new Set(), rarity: new Set(), count: new Set() };
+    base.forEach((entry) => {
+      avail.count.add(entry.matchingCEs.length);
+      this._traitsOf(entry).forEach((t) => {
+        if (t.startsWith("01")) avail.class.add(t);
+        if (t.startsWith("04")) avail.rarity.add(t);
+      });
     });
+
+    this.draftFilters.rarityFilters = RARITY_FILTERS.map((c) => c.id).filter(
+      (id) => avail.rarity.size === 0 || avail.rarity.has(id),
+    );
+    this.draftFilters.groupClassFilters = CLASS_GROUPS.map((g) => g.key);
+    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].map((c) => c.id);
+    this.draftFilters.classFilters = allClasses.filter((id) => avail.class.size === 0 || avail.class.has(id));
+    this.draftFilters.aliFilters = ALIGNMENT_LNC_FILTERS.map((c) => c.id);
+    this.draftFilters.subAliFilters = ALIGNMENT_GBE_FILTERS.map((c) => (c.other ? ServantFilters.SUB_ALI_OTHER : c.id));
+    this.draftFilters.subAttrFilters = SUB_ATTR_FILTERS.map((c) => c.id);
+    this.draftFilters.genderFilters = GENDER_FILTERS.map((c) => c.id);
+
+    const maxCeCount = Math.max(5, ...(this._allCEMatchesCache || []).map((r) => r.matchingCEs.length));
+    const allCounts = [];
+    for (let n = 0; n <= maxCeCount; n++) allCounts.push(n);
+    this.draftFilters.matchCounts = allCounts.filter((n) => avail.count.size === 0 || avail.count.has(n));
+
+    this._renderFilterRows(this.draftFilters);
   },
 
   /* Bulk empty of the selected CEs — the same contract as ServantSelect.clearAll(): the label
@@ -585,10 +686,12 @@ export const CEFilterApp = {
 
     const base = ceFiltered || this._lastCEFiltered || [];
 
-    // Hide class/rarity chips not present in CE-filtered results, and re-read what that leaves selected
+    // Grey out class/rarity/count chips not present in CE-filtered results, and re-read what that leaves selected
     const availableClassIds = new Set();
     const availableRarityIds = new Set();
+    const availableCounts = new Set();
     base.forEach((entry) => {
+      availableCounts.add(entry.matchingCEs.length);
       this._traitsOf(entry).forEach((t) => {
         if (t.startsWith("01")) availableClassIds.add(t);
         if (t.startsWith("04")) availableRarityIds.add(t);
@@ -596,6 +699,7 @@ export const CEFilterApp = {
     });
     this.state.classFilters = this.state.classFilters.filter((id) => availableClassIds.has(id));
     this.state.rarityFilters = this.state.rarityFilters.filter((id) => availableRarityIds.has(id));
+    this.state.matchCounts = this.state.matchCounts.filter((n) => availableCounts.has(n));
     this._renderFilterRows();
 
     // Apply search and every Filter Settings row

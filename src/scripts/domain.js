@@ -406,6 +406,77 @@ export const ServantComboCalculator = {
     const unshared = truncated ? [] : picked.filter((id) => !covered.has(id));
     return { groups, unshared, truncated };
   },
+
+  /* Build shared CE combination groups for a single clicked servant against all other servants.
+     Generates all non-empty combinations of the clicked servant's matching CEs, prunes combinations
+     with no other servant match, groups by identical other-servant list (keeping maximal CEs),
+     and sorts maximal combinations. */
+  buildServantOverlapGroups(allMatches, clickedEntry) {
+    if (!clickedEntry || !clickedEntry.servant) return [];
+    const clickedId = clickedEntry.servant.id;
+    const clickedCEs = [];
+    const seenCEs = new Set();
+    (clickedEntry.matchingCEs || []).forEach((c) => {
+      const id = typeof c === "string" ? c : c?.id;
+      if (id && !seenCEs.has(id)) {
+        seenCEs.add(id);
+        clickedCEs.push(id);
+      }
+    });
+    if (clickedCEs.length === 0 && clickedEntry.matchingCEIds) {
+      clickedEntry.matchingCEIds.forEach((id) => {
+        if (!seenCEs.has(id)) {
+          seenCEs.add(id);
+          clickedCEs.push(id);
+        }
+      });
+    }
+
+    const n = clickedCEs.length;
+    if (n === 0) return [];
+
+    const subsets = [];
+    for (let i = 1; i < 1 << n; i++) {
+      const sub = [];
+      for (let j = 0; j < n; j++) {
+        if (i & (1 << j)) sub.push(clickedCEs[j]);
+      }
+      subsets.push(sub);
+    }
+
+    const groups = new Map();
+    const matches = allMatches || [];
+
+    subsets.forEach((subIds) => {
+      const members = matches.filter((m) => {
+        const ceSet = m.matchingCEIds;
+        return ceSet && subIds.every((id) => ceSet.has(id));
+      });
+      const otherMembers = members.filter((m) => m.servant && m.servant.id !== clickedId);
+      if (otherMembers.length === 0) return;
+
+      const servantKey = [...new Set(otherMembers.map((m) => m.servant.id))].sort().join(",");
+      const existing = groups.get(servantKey);
+
+      if (!existing || subIds.length > existing.ceIds.length) {
+        otherMembers.sort((a, b) => (a.servant.id === b.servant.id ? 0 : a.servant.id < b.servant.id ? -1 : 1));
+        groups.set(servantKey, {
+          ceIds: subIds,
+          otherMembers,
+        });
+      }
+    });
+
+    return [...groups.values()].sort((a, b) => {
+      if (b.ceIds.length !== a.ceIds.length) return b.ceIds.length - a.ceIds.length;
+      if (b.otherMembers.length !== a.otherMembers.length) return b.otherMembers.length - a.otherMembers.length;
+      if (a.ceIds[0] !== b.ceIds[0]) return a.ceIds[0] < b.ceIds[0] ? -1 : 1;
+      const firstA = a.otherMembers[0]?.servant?.id || "";
+      const firstB = b.otherMembers[0]?.servant?.id || "";
+      if (firstA !== firstB) return firstA < firstB ? -1 : 1;
+      return 0;
+    });
+  },
 };
 
 /* ============================================

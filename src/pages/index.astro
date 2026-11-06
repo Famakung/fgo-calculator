@@ -772,6 +772,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <div class="rarity-filter" id="servantGenderFilter" role="group" aria-labelledby="servantGenderLabel"></div>
               </div>
             </div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="servantFilterDefaultBtn">Default</button>
+                <button type="button" class="cefilter-footer-btn" id="servantFilterSelectAllBtn">Select All</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="servantFilterCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="servantFilterOkBtn">OK</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -871,6 +881,15 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               autocomplete="off"
             />
             <div class="servant-picker-grid grid-sm servant-picker-grid--ce" id="ceFilterPickerGrid"></div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="ceFilterDefaultBtn">Default</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="ceFilterCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="ceFilterOkBtn">OK</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -929,6 +948,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <div class="ce-count-filter" id="cefilterMatchCount" role="group" aria-labelledby="cefilterMatchLabel"></div>
               </div>
             </div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="cefilterFilterDefaultBtn">Default</button>
+                <button type="button" class="cefilter-footer-btn" id="cefilterFilterSelectAllBtn">Select All</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="cefilterFilterCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="cefilterFilterOkBtn">OK</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -946,9 +975,82 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 &#10005;
               </button>
             </div>
-            <div id="ceOverlapFilterArea"></div>
+            <div class="cefilter-sort-row" id="ceOverlapFilterArea">
+              <button
+                type="button"
+                class="cefilter-filter-btn"
+                id="ceOverlapFilterBtn"
+                aria-haspopup="dialog"
+                aria-label="Open filter settings modal"
+              >
+                Filter
+              </button>
+            </div>
             <div class="ceoverlap-scroll">
-              <div class="ceoverlap-grid" id="ceOverlapGrid"></div>
+              <div class="cefilter-combo-grid" id="ceOverlapGrid"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CE Overlap Filter Modal (modal in modal) -->
+        <div class="servant-modal" id="ceOverlapFilterModal" role="dialog" aria-modal="true" aria-labelledby="ceOverlapFilterModalTitle">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <span class="ascension-modal-title" id="ceOverlapFilterModalTitle">Filter Settings</span>
+              <button
+                class="servant-modal-close"
+                id="ceOverlapFilterModalClose"
+                type="button"
+                aria-label="Close"
+              >
+                &#10005;
+              </button>
+            </div>
+            <div class="cefilter-modal-body">
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="ceOverlapRarityLabel">Rarity</div>
+                <div class="rarity-filter" id="ceOverlapRarityFilter" role="group" aria-labelledby="ceOverlapRarityLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="ceOverlapClassLabel">Class</div>
+                <div class="class-filter" id="ceOverlapClassFilter" role="group" aria-labelledby="ceOverlapClassLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="ceOverlapGroupLabel">Class (Group)</div>
+                <div class="rarity-filter cefilter-modal-row" id="ceOverlapGroupFilter" role="group" aria-labelledby="ceOverlapGroupLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="ceOverlapAliLabel">Alignment (Lawful/Neutral/Chaotic)</div>
+                <div class="rarity-filter" id="ceOverlapAliFilter" role="group" aria-labelledby="ceOverlapAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="ceOverlapSubAliLabel">Alignment (Good/Balanced/Evil)</div>
+                <div class="rarity-filter" id="ceOverlapSubAliFilter" role="group" aria-labelledby="ceOverlapSubAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="ceOverlapAttrLabel">Sub-Attribute</div>
+                <div class="rarity-filter" id="ceOverlapAttrFilter" role="group" aria-labelledby="ceOverlapAttrLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="ceOverlapGenderLabel">Gender</div>
+                <div class="rarity-filter" id="ceOverlapGenderFilter" role="group" aria-labelledby="ceOverlapGenderLabel"></div>
+              </div>
+            </div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="ceOverlapFilterDefaultBtn">Default</button>
+                <button type="button" class="cefilter-footer-btn" id="ceOverlapFilterSelectAllBtn">Select All</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="ceOverlapFilterCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="ceOverlapFilterOkBtn">OK</button>
+              </div>
             </div>
           </div>
         </div>

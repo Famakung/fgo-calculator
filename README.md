@@ -39,11 +39,12 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Reverse lookup: select CEs to find matching servants
 - Selected-CE chips are portrait only, same shape as the Servant Select chips; "Clear all (N)" next to "Add Craft Essence" empties the selection in one click
 - Match modes: All (AND), Any (OR), and Custom Match (filter by exact CE match count)
-- Dedicated "Filter Settings" modal with class filter, rarity filter, and CE match count buttons
+- Dedicated "Filter Settings" modal (`#cefilterFilterModal` in Bond Gain CE and `#servantFilterModal` in Servant Picker) with Rarity, Class, Class Group, Alignment (L/N/C), Alignment (G/B/E/Other), Sub-Attribute, Gender, and CE Bonus filter chips
+- Modal action footer with **Default** (clears selections), **Select All** (selects all valid options), **Cancel** (discards draft changes), and **OK** (applies filter changes to background and closes modal)
 - Direct servant search bar positioned statically above controls row
-- Direct search bar in "Add Craft Essence" modal
+- Direct search bar and action footer (**Default**, **Cancel**, **OK**) in "Add Craft Essence" modal (`#ceFilterModal`), applying selected CEs to the background only upon clicking OK
 - Mobile-optimized 2-per-row grid layout on narrow screens
-- CE match count buttons ("1 CE", "2 CE", etc.) filter by number of matching CEs
+- CE match count buttons ("1 CE", "2 CE", etc.) disable (`.ce-count-btn--disabled`) when no servant with that match count exists in results, consistent with disabled class and group chips
 - CE picker shows grayscale indicator for CEs with no ascension-level overlap with selected CEs
 - Class and rarity filter buttons hide when no servant with that trait exists in results
 - Searchable results by servant ID or name
