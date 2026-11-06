@@ -61,52 +61,52 @@ dist/                         — Static site output for GitHub Pages
 ```
 
 ## Script Load Order (Astro build output)
-1. `<style is:inline>` — Critical CSS inlined in `<head>` (font-face, reset, layout)
+1. `<style is:inline>` — Critical CSS inline in `<head>` (font-face, reset, layout)
 2. Inline `<script>` in `<head>` — Wide-screen magnification (`zoom` on `<html>` + `--screen-h`)
 3. Inline `<script>` in `<head>` — Trusted Types policy (passthrough)
 4. Inline `<script>` in `<head>` — Service-worker/cache cleanup
 5. Inline `<script>` in `<head>` — Build-etag poller (`fgo_build_etag`, "new version available" banner)
-6. Inline `<script>` in `<head>` — Tab init (reads localStorage, sets `data-tab`, preloads LCP images; the Bond Gain CE preload list is the **first row only** — servants `001…cols`, `cols` matching `CEFilterApp._getCols()` — because high-priority image preloads outrank the tab's own chunks and a 39-link list pushed LCP from 1684 ms to 2944 ms under 1.6 Mbps / CPU 4x. `plain` skips the list entirely when saved `cePicks` or the Servant Select sub-tab would render a different first page)
-7. `<script type="module">` — Astro entry chunk (imports main-entry + shared chunks eagerly)
-8. Lazy chunks loaded via dynamic `import()` on tab switch (bond-lazy, event-lazy)
-9. Web Worker (`ce-match-worker.js`) spawned by CEFilterApp for first trait match computation
+6. Inline `<script>` in `<head>` — Tab init (reads localStorage, sets `data-tab`, preloads LCP images; Bond Gain CE preload list = **first row only** — servants `001…cols`, `cols` matching `CEFilterApp._getCols()` — high-priority image preloads outrank tab's own chunks, 39-link list pushed LCP 1684 ms to 2944 ms under 1.6 Mbps / CPU 4x. `plain` skips list when saved `cePicks` or Servant Select sub-tab renders a different first page)
+7. `<script type="module">` — Astro entry chunk (imports main-entry + shared chunks eager)
+8. Lazy chunks via dynamic `import()` on tab switch (bond-lazy, event-lazy)
+9. Web Worker (`ce-match-worker.js`) spawned by CEFilterApp for first trait match compute
 
 ## CSS
-- Everything the browser sees is the single `<style is:inline>` block in `BaseLayout.astro` (font-face + tokens + full styles). Astro emits no `.css` file and `index.astro` imports no stylesheet
-- There is no second copy to keep in step: `src/styles/` (`global.css`, `critical.css`) was deleted 2026-11-04 after its rules drifted out of the shipped block, and `npm run lint:css` / stylelint went with it. If a rule is not in that inline block, it does not exist
-- `@font-face` URLs use relative paths (`fonts/dm-sans-400.woff2`) so Astro rewrites with base path
+- Browser sees only the single `<style is:inline>` block in `BaseLayout.astro` (font-face + tokens + full styles). Astro emits no `.css` file, `index.astro` imports no stylesheet
+- No second copy to keep in step: `src/styles/` (`global.css`, `critical.css`) deleted 2026-11-04, its rules drifted out of shipped block; `npm run lint:css` / stylelint went with it. Rule not in that inline block does not exist
+- `@font-face` URLs use relative paths (`fonts/dm-sans-400.woff2`); Astro rewrites with base path
 
 ## JS Loading (Astro 7 / Vite 8 + Rolldown `codeSplitting.groups`)
-- `main-entry`: Bond Gain CE tab code eagerly loaded
+- `main-entry`: Bond Gain CE tab code, eager
 - `data-chunk`: shared data module
 - `ce-filter-chunk`: Bond Gain CE logic
-- `tab-navigator-chunk`: tab switching
+- `tab-navigator-chunk`: tab switch
 - `selectors-chunk`: modal/picker components
-- Lazy: `bond-lazy` (Bond tab), `event-lazy` (Event tab) — loaded via `import()` on first visit
-- Worker: `ce-match-worker` — separate chunk for Web Worker
+- Lazy: `bond-lazy` (Bond tab), `event-lazy` (Event tab) — via `import()` on first visit
+- Worker: `ce-match-worker` — own chunk for Web Worker
 
 ## Architecture (3 layers)
 - **Layer 1 — Domain** (`domain.js`): Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher. Pure logic, no DOM
 - **Layer 2 — Application** (`state.js`, `*-app.js`): state + orchestration; circular deps via callback injection in `main.js`
-- **Layer 3 — Presentation** (`presentation.js`, `selectors.js`, `tab-navigator.js`): DOM only; selectors get callbacks at `open()`/`init()` time
+- **Layer 3 — Presentation** (`presentation.js`, `selectors.js`, `tab-navigator.js`): DOM only; selectors get callbacks at `open()`/`init()`
 
 `CEServantOverlap` — Layer 3 modal in `selectors.js`; `_getCEMatches` callback; 50ms debounce.
 Selector callback: `onSelect(slotIndex, id, ascensionOrOptionId)` — always 3 args.
-Domain rule: if fn touches `document`, belongs in Layer 3.
+Domain rule: fn touching `document` belongs in Layer 3.
 
 ## Bond Gain CE UI (top→bottom, second card)
-Servants card: search bar (top) → controls row (Filter button + Sort By / Sort Order controls) → top pagination → results grid → bottom pagination. Clicking "Filter" opens "Filter Settings" popup modal: eight labelled sections — rarity, class, class group, alignment (Lawful/Neutral/Chaotic), alignment (Good/Balanced/Evil/Other), sub-attribute, gender, CE match count — each a centred label over centred chips with the card's own 2px `--border` separator between, one column that scrolls. `src/scripts/filter-sections.js` (`FilterSections`) builds every chip row; the row lists live in `constants.js`, the matching rules in `ServantFilters` (`domain.js`).
+Servants card: search bar (top) → controls row (Filter button + Sort By / Sort Order) → top pagination → results grid → bottom pagination. "Filter" opens "Filter Settings" modal: 8 labelled sections — rarity, class, class group, alignment (Lawful/Neutral/Chaotic), alignment (Good/Balanced/Evil/Other), sub-attribute, gender, CE match count — each centred label over centred chips, card's own 2px `--border` separator between, one scrolling column. `src/scripts/filter-sections.js` (`FilterSections`) builds every chip row; row lists in `constants.js`, matching rules in `ServantFilters` (`domain.js`).
 
-The servant picker modal (`#servantModal`) repeats that shape for its own grid — search bar → Filter button + Sort By / Sort Order → picker grid, class and rarity in a nested `#servantFilterModal` — so one comparator orders both lists: `ServantSort` (`domain.js`).
+Servant picker modal (`#servantModal`) repeats that shape for its grid — search bar → Filter button + Sort By / Sort Order → picker grid, class + rarity in nested `#servantFilterModal` — one comparator orders both lists: `ServantSort` (`domain.js`).
 
-Sub-tabs (`#cefilterSubtabs`, top-right of the controls card) swap one panel per card: `ce` = Craft Essence Select (the chain above), `servant` = Servant Select (Add Servant + Clear all (N) buttons and chips → shared-CE cards in `#cefilterComboResults`, rendered by `ce-servant-select.js`; the pick list is the one Bond Gain CE state that survives a refresh).
+Sub-tabs (`#cefilterSubtabs`, top-right of controls card) swap one panel per card: `ce` = Craft Essence Select (chain above), `servant` = Servant Select (Add Servant + Clear all (N) buttons and chips → shared-CE cards in `#cefilterComboResults`, rendered by `ce-servant-select.js`; pick list = one Bond Gain CE state surviving refresh).
 
 ## Adding Features
 - 3-layer pattern: domain → app state → presentation
-- New modules in `src/scripts/`; Astro handles bundling and code-splitting automatically
+- New modules in `src/scripts/`; Astro auto-bundles + code-splits
 - New modals: callback pattern from `selectors.js`
 - New data fields: whitelist in `CEList` IIFE in `src/scripts/data.js`
-- Heavy DOM renders: `DocumentFragment` batching
+- Heavy DOM renders: batch with `DocumentFragment`
 - Below-fold images: `DOMFactory.createLazyImg()`
 - After changes: `npm run build` (or push to main for CI build)
 
@@ -115,8 +115,8 @@ Sub-tabs (`#cefilterSubtabs`, top-right of the controls card) swap one panel per
 - Container max-width: 400 / 580 / 760 / 940 / 1120 px
 - `.card-inner` margin: 6.4 / 12.4 / 18.4 / 24.4 / 30.4 px
 - `--portrait-lg: 64px` all breakpoints
-- `:hover` always in `@media (hover: hover)`. `:active` after for touch
-- New grids: mobile override in appropriate breakpoint
+- `:hover` always in `@media (hover: hover)`; `:active` after, for touch
+- New grids: mobile override at matching breakpoint
 
 ## Git
 - `main` — production (GitHub Pages)
@@ -125,11 +125,11 @@ Sub-tabs (`#cefilterSubtabs`, top-right of the controls card) swap one panel per
 - Flow: feat → develop → main → push
 - Deploy: push to `main` triggers GitHub Actions (Astro build + deploy)
 - GitHub Pages source: "GitHub Actions" (not branch-based)
-- `dist/` is gitignored — CI generates build output
+- `dist/` gitignored — CI generates build output
 
 ## Image Conventions
 - WebP only
 - Portraits: `public/servants/{ID}/{ascension}.webp`
-- CEs: `public/craft_essences/{ID}.webp` (bordered 142×155, unified for all display sizes)
+- CEs: `public/craft_essences/{ID}.webp` (bordered 142×155, one size fits all displays)
 - Icons: `public/icons/*.webp`, `public/icons/{category}/*.webp`
-- Size at 2× render dimensions for Retina (e.g., 112×120 for 56×60 container)
+- Size 2× render dims for Retina (e.g. 112×120 for 56×60 container)
