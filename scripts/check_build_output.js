@@ -49,10 +49,10 @@ const REQUIRED_CHUNKS = [
   "index.astro_astro_type_script_index_0_lang",
 ];
 
-// Must appear inside <head>, in this order. Critical CSS first, then the font
-// preloads it references, then the inline scripts (the last one polls the build
-// ETag and drives the "A new version is available" banner).
-const REQUIRED_HEAD_MARKERS = ["<style>", "--bg:", 'fetchpriority="high"', "<script>", "fgo_build_etag"];
+// Must appear inside <head>, in this order. Critical CSS first, then the inline
+// scripts (the last one polls the build ETag and drives the "A new version is available"
+// banner).
+const REQUIRED_HEAD_MARKERS = ["<style>", "--bg:", "<script>", "fgo_build_etag"];
 
 // The sub-tab restore hides Craft Essence Select from the first paint using CSS keyed on
 // <html data-subtab>, so those rules must be present in the page that ships AND in the one

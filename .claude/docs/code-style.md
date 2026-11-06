@@ -34,8 +34,8 @@
 ## Astro-Specific
 - `index.astro` imports all JS modules — Astro/Vite bundles + code-splits automatically
 - `BaseLayout.astro` holds `<style is:inline>` critical CSS (Astro doesn't process it)
-- `import.meta.env.BASE_URL` for `href` attrs needing base path (favicon, manifest, font preloads)
-- `@font-face` URLs in `<style is:inline>` use relative `fonts/` paths (Astro rewrites with base path)
+- `import.meta.env.BASE_URL` for `href` attrs needing base path (favicon, manifest)
+- Native system font stacks (`system-ui`, `ui-monospace`) — no `@font-face` or web font assets
 - Astro emits every `<script>` as `<script type="module">`, deferred
 - Scripts needing sync run (tab-init, Trusted Types) go in `<script is:inline>`
 - `astro.config.mjs` splits chunks via `build.rolldownOptions.output.codeSplitting.groups` (Vite 8 / Rolldown — never reintroduce Rollup's `rollupOptions.output.manualChunks`: function form deprecated, silently drops rules). Each group needs anchored `test` regex (`/\/name\.js$/`, not `includes()` — old `includes("main.js")` also matched `domain.js`) + `priority` for first-match-wins order. `scripts/check_build_output.js` asserts resulting chunk names — changed name fails CI.
@@ -53,7 +53,7 @@
 - **rAF init**: `DOMContentLoaded` in `main.js` wrapped in `requestAnimationFrame`
 - **Critical CSS**: `<style is:inline>` in BaseLayout.astro — whole stylesheet, not only above-fold rules (see CSS)
 - **Worker**: `ce-match-worker.js` standalone chunk, TraitMatcher inlined; double-rAF + worker for first render
-- **CLS prevention**: `.drop-value` `min-width:4ch; tabular-nums`; `.cefilter-search-container` static layout; `.cefilter-sort-row` `gap:8px`; `.cefilter-pagination` `min-height:52px`; `.cefilter-servant-card` `content-visibility:auto; min-height:208px; contain-intrinsic-size:auto 208px`; `font-display:swap` (swap safe: `min-height` prevents shifts)
+- **CLS prevention**: `.drop-value` `min-width:4ch; tabular-nums`; `.cefilter-search-container` static layout; `.cefilter-sort-row` `gap:8px`; `.cefilter-pagination` `min-height:52px`; `.cefilter-servant-card` `content-visibility:auto; min-height:208px; contain-intrinsic-size:auto 208px`; system fonts (0 KB load, zero FOUT/FOIT shifts)
 - **Pagination**: `_getPageSize()` via `window.innerWidth` (>=1120→6, >=940→5, >=760→4, >=580→3, else 2) × 5; `currentPage` resets on reload; filters reset to 1; buttons use cached `_lastCEFiltered`
 - **Servant sort**: `ServantSort.sorted(rows, sortBy, order, idOf, traitsOf)` (`domain.js`) = sole comparator — ID / Rarity / Class, ID tie-break, direction applied to tie-break. Picker calls it with plain servants (`.id`, `.traits`); `CEFilterApp._sortEntries` passes card's own id + trait resolvers, since a result card is a servant plus the ascension it matched on
 - **Whose traits**: filter reads traits of the form it looks at — `getTraitsForAscension(id, ascension)` for a card/slot naming one, `ServantData.getAllTraits(id)` for anything that doesn't (party picker, card with no `primaryAscension`). Never `servant.traits` directly for filtering: it is the intersection of stages, so a sub-attribute arriving with an ascension is absent from it.
@@ -61,7 +61,7 @@
 - **Modal stacking**: every `.servant-modal` shares `z-index: 1000`, so a modal covering another is written after it in `index.astro` — `#servantFilterModal` follows `#servantModal` for that reason
 
 ## CSS
-- Shipped CSS: single `<style is:inline>` block in BaseLayout.astro `<head>` (font-face, tokens, reset, layout, every component rule). Nothing else ships CSS — no `<link rel=stylesheet>`, no `.css` in `dist/`
+- Shipped CSS: single `<style is:inline>` block in BaseLayout.astro `<head>` (tokens, reset, layout, every component rule). Nothing else ships CSS — no `<link rel=stylesheet>`, no `.css` in `dist/`
 - No second stylesheet to write into: `src/styles/global.css` and `critical.css` deleted 2026-11-04 (nothing imported them; their rules never shipped). Write each rule once, in the inline block. `npm run lint:css` gone with stylelint
 - Grid + Flexbox. Breakpoints: 580/760/940/1120px; `.grid` and `.ce-grid` use `padding: 8px`
 - Image & button tokens: `--servant-portrait-h: 96px` (`width: auto; aspect-ratio: 142 / 155` ~88px); `--ce-badge-h: 48px` & `--ce-badge-w: calc(var(--ce-badge-h) * 142 / 155)` (~44px); `--portrait-lg: 96px`; `.class-btn`: 48×48px (img: 40×40px); `.rarity-btn`, `.ce-count-btn`: 48×36px; `.servant-slot-badge-item`: 24×24px; `.material-icon`: 96px height auto width (`aspect-ratio: 112 / 120` ~90px, fg: 80×80px); `.mini-icon`: 48px height auto width (`aspect-ratio: 112 / 120` ~45px, fg: 40×40px)

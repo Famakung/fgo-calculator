@@ -68,7 +68,7 @@ Unit tests (`npm run test`) run only in the `develop` clone: `tests/` is tracked
 
 | Path | Role |
 |------|------|
-| `src/layouts/BaseLayout.astro` | HTML shell, the shipped inline CSS, font preloads, Trusted Types, zoom + tab/LCP head scripts |
+| `src/layouts/BaseLayout.astro` | HTML shell, the shipped inline CSS, Trusted Types, zoom + tab/LCP head scripts |
 | `src/pages/index.astro` | page structure, sub-tab markup, imports JS |
 | `src/scripts/main.js` | entry, `DOMContentLoaded` → lazy `import()` per tab |
 | `src/scripts/domain.js` | Domain layer: validators, calculators, trait matcher, `ServantComboCalculator` |

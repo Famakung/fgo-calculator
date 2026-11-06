@@ -123,7 +123,7 @@ npm run check:build # Assert dist/ against scripts/build_baseline.json (exit 1 o
 
 `tests/` tracked on `develop` alone, like docs + browser gate (owner decision 2026-11-06): CI never runs `npm run test` — `deploy.yml` only test steps are `npm run check:build` + Python self-checks in `scripts/test_*.py`, which stay public — fresh `main` clone has no `tests/` directory, `npm run test` finds nothing there. Run unit tests from `develop` clone.
 
-**Build-output gate** (`scripts/check_build_output.js` + `scripts/build_baseline.json`, run in CI between Build + Pages upload): asserts chunk names lazy tabs + worker resolve to, byte floors + 3x ceilings per chunk, `<head>` marker order (critical CSS → font preloads → inline poller scripts), two page-text signatures — raw keeps whitespace between adjacent inline elements, normalised collapses it, raw-only difference = whitespace change. `--write` re-captures measurements after intentional change, refuses to run when chunk missing or head marker moved.
+**Build-output gate** (`scripts/check_build_output.js` + `scripts/build_baseline.json`, run in CI between Build + Pages upload): asserts chunk names lazy tabs + worker resolve to, byte floors + 3x ceilings per chunk, `<head>` marker order (critical CSS → inline poller scripts), two page-text signatures — raw keeps whitespace between adjacent inline elements, normalised collapses it, raw-only difference = whitespace change. `--write` re-captures measurements after intentional change, refuses to run when chunk missing or head marker moved.
 
 **Browser gate** (`scripts/verify_render.js`, local only — out of CI because it needs Chromium download on 10-minute schedule, tracked on `develop` alone, `main` clone can't run it): drives production build with Puppeteer, asserts lazy tabs actually fetch, CE worker returns results, critical CSS paints, `fgo_build_etag` poller present. Last block fills one bond slot, asserts point box label text (`Next Lv. Required`), no label clips, no sideways scroll at 320 / 800 / 1120 px; restores 800x600 default afterwards so assertions above keep CSS-px numbers. Serve first: `npx astro preview`, then `node scripts/verify_render.js`.
 
@@ -136,7 +136,7 @@ No npm script, no project dependency — run ad hoc against served build: `npx l
 - **Astro 7** (static output, no SSR, base path `/fgo-calculator/`) — needs **Node >= 22.23.4** (`.nvmrc`, `package.json` `engines`, CI `node-version-file: .nvmrc`)
 - **Vite 8** bundler → **Rolldown**, not Rollup — chunk layout is `vite.build.rolldownOptions.output.codeSplitting.groups`
 - **Vanilla JS ES modules** (no frameworks, no TypeScript at runtime)
-- **Self-hosted fonts**: DM Sans + Space Mono (woff2 in `public/fonts/`)
+- **Zero web fonts**: native system font stacks (`system-ui`, `ui-monospace`)
 - **PWA**: manifest.json (standalone mode, start_url: ".")
 
 ## Architecture
@@ -152,7 +152,7 @@ No npm script, no project dependency — run ad hoc against served build: `npx l
 ### Key Files
 
 - `astro.config.mjs` — Vite chunk splitting config (`data-chunk`, `selectors-chunk`, `ce-filter-chunk`, etc.)
-- `src/layouts/BaseLayout.astro` — HTML shell, critical CSS, font preloads, Trusted Types policy
+- `src/layouts/BaseLayout.astro` — HTML shell, critical CSS, Trusted Types policy
 - `src/pages/index.astro` — main page structure, imports all JS modules
 - `src/scripts/main.js` — entry: `DOMContentLoaded` → lazy tab init via `import()`
 - `src/scripts/domain.js` — trait matching logic, calculator, `SlotCEs` (per-slot essence capacity, pool, sanitising)
@@ -179,10 +179,9 @@ Bond Gain CE uses Web Worker (`ce-match-worker.js`) for trait matching off main 
 
 - **content-visibility: auto** — skip rendering off-screen servant/CE grids
 - **Double rAF yield** — `requestAnimationFrame(() => requestAnimationFrame(() => {...}))` before heavy DOM ops
-- **Font loading**: `font-display: swap` body text, `font-display: optional` monospace (prevents FOIT)
+- **Zero web fonts**: native system font stacks (`system-ui`, `ui-monospace`) eliminate FOUT, FOIT, font download latency, and 144 KB static payload
 - **CLS prevention**: `min-width` + `tabular-nums` on numeric inputs, explicit image dimensions
 - **Critical CSS**: no separate stylesheet at all — `src/layouts/BaseLayout.astro` holds entire site CSS as one `<style is:inline>` line, `dist/` ships exactly one `<style>` block + zero `.css` assets. `src/styles/` deleted 2026-11-04, so that block is only place CSS exists. See Known Issues
-- **Font preloads**: `fetchpriority="high"` on woff2 files
 - **Lazy tab init**: Bond/Event tabs load JS only on first visit
 - **CE match cache**: `CEFilterApp._allCEMatchesCache` — populated on first filter, computed in Worker
 

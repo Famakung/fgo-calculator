@@ -9,7 +9,7 @@ package.json                 — Dependencies: astro; puppeteer + eslint + prett
 # Source (tracked in git)
 src/
   layouts/
-    BaseLayout.astro         — HTML shell: <head>, inline CSS, font preloads, Trusted Types, manifest, tab-init script
+    BaseLayout.astro         — HTML shell: <head>, inline CSS, Trusted Types, manifest, tab-init script
   pages/
     index.astro              — Main page: tab panels, UI structure, <script type="module"> imports main.js
   scripts/
@@ -40,7 +40,6 @@ public/
   robots.txt                   — Allow all
   .nojekyll                   — Prevent Jekyll processing on GitHub Pages
   favicon.svg                  — SVG favicon
-  fonts/                       — DM Sans, Space Mono (woff2)
   servants/                    — {ID}/{ascension}.webp portraits
   craft_essences/              — 128/{ID}.webp (bordered 142×155, unified for all display sizes)
   icons/                       — bond_icon, fp_icon, materials/, classes/, pwa/
@@ -49,7 +48,6 @@ public/
 dist/                         — Static site output for GitHub Pages
   index.html                   — Single HTML page with inlined critical CSS
   _astro/                      — Hashed JS/CSS chunks (Vite output)
-  fonts/                       — Self-hosted fonts (copied from public/)
   servants/                   — Servant portraits (copied from public/)
   craft_essences/              — CE images (copied from public/)
   icons/                       — UI icons (copied from public/)
@@ -61,7 +59,7 @@ dist/                         — Static site output for GitHub Pages
 ```
 
 ## Script Load Order (Astro build output)
-1. `<style is:inline>` — Critical CSS inline in `<head>` (font-face, reset, layout)
+1. `<style is:inline>` — Critical CSS inline in `<head>` (reset, layout, tokens)
 2. Inline `<script>` in `<head>` — Wide-screen magnification (`zoom` on `<html>` + `--screen-h`)
 3. Inline `<script>` in `<head>` — Trusted Types policy (passthrough)
 4. Inline `<script>` in `<head>` — Service-worker/cache cleanup
@@ -72,9 +70,9 @@ dist/                         — Static site output for GitHub Pages
 9. Web Worker (`ce-match-worker.js`) spawned by CEFilterApp for first trait match compute
 
 ## CSS
-- Browser sees only the single `<style is:inline>` block in `BaseLayout.astro` (font-face + tokens + full styles). Astro emits no `.css` file, `index.astro` imports no stylesheet
+- Browser sees only the single `<style is:inline>` block in `BaseLayout.astro` (tokens + full styles). Astro emits no `.css` file, `index.astro` imports no stylesheet
 - No second copy to keep in step: `src/styles/` (`global.css`, `critical.css`) deleted 2026-11-04, its rules drifted out of shipped block; `npm run lint:css` / stylelint went with it. Rule not in that inline block does not exist
-- `@font-face` URLs use relative paths (`fonts/dm-sans-400.woff2`); Astro rewrites with base path
+- Zero web fonts: uses native system font stacks (`system-ui`, `ui-monospace`) with no `@font-face` or preload overhead
 
 ## JS Loading (Astro 7 / Vite 8 + Rolldown `codeSplitting.groups`)
 - `main-entry`: Bond Gain CE tab code, eager

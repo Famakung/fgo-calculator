@@ -59,7 +59,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 
 - **Astro** (static output) — builds single-page app with code splitting and optimized chunks
 - **Vanilla JavaScript** — ES modules, no framework dependencies
-- **Self-hosted fonts** — DM Sans + Space Mono (woff2, font-display: swap)
+- **Zero web fonts** — Native system font stacks (`system-ui`, `ui-monospace`) for instant rendering and 0 KB font payload
 - **All images WebP** — servant portraits, CE thumbnails, UI icons
 - **Lighthouse 100/100/100/100** — Performance, Accessibility, Best Practices, SEO
 
@@ -108,7 +108,7 @@ fgo-calculator/
 │
 ├── src/
 │   ├── layouts/
-│   │   └── BaseLayout.astro   # HTML shell, inline CSS, font preloads, Trusted Types, manifest
+│   │   └── BaseLayout.astro   # HTML shell, inline CSS, Trusted Types, manifest
 │   ├── pages/
 │   │   └── index.astro        # Main page: tab panels, UI structure, imports all JS modules
 │   └── scripts/
@@ -138,7 +138,6 @@ fgo-calculator/
 │   ├── robots.txt              # Allow all
 │   ├── .nojekyll               # Prevent Jekyll processing on GitHub Pages
 │   ├── favicon.svg             # SVG favicon
-│   ├── fonts/                  # Self-hosted web fonts (DM Sans, Space Mono — woff2)
 │   ├── servants/               # Servant portraits ({ID}/{ascension}.webp) [build-cached]
 │   ├── craft_essences/         # CE images: {ID}.webp (unified 142×155 bordered WebP) [build-cached]
 │   └── icons/                  # UI icons (classes, materials, PWA)
@@ -182,7 +181,7 @@ Astro produces optimized chunks via Vite:
 ## Technical Details
 
 - Vanilla JavaScript with no external runtime dependencies
-- Self-hosted fonts (DM Sans, Space Mono) via `@font-face` with woff2 and font-display: swap
+- Native system fonts (`system-ui`, `ui-monospace`) with zero font payload
 - All images in WebP format
 - Trusted Types policy (`default`) enforced via inline script in `<head>`
 - All DOM elements created safely with `createElement()` (no innerHTML)
@@ -193,7 +192,7 @@ Astro produces optimized chunks via Vite:
 - Automated build-time data sync pipeline (`scripts/sync_atlas_data.py`) with polite rate limiting (`0.1s`), automatic multi-ascension detection, full-auto Craft Essence data detection & series grouping, dynamic bordered icon synchronization, and bond point tables converted from Atlas' running totals into per-level-step costs (471 playable servants deduped into 76 shared tables)
 - Zero-commit binary assets architecture: servant and CE images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v4`), and synced at build time
 - PWA manifest with standalone display mode
-- Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, `font-display: optional`, critical CSS inlined, font preloads with `fetchpriority="high"`, CLS prevention with `min-width` and `tabular-nums`
+- Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, critical CSS inlined, zero web-font network overhead, CLS prevention with `min-width` and `tabular-nums`
 
 ## Git
 
