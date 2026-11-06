@@ -12,7 +12,7 @@
 
 **Tech Stack:** Astro 7 + Vite 8 (Rolldown), vanilla ES modules, no TypeScript at runtime, `node --test` for pure-domain tests, Puppeteer for the browser gate.
 
-**Spec:** `.claude/docs/fluid-desktop-layout-design.md` (same directory). Read it before Task 1; the values here come from it.
+**Spec:** `.claude/docs/archive/2026-11-04-fluid-desktop-layout-design.md` (same directory). Read it before Task 1; the values here come from it.
 
 ## Global Constraints
 

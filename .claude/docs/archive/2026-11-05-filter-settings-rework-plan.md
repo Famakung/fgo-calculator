@@ -8,7 +8,7 @@
 
 **Tech Stack:** Astro 7 / Vite 8 (Rolldown), vanilla ES modules, node:test, Puppeteer render gate.
 
-**Spec:** `.claude/docs/filter-settings-rework-design.md`
+**Spec:** `.claude/docs/archive/2026-11-05-filter-settings-rework-design.md`
 
 ## Global Constraints
 

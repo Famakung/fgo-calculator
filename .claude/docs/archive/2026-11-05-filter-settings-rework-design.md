@@ -2,7 +2,7 @@
 
 Date: 2026-11-05. Status: approved by the owner 2026-11-05. The `<button>` widening stands as written, and
 rarity keeps the shipped ★0 → ★5 order. Built natively in the main session, no reviewer subagent.
-Plan: `.claude/docs/filter-settings-rework-plan.md`.
+Plan: `.claude/docs/archive/2026-11-05-filter-settings-rework-plan.md`.
 
 ## Intent
 
