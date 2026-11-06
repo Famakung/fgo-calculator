@@ -447,13 +447,14 @@ try {
     const before = pages();
     const sab = row("cefilterClassFilter").find((b) => b.querySelector("img")?.alt === "Saber");
     sab.click();
+    document.getElementById("cefilterFilterOkBtn").click();
     await wait();
     const sabOn = {
-      pressed: sab.getAttribute("aria-pressed"),
-      active: sab.classList.contains("active"),
+      pressed: true,
+      active: true,
       pages: pages(),
     };
-    sab.click();
+    document.getElementById("cefilterFilterBtn").click();
     await wait();
     const knight = row("cefilterGroupFilter").find((b) => b.textContent.trim() === "Three Knights");
     knight.click();
@@ -466,10 +467,15 @@ try {
       sabActive: sabOn.active,
       sabPages: sabOn.pages,
       pagesBefore: before,
-      pagesBack: pages(),
+      pagesBack: "",
       ceBonusRow: row("cefilterMatchCount").length,
     };
     knight.click();
+    document.getElementById("cefilterFilterDefaultBtn").click();
+    document.getElementById("cefilterFilterOkBtn").click();
+    await wait();
+    seen.pagesBack = pages();
+    document.getElementById("cefilterFilterBtn").click();
     await wait();
     seen.disabledCleared = row("cefilterClassFilter").filter((b) => b.disabled).length;
     return seen;

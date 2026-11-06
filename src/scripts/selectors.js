@@ -73,19 +73,39 @@ export const ServantSelector = {
     }
 
     const filterBtn = document.getElementById("servantPickerFilterBtn");
-    if (filterBtn && subModal) {
-      filterBtn.addEventListener("click", () => subModal.classList.add("open"));
+    if (filterBtn) {
+      filterBtn.addEventListener("click", () => this._openFilterModal());
     }
 
     const subClose = document.getElementById("servantFilterModalClose");
-    if (subClose && subModal) {
-      subClose.addEventListener("click", () => subModal.classList.remove("open"));
+    if (subClose) {
+      subClose.addEventListener("click", () => this._cancelFilterModal());
     }
 
     if (subModal) {
       subModal.addEventListener("click", (e) => {
-        if (e.target === subModal) subModal.classList.remove("open");
+        if (e.target === subModal) this._cancelFilterModal();
       });
+    }
+
+    const defaultBtn = document.getElementById("servantFilterDefaultBtn");
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", () => this._defaultFilterModal());
+    }
+
+    const selectAllBtn = document.getElementById("servantFilterSelectAllBtn");
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => this._selectAllFilterModal());
+    }
+
+    const cancelBtn = document.getElementById("servantFilterCancelBtn");
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", () => this._cancelFilterModal());
+    }
+
+    const okBtn = document.getElementById("servantFilterOkBtn");
+    if (okBtn) {
+      okBtn.addEventListener("click", () => this._okFilterModal());
     }
 
     const sortSelect = document.getElementById("servantPickerSortBy");
@@ -115,7 +135,7 @@ export const ServantSelector = {
         if (e.key !== "Escape" || !modal.classList.contains("open")) return;
         // The filter modal sits on top of this one, so Escape takes the top layer off first.
         if (subModal && subModal.classList.contains("open")) {
-          subModal.classList.remove("open");
+          this._cancelFilterModal();
           return;
         }
         this.close();
@@ -280,59 +300,132 @@ export const ServantSelector = {
      opened the picker. The class row is always built: outside the group or the quest's lock its chips are
      greyed rather than absent, so the row cannot be escaped by a stale pick and comes back whole when the
      group is cleared. */
-  _renderFilterRows() {
-    const scope = ServantFilters.rowScope(this.groupClassFilters, this.lockedClasses);
+  _renderFilterRows(customFilters = null) {
+    const filterState = customFilters || this.draftFilters || this;
+    const scope = ServantFilters.rowScope(filterState.groupClassFilters, this.lockedClasses);
     const lock = this.lockedClasses;
     const toggle = (key) => (ids) => {
-      this[key] = ids;
-      this.filter();
+      if (this.draftFilters) {
+        this.draftFilters[key] = ids;
+        if (key === "groupClassFilters") {
+          this._renderFilterRows(this.draftFilters);
+        }
+      } else {
+        this[key] = ids;
+        this.filter();
+      }
     };
 
     FilterSections.renderRow(
       document.getElementById("servantRarityFilter"),
       RARITY_FILTERS,
-      this.rarityFilters,
+      filterState.rarityFilters,
       toggle("rarityFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("servantClassFilter"),
       [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
-      this.classFilters,
+      filterState.classFilters,
       toggle("classFilters"),
       { disabled: (chip) => scope !== null && !scope.includes(chip.id) },
     );
     FilterSections.renderRow(
       document.getElementById("servantGroupFilter"),
       CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true, classes: g.classes })),
-      this.groupClassFilters,
+      filterState.groupClassFilters,
       toggle("groupClassFilters"),
       { disabled: (chip) => Boolean(lock) && !chip.classes.some((id) => lock.includes(id)) },
     );
     FilterSections.renderRow(
       document.getElementById("servantAliFilter"),
       ALIGNMENT_LNC_FILTERS,
-      this.aliFilters,
+      filterState.aliFilters,
       toggle("aliFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("servantSubAliFilter"),
       ALIGNMENT_GBE_FILTERS,
-      this.subAliFilters,
+      filterState.subAliFilters,
       toggle("subAliFilters"),
-      { disabled: () => this.subAliFilters.includes(ServantFilters.SUB_ALI_OTHER) },
+      { disabled: () => (filterState.subAliFilters || []).includes(ServantFilters.SUB_ALI_OTHER) },
     );
     FilterSections.renderRow(
       document.getElementById("servantAttrFilter"),
       SUB_ATTR_FILTERS,
-      this.subAttrFilters,
+      filterState.subAttrFilters,
       toggle("subAttrFilters"),
     );
     FilterSections.renderRow(
       document.getElementById("servantGenderFilter"),
       GENDER_FILTERS,
-      this.genderFilters,
+      filterState.genderFilters,
       toggle("genderFilters"),
     );
+  },
+
+  _openFilterModal() {
+    const subModal = document.getElementById("servantFilterModal");
+    if (!subModal) return;
+    this.draftFilters = {
+      rarityFilters: [...this.rarityFilters],
+      classFilters: [...this.classFilters],
+      groupClassFilters: [...this.groupClassFilters],
+      aliFilters: [...this.aliFilters],
+      subAliFilters: [...this.subAliFilters],
+      subAttrFilters: [...this.subAttrFilters],
+      genderFilters: [...this.genderFilters],
+    };
+    this._renderFilterRows(this.draftFilters);
+    subModal.classList.add("open");
+  },
+
+  _cancelFilterModal() {
+    this.draftFilters = null;
+    this._renderFilterRows();
+    const subModal = document.getElementById("servantFilterModal");
+    if (subModal) subModal.classList.remove("open");
+  },
+
+  _okFilterModal() {
+    if (this.draftFilters) {
+      this.rarityFilters = [...this.draftFilters.rarityFilters];
+      this.classFilters = [...this.draftFilters.classFilters];
+      this.groupClassFilters = [...this.draftFilters.groupClassFilters];
+      this.aliFilters = [...this.draftFilters.aliFilters];
+      this.subAliFilters = [...this.draftFilters.subAliFilters];
+      this.subAttrFilters = [...this.draftFilters.subAttrFilters];
+      this.genderFilters = [...this.draftFilters.genderFilters];
+      this.draftFilters = null;
+    }
+    this.filter();
+    const subModal = document.getElementById("servantFilterModal");
+    if (subModal) subModal.classList.remove("open");
+  },
+
+  _defaultFilterModal() {
+    if (!this.draftFilters) return;
+    this.draftFilters.rarityFilters = [];
+    this.draftFilters.classFilters = [];
+    this.draftFilters.groupClassFilters = [];
+    this.draftFilters.aliFilters = [];
+    this.draftFilters.subAliFilters = [];
+    this.draftFilters.subAttrFilters = [];
+    this.draftFilters.genderFilters = [];
+    this._renderFilterRows(this.draftFilters);
+  },
+
+  _selectAllFilterModal() {
+    if (!this.draftFilters) return;
+    this.draftFilters.rarityFilters = RARITY_FILTERS.map((c) => c.id);
+    this.draftFilters.groupClassFilters = CLASS_GROUPS.map((g) => g.key);
+    const scope = ServantFilters.rowScope(this.draftFilters.groupClassFilters, this.lockedClasses);
+    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].map((c) => c.id);
+    this.draftFilters.classFilters = scope ? allClasses.filter((id) => scope.includes(id)) : allClasses;
+    this.draftFilters.aliFilters = ALIGNMENT_LNC_FILTERS.map((c) => c.id);
+    this.draftFilters.subAliFilters = ALIGNMENT_GBE_FILTERS.map((c) => (c.other ? ServantFilters.SUB_ALI_OTHER : c.id));
+    this.draftFilters.subAttrFilters = SUB_ATTR_FILTERS.map((c) => c.id);
+    this.draftFilters.genderFilters = GENDER_FILTERS.map((c) => c.id);
+    this._renderFilterRows(this.draftFilters);
   },
 };
 
@@ -714,17 +807,29 @@ export const CEFilterPicker = {
   init() {
     const modal = document.getElementById("ceFilterModal");
     const closeBtn = document.getElementById("ceFilterModalClose");
+    const defaultBtn = document.getElementById("ceFilterDefaultBtn");
+    const cancelBtn = document.getElementById("ceFilterCancelBtn");
+    const okBtn = document.getElementById("ceFilterOkBtn");
 
     if (closeBtn) {
-      closeBtn.addEventListener("click", () => this.close());
+      closeBtn.addEventListener("click", () => this.cancel());
+    }
+    if (defaultBtn) {
+      defaultBtn.addEventListener("click", () => this.default());
+    }
+    if (cancelBtn) {
+      cancelBtn.addEventListener("click", () => this.cancel());
+    }
+    if (okBtn) {
+      okBtn.addEventListener("click", () => this.ok());
     }
     if (modal) {
       modal.addEventListener("click", (e) => {
-        if (e.target === modal) this.close();
+        if (e.target === modal) this.cancel();
       });
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && modal.classList.contains("open")) {
-          this.close();
+          this.cancel();
         }
       });
     }
@@ -769,6 +874,26 @@ export const CEFilterPicker = {
     this.tempSelected = new Set();
   },
 
+  cancel() {
+    this.close();
+  },
+
+  default() {
+    this.tempSelected.clear();
+    const grid = document.getElementById("ceFilterPickerGrid");
+    if (grid) {
+      grid.querySelectorAll(".ce-filter-picker-item.selected").forEach((item) => {
+        item.classList.remove("selected");
+      });
+    }
+    this.updateNoMatchState();
+  },
+
+  ok() {
+    this._callbacks?.onApply?.([...this.tempSelected]);
+    this.close();
+  },
+
   renderGrid(ces) {
     const grid = document.getElementById("ceFilterPickerGrid");
     if (!grid) return;
@@ -799,7 +924,6 @@ export const CEFilterPicker = {
           item.classList.add("selected");
         }
         this.updateNoMatchState();
-        this._callbacks?.onApply?.([...this.tempSelected]);
       });
 
       frag.appendChild(item);

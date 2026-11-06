@@ -772,6 +772,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <div class="rarity-filter" id="servantGenderFilter" role="group" aria-labelledby="servantGenderLabel"></div>
               </div>
             </div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="servantFilterDefaultBtn">Default</button>
+                <button type="button" class="cefilter-footer-btn" id="servantFilterSelectAllBtn">Select All</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="servantFilterCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="servantFilterOkBtn">OK</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -871,6 +881,15 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               autocomplete="off"
             />
             <div class="servant-picker-grid grid-sm servant-picker-grid--ce" id="ceFilterPickerGrid"></div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="ceFilterDefaultBtn">Default</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="ceFilterCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="ceFilterOkBtn">OK</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -927,6 +946,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="cefilter-modal-section">
                 <div class="cefilter-modal-label" id="cefilterMatchLabel">CE Bonus</div>
                 <div class="ce-count-filter" id="cefilterMatchCount" role="group" aria-labelledby="cefilterMatchLabel"></div>
+              </div>
+            </div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="cefilterFilterDefaultBtn">Default</button>
+                <button type="button" class="cefilter-footer-btn" id="cefilterFilterSelectAllBtn">Select All</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="cefilterFilterCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="cefilterFilterOkBtn">OK</button>
               </div>
             </div>
           </div>
