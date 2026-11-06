@@ -68,6 +68,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const rIC = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
   rIC(() => {
     if (activeTab !== "event") initEvent();
+    if (activeTab !== "cefilter") CEFilterApp.warmWorker();
   });
 
   /* Background scroll lock. All eight modals share `.servant-modal` and toggle `.open`, and a closed

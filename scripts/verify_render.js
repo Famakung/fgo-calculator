@@ -1036,15 +1036,15 @@ try {
         };
       };
       const grids = [...document.querySelectorAll("#bondResultContent .bond-result-servant-grid")];
-      const btn = document.querySelector(".bond-teapot-remove");
-      const chipImg = btn ? btn.querySelector("img") : null;
+      const badge = document.querySelector(".bond-teapot-badge");
+      const chipImg = badge ? badge.querySelector("img") : null;
       return {
         grids: grids.length,
         boosted: grid(grids[0]),
         plain: grid(grids[1]),
-        exhaust: btn
+        exhaust: badge
           ? {
-              label: btn.textContent.trim(),
+              label: badge.textContent.trim(),
               img: Boolean(chipImg),
               imgH: chipImg ? Math.round(chipImg.getBoundingClientRect().height) : 0,
             }
@@ -1109,7 +1109,8 @@ try {
     );
   }
 
-  await page.click(".bond-teapot-remove");
+  await page.click("#teapotToggle");
+  await page.click("#bondCalculateBtn");
   const teapotRemoved = await readTeapot();
   const afterRemove = await page.evaluate(() => ({
     checked: document.getElementById("teapotToggle").checked,
@@ -1163,7 +1164,7 @@ try {
   }
   console.log(
     `NOTE: teapot — 1 held: ${JSON.stringify(teapotSplit.boosted)} then ${JSON.stringify(teapotSplit.plain)}, ` +
-      `chip ${JSON.stringify(teapotSplit.exhaust)}; after the chip click: ${JSON.stringify(teapotRemoved.boosted)}; ` +
+      `chip ${JSON.stringify(teapotSplit.exhaust)}; after switch toggle: ${JSON.stringify(teapotRemoved.boosted)}; ` +
       `99 held: ${JSON.stringify(enough.boosted)}`,
   );
 
@@ -1255,7 +1256,8 @@ try {
     await page.click(".servant-add-slot");
     await page.waitForSelector("#servantModal.open", { timeout: 15000 });
     await openFilterSubModal();
-    const seen = await page.evaluate(() => {
+    const seen = await page.evaluate(async () => {
+      const wait = () => new Promise((r) => setTimeout(r, 50));
       const btns = [...document.querySelectorAll("#servantClassFilter .class-btn")];
       const live = btns.filter((b) => !b.disabled);
       const grid = document.getElementById("servantPickerGrid");
@@ -1263,9 +1265,20 @@ try {
       const cards = () => grid.children.length;
       const start = { active: active(), cards: cards() };
       live[0].click();
-      const oneOn = { active: active(), cards: cards(), painted: live[0].classList.contains("active") };
-      live[0].click();
-      return { start, oneOn, cleared: { active: active(), cards: cards() } };
+      const oneOnActive = active();
+      const oneOnPainted = live[0].classList.contains("active");
+      document.getElementById("servantFilterOkBtn").click();
+      await wait();
+      const oneOn = { active: oneOnActive, cards: cards(), painted: oneOnPainted };
+      document.getElementById("servantPickerFilterBtn").click();
+      await wait();
+      const btnsAfter = [...document.querySelectorAll("#servantClassFilter .class-btn")];
+      const liveAfter = btnsAfter.filter((b) => !b.disabled);
+      liveAfter[0].click();
+      const clearedActive = btnsAfter.filter((b) => b.classList.contains("active")).length;
+      document.getElementById("servantFilterOkBtn").click();
+      await wait();
+      return { start, oneOn, cleared: { active: clearedActive, cards: cards() } };
     });
     await closePicker();
     return seen;
@@ -1342,7 +1355,7 @@ try {
       `class filter: Extra I ${JSON.stringify([extra1, narrow])}, Saber ${JSON.stringify(saber)}, ` +
         `All ${JSON.stringify(every)} — want all fifteen class chips present with only the four Extra I ones ` +
         `clickable, one of them narrowing to a single class and clearing back to the group, a single-class ` +
-        `quest leaving exactly one clickable chip, and six labelled sections in the picker's filter modal`,
+        `quest leaving exactly one clickable chip, and seven labelled sections in the picker's filter modal`,
     );
   }
 
@@ -1362,6 +1375,9 @@ try {
       };
       (spec.pick || []).forEach((label) => byLabel(label).click());
       (spec.unpick || []).forEach((label) => byLabel(label).click());
+      if ((spec.pick || []).length > 0 || (spec.unpick || []).length > 0) {
+        document.getElementById("servantFilterOkBtn").click();
+      }
       const on = (sel) =>
         [...document.querySelectorAll(sel)]
           .filter((b) => b.classList.contains("active"))
@@ -1393,7 +1409,7 @@ try {
   await pfOpen({ pick: ["Saber"] });
   await page.select("#bondGrandClassSelect", "extra1");
   const pfGroup = await pfOpen();
-  // Leaving the group must bring the same pick back: the chip only stops pressing, it is never forgotten.
+  // Leaving the group resets filters on class swap (fix(bond): reset servant filter on quest or class swap).
   await page.select("#bondGrandClassSelect", "all");
   const pfBack = await pfOpen();
   /* Each expectation names itself, so a failure says which one moved instead of printing four objects and
@@ -1409,7 +1425,7 @@ try {
     ["Extra I ignores the Saber pick", pfGroup.classes.length === 0],
     ["Extra I clears rarities", pfGroup.rarities.length === 0],
     [`Extra I shows its own ${extra1.cards} cards`, pfGroup.cards === extra1.cards],
-    ["leaving the group re-highlights Saber", pfBack.classes.join() === "Saber" && pfBack.cards === saber.cards],
+    ["leaving the group resets filters", pfBack.classes.length === 0 && pfBack.cards === every.cards],
   ].filter(([, ok]) => !ok);
   if (pfWants.length) {
     errors.push(

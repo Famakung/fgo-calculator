@@ -1,7 +1,7 @@
-import { ServantData, CEById } from "./data.js";
+import { ServantData } from "./data.js";
 import { ServantComboCalculator, Validator } from "./domain.js";
 import { CEFILTER_STORAGE_KEY } from "./constants.js";
-import { DOMFactory } from "./presentation.js";
+import { DOMFactory, ComboCardRenderer } from "./presentation.js";
 import { ServantSelector } from "./selectors.js";
 
 const MAX_INITIAL_CARDS = 60;
@@ -207,69 +207,10 @@ export const ServantSelect = {
     wrapper.replaceChildren(frag);
   },
 
-  /* One card per servant group, twice the width of a CE Select card: the shared CEs are the
-     main row at portrait size, the servants that all share them are the badge row below.
-     Names stay off the card — the portraits are the content, and title/alt carry the name. */
   _buildCard(group) {
-    const card = DOMFactory.el("div", ["cefilter-servant-card", "cefilter-combo-card"]);
-
-    const ceRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-ce-row"]);
-    group.ceIds.forEach((ceId) => {
-      const ce = CEById.get(ceId);
-      if (!ce) return;
-      const cell = DOMFactory.el("button", "cefilter-combo-ce", {
-        type: "button",
-        "aria-label": `Select ${ce.name} in Craft Essence Select`,
-        title: ce.name,
-      });
-      const img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-combo-ce-img", { alt: ce.name, title: ce.name });
-      DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
-      cell.appendChild(img);
-      cell.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this._deps?.onSelectCE?.(ceId);
-      });
-      ceRow.appendChild(cell);
+    return ComboCardRenderer.buildCard(group, {
+      onSelectCE: (ceId) => this._deps?.onSelectCE?.(ceId),
     });
-    card.appendChild(ceRow);
-
-    const servantRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-servant-row"]);
-    const rowCEs = group.ceIds.map((ceId) => CEById.get(ceId)).filter(Boolean);
-    group.members.forEach((entry) => {
-      if (!entry || !entry.servant) return;
-      servantRow.appendChild(this._buildServantCell(entry, rowCEs));
-    });
-    card.appendChild(servantRow);
-
-    return card;
-  },
-
-  /* One badge per ascension group, portraited like that group's own card in Craft Essence Select,
-     so a servant whose forms match different CEs shows both forms here. Image only: the ascension
-     names live in the badge's title/alt, never as text under the portrait. */
-  _buildServantCell(entry, rowCEs) {
-    const servant = entry.servant;
-    const matchedAscensions = entry.matchedAscensions || [];
-    const imgAsc =
-      !entry.baseMatchesAll && matchedAscensions.length > 0 ? entry.primaryAscension || matchedAscensions[0] : null;
-    const imgSrc = imgAsc ? ServantData.getImageForAscension(servant.id, imgAsc) : servant.image;
-
-    const labelParts = matchedAscensions.map((key) => ServantData.getAscensionLabel(servant.id, key));
-    const spiritronLabel = ServantData.getSpiritronLabel(servant.id, rowCEs, matchedAscensions, entry.baseMatchesAll);
-    if (spiritronLabel) labelParts.push(spiritronLabel);
-
-    const displayName = imgAsc ? ServantData.getAscensionName(servant.id, imgAsc) || servant.name : servant.name;
-    const name = labelParts.length > 0 ? `${displayName} (${labelParts.join(", ")})` : displayName;
-
-    const cell = DOMFactory.el("div", "cefilter-combo-servant");
-    const img = DOMFactory.createLazyImg(imgSrc, ["cefilter-match-badge", "cefilter-combo-servant-badge"], {
-      alt: name,
-      title: name,
-    });
-    DOMFactory.addAscensionFallback(img, servant.id);
-    cell.appendChild(img);
-
-    return cell;
   },
 
   _paintNotes(groupCount, unshared, truncated) {

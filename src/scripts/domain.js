@@ -265,55 +265,7 @@ export const SlotCEs = {
   },
 };
 
-// Optimized: accepts Set for O(1) trait lookups
-export const TraitMatcher = {
-  matches(servantTraitSet, ce) {
-    if (ce.alsoMatch && ce.alsoMatch.some((t) => servantTraitSet.has(t))) return true;
-    if (ce.traitGroups.length > 0) {
-      return ce.traitGroups.every((group) => group.some((t) => servantTraitSet.has(t)));
-    }
-    if (ce.traits.length === 0) return true;
-    if (ce.matchAll) {
-      return ce.traits.every((t) => servantTraitSet.has(t));
-    }
-    return ce.traits.some((t) => servantTraitSet.has(t));
-  },
-
-  getAllTraitSets(servant) {
-    if (!servant.hasAscensions) return [{ key: "base", traits: servant.traits, traitSet: servant.traitSet }];
-    // Use cached ascension trait sets if available
-    if (servant._ascTraitSets) {
-      const sets = [];
-      const standard = ["000", "001", "002"];
-      const allKeys = Object.keys(servant._ascTraitSets);
-      const custom = allKeys.filter((k) => !standard.includes(k));
-      standard.forEach((k) => {
-        if (servant._ascTraitSets[k]) {
-          sets.push({ key: k, traits: servant._ascTraits[k], traitSet: servant._ascTraitSets[k] });
-        }
-      });
-      custom.forEach((k) => {
-        sets.push({ key: k, traits: servant._ascTraits[k], traitSet: servant._ascTraitSets[k] });
-      });
-      return sets;
-    }
-    // Fallback (should not happen with pre-computed data)
-    const raw = servant.rawTraits;
-    const base = raw.base || [];
-    const standard = ["000", "001", "002"];
-    const allKeys = Object.keys(raw).filter((k) => k !== "base");
-    const custom = allKeys.filter((k) => !standard.includes(k));
-    const sets = standard.map((k) => {
-      const traits = [...base, ...(raw[k] || [])];
-      return { key: k, traits, traitSet: new Set(traits) };
-    });
-    custom.forEach((k) => {
-      const traits = [...base, ...(raw[k] || [])];
-      sets.push({ key: k, traits, traitSet: new Set(traits) });
-    });
-    return sets;
-  },
-};
+export { TraitMatcher, computeCEMatchMatrix } from "./ce-matcher.js";
 
 /* ============================================
    SERVANT COMBO CALCULATOR (Servant Select sub-tab)
@@ -408,9 +360,8 @@ export const ServantComboCalculator = {
   },
 
   /* Build shared CE combination groups for a single clicked servant against all other servants.
-     Generates all non-empty combinations of the clicked servant's matching CEs, prunes combinations
-     with no other servant match, groups by identical other-servant list (keeping maximal CEs),
-     and sorts maximal combinations. */
+     Collects non-empty CE intersections from other servants, closes them under pairwise intersection,
+     groups by identical other-servant list (keeping maximal CEs), and sorts maximal combinations. */
   buildServantOverlapGroups(allMatches, clickedEntry) {
     if (!clickedEntry || !clickedEntry.servant) return [];
     const clickedId = clickedEntry.servant.id;
@@ -432,37 +383,63 @@ export const ServantComboCalculator = {
       });
     }
 
-    const n = clickedCEs.length;
-    if (n === 0) return [];
+    if (clickedCEs.length === 0) return [];
 
-    const subsets = [];
-    for (let i = 1; i < 1 << n; i++) {
-      const sub = [];
-      for (let j = 0; j < n; j++) {
-        if (i & (1 << j)) sub.push(clickedCEs[j]);
+    const otherMatches = [];
+    (allMatches || []).forEach((m) => {
+      if (!m.servant || m.servant.id === clickedId) return;
+      const ceSet = m.matchingCEIds;
+      if (!ceSet) return;
+      const hasCE = ceSet instanceof Set ? (id) => ceSet.has(id) : (id) => ceSet.includes(id);
+      const shared = clickedCEs.filter(hasCE);
+      if (shared.length > 0) {
+        otherMatches.push({ entry: m, shared, sharedSet: new Set(shared) });
       }
-      subsets.push(sub);
+    });
+
+    if (otherMatches.length === 0) return [];
+
+    const classMap = new Map();
+    otherMatches.forEach((m) => {
+      const key = m.shared.join(",");
+      if (!classMap.has(key)) classMap.set(key, { ceIds: m.shared, ceSet: m.sharedSet });
+    });
+    const classLists = [...classMap.values()];
+
+    const uniqueIntersections = new Map();
+    classLists.forEach((cls) => uniqueIntersections.set(cls.ceIds.join(","), cls.ceIds));
+
+    let nodes = 0;
+    const walk = (start, current) => {
+      for (let i = start; i < classLists.length; i++) {
+        if (++nodes > this.MAX_COMBO_NODES) return;
+        const next = current.filter((id) => classLists[i].ceSet.has(id));
+        if (next.length === 0) continue;
+        const key = next.join(",");
+        if (!uniqueIntersections.has(key)) {
+          uniqueIntersections.set(key, next);
+          walk(i + 1, next);
+        }
+      }
+    };
+
+    for (let i = 0; i < classLists.length; i++) {
+      walk(i + 1, classLists[i].ceIds);
     }
 
     const groups = new Map();
-    const matches = allMatches || [];
+    uniqueIntersections.forEach((subIds) => {
+      const members = otherMatches.filter((m) => subIds.every((id) => m.sharedSet.has(id))).map((m) => m.entry);
+      if (members.length === 0) return;
 
-    subsets.forEach((subIds) => {
-      const members = matches.filter((m) => {
-        const ceSet = m.matchingCEIds;
-        return ceSet && subIds.every((id) => ceSet.has(id));
-      });
-      const otherMembers = members.filter((m) => m.servant && m.servant.id !== clickedId);
-      if (otherMembers.length === 0) return;
-
-      const servantKey = [...new Set(otherMembers.map((m) => m.servant.id))].sort().join(",");
+      const servantKey = [...new Set(members.map((m) => m.servant.id))].sort().join(",");
       const existing = groups.get(servantKey);
 
       if (!existing || subIds.length > existing.ceIds.length) {
-        otherMembers.sort((a, b) => (a.servant.id === b.servant.id ? 0 : a.servant.id < b.servant.id ? -1 : 1));
+        members.sort((a, b) => (a.servant.id === b.servant.id ? 0 : a.servant.id < b.servant.id ? -1 : 1));
         groups.set(servantKey, {
           ceIds: subIds,
-          otherMembers,
+          otherMembers: members,
         });
       }
     });
@@ -599,19 +576,66 @@ export const ServantFilters = {
     return (traits || []).some((t) => selected.includes(t));
   },
 
-  match(traits, filters = {}) {
+  compile(filters = {}) {
     const { rarityFilters, aliFilters, subAliFilters, subAttrFilters, genderFilters } = filters;
-    /* The class row reads the group, the quest's lock and the player's picks together, and a pick from
-       outside the bound is ignored rather than honoured. */
-    const ids = this.effectiveClassIds(filters);
-    return (
-      this.rowMatches(traits, ids) &&
-      this.rowMatches(traits, rarityFilters) &&
-      this.rowMatches(traits, aliFilters) &&
-      this.rowMatches(traits, subAliFilters, { other: true }) &&
-      this.rowMatches(traits, subAttrFilters) &&
-      this.rowMatches(traits, genderFilters)
-    );
+    const classIds = this.effectiveClassIds(filters);
+
+    const hasClass = classIds && classIds.length > 0;
+    const hasRarity = rarityFilters && rarityFilters.length > 0;
+    const hasAli = aliFilters && aliFilters.length > 0;
+    const hasSubAli = subAliFilters && subAliFilters.length > 0;
+    const hasSubAttr = subAttrFilters && subAttrFilters.length > 0;
+    const hasGender = genderFilters && genderFilters.length > 0;
+
+    if (!hasClass && !hasRarity && !hasAli && !hasSubAli && !hasSubAttr && !hasGender) {
+      return () => true;
+    }
+
+    const classSet = hasClass ? new Set(classIds) : null;
+    const raritySet = hasRarity ? new Set(rarityFilters) : null;
+    const aliSet = hasAli ? new Set(aliFilters) : null;
+    const subAliOther = hasSubAli && subAliFilters.includes(this.SUB_ALI_OTHER);
+    const subAliSet = hasSubAli ? new Set(subAliFilters.filter((id) => id !== this.SUB_ALI_OTHER)) : null;
+    const subAttrSet = hasSubAttr ? new Set(subAttrFilters) : null;
+    const genderSet = hasGender ? new Set(genderFilters) : null;
+    const gbeList = this.GBE;
+
+    return (traits) => {
+      if (!traits) return false;
+      const isSet = traits instanceof Set;
+      const hasAny = (set) => {
+        if (!set) return true;
+        if (isSet) {
+          for (const t of set) {
+            if (traits.has(t)) return true;
+          }
+          return false;
+        }
+        for (let i = 0; i < traits.length; i++) {
+          if (set.has(traits[i])) return true;
+        }
+        return false;
+      };
+
+      if (classSet && !hasAny(classSet)) return false;
+      if (raritySet && !hasAny(raritySet)) return false;
+      if (aliSet && !hasAny(aliSet)) return false;
+      if (subAttrSet && !hasAny(subAttrSet)) return false;
+      if (genderSet && !hasAny(genderSet)) return false;
+      if (hasSubAli) {
+        if (subAliOther) {
+          const hasGBE = isSet ? gbeList.some((t) => traits.has(t)) : traits.some((t) => gbeList.includes(t));
+          if (!hasGBE) return true;
+        }
+        if (subAliSet && subAliSet.size > 0 && hasAny(subAliSet)) return true;
+        return false;
+      }
+      return true;
+    };
+  },
+
+  match(traits, filters = {}) {
+    return this.compile(filters)(traits);
   },
 };
 
@@ -659,19 +683,36 @@ export const ServantSort = {
   sorted(rows, sortBy = "id", order = "asc", idOf = (row) => row.id, traitsOf = (row) => row.traits) {
     const key = this.KEYS.includes(sortBy) ? sortBy : "id";
     const dir = order === "desc" ? -1 : 1;
-    const value = (row) => {
-      const traits = traitsOf(row);
-      return key === "rarity" ? this.rarity(traits) : key === "class" ? this.classIndex(traits) : 0;
-    };
-    const numId = (row) => parseInt(idOf(row), 10) || 0;
+    const len = rows.length;
+    if (len <= 1) return [...rows];
 
-    return [...rows].sort((a, b) => {
+    const decorated = new Array(len);
+    for (let i = 0; i < len; i++) {
+      const row = rows[i];
+      const rawId = idOf(row);
+      const numId = parseInt(rawId, 10) || 0;
+      let val = 0;
+      if (key === "rarity") {
+        val = this.rarity(traitsOf(row));
+      } else if (key === "class") {
+        val = this.classIndex(traitsOf(row));
+      }
+      decorated[i] = { row, val, numId, strId: String(rawId) };
+    }
+
+    decorated.sort((a, b) => {
       if (key !== "id") {
-        const cmp = value(a) - value(b);
+        const cmp = a.val - b.val;
         if (cmp !== 0) return cmp * dir;
       }
-      const idCmp = numId(a) !== numId(b) ? numId(a) - numId(b) : String(idOf(a)).localeCompare(String(idOf(b)));
+      const idCmp = a.numId !== b.numId ? a.numId - b.numId : a.strId.localeCompare(b.strId);
       return idCmp * dir;
     });
+
+    const out = new Array(len);
+    for (let i = 0; i < len; i++) {
+      out[i] = decorated[i].row;
+    }
+    return out;
   },
 };

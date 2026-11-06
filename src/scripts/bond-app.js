@@ -50,18 +50,8 @@ export const BondApp = {
         this.saveState();
         this.buildServantSlots();
       },
-      onOpenAscension: (servant, idx) => {
-        this._refs.AscensionSelector.open(servant, idx, {
-          onSelect: (_si, servantId, asc) => this.setServant(idx, servantId, asc),
-          onBack: (backIdx) => {
-            this._refs.ServantSelector.open(
-              backIdx,
-              false,
-              this._createServantCallbacks(backIdx),
-              this._pickerOptions(),
-            );
-          },
-        });
+      onBack: (backIdx) => {
+        this._refs.ServantSelector.open(backIdx, false, this._createServantCallbacks(backIdx), this._pickerOptions());
       },
     };
   },
@@ -934,6 +924,7 @@ export const BondApp = {
     // Stargazer's Teapot: one spent per run, and a run pays every servant in the party.
     const teapotStock = this.state.teapotOn ? Math.floor(this.state.teapotCount || 0) : 0;
     const boosted = teapotStock > 0;
+    const partyPool = SlotCEs.partyPool(this.state.slots);
 
     // Calculate for normal servants only
     const slotResults = [];
@@ -973,10 +964,9 @@ export const BondApp = {
 
       // CE trait matching + flat bonus
       const ascension = ServantData.getDefaultAscension(slot.servantId, slot.ascension);
-      const servantTraits = servant ? ServantData.getTraitsForAscension(servantId, ascension) : [];
-      const traitSet = new Set(servantTraits);
+      const traitSet = servant ? ServantData.getTraitSetForAscension(servantId, ascension) : new Set();
       let flatBonus = 0;
-      SlotCEs.partyPool(this.state.slots).forEach((pooled) => {
+      partyPool.forEach((pooled) => {
         const ceEntry = pooled.entry;
         // Resolve CE from entry (string or group object)
         let ceId, optionId;

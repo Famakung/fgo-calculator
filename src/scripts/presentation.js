@@ -1,4 +1,5 @@
 import { DEBOUNCE_MS } from "./constants.js";
+import { CEById, ServantData } from "./data.js";
 
 export const DOMFactory = {
   el(tag, className, attrs = {}) {
@@ -111,6 +112,66 @@ export const CollapsibleFactory = {
     if (buildExtra) buildExtra(group);
     content.appendChild(group);
     container.appendChild(CollapsibleFactory.build("Filters", content));
+  },
+};
+
+export const ComboCardRenderer = {
+  buildServantCell(entry, rowCEs) {
+    const servant = entry.servant;
+    const { imgSrc, fullName } = ServantData.resolveEntryDisplay(entry, rowCEs);
+    const cell = DOMFactory.el("div", "cefilter-combo-servant");
+    const img = DOMFactory.createLazyImg(imgSrc, ["cefilter-match-badge", "cefilter-combo-servant-badge"], {
+      alt: fullName,
+      title: fullName,
+    });
+    DOMFactory.addAscensionFallback(img, servant.id);
+    cell.appendChild(img);
+    return cell;
+  },
+
+  buildCard(group, options = {}) {
+    const { onSelectCE, membersKey = "members" } = options;
+    const card = DOMFactory.el("div", ["cefilter-servant-card", "cefilter-combo-card"]);
+
+    const ceRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-ce-row"]);
+    group.ceIds.forEach((ceId) => {
+      const ce = CEById.get(ceId);
+      if (!ce) return;
+      const isInteractive = typeof onSelectCE === "function";
+      const cell = DOMFactory.el(
+        isInteractive ? "button" : "div",
+        "cefilter-combo-ce",
+        isInteractive
+          ? {
+              type: "button",
+              "aria-label": `Select ${ce.name} in Craft Essence Select`,
+              title: ce.name,
+            }
+          : { title: ce.name },
+      );
+      const img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-combo-ce-img", { alt: ce.name, title: ce.name });
+      DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
+      cell.appendChild(img);
+      if (isInteractive) {
+        cell.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onSelectCE(ceId);
+        });
+      }
+      ceRow.appendChild(cell);
+    });
+    card.appendChild(ceRow);
+
+    const servantRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-servant-row"]);
+    const rowCEs = group.ceIds.map((ceId) => CEById.get(ceId)).filter(Boolean);
+    const members = group[membersKey] || [];
+    members.forEach((entry) => {
+      if (!entry || !entry.servant) return;
+      servantRow.appendChild(this.buildServantCell(entry, rowCEs));
+    });
+    card.appendChild(servantRow);
+
+    return card;
   },
 };
 
