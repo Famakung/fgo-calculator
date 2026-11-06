@@ -90,6 +90,11 @@ UNOFFICIAL_JP_TRANSLATIONS = {
     "2701": "Gun Dealer",
 }
 
+# Unofficial English translations for JP-only Servants unreleased in NA
+UNOFFICIAL_SERVANT_TRANSLATIONS = {
+    "483": "Tamamo Aria",
+}
+
 CE_OVERRIDES = {}
 
 KNOWN_COSTUME_LABELS = {
@@ -102,6 +107,8 @@ KNOWN_COSTUME_LABELS = {
     "1101630": "Serious Mode",
     "4000130": "Earth President",
     "2301130": "Incognito Glasses",
+    "600730": "Red Hood & Big Bad Wolf",
+    "レッドフード＆ビッグバッドウルフ": "Red Hood & Big Bad Wolf",
 }
 
 COSTUME_STAGE_KEYS = ["300", "400", "500"]
@@ -387,7 +394,8 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
         c_str = str(cid)
         c_info = costumes_profile.get(c_str, {})
         battle_chara_id = c_info.get("battleCharaId") or (int(cid) if str(cid).isdigit() else None)
-        label = KNOWN_COSTUME_LABELS.get(c_str) or c_info.get("shortName") or c_info.get("name")
+        raw_label = c_info.get("shortName") or c_info.get("name")
+        label = KNOWN_COSTUME_LABELS.get(c_str) or (KNOWN_COSTUME_LABELS.get(raw_label) if raw_label else None) or raw_label
 
         if ctraits:
             cset = parse_traits(ctraits)
@@ -777,7 +785,8 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
         if key not in existing:
             continue
         base, asc_diffs, opt_labels, opt_names, _ = extract_servant_traits(s)
-        fresh = format_servant_js_entry(key, s.get("name") or "", base, asc_diffs, opt_labels, opt_names)
+        name = UNOFFICIAL_SERVANT_TRANSLATIONS.get(key) or s.get("name") or ""
+        fresh = format_servant_js_entry(key, name, base, asc_diffs, opt_labels, opt_names)
         if fresh != existing[key]:
             print(f"  Entry change detected for servant {key} (traits/ascensions/labels differ)")
             changed.append(cno)
@@ -894,7 +903,11 @@ def sync_servants(args):
                 print(f"  [DRY-RUN] Skipping new servant {short_id} (bulk detail unavailable)")
                 continue
 
-            name = svt_payload.get("name") or s_info.get("name", f"Servant {cno}")
+            name = (
+                UNOFFICIAL_SERVANT_TRANSLATIONS.get(short_id)
+                or svt_payload.get("name")
+                or s_info.get("name", f"Servant {cno}")
+            )
             base_traits, asc_diffs, opt_labels, opt_names, costume_battle_ids = extract_servant_traits(svt_payload)
 
             if cno == 467:
@@ -926,7 +939,11 @@ def sync_servants(args):
                     new_entries.update(format_467_split(svt_payload))
                     full_replacement = True
                     continue
-                name = svt_payload.get("name") or s_info.get("name", f"Servant {cno}")
+                name = (
+                    UNOFFICIAL_SERVANT_TRANSLATIONS.get(short_id)
+                    or svt_payload.get("name")
+                    or s_info.get("name", f"Servant {cno}")
+                )
                 base_traits, asc_diffs, opt_labels, opt_names, costume_battle_ids = extract_servant_traits(svt_payload)
                 download_face_icon(short_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
                 if asc_diffs:

@@ -122,6 +122,24 @@ def main():
     assert 334 in changed, f"missing traitAdd trait not flagged: {changed}"
     n += 1
 
+    # I. a servant with an unofficial translation (483 Tamamo Aria) uses the translated name in revalidation
+    stored_key, stored_entry = normal_entry(483, make_nice(483, 5, ["0103"], name="Tamamo Aria"))
+    m.SERVANTS_JS = write_servants_file(tmp, {stored_key: stored_entry})
+    changed = m.revalidate_servant_traits({483: {}}, [make_nice(483, 5, ["0103"], name="タマモアリア")])
+    assert 483 not in changed, f"translated servant wrongly flagged as drifted: {changed}"
+    n += 1
+
+    # J. a costume with a known translation (Red Hood & Big Bad Wolf) uses the translated label
+    svt_81 = make_nice(81, 3, ["0105", "2780"], name="Henry Jekyll & Hyde")
+    svt_81["ascensionAdd"] = {"individuality": {"costume": {600730: [{"id": 2821}]}}}
+    svt_81["profile"] = {"costume": {"600730": {"name": "レッドフード＆ビッグバッドウルフ", "battleCharaId": 600730}}}
+    stored_key, stored_entry = normal_entry(81, svt_81)
+    assert "Red Hood & Big Bad Wolf" in stored_entry, f"costume label not translated: {stored_entry}"
+    m.SERVANTS_JS = write_servants_file(tmp, {stored_key: stored_entry})
+    changed = m.revalidate_servant_traits({81: {}}, [svt_81])
+    assert 81 not in changed, f"costume translated servant wrongly flagged as drifted: {changed}"
+    n += 1
+
     print(f"{n} tests passed")
 
 
