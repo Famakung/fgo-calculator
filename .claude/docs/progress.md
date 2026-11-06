@@ -2460,3 +2460,42 @@ Key logic:
 
 
 
+
+## 2026-11-06 — Modal Action Footers, Deferred Filter Application, and CE Bonus Disabling Consistency
+
+### Work Done
+
+1. **CE Bonus Chip Disabling Consistency:**
+   - In Bond Gain CE filter settings modal (`#cefilterFilterModal`), changed unavailable CE bonus count chips from hiding to disabling (`.ce-count-btn--disabled`), consistent with `.class-btn--disabled` and `.ce-group-btn--disabled`.
+
+2. **Filter Settings Modal Action Footers & Draft Filtering:**
+   - Added action footers to both `#cefilterFilterModal` (Bond Gain CE tab) and `#servantFilterModal` (Servant Picker):
+     - Bottom-left: **Default** (clears modal filter selections), **Select All** (selects all valid/enabled options).
+     - Bottom-right: **Cancel** (discards draft changes and closes modal), **OK** (applies draft filters to background and closes modal).
+   - Changed filtering logic to use draft state (`draftFilters`), deferring background recalculation and re-rendering until user clicks "OK".
+   - Aligned button styling across modals (36px height, 2px border, 8px radius, 0.85rem font-weight 600, primary accent fill for OK).
+   - Removed separator bar (`border-top: 2px solid var(--border)`) on `.cefilter-modal-footer`, adjusting `padding-top` to 4px.
+
+3. **Craft Essence Picker Modal Footers & Draft Filtering:**
+   - Added action footer to `#ceFilterModal` (Add CE modal in Bond Gain CE tab):
+     - Bottom-left: **Default** (clears draft CE selections).
+     - Bottom-right: **Cancel** (discards draft CE selections), **OK** (applies selected CEs to background and closes modal).
+   - Removed instant live `onApply()` calls on every CE chip click; selections stay draft (`tempSelected`) until "OK" is clicked.
+
+4. **Verification & Baseline:**
+   - Updated `scripts/verify_render.js` to click "OK" in test flows.
+   - Updated `scripts/build_baseline.json` for new HTML markup and chunk sizes.
+
+### Files Modified
+
+| File | Action |
+|---|---|
+| `src/layouts/BaseLayout.astro` | Added footer styles (`.cefilter-modal-footer`, `.cefilter-footer-btn`, `.cefilter-footer-btn--primary`), disabled chip styles (`.ce-count-btn--disabled`), adjusted modal body max-height |
+| `src/pages/index.astro` | Added footers with Default, Select All, Cancel, and OK buttons to `#servantFilterModal`, `#cefilterFilterModal`, and `#ceFilterModal` |
+| `src/scripts/ce-filter-app.js` | Implemented draft filtering and modal footer handlers for Bond Gain CE filter modal; updated CE bonus count disabling logic |
+| `src/scripts/selectors.js` | Implemented draft filtering and modal footer handlers for `#servantFilterModal` and `#ceFilterModal` |
+| `scripts/verify_render.js` | Updated headless tests to confirm filter application via OK button |
+| `scripts/build_baseline.json` | Updated baseline hashes and chunk sizes |
+| `README.md` | Documented modal action buttons, deferred filtering, and CE bonus chip disabling |
+| `.claude/CLAUDE.md` | Documented draft filter state and action footers in filter settings and CE picker modals |
+| `.claude/docs/progress.md` | Documented implementation and verification |
