@@ -23,11 +23,13 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Frontline support bonus (+4% as multiplier and flat per support) applies to all calculated servants
 - Max Bond & Bond ≥15 checkboxes: "Max Bond" hides the bond required input, while "Bond ≥15" grants a +25% party bond bonus (usable even while leveling up to Bond 16)
 - Visual slot badges: Starting member slots display frontline bonus badges (+20% self for Normal, +4% All for Support); checking "Bond ≥15" displays a "Bond All +25%" badge in any slot (stacked below +self 20% when in starting member)
-- Quest presets (Free Quest Lv.83/84, Grand Duel Lv.100) or custom bond per run
+- Quest presets (Free Quest Lv.83/84, Grand Duel Lv.100) or custom bond and AP per run
 - Bond level planning: **Current Lv.** (0–15) and **Target Lv.** (up to 16) per slot, with every level's cost read from that servant's own Atlas table
 - **Bond Point Required** fills itself with the cost of the level you are standing on; overwrite it with the number the game shows when you are partway through a level
 - Choosing Current Lv. 15 ticks "Bond ≥15" for you (that is the level paying the +25% party bonus); a lower level unticks it
 - Per-servant results with bond breakdown and run count; when the plan crosses more than one level the card lists the runs per stretch (`Bond Lv.0->2` / `1 run`), carrying surplus up to Lv.10 and rounding alone above the bond cap
+- **Total AP & Golden Fruit calculation**: Shows total AP required across the party (Free Quest: 22 AP, Grand Duel: 40 AP, or custom AP/run) and Golden Fruit requirement based on configurable **Max AP** (default: 152 AP, positioned on the bottom left of Party Setup)
+- **Stargazer's Teapot**: Spend teapots for 2× bond per run; displays boosted phase and unboosted continuation with a static "Out of Stargazer's Teapot" status chip when teapots run out
 
 ### Bond Gain CE
 - Two sub-tabs: **Craft Essence Select** (CEs → servants, default) and **Servant Select** (servants → shared CEs)

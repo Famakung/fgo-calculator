@@ -11,11 +11,12 @@
 # its blanket `.claude` line and its `scripts/merge_code_only.sh` line are
 # what hide the leftover files on disk, so the work tree stays clean.
 #
-# Usage: scripts/merge_code_only.sh [source]   # default: develop
+# Usage: scripts/merge_code_only.sh [source] [commit_message]   # default: develop
 # Nothing is pushed — the script prints the push command when it is done.
 set -euo pipefail
 
 SRC="${1:-develop}"
+MSG="${2:-}"
 TARGET="main"
 # develop-only paths; HIDDEN must stay a subset of '$TARGET's .gitignore entries.
 # scripts/fetch_bordered_ces.py stays public: sync_atlas_data.py imports it at build time.
@@ -81,7 +82,11 @@ if [ -n "$conflicts" ]; then
   exit 1
 fi
 
-git commit --no-edit --quiet
+if [ -n "$MSG" ]; then
+  git commit -m "$MSG" --quiet
+else
+  git commit --no-edit --quiet
+fi
 
 leftover="$(git ls-tree -r --name-only HEAD -- "${HIDDEN_PATHS[@]}")"
 if [ -n "$leftover" ]; then

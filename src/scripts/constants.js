@@ -31,6 +31,13 @@ export const BOND_CONSTANTS = {
      One teapot is spent per quest run, and a run pays every servant in the party. */
   TEAPOT_MULTIPLIER: 2,
   MAX_TEAPOT_COUNT: 9999,
+  /* AP consumption: Free Quest defaults to 22 AP, Grand Duel to 40 AP. */
+  FREE_QUEST_AP: 22,
+  GRAND_DUEL_AP: 40,
+  DEFAULT_CUSTOM_AP: 22,
+  MAX_CUSTOM_AP: 999,
+  DEFAULT_MAX_AP: 152,
+  MAX_PLAYER_AP: 999,
 };
 
 export const TIER_COLORS = {

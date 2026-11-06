@@ -656,6 +656,21 @@ curl -sL "https://static.atlasacademy.io/JP/Items/94065901_bordered.png" -o icon
 python -c "from PIL import Image; import os; Image.open('icons/teapot.png').save('icons/teapot.webp', 'WEBP', quality=90, method=6); os.remove('icons/teapot.png')"
 ```
 
+### Golden Fruit
+
+The Bond tab's AP equivalent item. Displayed at 48px tall (`--ce-badge-h`): `.bond-max-ap-img` in the setup row and `.bond-ap-fruit-img` in the Total AP result chip.
+
+| File                      | URL                                                        | Display sizes         |
+| ------------------------- | ---------------------------------------------------------- | --------------------- |
+| `icons/100_bordered.webp` | `https://static.atlasacademy.io/JP/Items/100_bordered.png` | 48px (`--ce-badge-h`) |
+
+Download + convert:
+
+```bash
+curl -sL "https://static.atlasacademy.io/JP/Items/100_bordered.png" -o icons/100_bordered.png
+python -c "from PIL import Image; import os; Image.open('icons/100_bordered.png').save('icons/100_bordered.webp', 'WEBP', quality=90, method=6); os.remove('icons/100_bordered.png')"
+```
+
 ## Class Icons
 
 Display at 32x32px in CSS. Source images resized to 64x64 (2x Retina), encoded WebP quality 80.

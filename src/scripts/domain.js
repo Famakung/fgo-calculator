@@ -430,6 +430,27 @@ export const Quest = {
     return 0;
   },
 
+  /* What one run of the quest costs in AP. Free Quest is 22 AP (or customAp when custom is chosen),
+     Grand Duel is 40 AP. 0 means no quest family is chosen yet. */
+  apPerRun({ questMain = "", questSub = "" }, customAp = BOND_CONSTANTS.DEFAULT_CUSTOM_AP) {
+    if (questMain === "fq") {
+      if (questSub === "custom") {
+        return Validator.clamp(customAp, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
+      }
+      return BOND_CONSTANTS.FREE_QUEST_AP;
+    }
+    if (questMain === "gd") {
+      return BOND_CONSTANTS.GRAND_DUEL_AP;
+    }
+    return 0;
+  },
+
+  /* How many Golden Fruits (restoring maxAp each) are needed to cover totalAp. */
+  goldenFruit(totalAp, maxAp) {
+    if (!(totalAp > 0) || !(maxAp > 0)) return 0;
+    return Math.ceil(totalAp / maxAp);
+  },
+
   /* The class trait ids a Grand Duel choice allows, or null when the party is unrestricted — "All",
      and every quest outside Grand Duel. */
   classIds(questClass = "") {

@@ -86,6 +86,8 @@ export const BondApp = {
       questClass: "",
       questDiff: "",
       customBond: 0,
+      customAp: BOND_CONSTANTS.DEFAULT_CUSTOM_AP,
+      maxAp: BOND_CONSTANTS.DEFAULT_MAX_AP,
       teapotCount: 0,
       teapotOn: false,
       // Parties filed by quest choice; the live one is `slots`, so its own key is absent here.
@@ -101,6 +103,17 @@ export const BondApp = {
     const calcBtn = document.getElementById("bondCalculateBtn");
     if (calcBtn) {
       calcBtn.addEventListener("click", () => this.calculate());
+    }
+
+    // Max AP (for Golden Fruit conversion)
+    const maxApInput = document.getElementById("maxApInput");
+    if (maxApInput) {
+      maxApInput.value = this.state.maxAp;
+      maxApInput.addEventListener("change", () => {
+        this.state.maxAp = Validator.clamp(maxApInput.value, 1, BOND_CONSTANTS.MAX_PLAYER_AP);
+        maxApInput.value = this.state.maxAp;
+        this.saveState();
+      });
     }
 
     // Stargazer's Teapot: how many the player holds, and whether the plan spends them.
@@ -156,6 +169,7 @@ export const BondApp = {
     const gdClass = document.getElementById("bondGrandClassSelect");
     const gdDiff = document.getElementById("bondGrandDiffSelect");
     const customInput = document.getElementById("customBondPerRun");
+    const customApInput = document.getElementById("customApPerRun");
     if (!main || !free || !gdClass || !gdDiff) return;
 
     const addOptions = (select, items) => {
@@ -210,6 +224,7 @@ export const BondApp = {
     bind("questDiff", gdDiff);
 
     if (customInput) customInput.value = this.state.customBond;
+    if (customApInput) customApInput.value = this.state.customAp;
     this.syncQuestRows();
   },
 
@@ -219,6 +234,7 @@ export const BondApp = {
     const { free, gdClass, gdDiff } = this._questSelects;
     const customRow = document.getElementById("customQuestSection");
     const customInput = document.getElementById("customBondPerRun");
+    const customApInput = document.getElementById("customApPerRun");
     const freeOn = this.state.questMain === "fq";
     const grandOn = this.state.questMain === "gd";
     free.closest(".input-row").style.display = freeOn ? "flex" : "none";
@@ -226,6 +242,7 @@ export const BondApp = {
     gdDiff.closest(".input-row").style.display = grandOn ? "flex" : "none";
     const customOn = freeOn && this.state.questSub === "custom";
     if (customInput) customInput.disabled = !customOn;
+    if (customApInput) customApInput.disabled = !customOn;
     if (customRow) customRow.style.display = customOn ? "block" : "none";
   },
 
@@ -817,11 +834,22 @@ export const BondApp = {
   calculate() {
     // Determine quest bond/run: the selects own the choice, the custom box owns its own figure.
     const customInput = document.getElementById("customBondPerRun");
+    const customApInput = document.getElementById("customApPerRun");
+    const maxApInput = document.getElementById("maxApInput");
     if (customInput) {
       this.state.customBond = Validator.clamp(customInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND);
       customInput.value = this.state.customBond;
     }
+    if (customApInput) {
+      this.state.customAp = Validator.clamp(customApInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
+      customApInput.value = this.state.customAp;
+    }
+    if (maxApInput) {
+      this.state.maxAp = Validator.clamp(maxApInput.value, 1, BOND_CONSTANTS.MAX_PLAYER_AP);
+      maxApInput.value = this.state.maxAp;
+    }
     const bondPerRun = Quest.bondPerRun(this.state, this.state.customBond);
+    const apPerRun = Quest.apPerRun(this.state, this.state.customAp);
 
     if (bondPerRun <= 0) {
       alert("Please select a quest or enter bond points per run.");
@@ -1195,11 +1223,10 @@ export const BondApp = {
       return card;
     };
 
-    /* The control that sits between the two blocks once the teapots run out: clicking it takes the
-       toggle off, so the plan is priced at the ordinary rate alone. */
+    /* The status chip that sits between the two blocks once the teapots run out. */
     const buildTeapotExhaust = () => {
       const row = DOMFactory.el("div", "bond-teapot-exhaust");
-      const btn = DOMFactory.el("button", "bond-teapot-remove", { type: "button" });
+      const badge = DOMFactory.el("div", "bond-teapot-badge");
       const label = DOMFactory.el("span", null);
       label.textContent = "Out of Stargazer's Teapot";
       // The name is already in the label, so the picture is decoration and stays out of the chip's name.
@@ -1212,14 +1239,38 @@ export const BondApp = {
       img.onerror = () => {
         img.style.display = "none";
       };
-      btn.append(label, img);
-      btn.addEventListener("click", () => {
-        this.state.teapotOn = false;
-        if (this._teapotInputs) this._teapotInputs.toggle.checked = false;
-        this.saveState();
-        this.calculate();
-      });
-      row.appendChild(btn);
+      badge.append(label, img);
+      row.appendChild(badge);
+      return row;
+    };
+
+    const buildTotalApBadge = (totalAp, totalRuns, maxAp) => {
+      const row = DOMFactory.el("div", "bond-total-ap");
+      const badge = DOMFactory.el("div", "bond-ap-badge");
+
+      const apLine = DOMFactory.el("div", "bond-ap-line");
+      apLine.textContent = `Total AP: ${totalAp.toLocaleString()} AP (${totalRuns.toLocaleString()} ${totalRuns === 1 ? "run" : "runs"})`;
+      badge.appendChild(apLine);
+
+      if (maxAp > 0 && totalAp > 0) {
+        const fruitCount = Quest.goldenFruit(totalAp, maxAp);
+        const fruitLine = DOMFactory.el("div", "bond-ap-fruit-line");
+        const fruitText = DOMFactory.el("span", null);
+        fruitText.textContent = `Use ${fruitCount.toLocaleString()} Golden Fruit`;
+        const fruitImg = DOMFactory.el("img", "bond-ap-fruit-img", {
+          src: "icons/100_bordered.webp",
+          alt: "Golden Fruit",
+          width: "142",
+          height: "155",
+        });
+        fruitImg.onerror = () => {
+          fruitImg.style.display = "none";
+        };
+        fruitLine.append(fruitText, fruitImg);
+        badge.appendChild(fruitLine);
+      }
+
+      row.appendChild(badge);
       return row;
     };
 
@@ -1236,6 +1287,15 @@ export const BondApp = {
         rest.forEach((sr) => plainGrid.appendChild(buildCard(sr, true)));
         frag.appendChild(plainGrid);
       }
+    }
+
+    const maxRuns = Math.max(
+      ...slotResults.map((sr) => (sr.teapotOut ? sr.teapotRuns + sr.teapotOffRuns : sr.runs)),
+      0,
+    );
+    const totalAp = maxRuns * apPerRun;
+    if (maxRuns > 0) {
+      frag.appendChild(buildTotalApBadge(totalAp, maxRuns, this.state.maxAp));
     }
 
     container.replaceChildren(frag);
@@ -1360,6 +1420,16 @@ export const BondApp = {
         questClass,
         questDiff,
         customBond: Validator.clamp(data.customBond || 0, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND),
+        customAp: Validator.clamp(
+          data.customAp !== undefined ? data.customAp : BOND_CONSTANTS.DEFAULT_CUSTOM_AP,
+          0,
+          BOND_CONSTANTS.MAX_CUSTOM_AP,
+        ),
+        maxAp: Validator.clamp(
+          data.maxAp !== undefined ? data.maxAp : BOND_CONSTANTS.DEFAULT_MAX_AP,
+          1,
+          BOND_CONSTANTS.MAX_PLAYER_AP,
+        ),
         // Teapots are counted in whole items; a save that never had them simply starts empty.
         teapotCount: Math.floor(Validator.clamp(data.teapotCount || 0, 0, BOND_CONSTANTS.MAX_TEAPOT_COUNT)),
         teapotOn: Boolean(data.teapotOn),

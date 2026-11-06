@@ -2414,5 +2414,49 @@ Key logic:
 | `.claude/docs/fetch-data-guideline.md` | Added Daedalus to Servant ID Reference table |
 | `.claude/docs/progress.md` | Documented implementation and verification |
 
+## 2026-11-06 — Total AP, Custom AP/Run, and Golden Fruit Conversion in Bond Calculator
+
+### Work Done
+
+1. **Total AP Calculation & Custom AP Input:**
+   - Free Quest default AP = 22, Grand Duel = 40 (`BOND_CONSTANTS.FREE_QUEST_AP`, `BOND_CONSTANTS.GRAND_DUEL_AP`).
+   - Added `#customApPerRun` input to `#customQuestSection` allowing custom AP/run (default: 22, max: 999).
+   - Added `Quest.apPerRun({ questMain, questSub }, customAp)` in `src/scripts/domain.js`.
+   - Calculated party total AP as `max(slotTotalRuns) * apPerRun`.
+
+2. **Golden Fruit Requirement & Max AP Config:**
+   - Downloaded and converted `https://static.atlasacademy.io/JP/Items/100_bordered.png` to `public/icons/100_bordered.webp`.
+   - Added `.bond-max-ap` input box (`#maxApInput`, label "Max AP", default 152) to the bottom-left of Party Setup without a toggle switch.
+   - Kept Stargazer's Teapot on the bottom-right adjacent to "Calculate Quest Runs".
+   - Added `Quest.goldenFruit(totalAp, maxAp)` (`Math.ceil(totalAp / maxAp)`).
+   - Displayed 2-line summary badge `.bond-total-ap` / `.bond-ap-badge` below results:
+     - Line 1: `Total AP: X AP (Y runs)`
+     - Line 2: `Use N Golden Fruit` + 48px `100_bordered.webp`.
+
+3. **Static Status Badge for Teapot Exhaustion:**
+   - Changed `.bond-teapot-remove` from clickable button to static status badge `.bond-teapot-badge` ("Out of Stargazer's Teapot" + 48px teapot icon).
+
+4. **Updated `scripts/merge_code_only.sh`:**
+   - Added support for custom commit message via argument 2 (`scripts/merge_code_only.sh [source] [commit_message]`).
+
+### Files Modified
+
+| File | Action |
+|---|---|
+| `public/icons/100_bordered.webp` | Downloaded and converted Golden Fruit icon |
+| `src/scripts/constants.js` | Added AP constants |
+| `src/scripts/domain.js` | Added `Quest.apPerRun` and `Quest.goldenFruit` |
+| `src/pages/index.astro` | Added `#customApPerRun` and `#maxApInput` markup |
+| `src/layouts/BaseLayout.astro` | Styled `.bond-max-ap`, `.bond-total-ap`, `.bond-ap-badge`, `.bond-teapot-badge` |
+| `src/scripts/bond-app.js` | Handled state persistence, input sync, and result badge generation |
+| `tests/bond-quest.test.js` | Added unit tests for AP and Golden Fruit calculations |
+| `scripts/merge_code_only.sh` | Supported optional commit message argument |
+| `scripts/build_baseline.json` | Updated baseline |
+| `README.md` | Updated feature list |
+| `.claude/CLAUDE.md` | Updated architecture documentation |
+| `.claude/docs/fetch-data-guideline.md` | Added Golden Fruit item documentation |
+| `.claude/docs/progress.md` | Documented implementation |
+
+
 
 

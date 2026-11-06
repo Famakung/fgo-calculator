@@ -454,6 +454,20 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                   disabled
                 />
               </div>
+              <div class="input-row">
+                <label class="input-label" for="customApPerRun"
+                  >AP/Run</label
+                >
+                <input
+                  type="number"
+                  class="input-field"
+                  id="customApPerRun"
+                  min="0"
+                  max="999"
+                  value="22"
+                  disabled
+                />
+              </div>
             </div>
             </div>
           </div>
@@ -463,6 +477,28 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="card-title">Party Setup</div>
             <div class="servant-grid grid" id="servantGrid"></div>
             <div class="bond-card-actions">
+              <div class="bond-max-ap">
+                <img
+                  class="bond-max-ap-img"
+                  src="icons/100_bordered.webp"
+                  alt="Max AP"
+                  width="142"
+                  height="155"
+                />
+                <div class="bond-input-box bond-max-ap-box">
+                  <label class="bond-input-box-label" for="maxApInput">Max AP</label>
+                  <input
+                    class="bond-input-box-field bond-max-ap-input"
+                    id="maxApInput"
+                    type="number"
+                    min="1"
+                    max="999"
+                    step="1"
+                    value="152"
+                    inputmode="numeric"
+                  />
+                </div>
+              </div>
               <div class="bond-teapot">
                 <img
                   class="bond-teapot-img"

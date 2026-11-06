@@ -11,6 +11,26 @@ test("a free quest pays its own figure, and Custom pays what was typed", () => {
   assert.equal(Quest.bondPerRun({ questMain: "fq", questSub: "custom" }, 999999), 99999);
 });
 
+test("a free quest costs 22 AP, grand duel costs 40 AP, and Custom costs what was typed", () => {
+  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "fq83" }), 22);
+  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "fq84" }), 22);
+  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "custom" }), 22);
+  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "custom" }, 30), 30);
+  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "custom" }, 9999), 999);
+  assert.equal(Quest.apPerRun({ questMain: "gd", questClass: "0100", questDiff: "1" }), 40);
+  assert.equal(Quest.apPerRun({ questMain: "gd" }), 40);
+  assert.equal(Quest.apPerRun({ questMain: "" }), 0);
+});
+
+test("golden fruit divides total AP by max AP rounded up", () => {
+  assert.equal(Quest.goldenFruit(9280, 152), 62);
+  assert.equal(Quest.goldenFruit(152, 152), 1);
+  assert.equal(Quest.goldenFruit(153, 152), 2);
+  assert.equal(Quest.goldenFruit(0, 152), 0);
+  assert.equal(Quest.goldenFruit(100, 0), 0);
+  assert.equal(Quest.goldenFruit(-50, 152), 0);
+});
+
 test("a grand duel pays its difficulty whatever the class, and nothing pays zero", () => {
   assert.equal(Quest.bondPerRun({ questMain: "gd", questClass: "0100", questDiff: "1" }), 3164);
   assert.equal(Quest.bondPerRun({ questMain: "gd", questClass: "extra", questDiff: "7" }), 4748);
