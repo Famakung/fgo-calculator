@@ -1,15 +1,6 @@
-import {
-  CLASS_FILTERS,
-  CLASS_GROUPS,
-  RARITY_FILTERS,
-  ALIGNMENT_LNC_FILTERS,
-  ALIGNMENT_GBE_FILTERS,
-  SUB_ATTR_FILTERS,
-  GENDER_FILTERS,
-  DEBOUNCE_MS,
-} from "./constants.js";
-import { TraitMatcher, Validator, ServantSort, ServantFilters } from "./domain.js";
-import { FilterSections } from "./filter-sections.js";
+import { DEBOUNCE_MS } from "./constants.js";
+import { Validator, ServantSort, ServantFilters, computeCEMatchMatrix } from "./domain.js";
+import { FilterSections, FilterModalController } from "./filter-sections.js";
 import { ServantData, CEById, TraitCEs, TraitNames } from "./data.js";
 import { DOMFactory, debounce } from "./presentation.js";
 import { ServantSelect, CEFilterStore } from "./ce-servant-select.js";
@@ -116,7 +107,6 @@ export const CEFilterApp = {
     const addBtn = document.getElementById("cefilterAddBtn");
     const modeSelect = document.getElementById("cefilterMode");
     const sortBySelect = document.getElementById("cefilterSortBy");
-    const sortOrderSelect = document.getElementById("cefilterSortOrder");
     const sortOrderToggle = document.getElementById("cefilterSortOrderToggle");
 
     if (addBtn) {
@@ -150,7 +140,6 @@ export const CEFilterApp = {
 
     const updateSortOrderUI = () => {
       const isDesc = this.state.sortOrder === "desc";
-      if (sortOrderSelect) sortOrderSelect.value = this.state.sortOrder;
       if (sortOrderToggle) {
         sortOrderToggle.dataset.order = this.state.sortOrder;
         const label = isDesc ? "Sort descending" : "Sort ascending";
@@ -165,16 +154,6 @@ export const CEFilterApp = {
       updateSortOrderUI();
       sortOrderToggle.addEventListener("click", () => {
         this.state.sortOrder = this.state.sortOrder === "asc" ? "desc" : "asc";
-        updateSortOrderUI();
-        this.state.currentPage = 1;
-        this.renderResults(this._lastCEFiltered);
-      });
-    }
-
-    if (sortOrderSelect) {
-      sortOrderSelect.value = this.state.sortOrder;
-      sortOrderSelect.addEventListener("change", () => {
-        this.state.sortOrder = sortOrderSelect.value;
         updateSortOrderUI();
         this.state.currentPage = 1;
         this.renderResults(this._lastCEFiltered);
@@ -324,17 +303,26 @@ export const CEFilterApp = {
     this.state.subTab = stored.subTab === "servant" ? "servant" : "ce";
   },
 
-  _processWorkerResults(data) {
-    // Rebuild matchingCEIds as Sets and CE match index
-    const { results, index } = data;
+  warmWorker() {
+    initWorker();
+  },
+
+  _hydrateMatchResults({ results, index }) {
     results.forEach((entry) => {
-      entry.matchingCEIds = new Set(entry.matchingCEIds);
+      if (!(entry.matchingCEIds instanceof Set)) {
+        entry.matchingCEIds = new Set(entry.matchingCEIds);
+      }
     });
     this._allCEMatchesCache = results;
     this._ceMatchEntriesIndex = {};
     for (const ceId in index) {
-      this._ceMatchEntriesIndex[ceId] = new Set(index[ceId]);
+      this._ceMatchEntriesIndex[ceId] = index[ceId] instanceof Set ? index[ceId] : new Set(index[ceId]);
     }
+    return results;
+  },
+
+  _processWorkerResults(data) {
+    this._hydrateMatchResults(data);
   },
 
   _finishRender(allMatches) {
@@ -349,27 +337,24 @@ export const CEFilterApp = {
     let filtered = entries;
     const query = (this.state.searchQuery || "").toLowerCase().trim();
     if (query) {
-      filtered = filtered.filter(
-        (s) =>
-          s.servant.id.toLowerCase().includes(query) ||
-          s.servant.name.toLowerCase().includes(query) ||
-          ServantData.getAllNames(s.servant.id).some((n) => n.toLowerCase().includes(query)),
+      filtered = filtered.filter((s) =>
+        s.servant._search
+          ? s.servant._search.includes(query)
+          : s.servant.id.toLowerCase().includes(query) ||
+            s.servant.name.toLowerCase().includes(query) ||
+            ServantData.getAllNames(s.servant.id).some((n) => n.toLowerCase().includes(query)),
       );
     }
-    return filtered.filter((s) => ServantFilters.match(this._traitsOf(s), this.state));
+    const matcher = ServantFilters.compile(this.state);
+    return filtered.filter((s) => matcher(ServantData.getEntryTraitSet(s)));
   },
 
-  /* The classes the Class row may offer. A group is the whole row when no class is picked inside it, and
-     clips back to the pick when one is — the same rule `ServantFilters` matches on. */
-  _classScope() {
-    return ServantFilters.rowScope(this.state.groupClassFilters);
-  },
-
-  /* The eight modal sections, in modal order, on the page the results grid is showing: a class, rarity
-     or CE bonus count nobody in the CE-filtered results has is greyed/disabled, and a class outside the
-     chosen group is greyed rather than removed, so the row cannot be escaped by accident and comes back
-     whole when the group is cleared. */
+  /* The eight modal sections, in modal order, on the page the results grid is showing.
+     Renders only when the filter modal is actually open. */
   _renderFilterRows(customFilters = null) {
+    const filterModal = document.getElementById("cefilterFilterModal");
+    if (!filterModal || (!filterModal.classList.contains("open") && !customFilters)) return;
+
     const filterState = customFilters || this.draftFilters || this.state;
     const base = this._lastCEFiltered || [];
     const avail = { class: new Set(), rarity: new Set(), count: new Set() };
@@ -380,8 +365,7 @@ export const CEFilterApp = {
         if (t.startsWith("04")) avail.rarity.add(t);
       });
     });
-    const has = (set, chip) => set.size === 0 || set.has(chip.id);
-    const scope = ServantFilters.rowScope(filterState.groupClassFilters);
+
     const toggle = (key) => (ids) => {
       if (this.draftFilters) {
         this.draftFilters[key] = ids;
@@ -395,66 +379,20 @@ export const CEFilterApp = {
       }
     };
 
-    FilterSections.renderRow(
-      document.getElementById("cefilterRarityFilter"),
-      RARITY_FILTERS,
-      filterState.rarityFilters,
-      toggle("rarityFilters"),
-      {
-        disabled: (chip) => !has(avail.rarity, chip),
-      },
-    );
-    FilterSections.renderRow(
-      document.getElementById("cefilterClassFilter"),
-      [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
-      filterState.classFilters,
-      toggle("classFilters"),
-      { disabled: (chip) => !has(avail.class, chip) || (scope !== null && !scope.includes(chip.id)) },
-    );
-    FilterSections.renderRow(
-      document.getElementById("cefilterGroupFilter"),
-      CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true })),
-      filterState.groupClassFilters,
-      toggle("groupClassFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("cefilterAliFilter"),
-      ALIGNMENT_LNC_FILTERS,
-      filterState.aliFilters,
-      toggle("aliFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("cefilterSubAliFilter"),
-      ALIGNMENT_GBE_FILTERS,
-      filterState.subAliFilters,
-      toggle("subAliFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("cefilterAttrFilter"),
-      SUB_ATTR_FILTERS,
-      filterState.subAttrFilters,
-      toggle("subAttrFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("cefilterGenderFilter"),
-      GENDER_FILTERS,
-      filterState.genderFilters,
-      toggle("genderFilters"),
-    );
+    FilterModalController.renderStandardRows("cefilter", filterState, toggle, { avail });
 
     const maxCeCount = Math.max(5, ...(this._allCEMatchesCache || []).map((r) => r.matchingCEs.length));
     const ceCountChips = [];
     for (let n = 0; n <= maxCeCount; n++) {
       ceCountChips.push({ id: n, value: n, label: n + " CE", count: true });
     }
+    const hasCount = (chip) => avail.count.size === 0 || avail.count.has(chip.id);
     FilterSections.renderRow(
       document.getElementById("cefilterMatchCount"),
       ceCountChips,
       filterState.matchCounts,
       toggle("matchCounts"),
-      {
-        disabled: (chip) => !has(avail.count, chip),
-      },
+      { disabled: (chip) => !hasCount(chip) },
     );
   },
 
@@ -523,46 +461,23 @@ export const CEFilterApp = {
     }
   },
 
-  buildMatchCountFilter() {
-    this._renderFilterRows();
-  },
-
   _openFilterModal() {
     const filterModal = document.getElementById("cefilterFilterModal");
     if (!filterModal) return;
-    this.draftFilters = {
-      rarityFilters: [...this.state.rarityFilters],
-      classFilters: [...this.state.classFilters],
-      groupClassFilters: [...this.state.groupClassFilters],
-      aliFilters: [...this.state.aliFilters],
-      subAliFilters: [...this.state.subAliFilters],
-      subAttrFilters: [...this.state.subAttrFilters],
-      genderFilters: [...this.state.genderFilters],
-      matchCounts: [...this.state.matchCounts],
-    };
+    this.draftFilters = FilterModalController.clone(this.state, ["matchCounts"]);
     this._renderFilterRows(this.draftFilters);
     filterModal.classList.add("open");
   },
 
   _cancelFilterModal() {
     this.draftFilters = null;
-    this._renderFilterRows(this.state);
     const filterModal = document.getElementById("cefilterFilterModal");
     if (filterModal) filterModal.classList.remove("open");
   },
 
   _okFilterModal() {
     if (this.draftFilters) {
-      Object.assign(this.state, {
-        rarityFilters: [...this.draftFilters.rarityFilters],
-        classFilters: [...this.draftFilters.classFilters],
-        groupClassFilters: [...this.draftFilters.groupClassFilters],
-        aliFilters: [...this.draftFilters.aliFilters],
-        subAliFilters: [...this.draftFilters.subAliFilters],
-        subAttrFilters: [...this.draftFilters.subAttrFilters],
-        genderFilters: [...this.draftFilters.genderFilters],
-        matchCounts: [...this.draftFilters.matchCounts],
-      });
+      Object.assign(this.state, this.draftFilters);
       this.draftFilters = null;
     }
     this.state.currentPage = 1;
@@ -573,14 +488,7 @@ export const CEFilterApp = {
 
   _defaultFilterModal() {
     if (!this.draftFilters) return;
-    this.draftFilters.rarityFilters = [];
-    this.draftFilters.classFilters = [];
-    this.draftFilters.groupClassFilters = [];
-    this.draftFilters.aliFilters = [];
-    this.draftFilters.subAliFilters = [];
-    this.draftFilters.subAttrFilters = [];
-    this.draftFilters.genderFilters = [];
-    this.draftFilters.matchCounts = [];
+    this.draftFilters = { ...FilterModalController.createInitial(), matchCounts: [] };
     this._renderFilterRows(this.draftFilters);
   },
 
@@ -596,22 +504,12 @@ export const CEFilterApp = {
       });
     });
 
-    this.draftFilters.rarityFilters = RARITY_FILTERS.map((c) => c.id).filter(
-      (id) => avail.rarity.size === 0 || avail.rarity.has(id),
-    );
-    this.draftFilters.groupClassFilters = CLASS_GROUPS.map((g) => g.key);
-    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].map((c) => c.id);
-    this.draftFilters.classFilters = allClasses.filter((id) => avail.class.size === 0 || avail.class.has(id));
-    this.draftFilters.aliFilters = ALIGNMENT_LNC_FILTERS.map((c) => c.id);
-    this.draftFilters.subAliFilters = ALIGNMENT_GBE_FILTERS.map((c) => (c.other ? ServantFilters.SUB_ALI_OTHER : c.id));
-    this.draftFilters.subAttrFilters = SUB_ATTR_FILTERS.map((c) => c.id);
-    this.draftFilters.genderFilters = GENDER_FILTERS.map((c) => c.id);
-
-    const maxCeCount = Math.max(5, ...(this._allCEMatchesCache || []).map((r) => r.matchingCEs.length));
-    const allCounts = [];
-    for (let n = 0; n <= maxCeCount; n++) allCounts.push(n);
-    this.draftFilters.matchCounts = allCounts.filter((n) => avail.count.size === 0 || avail.count.has(n));
-
+    this.draftFilters = FilterModalController.selectAll(avail, (res) => {
+      const maxCeCount = Math.max(5, ...(this._allCEMatchesCache || []).map((r) => r.matchingCEs.length));
+      const allCounts = [];
+      for (let n = 0; n <= maxCeCount; n++) allCounts.push(n);
+      res.matchCounts = allCounts.filter((n) => avail.count.size === 0 || avail.count.has(n));
+    });
     this._renderFilterRows(this.draftFilters);
   },
 
@@ -889,10 +787,7 @@ export const CEFilterApp = {
      reads every form: a sub-attribute that arrives with an ascension (415's Earth, from her 3rd) is not on
      `servant.traits`, which is the intersection of her stages. */
   _traitsOf(entry) {
-    const traits = entry.primaryAscension
-      ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
-      : ServantData.getAllTraits(entry.servant.id);
-    return traits || ServantData.getAllTraits(entry.servant.id);
+    return ServantData.getEntryTraits(entry);
   },
 
   _sortEntries(entries) {
@@ -907,112 +802,7 @@ export const CEFilterApp = {
 
   computeAllCEMatches() {
     if (this._allCEMatchesCache) return this._allCEMatchesCache;
-    const traitCEs = TraitCEs;
-    const relevantTraitIds = new Set();
-    traitCEs.forEach((ce) => {
-      ce.traits.forEach((t) => relevantTraitIds.add(t));
-      ce.traitGroups.forEach((group) => group.forEach((t) => relevantTraitIds.add(t)));
-    });
-
-    const results = [];
-
-    ServantData.servants.forEach((servant) => {
-      const traitSets = TraitMatcher.getAllTraitSets(servant);
-
-      if (!servant.hasAscensions) {
-        const matchingCEs = traitCEs.filter((ce) => TraitMatcher.matches(servant.traitSet, ce));
-
-        const relevantTraits = servant.traits.filter((t) => relevantTraitIds.has(t)).map((t) => TraitNames[t] || t);
-
-        results.push({
-          servant,
-          matchingCEs,
-          allTraitNames: relevantTraits,
-          matchedAscensions: [],
-          baseMatchesAll: true,
-          matchingCEIds: new Set(matchingCEs.map((c) => c.id)),
-        });
-      } else {
-        const ascResults = traitSets.map((set) => ({
-          key: set.key,
-          traits: set.traits,
-          matchingCEs: traitCEs.filter((ce) => TraitMatcher.matches(set.traitSet, ce)),
-        }));
-
-        const groups = new Map();
-        ascResults.forEach((ar) => {
-          const key = ar.matchingCEs
-            .map((c) => c.id)
-            .sort()
-            .join(",");
-          if (!groups.has(key)) groups.set(key, []);
-          groups.get(key).push(ar);
-        });
-
-        const nonEmptyGroups = [...groups.entries()].filter(([_, entries]) => entries[0].matchingCEs.length > 0);
-        if (nonEmptyGroups.length === 0) {
-          results.push({
-            servant,
-            matchingCEs: [],
-            allTraitNames: [],
-            matchedAscensions: [],
-            baseMatchesAll: true,
-            matchingCEIds: new Set(),
-          });
-          return;
-        }
-
-        if (nonEmptyGroups.length === 1) {
-          const entries = nonEmptyGroups[0][1];
-          const matchingCEs = entries[0].matchingCEs;
-          const mergedTraits = [...new Set(entries.flatMap((e) => e.traits))];
-          const relevantTraits = mergedTraits.filter((t) => relevantTraitIds.has(t)).map((t) => TraitNames[t] || t);
-          // A single group can still be partial: e.g. a spiritron CE (2780 is in
-          // every base trait set) matches 000-002 but not the costume stage 300.
-          const ascKeys = entries.map((e) => e.key);
-          const partialMatch = traitSets.length > entries.length;
-
-          results.push({
-            servant,
-            matchingCEs,
-            allTraitNames: relevantTraits,
-            matchedAscensions: partialMatch ? ascKeys : [],
-            baseMatchesAll: !partialMatch,
-            primaryAscension: partialMatch ? ascKeys[0] : undefined,
-            matchingCEIds: new Set(matchingCEs.map((c) => c.id)),
-          });
-        } else {
-          nonEmptyGroups.forEach(([_, entries]) => {
-            const matchingCEs = entries[0].matchingCEs;
-            const ascKeys = entries.map((e) => e.key);
-            const mergedTraits = [...new Set(entries.flatMap((e) => e.traits))];
-            const relevantTraits = mergedTraits.filter((t) => relevantTraitIds.has(t)).map((t) => TraitNames[t] || t);
-
-            results.push({
-              servant,
-              matchingCEs,
-              allTraitNames: relevantTraits,
-              matchedAscensions: ascKeys,
-              baseMatchesAll: false,
-              primaryAscension: ascKeys[0],
-              matchingCEIds: new Set(matchingCEs.map((c) => c.id)),
-            });
-          });
-        }
-      }
-    });
-
-    this._allCEMatchesCache = results;
-
-    // Build CE->entry index for CEFilterPicker overlap detection
-    this._ceMatchEntriesIndex = {};
-    results.forEach((entry, idx) => {
-      entry.matchingCEs.forEach((ce) => {
-        if (!this._ceMatchEntriesIndex[ce.id]) this._ceMatchEntriesIndex[ce.id] = new Set();
-        this._ceMatchEntriesIndex[ce.id].add(idx);
-      });
-    });
-
-    return results;
+    const matrix = computeCEMatchMatrix(ServantData.servants, TraitCEs, TraitNames);
+    return this._hydrateMatchResults(matrix);
   },
 };

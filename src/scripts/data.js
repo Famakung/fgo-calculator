@@ -13,9 +13,11 @@ export const CEList = (() => {
   return Object.entries(map)
     .map(([id, data]) => {
       const isGroup = !!data.isGroup;
+      const img = `craft_essences/${id}.webp?v=${IMAGE_VERSION}`;
+      const name = data.name || `CE ${id}`;
       const base = {
         id,
-        name: data.name || `CE ${id}`,
+        name,
         bonus: data.bonus || 0,
         supportBonus: data.supportBonus || 0,
         traits: Array.isArray(data.traits) ? data.traits : [],
@@ -24,16 +26,22 @@ export const CEList = (() => {
         alsoMatch: Array.isArray(data.alsoMatch) ? data.alsoMatch : [],
         isGroup,
         flatBonus: isGroup ? data.flatBonus || 0 : 0,
-        image: `craft_essences/${id}.webp?v=${IMAGE_VERSION}`,
-        thumbImage: `craft_essences/${id}.webp?v=${IMAGE_VERSION}`,
+        image: img,
+        thumbImage: img,
+        _search: `${id}\n${name}`.toLowerCase(),
       };
       if (isGroup && data.options) {
-        base.options = Object.entries(data.options).map(([optId, opt]) => ({
-          id: optId,
-          name: opt.name || `CE ${optId}`,
-          image: `craft_essences/${optId}.webp?v=${IMAGE_VERSION}`,
-          thumbImage: `craft_essences/${optId}.webp?v=${IMAGE_VERSION}`,
-        }));
+        base.options = Object.entries(data.options).map(([optId, opt]) => {
+          const optImg = `craft_essences/${optId}.webp?v=${IMAGE_VERSION}`;
+          const optName = opt.name || `CE ${optId}`;
+          return {
+            id: optId,
+            name: optName,
+            image: optImg,
+            thumbImage: optImg,
+            _search: `${optId}\n${optName}`.toLowerCase(),
+          };
+        });
         const groupOpt = data.groupImage
           ? base.options.find((o) => o.id === data.groupImage)
           : base.options.find((o) => o.id === id) || base.options[0];
@@ -93,6 +101,7 @@ export const ServantData = {
           optionLabels,
           optionNames,
           image: `servants/${id}/000.webp?v=${IMAGE_VERSION}`,
+          _search: `${id}\n${allNames.join("\n")}`.toLowerCase(),
         };
 
         // Pre-compute ascension trait sets (C3 optimization)
@@ -150,6 +159,17 @@ export const ServantData = {
     return [...base, ...raw[ascension]];
   },
 
+  getTraitSetForAscension(id, ascension) {
+    const servant = this.byId.get(id);
+    if (!servant) return new Set();
+    if (!servant.hasAscensions) return servant.traitSet;
+    if (servant._ascTraitSets) {
+      if (!ascension || !servant._ascTraitSets[ascension]) return servant.traitSet;
+      return servant._ascTraitSets[ascension];
+    }
+    return new Set(this.getTraitsForAscension(id, ascension));
+  },
+
   /* The traits of every form a servant has, in one list. A filter that does not choose an ascension — the
      party picker, which prices whichever form the player later puts in the slot — must read this and not
      `traits`: `traits` is the intersection of the stages, and four servants (415, 416, 444, 465) hold their
@@ -164,6 +184,46 @@ export const ServantData = {
       servant._allTraits = [...new Set([...servant.traits, ...sets.flat()])];
     }
     return servant._allTraits;
+  },
+
+  getAllTraitSet(id) {
+    const servant = this.byId.get(id);
+    if (!servant) return new Set();
+    if (!servant.hasAscensions) return servant.traitSet;
+    if (!servant._allTraitSet) {
+      servant._allTraitSet = new Set(this.getAllTraits(id));
+    }
+    return servant._allTraitSet;
+  },
+
+  getEntryTraitSet(entry) {
+    if (!entry) return new Set();
+    const servantId = entry.servant ? entry.servant.id : entry.id;
+    return entry.primaryAscension
+      ? this.getTraitSetForAscension(servantId, entry.primaryAscension)
+      : this.getAllTraitSet(servantId);
+  },
+
+  getEntryTraits(entry) {
+    if (!entry) return [];
+    const servantId = entry.servant ? entry.servant.id : entry.id;
+    return entry.primaryAscension
+      ? this.getTraitsForAscension(servantId, entry.primaryAscension)
+      : this.getAllTraits(servantId);
+  },
+
+  resolveEntryDisplay(entry, rowCEs) {
+    const servant = entry.servant;
+    const matchedAscensions = entry.matchedAscensions || [];
+    const imgAsc =
+      !entry.baseMatchesAll && matchedAscensions.length > 0 ? entry.primaryAscension || matchedAscensions[0] : null;
+    const imgSrc = imgAsc ? this.getImageForAscension(servant.id, imgAsc) : servant.image;
+    const labelParts = matchedAscensions.map((key) => this.getAscensionLabel(servant.id, key));
+    const spiritronLabel = this.getSpiritronLabel(servant.id, rowCEs, matchedAscensions, entry.baseMatchesAll);
+    if (spiritronLabel) labelParts.push(spiritronLabel);
+    const displayName = imgAsc ? this.getAscensionName(servant.id, imgAsc) || servant.name : servant.name;
+    const fullName = labelParts.length > 0 ? `${displayName} (${labelParts.join(", ")})` : displayName;
+    return { imgAsc, imgSrc, displayName, labelParts, fullName };
   },
 
   getImageForAscension(id, ascension) {

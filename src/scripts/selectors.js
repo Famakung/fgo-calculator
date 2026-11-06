@@ -1,17 +1,8 @@
-import { ServantData, CEList, TraitCEs, CEById } from "./data.js";
-import {
-  CLASS_FILTERS,
-  CLASS_GROUPS,
-  RARITY_FILTERS,
-  ALIGNMENT_LNC_FILTERS,
-  ALIGNMENT_GBE_FILTERS,
-  SUB_ATTR_FILTERS,
-  GENDER_FILTERS,
-  DEBOUNCE_MS,
-} from "./constants.js";
+import { ServantData, CEList, TraitCEs } from "./data.js";
+import { DEBOUNCE_MS } from "./constants.js";
 import { ServantSort, ServantFilters, ServantComboCalculator } from "./domain.js";
-import { FilterSections } from "./filter-sections.js";
-import { DOMFactory, CollapsibleFactory, debounce } from "./presentation.js";
+import { FilterModalController } from "./filter-sections.js";
+import { DOMFactory, CollapsibleFactory, debounce, ComboCardRenderer } from "./presentation.js";
 
 /* Longest search the servant picker keeps. Names top out well under this, so it only trims a paste someone
    has no hope of matching, and the box itself is left free to hold what the player typed. */
@@ -164,7 +155,16 @@ export const ServantSelector = {
     // Multi keeps the modal open and marks items like the CE picker does.
     this._multi = options.multi === true;
     this._selectedIds = new Set(this._multi ? options.selected : []);
-    this.lockedClasses = Array.isArray(options.lockClasses) && options.lockClasses.length ? options.lockClasses : null;
+    const newLock = Array.isArray(options.lockClasses) && options.lockClasses.length ? options.lockClasses : null;
+    const lockChanged =
+      (this.lockedClasses === null) !== (newLock === null) ||
+      (Boolean(this.lockedClasses) &&
+        Boolean(newLock) &&
+        (this.lockedClasses.length !== newLock.length || !this.lockedClasses.every((id, i) => id === newLock[i])));
+    if (lockChanged) {
+      this.resetFilters();
+    }
+    this.lockedClasses = newLock;
     // The row is kept as the player left it for the rest of the page, and starts blank again after a refresh.
 
     this.syncPickerControls();
@@ -173,6 +173,25 @@ export const ServantSelector = {
 
     const modal = document.getElementById("servantModal");
     if (modal) modal.classList.add("open");
+  },
+
+  resetFilters() {
+    this.classFilters = [];
+    this.rarityFilters = [];
+    this.groupClassFilters = [];
+    this.aliFilters = [];
+    this.subAliFilters = [];
+    this.subAttrFilters = [];
+    this.genderFilters = [];
+    this.draftFilters = null;
+    this._searchQuery = "";
+    const searchInput = document.getElementById("servantPickerSearch");
+    if (searchInput) searchInput.value = "";
+    const modal = document.getElementById("servantModal");
+    if (modal && modal.classList.contains("open")) {
+      this.syncPickerControls();
+      this.filter();
+    }
   },
 
   close() {
@@ -229,11 +248,20 @@ export const ServantSelector = {
           this._callbacks?.onToggle?.(this.activeSlotIndex, servant.id, picked.has(servant.id));
           return; // stay open, like the CE picker
         }
+        const wasPending = this.pendingSlot;
         this.pendingSlot = false; // servant selected, don't remove on close
         if (servant.hasAscensions && !this._skipAscension) {
           const idx = this.activeSlotIndex;
           this.close();
-          AscensionSelector.open(servant, idx, this._callbacks);
+          AscensionSelector.open(servant, idx, this._callbacks, {
+            pending: wasPending,
+            pickerOptions: {
+              lockClasses: this.lockedClasses,
+              skipAscension: this._skipAscension,
+              multi: this._multi,
+              selected: this._selectedIds,
+            },
+          });
         } else {
           this._callbacks?.onSelect?.(this.activeSlotIndex, servant.id, null);
           this.close();
@@ -254,18 +282,15 @@ export const ServantSelector = {
     let result = ServantData.servants;
     const query = this._searchQuery.toLowerCase().trim();
     if (query) {
-      result = result.filter(
-        (s) =>
-          s.id.toLowerCase().includes(query) ||
-          ServantData.getAllNames(s.id).some((n) => n.toLowerCase().includes(query)),
+      result = result.filter((s) =>
+        s._search
+          ? s._search.includes(query)
+          : s.id.toLowerCase().includes(query) ||
+            ServantData.getAllNames(s.id).some((n) => n.toLowerCase().includes(query)),
       );
     }
-    /* Every row at once, the class row included: a locked party is bound by its group whether or not the
-       player picked a class in it, a pick inside the group narrows it, and a pick from outside is ignored.
-       Read across the servant's forms — the picker names no ascension, and a sub-attribute can arrive with
-       one (415 is Human in her 1st form and Earth in her 3rd). */
-    result = result.filter((s) => ServantFilters.match(ServantData.getAllTraits(s.id), this));
-    // Ordered last: what the player sorted by is a property of the rows the grid shows, never of the filter.
+    const matcher = ServantFilters.compile(this);
+    result = result.filter((s) => matcher(ServantData.getAllTraitSet(s.id)));
     return ServantSort.sorted(result, this.sortBy, this.sortOrder);
   },
 
@@ -302,8 +327,6 @@ export const ServantSelector = {
      group is cleared. */
   _renderFilterRows(customFilters = null) {
     const filterState = customFilters || this.draftFilters || this;
-    const scope = ServantFilters.rowScope(filterState.groupClassFilters, this.lockedClasses);
-    const lock = this.lockedClasses;
     const toggle = (key) => (ids) => {
       if (this.draftFilters) {
         this.draftFilters[key] = ids;
@@ -316,65 +339,15 @@ export const ServantSelector = {
       }
     };
 
-    FilterSections.renderRow(
-      document.getElementById("servantRarityFilter"),
-      RARITY_FILTERS,
-      filterState.rarityFilters,
-      toggle("rarityFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("servantClassFilter"),
-      [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
-      filterState.classFilters,
-      toggle("classFilters"),
-      { disabled: (chip) => scope !== null && !scope.includes(chip.id) },
-    );
-    FilterSections.renderRow(
-      document.getElementById("servantGroupFilter"),
-      CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true, classes: g.classes })),
-      filterState.groupClassFilters,
-      toggle("groupClassFilters"),
-      { disabled: (chip) => Boolean(lock) && !chip.classes.some((id) => lock.includes(id)) },
-    );
-    FilterSections.renderRow(
-      document.getElementById("servantAliFilter"),
-      ALIGNMENT_LNC_FILTERS,
-      filterState.aliFilters,
-      toggle("aliFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("servantSubAliFilter"),
-      ALIGNMENT_GBE_FILTERS,
-      filterState.subAliFilters,
-      toggle("subAliFilters"),
-      { disabled: () => (filterState.subAliFilters || []).includes(ServantFilters.SUB_ALI_OTHER) },
-    );
-    FilterSections.renderRow(
-      document.getElementById("servantAttrFilter"),
-      SUB_ATTR_FILTERS,
-      filterState.subAttrFilters,
-      toggle("subAttrFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("servantGenderFilter"),
-      GENDER_FILTERS,
-      filterState.genderFilters,
-      toggle("genderFilters"),
-    );
+    FilterModalController.renderStandardRows("servant", filterState, toggle, {
+      lockedClasses: this.lockedClasses,
+    });
   },
 
   _openFilterModal() {
     const subModal = document.getElementById("servantFilterModal");
     if (!subModal) return;
-    this.draftFilters = {
-      rarityFilters: [...this.rarityFilters],
-      classFilters: [...this.classFilters],
-      groupClassFilters: [...this.groupClassFilters],
-      aliFilters: [...this.aliFilters],
-      subAliFilters: [...this.subAliFilters],
-      subAttrFilters: [...this.subAttrFilters],
-      genderFilters: [...this.genderFilters],
-    };
+    this.draftFilters = FilterModalController.clone(this);
     this._renderFilterRows(this.draftFilters);
     subModal.classList.add("open");
   },
@@ -388,13 +361,7 @@ export const ServantSelector = {
 
   _okFilterModal() {
     if (this.draftFilters) {
-      this.rarityFilters = [...this.draftFilters.rarityFilters];
-      this.classFilters = [...this.draftFilters.classFilters];
-      this.groupClassFilters = [...this.draftFilters.groupClassFilters];
-      this.aliFilters = [...this.draftFilters.aliFilters];
-      this.subAliFilters = [...this.draftFilters.subAliFilters];
-      this.subAttrFilters = [...this.draftFilters.subAttrFilters];
-      this.genderFilters = [...this.draftFilters.genderFilters];
+      Object.assign(this, this.draftFilters);
       this.draftFilters = null;
     }
     this.filter();
@@ -404,27 +371,16 @@ export const ServantSelector = {
 
   _defaultFilterModal() {
     if (!this.draftFilters) return;
-    this.draftFilters.rarityFilters = [];
-    this.draftFilters.classFilters = [];
-    this.draftFilters.groupClassFilters = [];
-    this.draftFilters.aliFilters = [];
-    this.draftFilters.subAliFilters = [];
-    this.draftFilters.subAttrFilters = [];
-    this.draftFilters.genderFilters = [];
+    this.draftFilters = FilterModalController.createInitial();
     this._renderFilterRows(this.draftFilters);
   },
 
   _selectAllFilterModal() {
     if (!this.draftFilters) return;
-    this.draftFilters.rarityFilters = RARITY_FILTERS.map((c) => c.id);
-    this.draftFilters.groupClassFilters = CLASS_GROUPS.map((g) => g.key);
-    const scope = ServantFilters.rowScope(this.draftFilters.groupClassFilters, this.lockedClasses);
-    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].map((c) => c.id);
-    this.draftFilters.classFilters = scope ? allClasses.filter((id) => scope.includes(id)) : allClasses;
-    this.draftFilters.aliFilters = ALIGNMENT_LNC_FILTERS.map((c) => c.id);
-    this.draftFilters.subAliFilters = ALIGNMENT_GBE_FILTERS.map((c) => (c.other ? ServantFilters.SUB_ALI_OTHER : c.id));
-    this.draftFilters.subAttrFilters = SUB_ATTR_FILTERS.map((c) => c.id);
-    this.draftFilters.genderFilters = GENDER_FILTERS.map((c) => c.id);
+    this.draftFilters = FilterModalController.selectAll({}, (res) => {
+      const scope = ServantFilters.rowScope(res.groupClassFilters, this.lockedClasses);
+      if (scope) res.classFilters = res.classFilters.filter((id) => scope.includes(id));
+    });
     this._renderFilterRows(this.draftFilters);
   },
 };
@@ -436,6 +392,7 @@ export const AscensionSelector = {
   servant: null,
   slotIndex: null,
   _callbacks: null,
+  _options: null,
 
   init() {
     const modal = document.getElementById("ascensionModal");
@@ -455,10 +412,11 @@ export const AscensionSelector = {
     }
   },
 
-  open(servant, slotIndex, callbacks = null) {
+  open(servant, slotIndex, callbacks = null, options = null) {
     this.servant = servant;
     this.slotIndex = slotIndex;
     this._callbacks = callbacks;
+    this._options = options || {};
     const modal = document.getElementById("ascensionModal");
     const title = document.getElementById("ascensionModalTitle");
 
@@ -472,14 +430,18 @@ export const AscensionSelector = {
     if (modal) modal.classList.remove("open");
     this.servant = null;
     this.slotIndex = null;
+    this._options = null;
   },
 
   back() {
     const idx = this.slotIndex;
     const cb = this._callbacks;
+    const opts = this._options;
     this.close();
-    if (idx !== null) {
-      ServantSelector.open(idx, false, cb);
+    if (cb?.onBack) {
+      cb.onBack(idx);
+    } else if (idx !== null) {
+      ServantSelector.open(idx, opts?.pending || false, cb, opts?.pickerOptions || {});
     }
   },
 
@@ -523,16 +485,17 @@ export const ServantDrag = {
   holdTimer: null,
   isDragging: false,
   _callbacks: null,
+  _boundMove: null,
+  _boundEnd: null,
 
   init(callbacks = null) {
     this._callbacks = callbacks;
+    this._boundMove = (e) => this.onHoldMove(e);
+    this._boundEnd = () => this.onHoldEnd();
     const grid = document.getElementById("servantGrid");
+    if (!grid) return;
     grid.addEventListener("mousedown", (e) => this.onHoldStart(e));
     grid.addEventListener("touchstart", (e) => this.onHoldStart(e), { passive: false });
-    document.addEventListener("mousemove", (e) => this.onHoldMove(e));
-    document.addEventListener("touchmove", (e) => this.onHoldMove(e), { passive: false });
-    document.addEventListener("mouseup", () => this.onHoldEnd());
-    document.addEventListener("touchend", () => this.onHoldEnd());
   },
 
   onHoldStart(e) {
@@ -549,6 +512,12 @@ export const ServantDrag = {
 
     this.dragIndex = index;
     this.isDragging = false;
+
+    document.addEventListener("mousemove", this._boundMove);
+    document.addEventListener("touchmove", this._boundMove, { passive: false });
+    document.addEventListener("mouseup", this._boundEnd);
+    document.addEventListener("touchend", this._boundEnd);
+
     this.holdTimer = setTimeout(() => {
       this.isDragging = true;
       slot.classList.add("dragging");
@@ -560,6 +529,7 @@ export const ServantDrag = {
     e.preventDefault();
 
     const grid = document.getElementById("servantGrid");
+    if (!grid) return;
     const touch = e.touches ? e.touches[0] : e;
     const target = document.elementFromPoint(touch.clientX, touch.clientY);
     const slot = target ? target.closest(".servant-slot") : null;
@@ -575,23 +545,30 @@ export const ServantDrag = {
 
   onHoldEnd() {
     clearTimeout(this.holdTimer);
+    document.removeEventListener("mousemove", this._boundMove);
+    document.removeEventListener("touchmove", this._boundMove);
+    document.removeEventListener("mouseup", this._boundEnd);
+    document.removeEventListener("touchend", this._boundEnd);
+
     if (!this.isDragging) {
       this.dragIndex = null;
       return;
     }
 
     const grid = document.getElementById("servantGrid");
-    const dragOver = grid.querySelector(".servant-slot.drag-over");
-    if (dragOver && this.dragIndex !== null) {
-      const targetIndex = parseInt(dragOver.dataset.slotIndex);
-      if (!isNaN(targetIndex) && targetIndex !== this.dragIndex) {
-        this._callbacks?.onSwap?.(this.dragIndex, targetIndex);
+    if (grid) {
+      const dragOver = grid.querySelector(".servant-slot.drag-over");
+      if (dragOver && this.dragIndex !== null) {
+        const targetIndex = parseInt(dragOver.dataset.slotIndex);
+        if (!isNaN(targetIndex) && targetIndex !== this.dragIndex) {
+          this._callbacks?.onSwap?.(this.dragIndex, targetIndex);
+        }
       }
-    }
 
-    grid.querySelectorAll(".servant-slot").forEach((s) => {
-      s.classList.remove("dragging", "drag-over");
-    });
+      grid.querySelectorAll(".servant-slot").forEach((s) => {
+        s.classList.remove("dragging", "drag-over");
+      });
+    }
     this.dragIndex = null;
     this.isDragging = false;
   },
@@ -686,7 +663,9 @@ export const CESelector = {
       this.renderGrid(CEList);
       return;
     }
-    const filtered = CEList.filter((c) => c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+    const filtered = CEList.filter((c) =>
+      c._search ? c._search.includes(q) : c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q),
+    );
     this.renderGrid(filtered);
   },
 
@@ -984,7 +963,9 @@ export const CEFilterPicker = {
       this.renderGrid(traitCEs);
       return;
     }
-    const filtered = traitCEs.filter((c) => c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+    const filtered = traitCEs.filter((c) =>
+      c._search ? c._search.includes(q) : c.id.toLowerCase().includes(q) || c.name.toLowerCase().includes(q),
+    );
     this.renderGrid(filtered);
   },
 };
@@ -1111,15 +1092,7 @@ export const CEServantOverlap = {
 
   _openFilterModal() {
     if (!this._subModal) return;
-    this.draftFilters = {
-      rarityFilters: [...this.filterState.rarityFilters],
-      classFilters: [...this.filterState.classFilters],
-      groupClassFilters: [...this.filterState.groupClassFilters],
-      aliFilters: [...this.filterState.aliFilters],
-      subAliFilters: [...this.filterState.subAliFilters],
-      subAttrFilters: [...this.filterState.subAttrFilters],
-      genderFilters: [...this.filterState.genderFilters],
-    };
+    this.draftFilters = FilterModalController.clone(this.filterState);
     this._renderFilterRows(this.draftFilters);
     this._subModal.classList.add("open");
   },
@@ -1131,39 +1104,22 @@ export const CEServantOverlap = {
 
   _defaultFilterModal() {
     if (!this.draftFilters) return;
-    this.draftFilters.rarityFilters = [];
-    this.draftFilters.classFilters = [];
-    this.draftFilters.groupClassFilters = [];
-    this.draftFilters.aliFilters = [];
-    this.draftFilters.subAliFilters = [];
-    this.draftFilters.subAttrFilters = [];
-    this.draftFilters.genderFilters = [];
+    this.draftFilters = FilterModalController.createInitial();
     this._renderFilterRows(this.draftFilters);
   },
 
   _selectAllFilterModal() {
     if (!this.draftFilters) return;
-    this.draftFilters.rarityFilters = RARITY_FILTERS.map((c) => c.id);
-    this.draftFilters.groupClassFilters = CLASS_GROUPS.map((g) => g.key);
-    const scope = ServantFilters.rowScope(this.draftFilters.groupClassFilters);
-    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].map((c) => c.id);
-    this.draftFilters.classFilters = scope ? allClasses.filter((id) => scope.includes(id)) : allClasses;
-    this.draftFilters.aliFilters = ALIGNMENT_LNC_FILTERS.map((c) => c.id);
-    this.draftFilters.subAliFilters = ALIGNMENT_GBE_FILTERS.map((c) => (c.other ? ServantFilters.SUB_ALI_OTHER : c.id));
-    this.draftFilters.subAttrFilters = SUB_ATTR_FILTERS.map((c) => c.id);
-    this.draftFilters.genderFilters = GENDER_FILTERS.map((c) => c.id);
+    this.draftFilters = FilterModalController.selectAll({}, (res) => {
+      const scope = ServantFilters.rowScope(res.groupClassFilters);
+      if (scope) res.classFilters = res.classFilters.filter((id) => scope.includes(id));
+    });
     this._renderFilterRows(this.draftFilters);
   },
 
   _okFilterModal() {
     if (this.draftFilters) {
-      this.filterState.rarityFilters = [...this.draftFilters.rarityFilters];
-      this.filterState.classFilters = [...this.draftFilters.classFilters];
-      this.filterState.groupClassFilters = [...this.draftFilters.groupClassFilters];
-      this.filterState.aliFilters = [...this.draftFilters.aliFilters];
-      this.filterState.subAliFilters = [...this.draftFilters.subAliFilters];
-      this.filterState.subAttrFilters = [...this.draftFilters.subAttrFilters];
-      this.filterState.genderFilters = [...this.draftFilters.genderFilters];
+      Object.assign(this.filterState, this.draftFilters);
       this.draftFilters = null;
     }
     if (this._subModal) this._subModal.classList.remove("open");
@@ -1172,8 +1128,6 @@ export const CEServantOverlap = {
 
   _renderFilterRows(customFilters = null) {
     const filterState = customFilters || this.draftFilters || this.filterState;
-    const scope = ServantFilters.rowScope(filterState.groupClassFilters);
-
     const toggle = (key) => (ids) => {
       if (this.draftFilters) {
         this.draftFilters[key] = ids;
@@ -1185,58 +1139,7 @@ export const CEServantOverlap = {
         this.renderGrid();
       }
     };
-
-    FilterSections.renderRow(
-      document.getElementById("ceOverlapRarityFilter"),
-      RARITY_FILTERS,
-      filterState.rarityFilters,
-      toggle("rarityFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("ceOverlapClassFilter"),
-      [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
-      filterState.classFilters,
-      toggle("classFilters"),
-      { disabled: (chip) => scope !== null && !scope.includes(chip.id) },
-    );
-    FilterSections.renderRow(
-      document.getElementById("ceOverlapGroupFilter"),
-      CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true, classes: g.classes })),
-      filterState.groupClassFilters,
-      toggle("groupClassFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("ceOverlapAliFilter"),
-      ALIGNMENT_LNC_FILTERS,
-      filterState.aliFilters,
-      toggle("aliFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("ceOverlapSubAliFilter"),
-      ALIGNMENT_GBE_FILTERS,
-      filterState.subAliFilters,
-      toggle("subAliFilters"),
-      { disabled: () => (filterState.subAliFilters || []).includes(ServantFilters.SUB_ALI_OTHER) },
-    );
-    FilterSections.renderRow(
-      document.getElementById("ceOverlapAttrFilter"),
-      SUB_ATTR_FILTERS,
-      filterState.subAttrFilters,
-      toggle("subAttrFilters"),
-    );
-    FilterSections.renderRow(
-      document.getElementById("ceOverlapGenderFilter"),
-      GENDER_FILTERS,
-      filterState.genderFilters,
-      toggle("genderFilters"),
-    );
-  },
-
-  _traitsOf(entry) {
-    const traits = entry.primaryAscension
-      ? ServantData.getTraitsForAscension(entry.servant.id, entry.primaryAscension)
-      : ServantData.getAllTraits(entry.servant.id);
-    return traits || ServantData.getAllTraits(entry.servant.id);
+    FilterModalController.renderStandardRows("ceOverlap", filterState, toggle);
   },
 
   renderGrid() {
@@ -1244,10 +1147,11 @@ export const CEServantOverlap = {
     if (!grid) return;
     grid.replaceChildren();
 
+    const matcher = ServantFilters.compile(this.filterState);
     const visibleCards = [];
     (this._groups || []).forEach((group) => {
       const filteredMembers = (group.otherMembers || []).filter((entry) =>
-        ServantFilters.match(this._traitsOf(entry), this.filterState),
+        matcher(ServantData.getEntryTraitSet(entry)),
       );
       if (filteredMembers.length > 0) {
         visibleCards.push({
@@ -1275,57 +1179,6 @@ export const CEServantOverlap = {
   },
 
   _buildCard(group) {
-    const card = DOMFactory.el("div", ["cefilter-servant-card", "cefilter-combo-card"]);
-
-    // Unclickable CE row
-    const ceRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-ce-row"]);
-    group.ceIds.forEach((ceId) => {
-      const ce = CEById.get(ceId);
-      if (!ce) return;
-      const cell = DOMFactory.el("div", "cefilter-combo-ce", {
-        title: ce.name,
-      });
-      const img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-combo-ce-img", { alt: ce.name, title: ce.name });
-      DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
-      cell.appendChild(img);
-      ceRow.appendChild(cell);
-    });
-    card.appendChild(ceRow);
-
-    // Unclickable servant row showing only other servants
-    const servantRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-servant-row"]);
-    const rowCEs = group.ceIds.map((ceId) => CEById.get(ceId)).filter(Boolean);
-    group.otherMembers.forEach((entry) => {
-      if (!entry || !entry.servant) return;
-      servantRow.appendChild(this._buildServantCell(entry, rowCEs));
-    });
-    card.appendChild(servantRow);
-
-    return card;
-  },
-
-  _buildServantCell(entry, rowCEs) {
-    const servant = entry.servant;
-    const matchedAscensions = entry.matchedAscensions || [];
-    const imgAsc =
-      !entry.baseMatchesAll && matchedAscensions.length > 0 ? entry.primaryAscension || matchedAscensions[0] : null;
-    const imgSrc = imgAsc ? ServantData.getImageForAscension(servant.id, imgAsc) : servant.image;
-
-    const labelParts = matchedAscensions.map((key) => ServantData.getAscensionLabel(servant.id, key));
-    const spiritronLabel = ServantData.getSpiritronLabel(servant.id, rowCEs, matchedAscensions, entry.baseMatchesAll);
-    if (spiritronLabel) labelParts.push(spiritronLabel);
-
-    const displayName = imgAsc ? ServantData.getAscensionName(servant.id, imgAsc) || servant.name : servant.name;
-    const name = labelParts.length > 0 ? `${displayName} (${labelParts.join(", ")})` : displayName;
-
-    const cell = DOMFactory.el("div", "cefilter-combo-servant");
-    const img = DOMFactory.createLazyImg(imgSrc, ["cefilter-match-badge", "cefilter-combo-servant-badge"], {
-      alt: name,
-      title: name,
-    });
-    DOMFactory.addAscensionFallback(img, servant.id);
-    cell.appendChild(img);
-
-    return cell;
+    return ComboCardRenderer.buildCard(group, { membersKey: "otherMembers" });
   },
 };
