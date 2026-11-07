@@ -273,88 +273,170 @@ export { TraitMatcher, computeCEMatchMatrix } from "./ce-matcher.js";
 export const ServantComboCalculator = {
   MAX_COMBO_NODES: 50000,
 
+  /* Map each CE ID to the set of picked servant IDs that can use it. */
+  _mapCEServants(entries, pickedSet) {
+    const ceServants = new Map();
+    (entries || []).forEach((entry) => {
+      const id = entry?.servant?.id;
+      if (!id || !pickedSet.has(id) || !entry.matchingCEIds) return;
+      new Set(entry.matchingCEIds).forEach((ceId) => {
+        const set = ceServants.get(ceId) || new Set();
+        set.add(id);
+        ceServants.set(ceId, set);
+      });
+    });
+    return ceServants;
+  },
+
+  /* Extract CEs shared by at least two distinct picked servants. */
+  _filterSharedCESet(entries, pickedSet) {
+    const sharedCESet = new Set();
+    this._mapCEServants(entries, pickedSet).forEach((servants, ceId) => {
+      if (servants.size >= 2) sharedCESet.add(ceId);
+    });
+    return sharedCESet;
+  },
+
+  /* Collect candidate member entries, filtering CEs to only shared CEs. */
+  _collectMembers(entries, pickedSet, sharedCESet) {
+    const members = [];
+    (entries || []).forEach((entry) => {
+      const servantId = entry?.servant?.id;
+      if (!servantId || !pickedSet.has(servantId)) return;
+      const rawCeIds = entry.matchingCEIds || [];
+      const ceIds = [...new Set(rawCeIds)].filter((id) => sharedCESet.has(id)).sort();
+      if (ceIds.length === 0) return;
+      members.push({ servantId, entry, ceIds, ceSet: new Set(ceIds) });
+    });
+    return members.sort((a, b) => (a.servantId === b.servantId ? 0 : a.servantId < b.servantId ? -1 : 1));
+  },
+
+  /* Group members with identical CE lists into equivalence classes. */
+  _buildEquivalenceClasses(members) {
+    const classMap = new Map();
+    members.forEach((m) => {
+      const key = m.ceIds.join(",");
+      if (!classMap.has(key)) {
+        classMap.set(key, { key, ceIds: m.ceIds, ceSet: m.ceSet });
+      }
+    });
+    return [...classMap.values()];
+  },
+
+  /* Evaluate whether candidate CE subset matches >= 2 distinct servants. */
+  _evaluateCandidateGroup(ceIds, members) {
+    const matchedIndices = [];
+    const servantIds = new Set();
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i];
+      if (ceIds.every((id) => m.ceSet.has(id))) {
+        matchedIndices.push(i);
+        servantIds.add(m.servantId);
+      }
+    }
+    if (servantIds.size < 2) return null;
+    return {
+      memberKey: matchedIndices.join(","),
+      ceIds,
+      members: matchedIndices.map((idx) => members[idx].entry),
+      servantCount: servantIds.size,
+    };
+  },
+
+  /* Deterministic tie-breaker for candidate CE IDs of equal length. */
+  _isBetterCEIds(candidateIds, existingIds) {
+    for (let i = 0; i < candidateIds.length; i++) {
+      if (candidateIds[i] !== existingIds[i]) {
+        return candidateIds[i] < existingIds[i];
+      }
+    }
+    return false;
+  },
+
+  /* Same-member pruning: keep maximal CE set for identical member group. */
+  _recordCandidateGroup(groupsByMembers, candidate) {
+    const existing = groupsByMembers.get(candidate.memberKey);
+    if (!existing) {
+      groupsByMembers.set(candidate.memberKey, candidate);
+      return;
+    }
+    const isLarger = candidate.ceIds.length > existing.ceIds.length;
+    const isSameLengthBetter =
+      candidate.ceIds.length === existing.ceIds.length && this._isBetterCEIds(candidate.ceIds, existing.ceIds);
+    if (isLarger || isSameLengthBetter) {
+      groupsByMembers.set(candidate.memberKey, candidate);
+    }
+  },
+
+  /* Recursive helper for intersection walk across equivalence classes. */
+  _walkCombinations(ctx, start, current) {
+    for (let i = start; i < ctx.classLists.length; i++) {
+      if (++ctx.nodes > ctx.maxNodes) return (ctx.truncated = true);
+      const next = current.filter((id) => ctx.classLists[i].ceSet.has(id));
+      if (next.length === 0) continue;
+      const key = next.join(",");
+      if (!ctx.seen.has(key)) {
+        ctx.seen.add(key);
+        ctx.onVisit(next);
+        this._walkCombinations(ctx, i + 1, next);
+        if (ctx.truncated) return;
+      }
+    }
+  },
+
+  /* Closed intersection walk with seen-key memoization and node budget. */
+  _exploreCombinations(classLists, onVisit) {
+    const ctx = { classLists, onVisit, seen: new Set(), nodes: 0, truncated: false, maxNodes: this.MAX_COMBO_NODES };
+    for (let i = 0; i < classLists.length; i++) {
+      if (ctx.truncated) break;
+      if (++ctx.nodes > ctx.maxNodes) return { truncated: true };
+      const cls = classLists[i];
+      if (!ctx.seen.has(cls.key)) {
+        ctx.seen.add(cls.key);
+        onVisit(cls.ceIds);
+      }
+      this._walkCombinations(ctx, i + 1, cls.ceIds);
+    }
+    return { truncated: ctx.truncated };
+  },
+
+  /* Sort combo groups by CE count desc, servant count desc, first CE, first servant. */
+  _sortGroups(groups) {
+    return groups.sort((a, b) => {
+      if (b.ceIds.length !== a.ceIds.length) return b.ceIds.length - a.ceIds.length;
+      if (b.servantCount !== a.servantCount) return b.servantCount - a.servantCount;
+      if (a.ceIds[0] !== b.ceIds[0]) return a.ceIds[0] < b.ceIds[0] ? -1 : 1;
+      const firstA = a.members[0]?.servant?.id || "";
+      const firstB = b.members[0]?.servant?.id || "";
+      if (firstA !== firstB) return firstA < firstB ? -1 : 1;
+      return 0;
+    });
+  },
+
+  /* Format and sort final groups from member group map. */
+  _formatGroups(groupsByMembers) {
+    return this._sortGroups([...groupsByMembers.values()]).map(({ ceIds, members: m }) => ({ ceIds, members: m }));
+  },
+
   /* Every entry of a picked servant is its own member, so a multi-ascension servant whose
      ascension groups match different CE sets is split the way Craft Essence Select gives each
      group its own card. A row's members are the forms that can use all of the row's CEs at once.
      Returns { groups: [{ ceIds, members: [entry] }], unshared: [servantId], truncated: boolean }. */
   buildSharedCEGroups(entries, pickedIds) {
-    const picked = [...new Set(pickedIds)].sort();
+    const picked = [...new Set(pickedIds || [])].sort();
     const pickedSet = new Set(picked);
-    const members = [];
-    entries.forEach((entry) => {
-      if (!pickedSet.has(entry.servant.id)) return;
-      const ceIds = [...(entry.matchingCEIds || [])].sort();
-      if (ceIds.length === 0) return;
-      members.push({ servantId: entry.servant.id, entry, ceSet: new Set(ceIds) });
+    const sharedCESet = this._filterSharedCESet(entries, pickedSet);
+    const members = this._collectMembers(entries, pickedSet, sharedCESet);
+    const classLists = this._buildEquivalenceClasses(members);
+    const groupsByMembers = new Map();
+
+    const { truncated } = this._exploreCombinations(classLists, (ceIds) => {
+      const candidate = this._evaluateCandidateGroup(ceIds, members);
+      if (candidate) this._recordCandidateGroup(groupsByMembers, candidate);
     });
-    // Stable sort: rows line up by servant id, and a split servant's groups keep their entry order.
-    members.sort((a, b) => (a.servantId === b.servantId ? 0 : a.servantId < b.servantId ? -1 : 1));
 
-    // Members with the same usable list are interchangeable: one search node covers them all.
-    const classes = new Map();
-    members.forEach((m) => {
-      const key = [...m.ceSet].sort().join(",");
-      if (!classes.has(key)) classes.set(key, m.ceSet);
-    });
-    const classLists = [...classes.entries()].map(([key, ceSet]) => ({ key, ceIds: key.split(","), ceSet }));
-
-    const rows = new Map();
-    const servantCounts = new Map();
-    let nodes = 0;
-    let truncated = false;
-
-    // J = every member whose usable list contains P, so each CE list is recorded once, with its
-    // maximal group. Members are not combos unless they span two different servants.
-    const record = (ceIds, key) => {
-      const group = members.filter((m) => ceIds.every((ceId) => m.ceSet.has(ceId)));
-      const servantIds = new Set(group.map((m) => m.servantId));
-      if (servantIds.size < 2) return;
-      rows.set(key, { ceIds, members: group.map((m) => m.entry) });
-      servantCounts.set(key, servantIds.size);
-    };
-
-    const walk = (start, current) => {
-      for (let i = start; i < classLists.length; i++) {
-        if (++nodes > this.MAX_COMBO_NODES) {
-          truncated = true;
-          return;
-        }
-        const next = current.filter((ceId) => classLists[i].ceSet.has(ceId));
-        if (next.length === 0) continue; // supersets stay empty, so the branch is dead
-        record(next, next.join(","));
-        walk(i + 1, next);
-      }
-    };
-
-    classLists.forEach((cls, i) => {
-      if (truncated) return;
-      if (++nodes > this.MAX_COMBO_NODES) {
-        truncated = true;
-        return;
-      }
-      record(cls.ceIds, cls.key);
-      walk(i + 1, cls.ceIds);
-    });
-    // shortcut: enumeration stops at MAX_COMBO_NODES subsets and flags `truncated`; raise the cap
-    // or switch to closed-itemset enumeration only if a real pick of servants hits it.
-
-    const groups = [...rows.entries()]
-      .sort(([keyA, a], [keyB, b]) => {
-        if (b.ceIds.length !== a.ceIds.length) return b.ceIds.length - a.ceIds.length;
-        const countA = servantCounts.get(keyA);
-        const countB = servantCounts.get(keyB);
-        if (countB !== countA) return countB - countA;
-        if (a.ceIds[0] !== b.ceIds[0]) return a.ceIds[0] < b.ceIds[0] ? -1 : 1;
-        const firstA = a.members[0].servant.id;
-        const firstB = b.members[0].servant.id;
-        if (firstA !== firstB) return firstA < firstB ? -1 : 1;
-        return 0;
-      })
-      .map(([, group]) => group);
-
-    const covered = new Set(groups.flatMap((g) => g.members.map((entry) => entry.servant.id)));
-    // A truncated run visited only part of the subset lattice, so a servant missing from the
-    // returned rows may still share CEs with another — claim nothing rather than name falsely.
+    const groups = this._formatGroups(groupsByMembers);
+    const covered = new Set(groups.flatMap((g) => g.members.map((e) => e.servant.id)));
     const unshared = truncated ? [] : picked.filter((id) => !covered.has(id));
     return { groups, unshared, truncated };
   },

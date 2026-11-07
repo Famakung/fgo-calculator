@@ -135,7 +135,11 @@ test("truncated run makes no unshared claims", () => {
   const budget = ServantComboCalculator.MAX_COMBO_NODES;
   ServantComboCalculator.MAX_COMBO_NODES = 1;
   try {
-    const entries = [entry("001", ["0001", "0002"]), entry("059", ["0001", "0003"]), entry("444", ["0001", "0004"])];
+    const entries = [
+      entry("001", ["0001", "0002", "0003"]),
+      entry("059", ["0001", "0002"]),
+      entry("444", ["0001", "0003"]),
+    ];
     const { groups, unshared, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059", "444"]);
 
     assert.equal(truncated, true);
@@ -158,18 +162,23 @@ test("input is not mutated", () => {
 });
 
 test("truncated at the node budget", () => {
-  const shared = "0001";
-  const entries = [];
-  const picked = [];
-  for (let i = 0; i < 20; i++) {
-    const id = String(i + 1).padStart(3, "0");
-    entries.push(entry(id, [shared, `9${String(i + 1).padStart(3, "0")}`]));
-    picked.push(id);
-  }
-  const { groups, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, picked);
+  const budget = ServantComboCalculator.MAX_COMBO_NODES;
+  ServantComboCalculator.MAX_COMBO_NODES = 5;
+  try {
+    const entries = [];
+    const picked = [];
+    for (let i = 0; i < 10; i++) {
+      const id = String(i + 1).padStart(3, "0");
+      entries.push(entry(id, ["0001", "0002", `9${String(i % 5).padStart(3, "0")}`]));
+      picked.push(id);
+    }
+    const { groups, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, picked);
 
-  assert.equal(truncated, true);
-  assert.ok(groups.length > 0, "a partial result is still returned");
+    assert.equal(truncated, true);
+    assert.ok(groups.length > 0, "a partial result is still returned");
+  } finally {
+    ServantComboCalculator.MAX_COMBO_NODES = budget;
+  }
 });
 
 test("truncated run claims no unshared servants", () => {
@@ -281,4 +290,224 @@ test("buildServantOverlapGroups returns empty array when no CEs or no other matc
 
   const s2 = entry("001", ["0001"]);
   assert.deepStrictEqual(ServantComboCalculator.buildServantOverlapGroups([s2], s2), []);
+});
+
+test("buildSharedCEGroups pre-filters CEs not shared by at least two distinct picked servants", () => {
+  // S1 has CE1, CE2, CE3. S2 has CE1, CE2, CE4. S3 has CE1, CE5.
+  // CE3, CE4, CE5 each appear on only one servant, so they are pruned upfront.
+  // CE1 is on S1, S2, S3. CE2 is on S1, S2.
+  const entries = [
+    entry("001", ["0001", "0002", "0003"]),
+    entry("059", ["0001", "0002", "0004"]),
+    entry("444", ["0001", "0005"]),
+  ];
+  const { groups, unshared, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059", "444"]);
+
+  assert.equal(truncated, false);
+  assert.deepStrictEqual(unshared, []);
+  assert.equal(groups.length, 2);
+  assert.deepStrictEqual(groups[0].ceIds, ["0001", "0002"]);
+  assert.deepStrictEqual(ids(groups[0]), ["001", "059"]);
+  assert.deepStrictEqual(groups[1].ceIds, ["0001"]);
+  assert.deepStrictEqual(ids(groups[1]), ["001", "059", "444"]);
+});
+
+test("buildSharedCEGroups prunes subsets with same member group keeping maximal CEs", () => {
+  // S1 has CE1, CE2, CE3. S2 has CE1, CE2, CE3.
+  // Both match CE1, CE2, CE3. Subsets [CE1], [CE2], [CE3], [CE1, CE2], etc. all match {S1, S2}.
+  // Same-member-pruning must keep only [CE1, CE2, CE3] for {S1, S2}.
+  const entries = [entry("001", ["0001", "0002", "0003"]), entry("059", ["0001", "0002", "0003"])];
+  const { groups } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059"]);
+
+  assert.equal(groups.length, 1);
+  assert.deepStrictEqual(groups[0].ceIds, ["0001", "0002", "0003"]);
+  assert.deepStrictEqual(ids(groups[0]), ["001", "059"]);
+});
+
+test("buildSharedCEGroups seen-key memoization skips redundant intersection branches", () => {
+  // 4 servants sharing overlapping combinations where multiple branch paths yield the same CE set.
+  const entries = [
+    entry("001", ["0001", "0002", "0003"]),
+    entry("059", ["0001", "0002", "0004"]),
+    entry("373", ["0001", "0003", "0004"]),
+    entry("444", ["0001", "0002", "0003", "0004"]),
+  ];
+  const { groups, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059", "373", "444"]);
+
+  assert.equal(truncated, false);
+  // Verify no duplicate member combinations exist
+  const memberKeys = groups.map((g) => ids(g).join(","));
+  const uniqueMemberKeys = new Set(memberKeys);
+  assert.equal(memberKeys.length, uniqueMemberKeys.size);
+});
+
+test("multi-ascension forms of same servant sharing CE without other servants do not form combo", () => {
+  // Servant 001 has 3 forms; all 3 share CE 9999, but NO other servant has CE 9999.
+  // Servant 001 forms also have CE 0001 (form 1) and CE 0002 (form 2).
+  // Servant 059 has CE 0001 and CE 0002.
+  // CE 9999 must NOT count as shared in _filterSharedCESet or _evaluateCandidateGroup.
+  const form1 = entry("001", ["0001", "9999"]);
+  const form2 = entry("001", ["0002", "9999"]);
+  const form3 = entry("001", ["9999"]);
+  const jeanne = entry("059", ["0001", "0002"]);
+  const entries = [form1, form2, form3, jeanne];
+
+  const { groups, unshared, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059"]);
+
+  assert.equal(truncated, false);
+  assert.deepStrictEqual(unshared, []);
+  // CE 9999 must not appear in any group
+  assert.equal(
+    groups.some((g) => g.ceIds.includes("9999")),
+    false,
+  );
+  // Only CE 0001 and CE 0002 form combos
+  assert.deepStrictEqual(
+    groups.map((g) => g.ceIds),
+    [["0001"], ["0002"]],
+  );
+  assert.deepStrictEqual(groups[0].members, [form1, jeanne]);
+  assert.deepStrictEqual(groups[1].members, [form2, jeanne]);
+});
+
+test("same-member pruning keeps maximal CE list and prunes non-closed subsets", () => {
+  // S1 has [1, 2, 3], S2 has [1, 2, 3], S3 has [1, 2, 4], S4 has [1, 2, 4]
+  // Intersections:
+  // [1, 2, 3] matches {S1, S2} (closed, 3 CEs)
+  // [1, 2, 4] matches {S3, S4} (closed, 3 CEs)
+  // [1, 2] matches {S1, S2, S3, S4} (closed, 2 CEs)
+  // No non-closed subset like [1] or [2] is retained for any group.
+  const s1 = entry("001", ["0001", "0002", "0003"]);
+  const s2 = entry("059", ["0001", "0002", "0003"]);
+  const s3 = entry("373", ["0001", "0002", "0004"]);
+  const s4 = entry("444", ["0001", "0002", "0004"]);
+  const entries = [s1, s2, s3, s4];
+
+  const { groups } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "059", "373", "444"]);
+  assert.equal(groups.length, 3);
+  assert.deepStrictEqual(groups[0].ceIds, ["0001", "0002", "0003"]);
+  assert.deepStrictEqual(ids(groups[0]), ["001", "059"]);
+  assert.deepStrictEqual(groups[1].ceIds, ["0001", "0002", "0004"]);
+  assert.deepStrictEqual(ids(groups[1]), ["373", "444"]);
+  assert.deepStrictEqual(groups[2].ceIds, ["0001", "0002"]);
+  assert.deepStrictEqual(ids(groups[2]), ["001", "059", "373", "444"]);
+
+  // Direct test of _recordCandidateGroup tie-breaking and replacement
+  const map = new Map();
+  const cShort = { memberKey: "0,1", ceIds: ["0001"], members: [s1, s2], servantCount: 2 };
+  const cLong = { memberKey: "0,1", ceIds: ["0001", "0002"], members: [s1, s2], servantCount: 2 };
+  ServantComboCalculator._recordCandidateGroup(map, cShort);
+  assert.equal(map.get("0,1").ceIds.length, 1);
+  ServantComboCalculator._recordCandidateGroup(map, cLong);
+  assert.equal(map.get("0,1").ceIds.length, 2, "Longer CE list replaces shorter for same memberKey");
+  ServantComboCalculator._recordCandidateGroup(map, cShort);
+  assert.equal(map.get("0,1").ceIds.length, 2, "Shorter CE list does not replace longer for same memberKey");
+});
+
+test("unshared servant reporting distinguishes partial sharing vs budget truncation", () => {
+  // S1 and S2 share CE 0001. S3 has only CE 0002 (unshared with S1, S2). S4 has no matching CEs.
+  const s1 = entry("001", ["0001"]);
+  const s2 = entry("059", ["0001"]);
+  const s3 = entry("373", ["0002"]);
+  const s4 = entry("444", []);
+  const entries = [s1, s2, s3, s4];
+  const picked = ["001", "059", "373", "444"];
+
+  const normal = ServantComboCalculator.buildSharedCEGroups(entries, picked);
+  assert.equal(normal.truncated, false);
+  assert.equal(normal.groups.length, 1);
+  assert.deepStrictEqual(ids(normal.groups[0]), ["001", "059"]);
+  // Both 373 and 444 must be reported as unshared
+  assert.deepStrictEqual(normal.unshared, ["373", "444"]);
+
+  // When truncated is true, unshared MUST be empty array even if unshared servants exist
+  const budget = ServantComboCalculator.MAX_COMBO_NODES;
+  ServantComboCalculator.MAX_COMBO_NODES = 0;
+  try {
+    const trunc = ServantComboCalculator.buildSharedCEGroups(entries, picked);
+    assert.equal(trunc.truncated, true);
+    assert.deepStrictEqual(trunc.unshared, [], "truncated run must never report unshared servants");
+  } finally {
+    ServantComboCalculator.MAX_COMBO_NODES = budget;
+  }
+});
+
+test("performance on 25 picked servants with overlapping CEs stays within budget", () => {
+  // 25 servants divided into 3 overlapping equivalence classes
+  const entries = [];
+  const picked = [];
+  for (let i = 1; i <= 25; i++) {
+    const id = String(i).padStart(3, "0");
+    picked.push(id);
+    if (i <= 10) entries.push(entry(id, ["0001", "0002", "0003"]));
+    else if (i <= 20) entries.push(entry(id, ["0002", "0003", "0004"]));
+    else entries.push(entry(id, ["0001", "0003", "0004"]));
+  }
+
+  const { groups, unshared, truncated } = ServantComboCalculator.buildSharedCEGroups(entries, picked);
+  assert.equal(truncated, false, "must not hit MAX_COMBO_NODES");
+  assert.deepStrictEqual(unshared, []);
+  assert.equal(groups.length, 7, "exactly 7 maximal closed intersection groups");
+});
+
+test("null, empty, and malformed inputs handled gracefully", () => {
+  // null / undefined
+  assert.deepStrictEqual(ServantComboCalculator.buildSharedCEGroups(null, null), {
+    groups: [],
+    unshared: [],
+    truncated: false,
+  });
+  assert.deepStrictEqual(ServantComboCalculator.buildSharedCEGroups(undefined, undefined), {
+    groups: [],
+    unshared: [],
+    truncated: false,
+  });
+  assert.deepStrictEqual(ServantComboCalculator.buildSharedCEGroups([], []), {
+    groups: [],
+    unshared: [],
+    truncated: false,
+  });
+
+  // matchingCEIds as Array vs Set produce identical results
+  const arrayEntries = [
+    { servant: { id: "001" }, matchingCEIds: ["0001", "0002"] },
+    { servant: { id: "059" }, matchingCEIds: ["0001", "0002"] },
+  ];
+  const setEntries = [
+    { servant: { id: "001" }, matchingCEIds: new Set(["0001", "0002"]) },
+    { servant: { id: "059" }, matchingCEIds: new Set(["0001", "0002"]) },
+  ];
+  const fromArray = ServantComboCalculator.buildSharedCEGroups(arrayEntries, ["001", "059"]);
+  const fromSet = ServantComboCalculator.buildSharedCEGroups(setEntries, ["001", "059"]);
+  assert.deepStrictEqual(
+    fromArray.groups.map((g) => g.ceIds),
+    fromSet.groups.map((g) => g.ceIds),
+  );
+  assert.deepStrictEqual(fromArray.unshared, fromSet.unshared);
+  assert.equal(fromArray.truncated, fromSet.truncated);
+
+  // duplicate CE IDs in an Array matchingCEIds input are deduplicated
+  const dupeArrayEntries = [
+    { servant: { id: "001" }, matchingCEIds: ["0001", "0001", "0002", "0002"] },
+    { servant: { id: "059" }, matchingCEIds: ["0001", "0002"] },
+  ];
+  const fromDupeArray = ServantComboCalculator.buildSharedCEGroups(dupeArrayEntries, ["001", "059"]);
+  assert.equal(fromDupeArray.groups.length, 1);
+  assert.deepStrictEqual(fromDupeArray.groups[0].ceIds, ["0001", "0002"]);
+
+  // malformed entries in list
+  const malformedEntries = [
+    null,
+    undefined,
+    {},
+    { servant: null },
+    { servant: { id: null } },
+    { servant: { id: "001" }, matchingCEIds: null },
+    { servant: { id: "001" }, matchingCEIds: ["0001"] },
+    { servant: { id: "059" }, matchingCEIds: ["0001"] },
+  ];
+  const res = ServantComboCalculator.buildSharedCEGroups(malformedEntries, ["001", "059"]);
+  assert.equal(res.groups.length, 1);
+  assert.deepStrictEqual(res.groups[0].ceIds, ["0001"]);
+  assert.deepStrictEqual(ids(res.groups[0]), ["001", "059"]);
 });
