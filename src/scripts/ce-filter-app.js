@@ -661,28 +661,36 @@ export const CEFilterApp = {
     const imgAsc = !baseMatchesAll && matchedAscensions.length > 0 ? primaryAscension || matchedAscensions[0] : null;
     const imgSrc = imgAsc ? ServantData.getImageForAscension(servant.id, imgAsc) : servant.image;
 
-    let img;
-    if (existingCard) {
+    let portraitEl;
+    if (!imgAsc && servant.altImage) {
+      portraitEl = DOMFactory.createSwapImg({
+        src: imgSrc,
+        altSrc: servant.altImage,
+        className: "servant-slot-portrait",
+        attrs: { alt: servant.name, ...eagerAttrs },
+        fallbackId: servant.id,
+      });
+    } else if (existingCard) {
       // Reuse placeholder img to avoid LCP render delay from re-decode
       const placeholderImg = existingCard.querySelector("img.servant-slot-portrait");
       if (placeholderImg) {
-        img = placeholderImg;
-        img.src = imgSrc;
-        img.alt = servant.name;
-        if (eagerAttrs.fetchpriority) img.fetchPriority = eagerAttrs.fetchpriority;
-        if (eagerAttrs.loading) img.loading = eagerAttrs.loading;
+        placeholderImg.src = imgSrc;
+        placeholderImg.alt = servant.name;
+        if (eagerAttrs.fetchpriority) placeholderImg.fetchPriority = eagerAttrs.fetchpriority;
+        if (eagerAttrs.loading) placeholderImg.loading = eagerAttrs.loading;
+        portraitEl = placeholderImg;
       }
     }
-    if (!img) {
-      img = DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", {
+    if (!portraitEl) {
+      portraitEl = DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", {
         alt: servant.name,
         ...eagerAttrs,
       });
+      DOMFactory.addAscensionFallback(portraitEl, servant.id);
     }
-    DOMFactory.addAscensionFallback(img, servant.id);
     if (matchingCEs.length > 0) {
-      img.style.cursor = "pointer";
-      img.onclick = () => {
+      portraitEl.style.cursor = "pointer";
+      portraitEl.onclick = () => {
         if (this._callbacks.openOverlap) {
           this._callbacks.openOverlap({
             servant,
@@ -695,13 +703,17 @@ export const CEFilterApp = {
         }
       };
     } else {
-      img.onclick = null;
+      portraitEl.onclick = null;
     }
-    card.appendChild(img);
+    card.appendChild(portraitEl);
 
     const displayName = imgAsc ? ServantData.getAscensionName(servant.id, imgAsc) || servant.name : servant.name;
     const nameEl = DOMFactory.el("div", "cefilter-servant-name");
-    nameEl.textContent = displayName;
+    if (!imgAsc && servant.altName) {
+      DOMFactory.fillSwapName(nameEl, displayName, servant.altName);
+    } else {
+      nameEl.textContent = displayName;
+    }
     card.appendChild(nameEl);
 
     const spiritronLabel = ServantData.getSpiritronLabel(servant.id, matchingCEs, matchedAscensions, baseMatchesAll);

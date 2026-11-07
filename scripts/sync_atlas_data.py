@@ -589,7 +589,7 @@ def format_servant_js_entry(
         lines.append(f'      {stage_repr}: {json.dumps(diff)},')
     lines.append('    },')
     if option_labels:
-        labels_parts = [f'{k}: {json.dumps(v)}' for k, v in sorted(option_labels.items())]
+        labels_parts = [f'{k}: {json.dumps(v, ensure_ascii=False)}' for k, v in sorted(option_labels.items())]
         if len(labels_parts) > 1:
             lines.append('    optionLabels: {')
             for lp in labels_parts:
@@ -601,7 +601,7 @@ def format_servant_js_entry(
         names_parts = []
         for k, v in sorted(option_names.items()):
             k_repr = f'"{k}"' if k.startswith("0") else k
-            names_parts.append(f'{k_repr}: {json.dumps(v)}')
+            names_parts.append(f'{k_repr}: {json.dumps(v, ensure_ascii=False)}')
         lines.append(f'    optionNames: {{ {", ".join(names_parts)} }},')
     lines.append('  },')
     return "\n".join(lines)
@@ -685,6 +685,9 @@ def update_servants_js_full(replace_entries: Dict[str, str], dry_run: bool = Fal
         entries[key] = body[text_start:end]
 
     replaced = [k for k in replace_entries if k in entries]
+    if "467" in replace_entries:
+        entries.pop("467-1", None)
+        entries.pop("467-2", None)
     for k, v in replace_entries.items():
         entries[k] = v  # replace existing keys, add new ones
 
@@ -740,17 +743,15 @@ def _parse_servant_entries() -> Dict[str, str]:
 
 
 def format_467_split(svt: dict) -> Dict[str, str]:
-    """Format the François/Francesca Prélat (cno 467) special-case split entry.
+    """Format the François/Francesca Prélat (cno 467) unified entry.
 
-    467 stores as two keys ("467-1" / "467-2") built from gender-flipped trait
-    sets, so it can't use format_servant_js_entry. Shared by the new-servant,
-    drift-replacement and revalidation paths so all three stay in sync."""
+    cno 467 is unified under single ID "467" with traits from both forms:
+    François ("0001") and Francesca ("0002"), omitting "0003" (unknown gender).
+    Francesca Prélat is mapped to optionNames["001"]."""
     base, _diffs, _ol, _on, _cb = extract_servant_traits(svt)
-    t_m = sorted(list((set(base) - {"0002", "0003"}) | {"0001"}))
-    t_f = sorted(list((set(base) - {"0001", "0003"}) | {"0002"}))
+    traits = sorted(list((set(base) - {"0003"}) | {"0001", "0002"}), key=lambda x: (len(x), x))
     return {
-        "467-1": format_servant_js_entry("467-1", "François Prélat", t_m, {}, {}, {}),
-        "467-2": format_servant_js_entry("467-2", "Francesca Prélat", t_f, {}, {}, {}),
+        "467": format_servant_js_entry("467", "François Prélat", traits, {}, {}, {"001": "Francesca Prélat"}),
     }
 
 
@@ -761,8 +762,8 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
     changes, a new Spiritron Dress granting costume-stage traits (turning a
     base-only servant into a multi-ascension entry), or label/name changes.
     The basic export alone only reveals additions, so each stored entry is
-    reformatted and diffed against the current file text (467 via its split
-    entries, everyone else via format_servant_js_entry). The bulk fetch is one
+    reformatted and diffed against the current file text (467 via its unified
+    entry, everyone else via format_servant_js_entry). The bulk fetch is one
     conditional GET (304 = ~0 bytes idle). Returns the collectionNos whose
     entry drifted (need a fresh entry)."""
     existing = _parse_servant_entries()
@@ -775,9 +776,8 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
         if cno <= 0 or cno not in playable_by_cno:
             continue
         if cno == 467:
-            # The split is two stored keys; it drifted if either entry changed.
             fresh = format_467_split(s)
-            if any(k in existing and fresh[k] != existing[k] for k in fresh):
+            if "467-1" in existing or "467-2" in existing or fresh["467"] != existing.get("467"):
                 print(f"  Entry change detected for servant 467 (split traits differ)")
                 changed.append(cno)
             continue
@@ -848,8 +848,8 @@ def sync_servants(args):
             )
             if cno == 467:
                 img_missing = (
-                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "467-1", "000.webp")) or
-                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "467-2", "000.webp"))
+                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "467", "000.webp")) or
+                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "467", "001.webp"))
                 )
             else:
                 expected_stages = servant_stages_map.get(short_id, ["000"])
@@ -911,9 +911,9 @@ def sync_servants(args):
             base_traits, asc_diffs, opt_labels, opt_names, costume_battle_ids = extract_servant_traits(svt_payload)
 
             if cno == 467:
-                # Handle François and Francesca Prélat split
-                download_face_icon("467-1", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                download_face_icon("467-2", 505700, stage="000", force=args.force, dry_run=args.dry_run)
+                # Handle François and Francesca Prélat unified entry
+                download_face_icon("467", 505600, stage="000", force=args.force, dry_run=args.dry_run)
+                download_face_icon("467", 505700, stage="001", force=args.force, dry_run=args.dry_run)
                 new_entries.update(format_467_split(svt_payload))
                 continue
 
@@ -932,10 +932,9 @@ def sync_servants(args):
                 # Trait drift detected for this existing servant: replace its entry
                 # with fresh data (name, traits, option labels) and backfill images.
                 if cno == 467:
-                    # The split stores as "467-1"/"467-2"; rebuild both (writing
-                    # short_id "467" would leave the split keys untouched).
-                    download_face_icon("467-1", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                    download_face_icon("467-2", 505700, stage="000", force=args.force, dry_run=args.dry_run)
+                    # The unified entry stores as "467"; rebuild and download both portraits
+                    download_face_icon("467", 505600, stage="000", force=args.force, dry_run=args.dry_run)
+                    download_face_icon("467", 505700, stage="001", force=args.force, dry_run=args.dry_run)
                     new_entries.update(format_467_split(svt_payload))
                     full_replacement = True
                     continue
@@ -954,8 +953,8 @@ def sync_servants(args):
                 new_entries[short_id] = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_labels, opt_names)
                 full_replacement = True
             elif cno == 467:
-                download_face_icon("467-1", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                download_face_icon("467-2", 505700, stage="000", force=args.force, dry_run=args.dry_run)
+                download_face_icon("467", 505600, stage="000", force=args.force, dry_run=args.dry_run)
+                download_face_icon("467", 505700, stage="001", force=args.force, dry_run=args.dry_run)
             else:
                 stages_to_fetch = servant_stages_map.get(short_id, ["000"])
                 for st in stages_to_fetch:

@@ -158,9 +158,9 @@ describe("ServantComboCalculator.buildServantOverlapGroups", () => {
       });
     }
 
-    const t0 = performance.now();
+    const t0 = globalThis.performance.now();
     const groups = ServantComboCalculator.buildServantOverlapGroups(allMatches, clickedEntry);
-    const duration = performance.now() - t0;
+    const duration = globalThis.performance.now() - t0;
 
     assert.ok(duration < 50, `Expected < 50ms, took ${duration}ms`);
     assert.ok(Array.isArray(groups));

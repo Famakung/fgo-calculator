@@ -116,8 +116,9 @@ export const ServantSelect = {
   },
 
   _loadPicks() {
-    const picks = Validator.validatePicks(CEFilterStore.read().servantPicks);
-    return picks.filter((id) => ServantData.getServant(id) != null);
+    const raw = CEFilterStore.read().servantPicks;
+    const migrated = Array.isArray(raw) ? raw.map((id) => (id === "467-1" || id === "467-2" ? "467" : id)) : [];
+    return Validator.validatePicks(migrated).filter((id) => ServantData.getServant(id) != null);
   },
 
   _nameOf(id) {
@@ -125,13 +126,26 @@ export const ServantSelect = {
     return servant ? servant.name : id;
   },
 
+  _buildChipImg(servant, id) {
+    const title = servant.altName ? `${servant.name} / ${servant.altName}` : servant.name;
+    if (servant.altImage) {
+      return DOMFactory.createSwapImg({
+        src: servant.image,
+        altSrc: servant.altImage,
+        attrs: { alt: servant.name, title },
+        fallbackId: id,
+      });
+    }
+    const imgEl = DOMFactory.createLazyImg(servant.image, null, { alt: servant.name, title });
+    DOMFactory.addAscensionFallback(imgEl, id);
+    return imgEl;
+  },
+
   _buildChip(id) {
     const servant = ServantData.getServant(id);
     if (!servant) return null;
     const chip = DOMFactory.el("div", ["cefilter-chip", "flex-row"]);
-    const img = DOMFactory.createLazyImg(servant.image, null, { alt: servant.name });
-    DOMFactory.addAscensionFallback(img, id);
-    chip.appendChild(img);
+    chip.appendChild(this._buildChipImg(servant, id));
     const removeBtn = DOMFactory.el("button", ["cefilter-chip-remove", "flex-row"], {
       type: "button",
       "aria-label": `Remove ${servant.name}`,

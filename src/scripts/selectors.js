@@ -254,17 +254,29 @@ export const ServantSelector = {
     }
   },
 
+  _buildPickerImg(servant) {
+    if (servant.altImage) {
+      return DOMFactory.createSwapImg({
+        src: servant.image,
+        altSrc: servant.altImage,
+        attrs: { alt: servant.name },
+        fallbackId: servant.id,
+      });
+    }
+    const img = DOMFactory.createLazyImg(servant.image, null, { alt: servant.name });
+    DOMFactory.addAscensionFallback(img, servant.id);
+    return img;
+  },
+
   _createGridItem(servant) {
     const classes = this._multi
       ? ["servant-picker-item", "ce-filter-picker-item", ...(this._selectedIds.has(servant.id) ? ["selected"] : [])]
       : "servant-picker-item";
     const item = DOMFactory.el("div", classes);
     if (this._multi) DOMFactory.appendCheckMark(item);
-    const img = DOMFactory.createLazyImg(servant.image, null, { alt: servant.name });
-    DOMFactory.addAscensionFallback(img, servant.id);
+    item.appendChild(this._buildPickerImg(servant));
     const name = DOMFactory.el("div", "servant-picker-name");
-    name.textContent = servant.name;
-    item.appendChild(img);
+    DOMFactory.fillSwapName(name, servant.name, servant.altName);
     item.appendChild(name);
     item.addEventListener("click", () =>
       this._multi ? this._handleMultiItemClick(item, servant.id) : this._handleSingleItemClick(servant),
@@ -1065,24 +1077,27 @@ export const CEServantOverlap = {
     this._getCEMatches = getCEMatches;
   },
 
+  _resolveDisplayName(entry) {
+    const imgAsc =
+      !entry.baseMatchesAll && entry.matchedAscensions && entry.matchedAscensions.length > 0
+        ? entry.primaryAscension || entry.matchedAscensions[0]
+        : null;
+    const name = imgAsc
+      ? ServantData.getAscensionName(entry.servant.id, imgAsc) || entry.servant.name
+      : entry.servant.name;
+    const altName = !imgAsc ? entry.servant.altName : null;
+    return { name, altName };
+  },
+
   open(entry) {
     if (!this._modal || !entry) return;
-
     const titleEl = document.getElementById("ceOverlapTitle");
     if (titleEl) {
-      const imgAsc =
-        !entry.baseMatchesAll && entry.matchedAscensions && entry.matchedAscensions.length > 0
-          ? entry.primaryAscension || entry.matchedAscensions[0]
-          : null;
-      const displayName = imgAsc
-        ? ServantData.getAscensionName(entry.servant.id, imgAsc) || entry.servant.name
-        : entry.servant.name;
-      titleEl.textContent = displayName;
+      const { name, altName } = this._resolveDisplayName(entry);
+      DOMFactory.fillSwapName(titleEl, name, altName);
     }
-
     const allMatches = this._getCEMatches ? this._getCEMatches() : [];
     this._groups = ServantComboCalculator.buildServantOverlapGroups(allMatches, entry);
-
     this.renderGrid();
     this._modal.classList.add("open");
   },

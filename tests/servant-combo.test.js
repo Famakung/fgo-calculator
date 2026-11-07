@@ -593,32 +593,62 @@ test("bitset engine: _isSubsetMask handles bit 31 (0x80000000) correctly without
   assert.equal(overlap[0]?.ceIds.length, 32);
 });
 
-test("benchmark & verification: bitset engine on real 472 servant dataset", async () => {
+test("benchmark & verification: bitset engine on real 471 servant dataset", async () => {
   const { ServantData, TraitCEs } = await import("../src/scripts/data.js");
   const { computeCEMatchMatrix } = await import("../src/scripts/domain.js");
   ServantData.load();
 
+  assert.equal(ServantData.servants.length, 471, "dataset has 471 total playable servants");
   const matrix = computeCEMatchMatrix(ServantData.servants, TraitCEs);
   const allEntries = matrix.results;
   const allIds = ServantData.servants.map((s) => s.id);
 
-  // Benchmark buildSharedCEGroups on all 472 servants
-  const start = performance.now();
+  // Benchmark buildSharedCEGroups on all 471 servants
+  const start = globalThis.performance.now();
   const resAll = ServantComboCalculator.buildSharedCEGroups(allEntries, allIds);
-  const duration = performance.now() - start;
+  const duration = globalThis.performance.now() - start;
 
-  assert.equal(resAll.truncated, false, "all 472 servants must complete without truncation");
-  assert.equal(resAll.groups.length, 134, "must produce exactly 134 maximal closed groups");
+  assert.equal(resAll.truncated, false, "all 471 servants must complete without truncation");
+  assert.equal(resAll.groups.length, 133, "must produce exactly 133 maximal closed groups");
   assert.equal(resAll.unshared.length, 22, "exactly 22 servants have no matching bond gain CEs");
   assert.ok(resAll.unshared.includes("020"), "020 Cu Chulainn (Prototype) is correctly identified as unshared");
   assert.ok(duration < 50, `execution must complete under 50ms, took ${duration.toFixed(2)}ms`);
 
   // Benchmark buildServantOverlapGroups on Mash Kyrielight
   const mashEntry = allEntries.find((e) => e.servant.id === "001");
-  const t0 = performance.now();
+  const t0 = globalThis.performance.now();
   const overlap = ServantComboCalculator.buildServantOverlapGroups(allEntries, mashEntry);
-  const overlapDuration = performance.now() - t0;
+  const overlapDuration = globalThis.performance.now() - t0;
 
   assert.ok(overlap.length > 0, "Mash Kyrielight must have overlap groups");
   assert.ok(overlapDuration < 20, `overlap execution must complete under 20ms, took ${overlapDuration.toFixed(2)}ms`);
+});
+
+test("servant 467: unified François & Francesca Prélat traits, lookup fallback and combo grouping", async () => {
+  const { ServantData, TraitCEs } = await import("../src/scripts/data.js");
+  const { computeCEMatchMatrix } = await import("../src/scripts/domain.js");
+  ServantData.load();
+
+  const svt467 = ServantData.getServant("467");
+  assert.ok(svt467, "Servant 467 exists");
+  assert.equal(svt467.name, "François Prélat");
+  assert.equal(svt467.altName, "Francesca Prélat");
+  assert.ok(svt467.altImage.includes("servants/467/001.webp"));
+  assert.ok(svt467.traitSet.has("0001"), "has male trait 0001");
+  assert.ok(svt467.traitSet.has("0002"), "has female trait 0002");
+
+  // Fallback for legacy split IDs
+  assert.equal(ServantData.getServant("467-1"), svt467, "467-1 resolves to 467");
+  assert.equal(ServantData.getServant("467-2"), svt467, "467-2 resolves to 467");
+
+  // Servant 467 alone is never a combo group
+  const matrix = computeCEMatchMatrix([svt467], TraitCEs);
+  const singleRes = ServantComboCalculator.buildSharedCEGroups(matrix.results, ["467"]);
+  assert.equal(singleRes.groups.length, 0, "467 alone is not a combo");
+
+  // resolveEntryDisplay for 467
+  const entry467 = matrix.results[0];
+  const display = ServantData.resolveEntryDisplay(entry467, entry467.matchingCEs);
+  assert.equal(display.altDisplayName, "Francesca Prélat");
+  assert.ok(display.altImgSrc.includes("servants/467/001.webp"));
 });

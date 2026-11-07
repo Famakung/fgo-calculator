@@ -39,13 +39,27 @@ globalThis.document = {
     textContent: "",
     disabled: false,
     classList: {
-      add() {},
-      remove() {},
-      contains() {
-        return false;
+      _classes: new Set(),
+      add(...cls) {
+        cls.forEach((c) => this._classes.add(c));
+      },
+      remove(...cls) {
+        cls.forEach((c) => this._classes.delete(c));
+      },
+      contains(c) {
+        return this._classes.has(c);
       },
     },
-    setAttribute() {},
+    attributes: {},
+    setAttribute(k, v) {
+      this.attributes[k] = v;
+    },
+    getAttribute(k) {
+      return this.attributes[k];
+    },
+    replaceChildren(...children) {
+      this.children = children;
+    },
     appendChild(child) {
       this.children = this.children || [];
       this.children.push(child);
@@ -264,4 +278,52 @@ test("ServantSelect.setServants: updates pickedIds deduplicated, re-renders and 
     ServantSelect.render = origRender;
     ServantSelect.renderChips = origRenderChips;
   }
+});
+
+test("ServantSelect._loadPicks: migrates legacy 467-1 and 467-2 to 467 and dedupes", async () => {
+  const { CEFilterStore } = await import("../src/scripts/ce-servant-select.js");
+  const { ServantData } = await import("../src/scripts/data.js");
+  ServantData.load();
+  const origRead = CEFilterStore.read;
+  CEFilterStore.read = () => ({ servantPicks: ["001", "467-1", "467-2", "002"] });
+  try {
+    const loaded = ServantSelect._loadPicks();
+    assert.deepEqual(loaded, ["001", "467", "002"]);
+  } finally {
+    CEFilterStore.read = origRead;
+  }
+});
+
+test("ServantSelect._buildChip: builds swap portrait for servant 467", async () => {
+  const { ServantData } = await import("../src/scripts/data.js");
+  ServantData.load();
+  const chip = ServantSelect._buildChip("467");
+  assert.ok(chip);
+  const swapWrap = chip.children[0];
+  assert.equal(swapWrap.className, "servant-swap-wrap");
+  assert.equal(swapWrap.children.length, 2);
+  assert.ok(swapWrap.children[0].classList.contains("servant-swap-a"));
+  assert.ok(swapWrap.children[1].classList.contains("servant-swap-b"));
+  assert.equal(swapWrap.children[1].attributes["aria-hidden"], "true");
+});
+
+test("DOMFactory: createSwapImg and fillSwapName", async () => {
+  const { DOMFactory } = await import("../src/scripts/presentation.js");
+  const wrap = DOMFactory.createSwapImg({
+    src: "servants/467/000.webp",
+    altSrc: "servants/467/001.webp",
+    className: "portrait",
+    attrs: { alt: "François Prélat", title: "François Prélat / Francesca Prélat" },
+  });
+  assert.equal(wrap.className, "servant-swap-wrap");
+  assert.equal(wrap.children.length, 2);
+  assert.ok(wrap.children[0].classList.contains("servant-swap-a"));
+  assert.ok(wrap.children[1].classList.contains("servant-swap-b"));
+
+  const nameEl = globalThis.document.createElement("div");
+  DOMFactory.fillSwapName(nameEl, "François Prélat", "Francesca Prélat");
+  assert.ok(nameEl.classList.contains("servant-swap-name"));
+  assert.equal(nameEl.children.length, 2);
+  assert.equal(nameEl.children[0].textContent, "François Prélat");
+  assert.equal(nameEl.children[1].textContent, "Francesca Prélat");
 });

@@ -483,13 +483,25 @@ export const BondApp = {
           const imgSrc = ServantData.getImageForAscension(servant.id, ascension);
           const isFirstPortrait = bondTabActive && !firstPortraitCreated;
           if (isFirstPortrait) firstPortraitCreated = true;
-          const img = DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", {
+          const imgAttrs = {
             alt: servant.name,
             draggable: "false",
             ...(isFirstPortrait ? { loading: "eager", fetchpriority: "high" } : {}),
-          });
-          DOMFactory.addAscensionFallback(img, servant.id);
-          portraitArea.appendChild(img);
+          };
+          const portraitEl =
+            servant.altImage && !servant.hasAscensions
+              ? DOMFactory.createSwapImg({
+                  src: imgSrc,
+                  altSrc: servant.altImage,
+                  className: "servant-slot-portrait",
+                  attrs: imgAttrs,
+                  fallbackId: servant.id,
+                })
+              : DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", imgAttrs);
+          if (!servant.altImage || servant.hasAscensions) {
+            DOMFactory.addAscensionFallback(portraitEl, servant.id);
+          }
+          portraitArea.appendChild(portraitEl);
           if (servant.hasAscensions) {
             const ascSlotIndex = i;
             portraitArea.style.cursor = "pointer";
@@ -587,9 +599,8 @@ export const BondApp = {
         const info = DOMFactory.el("div", "servant-slot-info");
 
         const nameEl = DOMFactory.el("div", "servant-slot-name");
-        nameEl.textContent = servant
-          ? ServantData.getAscensionName(servant.id, slotData.ascension)
-          : slotData.servantId;
+        const primaryName = servant ? ServantData.getAscensionName(servant.id, slotData.ascension) : slotData.servantId;
+        DOMFactory.fillSwapName(nameEl, primaryName, servant?.altName);
         info.appendChild(nameEl);
 
         // Type dropdown
@@ -884,6 +895,8 @@ export const BondApp = {
           servantId: slot.servantId,
           name: servant ? ServantData.getAscensionName(slot.servantId, mbAsc) : slot.servantId,
           image: servant ? ServantData.getImageForAscension(slot.servantId, mbAsc) : null,
+          altImage: servant?.altImage || null,
+          altName: servant?.altName || null,
         });
       }
     }
@@ -900,6 +913,8 @@ export const BondApp = {
           servantId: slot.servantId,
           name: servant ? ServantData.getAscensionName(slot.servantId, supAsc) : slot.servantId,
           image: servant ? ServantData.getImageForAscension(slot.servantId, supAsc) : null,
+          altImage: servant?.altImage || null,
+          altName: servant?.altName || null,
         });
       }
     }
@@ -956,10 +971,26 @@ export const BondApp = {
         });
       }
       frontlineSupports.forEach((fs) => {
-        appliedCEs.push({ id: "support_" + fs.servantId, name: fs.name, bonus: 4, image: fs.image, isSupport: true });
+        appliedCEs.push({
+          id: "support_" + fs.servantId,
+          name: fs.name,
+          bonus: 4,
+          image: fs.image,
+          altImage: fs.altImage,
+          altName: fs.altName,
+          isSupport: true,
+        });
       });
       maxBondServants.forEach((mb) => {
-        appliedCEs.push({ id: "maxbond_" + mb.servantId, name: mb.name, bonus: 25, image: mb.image, isMaxBond: true });
+        appliedCEs.push({
+          id: "maxbond_" + mb.servantId,
+          name: mb.name,
+          bonus: 25,
+          image: mb.image,
+          altImage: mb.altImage,
+          altName: mb.altName,
+          isMaxBond: true,
+        });
       });
 
       // CE trait matching + flat bonus
@@ -1059,6 +1090,8 @@ export const BondApp = {
         servantId,
         name: servant ? ServantData.getAscensionName(servantId, ascension) : servantId,
         image: servant ? ServantData.getImageForAscension(servantId, ascension) : null,
+        altImage: servant?.altImage || null,
+        altName: servant?.altName || null,
         bondNeeded,
         effectiveBond,
         totalBonus,
@@ -1094,10 +1127,19 @@ export const BondApp = {
 
       // Portrait
       if (sr.image) {
-        const img = DOMFactory.createLazyImg(sr.image, "servant-slot-portrait", {
-          alt: sr.name,
-        });
-        card.appendChild(img);
+        const portraitEl = sr.altImage
+          ? DOMFactory.createSwapImg({
+              src: sr.image,
+              altSrc: sr.altImage,
+              className: "servant-slot-portrait",
+              attrs: { alt: sr.name },
+              fallbackId: sr.servantId,
+            })
+          : DOMFactory.createLazyImg(sr.image, "servant-slot-portrait", {
+              alt: sr.name,
+            });
+        if (!sr.altImage) DOMFactory.addAscensionFallback(portraitEl, sr.servantId);
+        card.appendChild(portraitEl);
       } else {
         const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
         fb.textContent = sr.servantId;
@@ -1106,45 +1148,35 @@ export const BondApp = {
 
       // Name
       const nameEl = DOMFactory.el("div", "servant-slot-name");
-      nameEl.textContent = sr.name;
+      DOMFactory.fillSwapName(nameEl, sr.name, sr.altName);
       card.appendChild(nameEl);
 
       // Applied CE images grid, with the teapot last while it still pays for this servant's runs
       if (sr.appliedCEs.length > 0 || (!afterTeapot && sr.teapotRuns > 0)) {
         const ceImgGrid = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
         sr.appliedCEs.forEach((ce) => {
-          if (ce.isMaxBond) {
-            // Max bond: servant portrait with bond icon overlay
+          if (ce.isMaxBond || ce.isSupport) {
+            const isMb = ce.isMaxBond;
             const wrap = DOMFactory.el("div", "bond-result-ce-maxbond-wrap");
-            const servantImg = DOMFactory.createLazyImg(ce.image, "bond-result-ce-img", {
-              alt: ce.name,
-              title: `${ce.name} +${ce.bonus}%`,
-            });
-            DOMFactory.addSimpleFallback(servantImg, "bond-result-ce-fallback", `+${ce.bonus}%`);
+            const title = `${ce.altName ? `${ce.name} / ${ce.altName}` : ce.name} +${ce.bonus}%`;
+            const badgeAttrs = { alt: ce.name, title };
+            const servantImg = ce.altImage
+              ? DOMFactory.createSwapImg({
+                  src: ce.image,
+                  altSrc: ce.altImage,
+                  className: "bond-result-ce-img",
+                  attrs: badgeAttrs,
+                  fallbackId: ce.id,
+                })
+              : DOMFactory.createLazyImg(ce.image, "bond-result-ce-img", badgeAttrs);
+            if (!ce.altImage) {
+              DOMFactory.addSimpleFallback(servantImg, "bond-result-ce-fallback", `+${ce.bonus}%`);
+            }
             wrap.appendChild(servantImg);
             const icon = DOMFactory.el("img", "bond-result-ce-maxbond-icon", {
-              src: "icons/bond_icon.webp",
-              alt: "Bond \u226515",
-              title: "Bond \u226515 (+25%)",
-            });
-            icon.onerror = () => {
-              icon.style.display = "none";
-            };
-            wrap.appendChild(icon);
-            ceImgGrid.appendChild(wrap);
-          } else if (ce.isSupport) {
-            // Frontline support: servant portrait with FP icon overlay
-            const wrap = DOMFactory.el("div", "bond-result-ce-maxbond-wrap");
-            const servantImg = DOMFactory.createLazyImg(ce.image, "bond-result-ce-img", {
-              alt: ce.name,
-              title: `${ce.name} +${ce.bonus}%`,
-            });
-            DOMFactory.addSimpleFallback(servantImg, "bond-result-ce-fallback", `+${ce.bonus}%`);
-            wrap.appendChild(servantImg);
-            const icon = DOMFactory.el("img", "bond-result-ce-maxbond-icon", {
-              src: "icons/fp_icon.webp",
-              alt: "Frontline Support",
-              title: "Frontline Support",
+              src: isMb ? "icons/bond_icon.webp" : "icons/fp_icon.webp",
+              alt: isMb ? "Bond \u226515" : "Frontline Support",
+              title: isMb ? "Bond \u226515 (+25%)" : "Frontline Support",
             });
             icon.onerror = () => {
               icon.style.display = "none";
@@ -1325,8 +1357,9 @@ export const BondApp = {
          needs, or it would keep a second chip nothing can untick. */
       const sanitize = (s, grandOn) => {
         const bondLevel = level(s.bondLevel || 0, BOND_CONSTANTS.MAX_BOND_LEVEL - 1);
+        const rawId = s.servantId === "467-1" || s.servantId === "467-2" ? "467" : s.servantId || null;
         return defaultSlot({
-          servantId: s.servantId || null,
+          servantId: rawId,
           bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, BOND_CONSTANTS.MAX_BOND_NEEDED),
           bondLevel,
           targetLevel: Math.min(

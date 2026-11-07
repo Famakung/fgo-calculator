@@ -7,19 +7,19 @@
  * - Confirms existence of all referenced WebP images in public/servants and public/craft_essences.
  */
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, '..');
+const ROOT_DIR = path.resolve(__dirname, "..");
 
 // Dynamic imports from src/scripts/data/
-const { SERVANT_DATA } = await import(path.join(ROOT_DIR, 'src/scripts/data/servants.js'));
-const { CE_DATA } = await import(path.join(ROOT_DIR, 'src/scripts/data/craft_essences.js'));
-const { TRAIT_DATA } = await import(path.join(ROOT_DIR, 'src/scripts/data/traits.js'));
-const { BOND_TABLES, BOND_TABLE_BY_SVT } = await import(path.join(ROOT_DIR, 'src/scripts/data/bond_growth.js'));
+const { SERVANT_DATA } = await import(path.join(ROOT_DIR, "src/scripts/data/servants.js"));
+const { CE_DATA } = await import(path.join(ROOT_DIR, "src/scripts/data/craft_essences.js"));
+const { TRAIT_DATA } = await import(path.join(ROOT_DIR, "src/scripts/data/traits.js"));
+const { BOND_TABLES, BOND_TABLE_BY_SVT } = await import(path.join(ROOT_DIR, "src/scripts/data/bond_growth.js"));
 
 let errors = [];
 let warnings = [];
@@ -42,21 +42,21 @@ function validateTraitId(tid, context) {
 }
 
 // 1. Validate TRAIT_DATA
-console.log('Validating TRAIT_DATA...');
+console.log("Validating TRAIT_DATA...");
 const traitKeys = Object.keys(TRAIT_DATA);
 if (traitKeys.length === 0) {
-  errors.push('TRAIT_DATA is empty');
+  errors.push("TRAIT_DATA is empty");
 }
 
 // 2. Validate SERVANT_DATA
 console.log(`Validating SERVANT_DATA (${Object.keys(SERVANT_DATA).length} entries)...`);
 for (const [id, svt] of Object.entries(SERVANT_DATA)) {
   const ctx = `Servant ${id}`;
-  if (!svt || typeof svt !== 'object') {
+  if (!svt || typeof svt !== "object") {
     errors.push(`${ctx}: Invalid servant entry`);
     continue;
   }
-  if (!svt.name || typeof svt.name !== 'string') {
+  if (!svt.name || typeof svt.name !== "string") {
     errors.push(`${ctx}: Missing or invalid name`);
   }
 
@@ -65,7 +65,7 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
   if (Array.isArray(rawTraits)) {
     checkAscending(rawTraits, `${ctx} (flat traits)`);
     rawTraits.forEach((t) => validateTraitId(t, `${ctx} (flat traits)`));
-  } else if (typeof rawTraits === 'object' && rawTraits !== null) {
+  } else if (typeof rawTraits === "object" && rawTraits !== null) {
     if (!rawTraits.base || !Array.isArray(rawTraits.base)) {
       errors.push(`${ctx}: Multi-ascension traits missing base array`);
     } else {
@@ -73,7 +73,7 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
       rawTraits.base.forEach((t) => validateTraitId(t, `${ctx} (base traits)`));
     }
     for (const [stage, arr] of Object.entries(rawTraits)) {
-      if (stage === 'base') continue;
+      if (stage === "base") continue;
       if (Array.isArray(arr)) {
         checkAscending(arr, `${ctx} (ascension ${stage})`);
         arr.forEach((t) => validateTraitId(t, `${ctx} (ascension ${stage})`));
@@ -84,23 +84,32 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
   }
 
   // Validate default face image
-  const defaultImg = path.join(ROOT_DIR, 'public', 'servants', String(id), '000.webp');
+  const defaultImg = path.join(ROOT_DIR, "public", "servants", String(id), "000.webp");
   if (!fs.existsSync(defaultImg)) {
     errors.push(`${ctx}: Missing default image at public/servants/${id}/000.webp`);
   }
 
+  // Validate unified dual-portrait for servant 467
+  if (String(id) === "467") {
+    const altImg = path.join(ROOT_DIR, "public", "servants", "467", "001.webp");
+    if (!fs.existsSync(altImg)) {
+      errors.push(`${ctx}: Missing alt image for unified servant at public/servants/467/001.webp`);
+    }
+  }
+
   // Check ascension images if multi-ascension
-  const hasAscensions = typeof rawTraits === 'object' && !Array.isArray(rawTraits) && Object.keys(rawTraits).some((k) => k !== 'base');
+  const hasAscensions =
+    typeof rawTraits === "object" && !Array.isArray(rawTraits) && Object.keys(rawTraits).some((k) => k !== "base");
   if (hasAscensions) {
-    const standard = ['001', '002'];
-    const custom = Object.keys(rawTraits).filter((k) => k !== 'base' && !standard.includes(k) && k !== '000');
+    const standard = ["001", "002"];
+    const custom = Object.keys(rawTraits).filter((k) => k !== "base" && !standard.includes(k) && k !== "000");
     if (svt.optionLabels) {
       Object.keys(svt.optionLabels).forEach((k) => {
-        if (!standard.includes(k) && k !== '000' && !custom.includes(k)) custom.push(k);
+        if (!standard.includes(k) && k !== "000" && !custom.includes(k)) custom.push(k);
       });
     }
     for (const stage of [...standard, ...custom]) {
-      const ascImg = path.join(ROOT_DIR, 'public', 'servants', String(id), `${stage}.webp`);
+      const ascImg = path.join(ROOT_DIR, "public", "servants", String(id), `${stage}.webp`);
       if (!fs.existsSync(ascImg)) {
         errors.push(`${ctx}: Ascension stage "${stage}" image missing at public/servants/${id}/${stage}.webp`);
       }
@@ -109,7 +118,9 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
 }
 
 // 2b. Validate bond point tables (Bond Calculator level costs)
-console.log(`Validating BOND_TABLES (${Object.keys(BOND_TABLES).length} tables over ${Object.keys(BOND_TABLE_BY_SVT).length} servants)...`);
+console.log(
+  `Validating BOND_TABLES (${Object.keys(BOND_TABLES).length} tables over ${Object.keys(BOND_TABLE_BY_SVT).length} servants)...`,
+);
 for (const [key, table] of Object.entries(BOND_TABLES)) {
   if (!Array.isArray(table) || table.length !== 16 || !table.every((v) => Number.isInteger(v) && v > 0)) {
     errors.push(`Bond table ${key}: expected 16 positive integers`);
@@ -121,7 +132,7 @@ for (const [id, key] of Object.entries(BOND_TABLE_BY_SVT)) {
   }
 }
 for (const id of Object.keys(SERVANT_DATA)) {
-  const base = String(id).split('-')[0];
+  const base = String(id).split("-")[0];
   if (!BOND_TABLE_BY_SVT[id] && !BOND_TABLE_BY_SVT[base]) {
     errors.push(`Servant ${id}: no bond point table`);
   }
@@ -131,7 +142,7 @@ for (const id of Object.keys(SERVANT_DATA)) {
 console.log(`Validating CE_DATA (${Object.keys(CE_DATA).length} entries)...`);
 for (const [id, ce] of Object.entries(CE_DATA)) {
   const ctx = `CE ${id}`;
-  if (!ce || typeof ce !== 'object') {
+  if (!ce || typeof ce !== "object") {
     errors.push(`${ctx}: Invalid CE entry`);
     continue;
   }
@@ -142,13 +153,13 @@ for (const [id, ce] of Object.entries(CE_DATA)) {
   // Check CEs image
   if (ce.isGroup && ce.options) {
     for (const optId of Object.keys(ce.options)) {
-      const optImg = path.join(ROOT_DIR, 'public', 'craft_essences', `${optId}.webp`);
+      const optImg = path.join(ROOT_DIR, "public", "craft_essences", `${optId}.webp`);
       if (!fs.existsSync(optImg)) {
         errors.push(`${ctx}: Group option image missing at public/craft_essences/${optId}.webp`);
       }
     }
   } else {
-    const ceImg = path.join(ROOT_DIR, 'public', 'craft_essences', `${id}.webp`);
+    const ceImg = path.join(ROOT_DIR, "public", "craft_essences", `${id}.webp`);
     if (!fs.existsSync(ceImg)) {
       errors.push(`${ctx}: Image missing at public/craft_essences/${id}.webp`);
     }
@@ -156,7 +167,7 @@ for (const [id, ce] of Object.entries(CE_DATA)) {
 }
 
 // Summary
-console.log('--------------------------------------------------');
+console.log("--------------------------------------------------");
 if (warnings.length > 0) {
   console.log(`Warnings (${warnings.length}):`);
   warnings.slice(0, 10).forEach((w) => console.warn(`  [WARN] ${w}`));
@@ -170,6 +181,6 @@ if (errors.length > 0) {
   errors.forEach((e) => console.error(`  [ERROR] ${e}`));
   process.exit(1);
 } else {
-  console.log('SUCCESS: All data, traits, and images validated cleanly.');
+  console.log("SUCCESS: All data, traits, and images validated cleanly.");
   process.exit(0);
 }
