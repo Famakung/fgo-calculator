@@ -511,3 +511,114 @@ test("null, empty, and malformed inputs handled gracefully", () => {
   assert.deepStrictEqual(res.groups[0].ceIds, ["0001"]);
   assert.deepStrictEqual(ids(res.groups[0]), ["001", "059"]);
 });
+
+test("bitset engine: _createMask, _intersectMasks, _isSubsetMask, and _decodeMask", () => {
+  const cePool = ["0001", "0002", "0003", "0004", "0005"];
+  const ceIndexMap = ServantComboCalculator._createIndexMap(cePool);
+
+  const maskA = ServantComboCalculator._createMask(["0001", "0002", "0003"], ceIndexMap, 1);
+  const maskB = ServantComboCalculator._createMask(["0002", "0003", "0004"], ceIndexMap, 1);
+  const maskC = ServantComboCalculator._createMask(["0005"], ceIndexMap, 1);
+
+  // Intersection of A and B is [0002, 0003]
+  const maskAB = ServantComboCalculator._intersectMasks(maskA, maskB);
+  assert.ok(maskAB !== null);
+  assert.deepStrictEqual(ServantComboCalculator._decodeMask(maskAB, cePool), ["0002", "0003"]);
+
+  // Disjoint intersection produces null
+  const maskAC = ServantComboCalculator._intersectMasks(maskA, maskC);
+  assert.equal(maskAC, null);
+
+  // Subset checks
+  assert.equal(ServantComboCalculator._isSubsetMask(maskAB, maskA), true);
+  assert.equal(ServantComboCalculator._isSubsetMask(maskAB, maskB), true);
+  assert.equal(ServantComboCalculator._isSubsetMask(maskA, maskAB), false);
+
+  // Mask key canonical string
+  assert.equal(ServantComboCalculator._maskKey(maskA), String(maskA[0]));
+});
+
+test("bitset engine: multi-word bitsets spanning > 32 CEs", () => {
+  // 70 distinct CEs requires 3 32-bit words (wordCount = 3)
+  const cePool = Array.from({ length: 70 }, (_, i) => String(i + 1).padStart(4, "0"));
+  const ceIndexMap = ServantComboCalculator._createIndexMap(cePool);
+  const wordCount = Math.ceil(cePool.length / 32);
+  assert.equal(wordCount, 3);
+
+  // s1 has CEs in word 0, word 1, word 2
+  const s1CEs = ["0001", "0033", "0065"];
+  // s2 has CEs in word 0, word 1, word 2
+  const s2CEs = ["0001", "0033", "0066"];
+  const mask1 = ServantComboCalculator._createMask(s1CEs, ceIndexMap, wordCount);
+  const mask2 = ServantComboCalculator._createMask(s2CEs, ceIndexMap, wordCount);
+
+  const inter = ServantComboCalculator._intersectMasks(mask1, mask2);
+  assert.ok(inter !== null);
+  assert.deepStrictEqual(ServantComboCalculator._decodeMask(inter, cePool), ["0001", "0033"]);
+  assert.equal(ServantComboCalculator._isSubsetMask(inter, mask1), true);
+  assert.equal(ServantComboCalculator._isSubsetMask(inter, mask2), true);
+  assert.equal(ServantComboCalculator._maskKey(inter), `${inter[0]},${inter[1]},${inter[2]}`);
+
+  // Test full combo calculation with multi-word bitsets
+  const entries = [
+    { servant: { id: "001" }, matchingCEIds: s1CEs },
+    { servant: { id: "002" }, matchingCEIds: s2CEs },
+  ];
+  const { groups } = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "002"]);
+  assert.equal(groups.length, 1);
+  assert.deepStrictEqual(groups[0].ceIds, ["0001", "0033"]);
+  assert.deepStrictEqual(ids(groups[0]), ["001", "002"]);
+});
+
+test("bitset engine: _isSubsetMask handles bit 31 (0x80000000) correctly without signed overflow", () => {
+  const mask = new Uint32Array([0x80000000]);
+  assert.equal(
+    ServantComboCalculator._isSubsetMask(mask, mask),
+    true,
+    "Mask with bit 31 set must be recognized as subset of itself",
+  );
+
+  const ceIds = Array.from({ length: 32 }, (_, i) => String(i + 1).padStart(4, "0"));
+  const entries = [
+    { servant: { id: "001" }, matchingCEIds: ceIds },
+    { servant: { id: "002" }, matchingCEIds: ceIds },
+  ];
+
+  const shared = ServantComboCalculator.buildSharedCEGroups(entries, ["001", "002"]);
+  assert.equal(shared.groups.length, 1, "Expected 1 shared group containing all 32 CEs");
+  assert.equal(shared.groups[0]?.ceIds.length, 32, "Expected group to retain all 32 CEs including index 31");
+
+  const overlap = ServantComboCalculator.buildServantOverlapGroups(entries, entries[0]);
+  assert.equal(overlap.length, 1, "Expected 1 overlap group sharing all 32 CEs");
+  assert.equal(overlap[0]?.ceIds.length, 32);
+});
+
+test("benchmark & verification: bitset engine on real 472 servant dataset", async () => {
+  const { ServantData, TraitCEs } = await import("../src/scripts/data.js");
+  const { computeCEMatchMatrix } = await import("../src/scripts/domain.js");
+  ServantData.load();
+
+  const matrix = computeCEMatchMatrix(ServantData.servants, TraitCEs);
+  const allEntries = matrix.results;
+  const allIds = ServantData.servants.map((s) => s.id);
+
+  // Benchmark buildSharedCEGroups on all 472 servants
+  const start = performance.now();
+  const resAll = ServantComboCalculator.buildSharedCEGroups(allEntries, allIds);
+  const duration = performance.now() - start;
+
+  assert.equal(resAll.truncated, false, "all 472 servants must complete without truncation");
+  assert.equal(resAll.groups.length, 134, "must produce exactly 134 maximal closed groups");
+  assert.equal(resAll.unshared.length, 22, "exactly 22 servants have no matching bond gain CEs");
+  assert.ok(resAll.unshared.includes("020"), "020 Cu Chulainn (Prototype) is correctly identified as unshared");
+  assert.ok(duration < 50, `execution must complete under 50ms, took ${duration.toFixed(2)}ms`);
+
+  // Benchmark buildServantOverlapGroups on Mash Kyrielight
+  const mashEntry = allEntries.find((e) => e.servant.id === "001");
+  const t0 = performance.now();
+  const overlap = ServantComboCalculator.buildServantOverlapGroups(allEntries, mashEntry);
+  const overlapDuration = performance.now() - t0;
+
+  assert.ok(overlap.length > 0, "Mash Kyrielight must have overlap groups");
+  assert.ok(overlapDuration < 20, `overlap execution must complete under 20ms, took ${overlapDuration.toFixed(2)}ms`);
+});
