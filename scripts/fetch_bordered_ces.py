@@ -3,7 +3,7 @@
 Fetch and convert Atlas Academy bordered Craft Essence (CE) face icons to WebP.
 Source URL: https://static.atlasacademy.io/JP/Faces/f_{long_id}_bordered.png
 Outputs:
-  - public/craft_essences/{ce_id}.webp (142x155 WebP, q80)
+  - public/craft_essences/{ce_id}.webp (142x155 WebP, lossless)
 
 Dynamic: Resolves 8-digit face IDs directly from Atlas Academy data (extraAssets.faces.equip),
 eliminating hardcoded ID mappings.
@@ -178,7 +178,7 @@ def download_and_convert(item):
 
                 img = Image.open(io.BytesIO(img_data)).convert("RGBA")
                 os.makedirs(CE_DIR, exist_ok=True)
-                img.save(dest_file, "WEBP", quality=80, method=6)
+                img.save(dest_file, "WEBP", lossless=True, method=6)
 
                 return (ce_id, True, f"{img.size[0]}x{img.size[1]}", url)
             except Exception as e:

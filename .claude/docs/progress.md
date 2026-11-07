@@ -4,6 +4,14 @@
 
 ---
 
+## 2026-11-08 — feat(sync): switch Atlas image fetching to lossless WebP
+
+- `scripts/sync_atlas_data.py` (`download_face_icon`) and `scripts/fetch_bordered_ces.py` (`download_ce_icon`): changed WebP encoding from lossy `quality=80, method=6` to `lossless=True, method=6`.
+- Ensures downloaded Atlas servant and CE face icons retain full pixel fidelity without lossy compression artifacts.
+- Verified with unit tests and adversarial QA tests verifying zero pixel degradation on decode and no regressions across python test suites (`test_check_data_version.py`, `test_deploy_workflow.py`, `test_drift.py`).
+- Updated `.claude/docs/fetch-data-guideline.md` manual CLI instructions and script docstrings.
+
+
 ## 2026-11-06 — feat(filter): Filter Settings becomes eight labelled sections
 
 Design `.claude/docs/archive/2026-11-05-filter-settings-rework-design.md`, plan `.claude/docs/archive/2026-11-05-filter-settings-rework-plan.md` (both archived once shipped).

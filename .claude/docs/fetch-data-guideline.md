@@ -595,7 +595,7 @@ Default (1st ascension only):
 
 ```bash
 curl -sL "https://static.atlasacademy.io/JP/Faces/f_{base}000_bordered.png" -o "servants/{short_id}.png"
-python -c "from PIL import Image; import os; Image.open('servants/{short_id}.png').save('servants/{short_id}.webp', 'WEBP', quality=80); os.remove('servants/{short_id}.png')"
+python -c "from PIL import Image; import os; Image.open('servants/{short_id}.png').save('servants/{short_id}.webp', 'WEBP', lossless=True, method=6); os.remove('servants/{short_id}.png')"
 ```
 
 Multi-ascension (000, 001, 002):
@@ -606,7 +606,7 @@ for asc in 000 001 002; do curl -sL "https://static.atlasacademy.io/JP/Faces/f_{
 python -c "
 from PIL import Image; import os
 for f in ['000.png','001.png','002.png']:
-    Image.open(f'servants/{short_id}/{f}').save(f'servants/{short_id}/{f.replace(\".png\",\".webp\")}', 'WEBP', quality=80)
+    Image.open(f'servants/{short_id}/{f}').save(f'servants/{short_id}/{f.replace(\".png\",\".webp\")}', 'WEBP', lossless=True, method=6)
     os.remove(f'servants/{short_id}/{f}')
 "
 ```
@@ -615,7 +615,7 @@ With spiriton dress (append dress code after base):
 
 ```bash
 curl -sL "https://static.atlasacademy.io/JP/Faces/f_{base}300_bordered.png" -o "servants/{short_id}/300.png"
-python -c "from PIL import Image; import os; Image.open('servants/{short_id}/300.png').save('servants/{short_id}/300.webp', 'WEBP', quality=80); os.remove('servants/{short_id}/300.png')"
+python -c "from PIL import Image; import os; Image.open('servants/{short_id}/300.png').save('servants/{short_id}/300.webp', 'WEBP', lossless=True, method=6); os.remove('servants/{short_id}/300.png')"
 ```
 
 Delete flat file when converting to multi-ascension:
@@ -726,7 +726,7 @@ URL pattern: `https://static.atlasacademy.io/JP/Faces/f_{long_id}_bordered.png` 
 
 ```
 craft_essences/
-  128/{id}.webp       — 142×155 WebP q80  →  106.5×116.25 display (portraits), 48×52.4 display (badges/chips)
+  128/{id}.webp       — 142×155 WebP lossless  →  106.5×116.25 display (portraits), 48×52.4 display (badges/chips)
 ```
 
 | Folder | Size    | Display Size  | Retina | CSS Classes                                                                                                     |

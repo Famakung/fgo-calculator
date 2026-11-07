@@ -518,7 +518,7 @@ def download_face_icon(folder_id: str, long_id: int, stage: Union[int, str] = "0
             img = Image.open(io.BytesIO(raw_data)).convert("RGBA")
             if img.size != (142, 155):
                 img = img.resize((142, 155), Image.Resampling.LANCZOS)
-            img.save(dest_file, "WEBP", quality=80, method=6)
+            img.save(dest_file, "WEBP", lossless=True, method=6)
             return True
         except Exception:
             continue
