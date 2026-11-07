@@ -672,10 +672,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </section>
 
         <!-- Servant Selector Modal -->
-        <div class="servant-modal" id="servantModal">
+        <div class="servant-modal" id="servantModal" role="dialog" aria-modal="true" aria-labelledby="servantModalTitle">
           <div class="servant-modal-content">
             <div class="servant-modal-header">
-              <span class="ascension-modal-title">Select Servant</span>
+              <span class="ascension-modal-title" id="servantModalTitle">Select Servant</span>
               <button
                 class="servant-modal-close"
                 id="servantModalClose"
@@ -798,7 +798,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </div>
 
         <!-- Ascension Selector Modal -->
-        <div class="servant-modal" id="ascensionModal">
+        <div class="servant-modal" id="ascensionModal" role="dialog" aria-modal="true" aria-labelledby="ascensionModalTitle">
           <div class="servant-modal-content">
             <div class="servant-modal-header">
               <button
@@ -827,10 +827,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </div>
 
         <!-- CE Selector Modal -->
-        <div class="servant-modal" id="ceModal">
+        <div class="servant-modal" id="ceModal" role="dialog" aria-modal="true" aria-labelledby="ceModalTitle">
           <div class="servant-modal-content">
             <div class="servant-modal-header">
-              <span class="ascension-modal-title">Select Craft Essence</span>
+              <span class="ascension-modal-title" id="ceModalTitle">Select Craft Essence</span>
               <button
                 class="servant-modal-close"
                 id="ceModalClose"
@@ -846,7 +846,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </div>
 
         <!-- CE Sub-Selector Modal -->
-        <div class="servant-modal" id="ceSubModal">
+        <div class="servant-modal" id="ceSubModal" role="dialog" aria-modal="true" aria-labelledby="ceSubModalTitle">
           <div class="servant-modal-content">
             <div class="servant-modal-header">
               <button
@@ -872,10 +872,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </div>
 
         <!-- Bond Gain CE Picker Modal -->
-        <div class="servant-modal" id="ceFilterModal">
+        <div class="servant-modal" id="ceFilterModal" role="dialog" aria-modal="true" aria-labelledby="ceFilterModalTitle">
           <div class="servant-modal-content">
             <div class="servant-modal-header">
-              <span class="ascension-modal-title">Craft Essences</span>
+              <span class="ascension-modal-title" id="ceFilterModalTitle">Craft Essences</span>
               <button
                 class="servant-modal-close"
                 id="ceFilterModalClose"
@@ -974,7 +974,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </div>
 
         <!-- CE Overlap Modal -->
-        <div class="servant-modal" id="ceOverlapModal">
+        <div class="servant-modal" id="ceOverlapModal" role="dialog" aria-modal="true" aria-labelledby="ceOverlapTitle">
           <div class="servant-modal-content">
             <div class="servant-modal-header">
               <span class="ascension-modal-title" id="ceOverlapTitle"></span>
