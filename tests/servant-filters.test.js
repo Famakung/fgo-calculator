@@ -190,7 +190,10 @@ test("the picker reads every form, so a per-ascension attribute is findable", as
   assert1.deepEqual(ServantFilters.match(every, { classFilters: ["0100"] }), false);
   assert1.deepEqual(ServantFilters.match(every, { subAttrFilters: ["0204"] }), false);
   // a servant with no ascension diffs is unaffected
-  assert1.deepEqual([...ServantData.getAllTraits("502300")].sort(), [...ServantData.getServant("502300").traits].sort());
+  assert1.deepEqual(
+    [...ServantData.getAllTraits("502300")].sort(),
+    [...ServantData.getServant("502300").traits].sort(),
+  );
 });
 
 test("gender is a row like the others", () => {

@@ -86,8 +86,11 @@ SERIES_NAME_OVERRIDES = {
 # Unofficial English translations for JP-only CEs unreleased in NA
 UNOFFICIAL_JP_TRANSLATIONS = {
     "2583": "Great Library of Memories",
+    "9409210": "Great Library of Memories",
     "2607": "Sword Saints of Wandering",
+    "9409320": "Sword Saints of Wandering",
     "2701": "Gun Dealer",
+    "9409490": "Gun Dealer",
 }
 
 # Unofficial English translations for JP-only Servants unreleased in NA
@@ -259,18 +262,22 @@ def get_cached_json(cache_dir: str, filename: str, url: str, force: bool = False
     if not force:
         cached = _load_cached(cache_path)
         if cached is not None:
-            raw_bytes, etag = fetch_url(url, if_none_match=_stored_etag(cache_dir, filename))
-            if raw_bytes is None:
-                return cached  # 304: server data unchanged
-            data = json.loads(raw_bytes.decode("utf-8"))
-            if data == cached:
-                # Body differs (e.g. encoding) but payload is identical.
+            try:
+                raw_bytes, etag = fetch_url(url, if_none_match=_stored_etag(cache_dir, filename))
+                if raw_bytes is None:
+                    return cached  # 304: server data unchanged
+                data = json.loads(raw_bytes.decode("utf-8"))
+                if data == cached:
+                    # Body differs (e.g. encoding) but payload is identical.
+                    _save_etag(cache_dir, filename, etag)
+                    return data
+                with open(cache_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
                 _save_etag(cache_dir, filename, etag)
                 return data
-            with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            _save_etag(cache_dir, filename, etag)
-            return data
+            except Exception as e:
+                print(f"  [INFO] Offline/network error ({e}), using cached {filename}.")
+                return cached
 
     raw_bytes, etag = fetch_url(url)
     data = json.loads(raw_bytes.decode("utf-8"))
@@ -1196,9 +1203,12 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
         # shortcut: only the percentage differs today, no followerVals carries AddCount, so flat gains ignore it.
         support_rate, _support_add = _bond_rates(f.get("followerVals"))
 
+        ce_id = str(ce.get("id"))
         cid_str = f"{cid:04d}"
         if cid_str in CE_OVERRIDES and "bonus" in CE_OVERRIDES[cid_str]:
             max_rate = CE_OVERRIDES[cid_str]["bonus"]
+        elif ce_id in CE_OVERRIDES and "bonus" in CE_OVERRIDES[ce_id]:
+            max_rate = CE_OVERRIDES[ce_id]["bonus"]
 
         traits = []
         match_all = False
@@ -1227,10 +1237,14 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             traits = sorted([normalize_trait_id(tid) or f"{tid:04d}" for tid in raw_tids], key=lambda x: (len(x), x))
 
         raw_name = ce.get("name", "").strip()
-        if na_names and cid_str in na_names and na_names[cid_str]:
-            raw_name = na_names[cid_str]
+        if na_names and (ce_id in na_names or cid_str in na_names):
+            raw_name = na_names.get(ce_id) or na_names.get(cid_str)
+        elif ce_id in UNOFFICIAL_JP_TRANSLATIONS:
+            raw_name = UNOFFICIAL_JP_TRANSLATIONS[ce_id]
         elif cid_str in UNOFFICIAL_JP_TRANSLATIONS:
             raw_name = UNOFFICIAL_JP_TRANSLATIONS[cid_str]
+        elif ce_id in CE_OVERRIDES and "name" in CE_OVERRIDES[ce_id]:
+            raw_name = CE_OVERRIDES[ce_id]["name"]
         elif cid_str in CE_OVERRIDES and "name" in CE_OVERRIDES[cid_str]:
             raw_name = CE_OVERRIDES[cid_str]["name"]
 
@@ -1240,6 +1254,7 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
         parsed_ces.append({
             "cid": cid,
             "cid_str": cid_str,
+            "ce_id": ce_id,
             "name": raw_name,
             "base_title": base_title,
             "flag": ce.get("flag"),
@@ -1295,15 +1310,16 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
                 opt_name = opt["name"]
                 if base_title in SERIES_NAME_OVERRIDES:
                     opt_name = re.sub(r"^" + re.escape(base_title), group_name, opt_name)
-                options[opt["cid_str"]] = {"name": opt_name}
+                options[opt["ce_id"]] = {"name": opt_name, "collectionNo": opt["cid"]}
                 if "Mash" in opt_name:
-                    group_image = opt["cid_str"]
+                    group_image = opt["ce_id"]
 
             entry = {
-                "id": first["cid_str"],
+                "id": first["ce_id"],
+                "collectionNo": first["cid"],
                 "name": group_name,
                 "isGroup": True,
-                "folder": f"{first['cid_str']}-{last['cid_str']}",
+                "folder": f"{first['ce_id']}-{last['ce_id']}",
                 "options": options,
             }
             if group_image:
@@ -1325,7 +1341,8 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             result.append(entry)
         else:
             entry = {
-                "id": first["cid_str"],
+                "id": first["ce_id"],
+                "collectionNo": first["cid"],
                 "name": first["name"],
             }
             if first["bonus"]:
@@ -1462,6 +1479,7 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
         key_repr = f'"{entry["id"]}"'
         lines.append(f"  {key_repr}: {{")
         lines.append(f'    name: {json.dumps(entry["name"])},')
+        lines.append(f'    collectionNo: {entry["collectionNo"]},')
         if entry.get("isGroup"):
             lines.append("    isGroup: true,")
             if entry.get("flatBonus"):
@@ -1478,7 +1496,7 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
                 lines.append(f'    folder: "{entry["folder"]}",')
             lines.append("    options: {")
             for opt_id, opt in entry["options"].items():
-                lines.append(f'      "{opt_id}": {{ name: {json.dumps(opt["name"])} }},')
+                lines.append(f'      "{opt_id}": {{ name: {json.dumps(opt["name"])}, collectionNo: {opt["collectionNo"]} }},')
             lines.append("    },")
         else:
             if entry.get("bonus"):
@@ -1517,7 +1535,14 @@ def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas
     na_names = {}
     try:
         na_data = get_cached_json(cache_dir, "na_basic_equip.json", na_url, force=force)
-        na_names = {f"{eq.get('collectionNo', 0):04d}": eq.get("name", "").strip() for eq in na_data if eq.get("collectionNo")}
+        for eq in na_data:
+            cno = eq.get("collectionNo", 0)
+            eid = str(eq.get("id")) if eq.get("id") else ""
+            name = eq.get("name", "").strip()
+            if cno:
+                na_names[f"{cno:04d}"] = name
+            if eid:
+                na_names[eid] = name
     except Exception as e:
         print(f"  [WARN] NA basic_equip fetch failed, falling back to JP names/overrides: {e}", file=sys.stderr)
 

@@ -15,6 +15,7 @@ import io
 import json
 import os
 import re
+import shutil
 import sys
 import time
 import urllib.request
@@ -28,6 +29,14 @@ DEFAULT_CACHE_DIR = os.path.join(BASE_DIR, ".cache", "atlas")
 EXPORT_URL = "https://api.atlasacademy.io/export/JP/nice_equip_lang_en.json"
 
 
+class CEFaceMap(dict):
+    """Dict of Atlas equip ID -> face_id, carrying cno_to_id mapping for CLI compatibility."""
+
+    def __init__(self, *args, cno_to_id=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cno_to_id = cno_to_id or {}
+
+
 def extract_face_id(equip: dict) -> str:
     """Extract 8-digit face icon ID from equip extraAssets."""
     faces = equip.get("extraAssets", {}).get("faces", {}).get("equip", {})
@@ -38,8 +47,51 @@ def extract_face_id(equip: dict) -> str:
     return match.group(1) if match else ""
 
 
-def load_ce_face_map(cache_dir: str = DEFAULT_CACHE_DIR, force: bool = False) -> dict:
-    """Load or download nice_equip_lang_en.json and build a collectionNo -> face_id map."""
+def _migrate_single_ce(cid: int, ce_id: str, dry_run: bool) -> bool:
+    target_file = os.path.join(CE_DIR, f"{ce_id}.webp")
+    candidates = [f"{cid:04d}.webp", f"{cid}.webp"]
+    migrated = False
+    for cand in candidates:
+        if cand == f"{ce_id}.webp":
+            continue
+        old_file = os.path.join(CE_DIR, cand)
+        if os.path.isfile(old_file):
+            if not dry_run:
+                if not os.path.exists(target_file):
+                    shutil.move(old_file, target_file)
+                else:
+                    os.remove(old_file)
+            migrated = True
+    return migrated
+
+
+def _cleanup_legacy_ce_files(dry_run: bool):
+    if dry_run or not os.path.isdir(CE_DIR):
+        return
+    for entry in os.listdir(CE_DIR):
+        if entry.endswith(".webp") and entry[:-5].isdigit() and int(entry[:-5]) < 10000:
+            try:
+                os.remove(os.path.join(CE_DIR, entry))
+            except OSError:
+                pass
+
+
+def migrate_ce_images(data: list, dry_run: bool = False):
+    """One-time migration renaming existing public/craft_essences/{cno}.webp to {ce_id}.webp."""
+    if not os.path.isdir(CE_DIR):
+        return
+    migrated = sum(
+        1
+        for ce in data
+        if ce.get("collectionNo", 0) > 0 and ce.get("id") and _migrate_single_ce(ce["collectionNo"], ce["id"], dry_run)
+    )
+    _cleanup_legacy_ce_files(dry_run)
+    if migrated > 0:
+        print(f"Migrated {migrated} CE image(s) to Atlas IDs.")
+
+
+def load_ce_face_map(cache_dir: str = DEFAULT_CACHE_DIR, force: bool = False, dry_run: bool = False) -> CEFaceMap:
+    """Load or download nice_equip_lang_en.json and build an Atlas equip ID -> face_id map."""
     os.makedirs(cache_dir, exist_ok=True)
     cache_file = os.path.join(cache_dir, "nice_equip_lang_en.json")
 
@@ -70,15 +122,22 @@ def load_ce_face_map(cache_dir: str = DEFAULT_CACHE_DIR, force: bool = False) ->
         with open(cache_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
 
+    migrate_ce_images(data, dry_run=dry_run)
+
     face_map = {}
+    cno_to_id = {}
     for ce in data:
         cid = ce.get("collectionNo", 0)
-        if cid > 0:
+        ce_id = ce.get("id")
+        if cid > 0 and ce_id:
+            s_id = str(ce_id)
+            cno_to_id[f"{cid:04d}"] = s_id
+            cno_to_id[str(cid)] = s_id
             face_id = extract_face_id(ce)
             if face_id:
-                face_map[f"{cid:04d}"] = face_id
+                face_map[s_id] = face_id
 
-    return face_map
+    return CEFaceMap(face_map, cno_to_id=cno_to_id)
 
 
 def load_active_ce_ids() -> list:
@@ -89,12 +148,9 @@ def load_active_ce_ids() -> list:
     with open(CE_DATA_JS, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Matches keys: "0099": or 2512:
-    found_keys = re.findall(r'^\s*["\']?(\d{4})["\']?\s*:\s*\{', content, re.MULTILINE)
-    # Also find sub-option keys
-    opt_keys = re.findall(r'["\']?(\d{4})["\']?\s*:\s*\{\s*name:', content)
-    all_ids = sorted(list(set(found_keys + opt_keys)))
-    return all_ids
+    found_keys = re.findall(r'^\s*["\']?(\d{5,8})["\']?\s*:\s*\{', content, re.MULTILINE)
+    opt_keys = re.findall(r'["\']?(\d{5,8})["\']?\s*:\s*\{\s*name:', content)
+    return sorted(list(set(found_keys + opt_keys)))
 
 
 def download_and_convert(item):
@@ -134,12 +190,16 @@ def download_and_convert(item):
 
 def sync_ces(items_map=None, ids=None, workers=8, force=False, dry_run=False, cache_dir=DEFAULT_CACHE_DIR):
     """Sync CE icons from Atlas Academy, skipping existing files if force=False."""
+    target_ids = None
     if items_map is None:
-        face_map = load_ce_face_map(cache_dir=cache_dir, force=force)
-        target_ids = ids if ids else load_active_ce_ids()
+        face_map = load_ce_face_map(cache_dir=cache_dir, force=force, dry_run=dry_run)
+        cno_to_id = getattr(face_map, "cno_to_id", {})
+        target_ids = [cno_to_id.get(cid, cid) for cid in ids] if ids else load_active_ce_ids()
         items_map = {cid: face_map[cid] for cid in target_ids if cid in face_map}
 
-    if ids:
+    if target_ids is not None:
+        items = [(cid, items_map[cid], force, dry_run) for cid in target_ids if cid in items_map]
+    elif ids:
         items = [(cid, items_map[cid], force, dry_run) for cid in ids if cid in items_map]
     else:
         items = [(cid, lid, force, dry_run) for cid, lid in sorted(items_map.items())]

@@ -147,6 +147,9 @@ for (const id of Object.keys(SERVANT_DATA)) {
 console.log(`Validating CE_DATA (${Object.keys(CE_DATA).length} entries)...`);
 for (const [id, ce] of Object.entries(CE_DATA)) {
   const ctx = `CE ${id}`;
+  if (!/^\d{5,8}$/.test(id)) {
+    errors.push(`${ctx}: Key must be numeric Atlas equip ID (5-8 digits)`);
+  }
   if (!ce || typeof ce !== "object") {
     errors.push(`${ctx}: Invalid CE entry`);
     continue;
@@ -154,10 +157,19 @@ for (const [id, ce] of Object.entries(CE_DATA)) {
   if (!ce.name) {
     errors.push(`${ctx}: Missing CE name`);
   }
+  if (typeof ce.collectionNo !== "number" || ce.collectionNo <= 0) {
+    errors.push(`${ctx}: Missing or invalid collectionNo (expected positive integer)`);
+  }
 
   // Check CEs image
   if (ce.isGroup && ce.options) {
-    for (const optId of Object.keys(ce.options)) {
+    for (const [optId, opt] of Object.entries(ce.options)) {
+      if (!/^\d{5,8}$/.test(optId)) {
+        errors.push(`${ctx}: Group option key "${optId}" must be numeric Atlas equip ID (5-8 digits)`);
+      }
+      if (!opt || typeof opt.collectionNo !== "number" || opt.collectionNo <= 0) {
+        errors.push(`${ctx}: Group option "${optId}" missing or invalid collectionNo (expected positive integer)`);
+      }
       const optImg = path.join(ROOT_DIR, "public", "craft_essences", `${optId}.webp`);
       if (!fs.existsSync(optImg)) {
         errors.push(`${ctx}: Group option image missing at public/craft_essences/${optId}.webp`);

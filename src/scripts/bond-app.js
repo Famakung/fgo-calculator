@@ -8,7 +8,7 @@ import {
   BOND_STORAGE_KEY,
 } from "./constants.js";
 import { Validator, TraitMatcher, SlotCEs, Teapot, Quest } from "./domain.js";
-import { ServantData, CEById, TraitNames } from "./data.js";
+import { ServantData, CEData, CEById, TraitNames } from "./data.js";
 import { DOMFactory } from "./presentation.js";
 
 /* One servant slot's shape. Every place a slot is created or cleared goes through here, so a new
@@ -1358,6 +1358,7 @@ export const BondApp = {
       const sanitize = (s, grandOn) => {
         const bondLevel = level(s.bondLevel || 0, BOND_CONSTANTS.MAX_BOND_LEVEL - 1);
         const rawId = s.servantId ? ServantData.migrateId(s.servantId) : null;
+        const rawCes = Array.isArray(s.ces) ? s.ces.map((e) => CEData.migrateEntry(e)) : s.ces;
         return defaultSlot({
           servantId: rawId,
           bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, BOND_CONSTANTS.MAX_BOND_NEEDED),
@@ -1370,7 +1371,7 @@ export const BondApp = {
           maxBond: s.type === "maxbond" ? true : Boolean(s.maxBond),
           bond15: s.type === "maxbond" ? true : Boolean(s.bond15),
           ascension: typeof s.ascension === "string" && s.ascension ? s.ascension : null,
-          ...SlotCEs.sanitize(s.ces, grandOn && s.grand),
+          ...SlotCEs.sanitize(rawCes, grandOn && s.grand),
         });
       };
 

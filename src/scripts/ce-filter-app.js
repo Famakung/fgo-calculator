@@ -1,7 +1,7 @@
 import { DEBOUNCE_MS } from "./constants.js";
 import { Validator, ServantSort, ServantFilters, computeCEMatchMatrix } from "./domain.js";
 import { FilterSections, FilterModalController } from "./filter-sections.js";
-import { ServantData, CEById, TraitCEs, TraitNames } from "./data.js";
+import { ServantData, CEData, CEById, TraitCEs, TraitNames } from "./data.js";
 import { DOMFactory, debounce } from "./presentation.js";
 import { ServantSelect, CEFilterStore } from "./ce-servant-select.js";
 
@@ -298,7 +298,8 @@ export const CEFilterApp = {
 
   _loadPicks() {
     const stored = CEFilterStore.read();
-    this.state.selectedCEs = Validator.validatePicks(stored.cePicks).filter((id) => CEById.has(id));
+    const rawPicks = Array.isArray(stored.cePicks) ? stored.cePicks.map((id) => CEData.migrateId(id)) : [];
+    this.state.selectedCEs = Validator.validatePicks(rawPicks).filter((id) => CEById.has(id));
     this.state.mode = CE_MODES.includes(stored.ceMode) ? stored.ceMode : this.state.mode;
     this.state.subTab = stored.subTab === "servant" ? "servant" : "ce";
   },

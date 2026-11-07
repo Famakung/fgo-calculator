@@ -57,7 +57,7 @@ export const Validator = {
   },
 
   /* Bond Gain CE picks (either sub-tab) come back from localStorage as an arbitrary value. Keep only
-     zero-padded numeric id strings (servant ids are "001"-style, CE ids "0099"-style, so 3 digits or
+     zero-padded numeric id strings (servant ids are "001"-style, CE ids "9400970"-style, so 3 digits or
      more), deduped, in the order they were saved; ids gone from the data files are dropped by the
      caller. Not validateStorageData — that coerces every key through parseFloat. */
   validatePicks(value) {

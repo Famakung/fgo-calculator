@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SlotCEs } from "../src/scripts/domain.js";
+import { CEData } from "../src/scripts/data.js";
 
 /* bond-app.js pulls in the data and DOM modules but only touches them inside its render methods, so a
    Map-backed localStorage is enough to drive loadState()/saveState(). */
@@ -112,4 +113,50 @@ test("a save holding more essences than the slot fits comes back clamped, and st
 
   BondApp.saveState();
   assert.deepEqual(JSON.parse(blobs.get(KEY)).slots[0].ces, ["2645"]);
+});
+
+test("CEData.migrateId maps legacy 4-digit ID and collectionNo to Atlas equip ID", () => {
+  assert.equal(CEData.migrateId("0910"), "9403520");
+  assert.equal(CEData.migrateId("910"), "9403520");
+  assert.equal(CEData.migrateId(910), "9403520");
+  assert.equal(CEData.migrateId("0099"), "9400970");
+  assert.equal(CEData.migrateId("0100"), "9400980");
+  assert.equal(CEData.migrateId("9403520"), "9403520");
+  assert.equal(CEData.migrateId("nonexistent"), "nonexistent");
+  assert.equal(CEData.migrateId(null), null);
+  assert.equal(CEData.migrateId(""), "");
+});
+
+test("CEData.migrateEntry maps string and object entries with groupId/optionId", () => {
+  assert.equal(CEData.migrateEntry("0910"), "9403520");
+  assert.deepEqual(CEData.migrateEntry({ groupId: "0099", optionId: "0100" }), {
+    groupId: "9400970",
+    optionId: "9400980",
+  });
+  assert.deepEqual(CEData.migrateEntry({ groupId: "9400970", optionId: "9400980" }), {
+    groupId: "9400970",
+    optionId: "9400980",
+  });
+  assert.deepEqual(CEData.migrateEntry({ groupId: "0099" }), {
+    groupId: "9400970",
+  });
+});
+
+test("BondApp.loadState migrates legacy 4-digit CE IDs to Atlas equip IDs", () => {
+  blobs.set(
+    KEY,
+    JSON.stringify({
+      slots: [
+        {
+          servantId: "800100",
+          ces: ["0910", { groupId: "0099", optionId: "0100" }],
+          grand: true,
+        },
+      ],
+      questMain: "gd",
+      parties: {},
+    }),
+  );
+  const state = BondApp.loadState();
+  assert.deepEqual(state.slots[0].ces, ["9403520", { groupId: "9400970", optionId: "9400980" }]);
 });

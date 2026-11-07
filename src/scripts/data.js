@@ -15,8 +15,12 @@ export const CEList = (() => {
       const isGroup = !!data.isGroup;
       const img = `craft_essences/${id}.webp?v=${IMAGE_VERSION}`;
       const name = data.name || `CE ${id}`;
+      const collectionNo = typeof data.collectionNo === "number" ? data.collectionNo : 0;
+      const cnoStr = collectionNo > 0 ? String(collectionNo) : "";
+      const cnoPad = collectionNo > 0 ? cnoStr.padStart(4, "0") : "";
       const base = {
         id,
+        collectionNo,
         name,
         bonus: data.bonus || 0,
         supportBonus: data.supportBonus || 0,
@@ -28,20 +32,27 @@ export const CEList = (() => {
         flatBonus: isGroup ? data.flatBonus || 0 : 0,
         image: img,
         thumbImage: img,
-        _search: `${id}\n${name}`.toLowerCase(),
+        _search: [cnoStr, cnoPad, id, name].filter(Boolean).join("\n").toLowerCase(),
       };
       if (isGroup && data.options) {
-        base.options = Object.entries(data.options).map(([optId, opt]) => {
-          const optImg = `craft_essences/${optId}.webp?v=${IMAGE_VERSION}`;
-          const optName = opt.name || `CE ${optId}`;
-          return {
-            id: optId,
-            name: optName,
-            image: optImg,
-            thumbImage: optImg,
-            _search: `${optId}\n${optName}`.toLowerCase(),
-          };
-        });
+        base.options = Object.entries(data.options)
+          .map(([optId, opt]) => {
+            const optImg = `craft_essences/${optId}.webp?v=${IMAGE_VERSION}`;
+            const optName = opt.name || `CE ${optId}`;
+            const optCno = typeof opt.collectionNo === "number" ? opt.collectionNo : 0;
+            const optCnoStr = optCno > 0 ? String(optCno) : "";
+            const optCnoPad = optCno > 0 ? optCnoStr.padStart(4, "0") : "";
+            return {
+              id: optId,
+              collectionNo: optCno,
+              name: optName,
+              image: optImg,
+              thumbImage: optImg,
+              _search: [optCnoStr, optCnoPad, optId, optName].filter(Boolean).join("\n").toLowerCase(),
+            };
+          })
+          .sort((a, b) => a.collectionNo - b.collectionNo || a.id.localeCompare(b.id));
+
         const groupOpt = data.groupImage
           ? base.options.find((o) => o.id === data.groupImage)
           : base.options.find((o) => o.id === id) || base.options[0];
@@ -52,11 +63,50 @@ export const CEList = (() => {
       }
       return base;
     })
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .sort((a, b) => a.collectionNo - b.collectionNo || a.id.localeCompare(b.id));
 })();
 
 /* O(1) CE lookup by ID */
 export const CEById = new Map(CEList.map((ce) => [ce.id, ce]));
+
+/* Map legacy collectionNo to Atlas equip IDs (top-level and group options) */
+const cnoToId = (() => {
+  const map = new Map();
+  for (const ce of CEList) {
+    if (ce.collectionNo > 0) map.set(ce.collectionNo, ce.id);
+    if (ce.isGroup && Array.isArray(ce.options)) {
+      for (const opt of ce.options) {
+        if (opt.collectionNo > 0) map.set(opt.collectionNo, opt.id);
+      }
+    }
+  }
+  return map;
+})();
+
+export const CEData = {
+  migrateId(oldId) {
+    if (!oldId) return oldId;
+    const raw = String(oldId).trim();
+    if (CEById.has(raw)) return raw;
+    if (/^\d+$/.test(raw)) {
+      const mapped = cnoToId.get(parseInt(raw, 10));
+      if (mapped) return mapped;
+    }
+    return raw;
+  },
+
+  migrateEntry(entry) {
+    if (typeof entry === "string" || typeof entry === "number") return this.migrateId(entry);
+    if (entry && typeof entry === "object" && entry.groupId) {
+      return {
+        ...entry,
+        groupId: this.migrateId(entry.groupId),
+        ...(entry.optionId ? { optionId: this.migrateId(entry.optionId) } : {}),
+      };
+    }
+    return entry;
+  },
+};
 
 /* Pre-computed list of trait-bearing CEs (cached once) */
 export const TraitCEs = CEList.filter((ce) => ce.traits.length > 0 || ce.traitGroups.length > 0);
@@ -143,13 +193,11 @@ export const ServantData = {
 
         return servant;
       })
-      .sort((a, b) => (a.collectionNo - b.collectionNo) || a.id.localeCompare(b.id));
+      .sort((a, b) => a.collectionNo - b.collectionNo || a.id.localeCompare(b.id));
 
     // Build byId and byCno Maps
     this.byId = new Map(this.servants.map((s) => [s.id, s]));
-    this.byCno = new Map(
-      this.servants.filter((s) => s.collectionNo > 0).map((s) => [s.collectionNo, s.id]),
-    );
+    this.byCno = new Map(this.servants.filter((s) => s.collectionNo > 0).map((s) => [s.collectionNo, s.id]));
   },
 
   migrateId(oldId) {

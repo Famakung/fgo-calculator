@@ -9,6 +9,10 @@ test("keeps zero-padded servant and CE ids in save order, deduped", () => {
   assert.deepStrictEqual(Validator.validatePicks(["0099", "2945", "0099"]), ["0099", "2945"]);
 });
 
+test("keeps 7-digit Atlas equip IDs in save order, deduped", () => {
+  assert.deepStrictEqual(Validator.validatePicks(["9400970", "9403520", "9400970"]), ["9400970", "9403520"]);
+});
+
 test("drops anything that is not a numeric id string", () => {
   const junk = ["1", "01", 1, "abcd", null, undefined, {}, "00a1", "__proto__"];
   assert.deepStrictEqual(Validator.validatePicks(junk), []);

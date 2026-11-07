@@ -11,6 +11,7 @@ globalThis.localStorage = {
 
 const KEY = "fgo_ce_filter_data";
 const { CEFilterStore } = await import("../src/scripts/ce-servant-select.js");
+const { CEFilterApp } = await import("../src/scripts/ce-filter-app.js");
 
 test("a write from one sub-tab keeps the other sub-tab's field", () => {
   blobs.clear();
@@ -45,4 +46,11 @@ test("a repeated write replaces its own fields, nothing else", () => {
     cePicks: ["0100"],
     ceMode: "custom",
   });
+});
+
+test("CEFilterApp._loadPicks migrates legacy 4-digit cePicks to Atlas equip IDs", () => {
+  blobs.clear();
+  CEFilterStore.write({ cePicks: ["1949", "0099"], ceMode: "all" });
+  CEFilterApp._loadPicks();
+  assert.deepStrictEqual(CEFilterApp.state.selectedCEs, ["9407480", "9400970"]);
 });

@@ -32,10 +32,12 @@
 - Dual-persona servants (Servant 467 François / Francesca Prélat): single unified entry "505600" with `collectionNo: 467`, `altId: "505700"`, and swap portrait `505700/000.webp` alongside `505600/000.webp`, rendered via DOMFactory.createSwapImg and DOMFactory.fillSwapName (8s CSS keyframe cross-fade, respects prefers-reduced-motion)
 
 ## CE_DATA
-- Keys: zero-padded CE ID strings (`"0330"`, `"1973"`, `"2509"`)
+- Keys: Atlas equip ID strings (`"9400970"`, `"9401970"`, `"9403520"`, `"9408990"`)
+- `collectionNo: <int>`: in-game collection number (e.g. 99 for Heroic Portrait, 330 for Chaldea Lunchtime)
+- Face icon WebP images named by Atlas equip ID at `public/craft_essences/{atlasId}.webp`
 - Synced full from Atlas Academy API (`nice_equip_lang_en.json`) via `npm run data:sync`
-- Simple CE: `{ "name": "...", "bonus": N, "traits": [...] }`
-- `"supportBonus": N` — only when Atlas `followerVals` differs from `svals`: % essence pays when **borrowed support servant** wears it (0910 Chaldea Teatime: `bonus: 5`, `supportBonus: 15`). `SlotCEs.rate(ce, isSupport)` (`domain.js`) only place picking between the two; 0910 currently only bond CE carrying it
+- Simple CE: `{ "name": "...", "collectionNo": N, "bonus": N, "traits": [...] }`
+- `"supportBonus": N` — only when Atlas `followerVals` differs from `svals`: % essence pays when **borrowed support servant** wears it (9403520 Chaldea Teatime: `bonus: 5`, `supportBonus: 15`). `SlotCEs.rate(ce, isSupport)` (`domain.js`) only place picking between the two; 9403520 currently only bond CE carrying it
 - Match modes:
   - Default (OR): servant needs ANY trait in `traits`
   - `"matchAll": true` (AND): servant needs ALL traits
@@ -43,9 +45,10 @@
   - `"alsoMatch": [...]`: instant match if servant has any listed trait; checked first
 - Grouped CE (`isGroup: true`):
   - Auto-detected for campaign series variants sharing identical effect signatures (e.g. Heroic Portrait, Heroic Spirit Encounter, Heroic Spirit Apex)
+  - `"collectionNo": N` (first variant's collectionNo)
   - `"flatBonus": N` or `"bonus": N`
-  - `"folder": "XXXX-YYYY"`, `"groupImage": "XXXX"`
-  - `"options": { "id": { "name": "..." } }`
+  - `"folder": "XXXXXXX-YYYYYYY"`, `"groupImage": "XXXXXXX"`
+  - `"options": { "id": { "name": "...", "collectionNo": N } }`
 
 ## Adding Data
 - Trait IDs: sort ascending in arrays

@@ -28,23 +28,6 @@ On demand, do **not** load them by default (they are big):
 - **Trait IDs are 4-digit zero-padded strings** (`"0100"`, `"0002"`), sorted ascending in arrays.
 - **Generated data is gitignored**: `src/scripts/data/*.js`, `public/servants/`, `public/craft_essences/`. Fresh clone → `npm run data:sync` before anything builds (`predev`/`prebuild` call `scripts/ensure_data.js`).
 
-## Token spend — ask before a big burn (owner rule, applies to every repo)
-
-The owner decides what a run costs. Name the step in one line and **wait for approval** before:
-
-- dispatching a reviewer, auditor or any other subagent, and any parallel fan-out of agents
-- running a multi-agent workflow
-- reading one of the large docs above whole instead of grepping it for the feature
-- repeating `npm run build` + `node scripts/verify_render.js` when no source file changed
-
-No approval needed for the cheap checks a task already calls for: `npm run test`, `npm run lint`,
-`npm run check:build`, `git` reads, targeted greps.
-
-Never auto-run a final whole-branch code review — the owner tests by hand (currently `localhost:3000` against
-a served build) and reads the diff themselves. Report gate evidence and stop. Do not substitute your own
-self-review pass for it. This is not permission to pause between tasks asking "should I continue?" — progress
-prompts are still forbidden.
-
 ## Build & verify
 
 ```bash
