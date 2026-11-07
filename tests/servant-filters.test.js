@@ -146,9 +146,9 @@ test("an ascension's alignment and sub-attribute reach the row it is filtered on
   const { ServantData } = await import("../src/scripts/data.js");
   const assert1 = await import("node:assert/strict");
   ServantData.load();
-  const base = ServantData.getTraitsForAscension("415", "base");
-  const first = ServantData.getTraitsForAscension("415", "000");
-  const third = ServantData.getTraitsForAscension("415", "002");
+  const base = ServantData.getTraitsForAscension("505500", "base");
+  const first = ServantData.getTraitsForAscension("505500", "000");
+  const third = ServantData.getTraitsForAscension("505500", "002");
   assert1.deepEqual(ServantFilters.match(base, { aliFilters: ["0301"] }), true);
   assert1.deepEqual(ServantFilters.match(base, { aliFilters: ["0301"], subAliFilters: ["0303"] }), false);
   assert1.deepEqual(
@@ -165,11 +165,11 @@ test("an ascension's alignment and sub-attribute reach the row it is filtered on
   assert1.deepEqual(base.filter((t) => t.startsWith("02")).length, 0);
   // 465 Demeter: Heaven in the first two forms, Star in the third
   assert1.deepEqual(
-    ServantFilters.match(ServantData.getTraitsForAscension("465", "000"), { subAttrFilters: ["0200"] }),
+    ServantFilters.match(ServantData.getTraitsForAscension("306400", "000"), { subAttrFilters: ["0200"] }),
     true,
   );
   assert1.deepEqual(
-    ServantFilters.match(ServantData.getTraitsForAscension("465", "002"), { subAttrFilters: ["0203"] }),
+    ServantFilters.match(ServantData.getTraitsForAscension("306400", "002"), { subAttrFilters: ["0203"] }),
     true,
   );
 });
@@ -179,8 +179,8 @@ test("the picker reads every form, so a per-ascension attribute is findable", as
   const assert1 = await import("node:assert/strict");
   ServantData.load();
   // 415's base is the intersection of her stages and holds no sub-attribute at all
-  assert1.deepEqual(ServantData.byId.get("415").traits.filter((t) => t.startsWith("02")).length, 0);
-  const every = ServantData.getAllTraits("415");
+  assert1.deepEqual(ServantData.getServant("505500").traits.filter((t) => t.startsWith("02")).length, 0);
+  const every = ServantData.getAllTraits("505500");
   assert1.deepEqual(ServantFilters.match(every, { subAttrFilters: ["0202"] }), true); // 1st/2nd form
   assert1.deepEqual(ServantFilters.match(every, { subAttrFilters: ["0201"] }), true); // 3rd form
   assert1.deepEqual(ServantFilters.match(every, { subAliFilters: ["0303"] }), true);
@@ -190,7 +190,7 @@ test("the picker reads every form, so a per-ascension attribute is findable", as
   assert1.deepEqual(ServantFilters.match(every, { classFilters: ["0100"] }), false);
   assert1.deepEqual(ServantFilters.match(every, { subAttrFilters: ["0204"] }), false);
   // a servant with no ascension diffs is unaffected
-  assert1.deepEqual([...ServantData.getAllTraits("100")].sort(), [...ServantData.byId.get("100").traits].sort());
+  assert1.deepEqual([...ServantData.getAllTraits("502300")].sort(), [...ServantData.getServant("502300").traits].sort());
 });
 
 test("gender is a row like the others", () => {

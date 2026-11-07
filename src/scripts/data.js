@@ -65,12 +65,15 @@ export const TraitCEs = CEList.filter((ce) => ce.traits.length > 0 || ce.traitGr
 export const ServantData = {
   servants: [],
   byId: new Map(),
+  byCno: new Map(),
 
   load() {
     const map = SERVANT_DATA || {};
     this.servants = Object.entries(map)
       .map(([id, data]) => {
         const name = typeof data === "string" ? data : data.name || "";
+        const collectionNo = typeof data === "object" && typeof data.collectionNo === "number" ? data.collectionNo : 0;
+        const altId = typeof data === "object" && data.altId ? String(data.altId) : null;
         const rawTraits = typeof data === "object" && data.traits ? data.traits : [];
         const isArray = Array.isArray(rawTraits);
         const traits = isArray ? rawTraits : rawTraits.base || [];
@@ -90,8 +93,14 @@ export const ServantData = {
         // Pre-compute traitSet (C2 optimization)
         const traitSet = new Set(traits);
 
+        // Pre-compute _search with collectionNo (unpadded and padded) + id + names
+        const cnoStr = collectionNo > 0 ? String(collectionNo) : "";
+        const cnoPad = collectionNo > 0 ? cnoStr.padStart(3, "0") : "";
+        const searchTokens = [cnoStr, cnoPad, id, ...allNames].filter(Boolean);
+
         const servant = {
           id,
+          collectionNo,
           name: name || `Servant ${id}`,
           traits,
           traitSet,
@@ -101,11 +110,12 @@ export const ServantData = {
           optionLabels,
           optionNames,
           image: `servants/${id}/000.webp?v=${IMAGE_VERSION}`,
-          _search: `${id}\n${allNames.join("\n")}`.toLowerCase(),
+          _search: searchTokens.join("\n").toLowerCase(),
         };
 
-        if (id === "467" && optionNames && optionNames["001"]) {
-          servant.altImage = `servants/${id}/001.webp?v=${IMAGE_VERSION}`;
+        if (altId && optionNames && optionNames["001"]) {
+          servant.altId = altId;
+          servant.altImage = `servants/${altId}/000.webp?v=${IMAGE_VERSION}`;
           servant.altName = optionNames["001"];
         }
 
@@ -133,25 +143,51 @@ export const ServantData = {
 
         return servant;
       })
-      .sort((a, b) => a.id.localeCompare(b.id));
+      .sort((a, b) => (a.collectionNo - b.collectionNo) || a.id.localeCompare(b.id));
 
-    // Build byId Map (C1 optimization)
+    // Build byId and byCno Maps
     this.byId = new Map(this.servants.map((s) => [s.id, s]));
+    this.byCno = new Map(
+      this.servants.filter((s) => s.collectionNo > 0).map((s) => [s.collectionNo, s.id]),
+    );
+  },
+
+  migrateId(oldId) {
+    if (oldId === null || oldId === undefined || oldId === "") return oldId;
+    const raw = String(oldId).trim();
+    if (this.byId.has(raw)) return raw;
+    if (raw === "467-1" || raw === "467-2") {
+      return this.byCno.get(467) || "505600";
+    }
+    const base = raw.split("-")[0];
+    if (/^\d+$/.test(base)) {
+      const cno = parseInt(base, 10);
+      const mapped = this.byCno.get(cno);
+      if (mapped) return mapped;
+    }
+    return raw;
   },
 
   getServant(id) {
-    return this.byId.get(id) || this.byId.get(String(id).split("-")[0]) || null;
+    if (!id) return null;
+    const direct = this.byId.get(id);
+    if (direct) return direct;
+    const migrated = this.migrateId(id);
+    if (migrated !== id) return this.byId.get(migrated) || null;
+    return this.byId.get(String(id).split("-")[0]) || null;
   },
 
   /* Bond point cost per level: index i is the cost of Lv.i -> Lv.i+1 for this servant.
      Merged/split portraits ("467-1") share the base collection's table. Null when the data has none. */
   getBondGrowth(id) {
-    const key = BOND_TABLE_BY_SVT[id] || BOND_TABLE_BY_SVT[String(id).split("-")[0]];
+    if (!id) return null;
+    const targetId = BOND_TABLE_BY_SVT[id] ? id : this.migrateId(id);
+    const key = BOND_TABLE_BY_SVT[targetId] || BOND_TABLE_BY_SVT[String(id).split("-")[0]];
     return (key && BOND_TABLES[key]) || null;
   },
 
   getTraitsForAscension(id, ascension) {
-    const servant = this.byId.get(id);
+    const servant = this.getServant(id);
     if (!servant) return [];
     if (!servant.hasAscensions) return servant.traits;
     if (servant._ascTraits) {
@@ -165,7 +201,7 @@ export const ServantData = {
   },
 
   getTraitSetForAscension(id, ascension) {
-    const servant = this.byId.get(id);
+    const servant = this.getServant(id);
     if (!servant) return new Set();
     if (!servant.hasAscensions) return servant.traitSet;
     if (servant._ascTraitSets) {
@@ -181,7 +217,7 @@ export const ServantData = {
      sub-attribute only in a stage diff, so the base list names them no attribute at all. A card that does
      show one form still reads getTraitsForAscension, which says that form and nothing else. */
   getAllTraits(id) {
-    const servant = this.byId.get(id);
+    const servant = this.getServant(id);
     if (!servant) return [];
     if (!servant.hasAscensions) return servant.traits;
     if (!servant._allTraits) {
@@ -192,7 +228,7 @@ export const ServantData = {
   },
 
   getAllTraitSet(id) {
-    const servant = this.byId.get(id);
+    const servant = this.getServant(id);
     if (!servant) return new Set();
     if (!servant.hasAscensions) return servant.traitSet;
     if (!servant._allTraitSet) {
@@ -238,7 +274,7 @@ export const ServantData = {
   },
 
   getAscensionOptions(id) {
-    const servant = this.byId.get(id);
+    const servant = this.getServant(id);
     if (!servant || !servant.hasAscensions) return [];
     const raw = servant.rawTraits;
     const standard = ["000", "001", "002"];
@@ -254,7 +290,7 @@ export const ServantData = {
   getAscensionLabel(id, key) {
     const LABELS = { "000": "1st Ascension", "001": "2nd Ascension", "002": "3rd Ascension" };
     if (LABELS[key]) return LABELS[key];
-    const servant = this.byId.get(id);
+    const servant = this.getServant(id);
     if (servant && servant.optionLabels && servant.optionLabels[key]) {
       return servant.optionLabels[key];
     }
@@ -262,7 +298,7 @@ export const ServantData = {
   },
 
   getAscensionName(id, ascension) {
-    const servant = this.byId.get(id);
+    const servant = this.getServant(id);
     if (!servant) return "";
     if (ascension && servant.optionNames && servant.optionNames[ascension]) {
       return servant.optionNames[ascension];
@@ -277,7 +313,7 @@ export const ServantData = {
      render via their own stage group, so surfacing them again would duplicate.
      388 "Serious Mode" is label-only (no trait diff), so it needs this. */
   getSpiritronLabel(id, matchingCEs, matchedAscensions, baseMatchesAll) {
-    const servant = this.byId.get(id);
+    const servant = this.getServant(id);
     if (!servant || !servant.optionLabels) return "";
     const hasSpiritronCE = (matchingCEs || []).some(
       (ce) => (ce.traits || []).includes("2780") || (ce.traitGroups || []).some((group) => group.includes("2780")),
@@ -293,13 +329,13 @@ export const ServantData = {
   },
 
   getAllNames(id) {
-    const servant = this.byId.get(id);
+    const servant = this.getServant(id);
     return servant ? servant.allNames : [];
   },
 
   getDefaultAscension(servantId, slotAscension) {
     if (slotAscension) return slotAscension;
-    const servant = this.byId.get(servantId);
+    const servant = this.getServant(servantId);
     return servant && servant.hasAscensions ? "000" : null;
   },
 };

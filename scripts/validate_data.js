@@ -56,8 +56,14 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
     errors.push(`${ctx}: Invalid servant entry`);
     continue;
   }
+  if (!/^\d{5,7}$/.test(id)) {
+    errors.push(`${ctx}: Key must be numeric Atlas svt ID (5-7 digits)`);
+  }
   if (!svt.name || typeof svt.name !== "string") {
     errors.push(`${ctx}: Missing or invalid name`);
+  }
+  if (typeof svt.collectionNo !== "number" || svt.collectionNo <= 0) {
+    errors.push(`${ctx}: Missing or invalid collectionNo (expected positive integer)`);
   }
 
   // Validate traits
@@ -90,10 +96,10 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
   }
 
   // Validate unified dual-portrait for servant 467
-  if (String(id) === "467") {
-    const altImg = path.join(ROOT_DIR, "public", "servants", "467", "001.webp");
+  if (svt.altId) {
+    const altImg = path.join(ROOT_DIR, "public", "servants", String(svt.altId), "000.webp");
     if (!fs.existsSync(altImg)) {
-      errors.push(`${ctx}: Missing alt image for unified servant at public/servants/467/001.webp`);
+      errors.push(`${ctx}: Missing alt image for unified servant at public/servants/${svt.altId}/000.webp`);
     }
   }
 
@@ -132,8 +138,7 @@ for (const [id, key] of Object.entries(BOND_TABLE_BY_SVT)) {
   }
 }
 for (const id of Object.keys(SERVANT_DATA)) {
-  const base = String(id).split("-")[0];
-  if (!BOND_TABLE_BY_SVT[id] && !BOND_TABLE_BY_SVT[base]) {
+  if (!BOND_TABLE_BY_SVT[id]) {
     errors.push(`Servant ${id}: no bond point table`);
   }
 }

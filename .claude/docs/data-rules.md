@@ -6,7 +6,7 @@
 ## Bond point tables (`bond_growth.js`)
 - Atlas `bondGrowth` = **running total from bond 0**, not per-level cost: Altria's `[3000, 9125, 15250, …]` → Lv.0→1 costs 3,000, Lv.1→2 costs 9,125 − 3,000 = 6,125. `sync_bond_growth()` differences it, so shipped table is **per level step** — `table[i]` = cost standing at Lv.i needs to reach Lv.i+1. Never re-add totals.
 - `BOND_TABLES`: `{ "tN": [16 ints] }` — 471 playable servants share only **76** distinct tables, each shape stored once
-- `BOND_TABLE_BY_SVT`: `{ "002": "t1", … }` — servant key (zero-padding same as `SERVANT_DATA`) → table key
+- `BOND_TABLE_BY_SVT`: `{ "100100": "t1", … }` — servant key (Atlas svt ID string, same as `SERVANT_DATA`) → table key
 - Read via `ServantData.getBondGrowth(id)`; UI modules don't touch maps direct
 - Levels: Current 0–15, Target 1–16 (`BOND_CONSTANTS.MIN_BOND_LEVEL` / `MAX_BOND_LEVEL`); surplus carries up to `BOND_CARRY_LIMIT` (10), discarded past bond cap. `BOND_BONUS_LEVEL` (15) pays +25% party bonus; Current Lv. select ticks "Bond ≥15" to match itself
 - Written whole-file by `sync_bond_growth()` (runs with servant step, skipped by `--skip-servants`), gitignored like other generated data files, required by `scripts/ensure_data.js`, checked by `scripts/validate_data.js`: 16 positive ints per table, every key resolves, every `SERVANT_DATA` entry has a table
@@ -18,7 +18,8 @@
 - Prefixes: `0xxx`=gender, `01xx`=class, `02xx`=attribute, `03xx`=alignment, `04xx`=rarity, `26xx`/`27xx`/`28xx`=special (`"2883"` = Fate/stay night)
 
 ## SERVANT_DATA
-- Keys: zero-padded ID strings (`"001"`, `"070"`, `"465"`)
+- Keys: Atlas svt ID strings (`"800100"`, `"100100"`, `"505600"`)
+- `collectionNo: <int>`: in-game collection number (e.g. 1 for Mash, 467 for François)
 - Simple: `"traits": ["0001", "0100", ...]` — flat sorted array
 - Multi-ascension: `"traits": {"base": [...], "000": [...], "001": [...], "300": [...]}`
   - Standard keys: `"000"`, `"001"`, `"002"`
@@ -27,8 +28,8 @@
 - **Sub-attribute overrides live outside `traits` in source**: Atlas stores servant's Heaven/Earth/Human/Star/Beast in `ascensionAdd.attribute.ascension` (keyed **1..4**, each stage says for itself); `sync_atlas_data.py` maps `sky/earth/human/star/beast` → `0200…0204` onto finished stage sets. 4 servants change with forms — 415 Alice human→earth, 465 Demeter heaven→star, 416 Hibiki & Chikagi earth→star, 444 U-Olga Marie star→human — their `base` (stage intersection) holds **no** `02xx`; each stage diff carries its own. Reader naming no form takes `ServantData.getAllTraits(id)` (union of every form, cached); card naming one form takes `getTraitsForAscension(id, ascension)` Individuality lists never contain attribute, and ids like `2011 skyOrEarthServant` or `2903 kuonjiAliceStage3` are skill-AI gate conditions `normalize_trait_id` drops on purpose
 - `optionLabels`: display labels for non-standard ascensions (`{"300": "Piercing Bunny"}`)
   - **Two spiritron costume shapes**: (a) **stage costumes** — key in `traits` (e.g. `444` `{"300": ["0304"]}`) → Bond Gain CE renders as own stage-group label via `getAscensionLabel`; (b) **label-only costumes** — key in `optionLabels` but NOT in `traits` (e.g. `388` `{"300": "Serious Mode"}`) → surfaces only via `ServantData.getSpiritronLabel()` when spiritron CE (trait `2780`) matches base group
-- `optionNames`: alternate names (`{"002": "Miyu Sakatsuki"}`)
-- Dual-persona servants (Servant 467 François / Francesca Prélat): single unified entry "467" with top-level "altName": "Francesca Prélat" and swap portrait "002-1" alongside "002", rendered via DOMFactory.createSwapImg and DOMFactory.fillSwapName (8s CSS keyframe cross-fade, respects prefers-reduced-motion)
+- `optionNames`: alternate names (`{"001": "Francesca Prélat"}`)
+- Dual-persona servants (Servant 467 François / Francesca Prélat): single unified entry "505600" with `collectionNo: 467`, `altId: "505700"`, and swap portrait `505700/000.webp` alongside `505600/000.webp`, rendered via DOMFactory.createSwapImg and DOMFactory.fillSwapName (8s CSS keyframe cross-fade, respects prefers-reduced-motion)
 
 ## CE_DATA
 - Keys: zero-padded CE ID strings (`"0330"`, `"1973"`, `"2509"`)
@@ -52,7 +53,7 @@
 - Trait `0200` fixed and preserved as `"Heaven Attribute"` (matches official in-game NA status screen)
 - New CE field → whitelist in `CEList` IIFE `src/scripts/data.js` (silently stripped otherwise)
 - New servant field → handle in `ServantData.load()` `src/scripts/data.js`
-- Images: `public/servants/{ID}/{ascension}.webp`, `public/craft_essences/...`
+- Images: `public/servants/{atlasId}/{stage}.webp`, `public/craft_essences/...`
 
 ## Zero-Commit Architecture
 - Game images (`public/servants/`, `public/craft_essences/`) + generated data (`src/scripts/data/*.js`) follow **Zero-Commit Architecture**:

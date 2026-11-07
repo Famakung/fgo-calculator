@@ -841,7 +841,13 @@ export const ServantSort = {
 
      A Bond Gain CE result card is not a servant — it is a servant plus the ascension its traits came from —
      so the two readers say where a row's id and trait list live instead of this code guessing. */
-  sorted(rows, sortBy = "id", order = "asc", idOf = (row) => row.id, traitsOf = (row) => row.traits) {
+  sorted(
+    rows,
+    sortBy = "id",
+    order = "asc",
+    idOf = (row) => (row && (row.collectionNo || (row.servant && row.servant.collectionNo))) || (row && row.id),
+    traitsOf = (row) => row.traits,
+  ) {
     const key = this.KEYS.includes(sortBy) ? sortBy : "id";
     const dir = order === "desc" ? -1 : 1;
     const len = rows.length;

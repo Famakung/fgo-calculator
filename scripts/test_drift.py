@@ -45,9 +45,9 @@ def write_servants_file(tmpdir, entries):
 
 
 def normal_entry(cno, svt):
-    key = f"{cno:03d}" if cno < 100 else str(cno)
+    key = str(svt.get("id")) if svt.get("id") else (f"{cno:03d}" if cno < 100 else str(cno))
     base, diffs, ol, on, _cb = m.extract_servant_traits(svt)
-    return key, m.format_servant_js_entry(key, svt.get("name") or "", base, diffs, ol, on)
+    return key, m.format_servant_js_entry(key, svt.get("name") or "", base, diffs, ol, on, collection_no=cno)
 
 
 def trait_add_entry(cno, traits, adds):

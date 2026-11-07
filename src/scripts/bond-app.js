@@ -1357,7 +1357,7 @@ export const BondApp = {
          needs, or it would keep a second chip nothing can untick. */
       const sanitize = (s, grandOn) => {
         const bondLevel = level(s.bondLevel || 0, BOND_CONSTANTS.MAX_BOND_LEVEL - 1);
-        const rawId = s.servantId === "467-1" || s.servantId === "467-2" ? "467" : s.servantId || null;
+        const rawId = s.servantId ? ServantData.migrateId(s.servantId) : null;
         return defaultSlot({
           servantId: rawId,
           bondNeeded: Validator.clamp(s.bondNeeded || 0, 0, BOND_CONSTANTS.MAX_BOND_NEEDED),

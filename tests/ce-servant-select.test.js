@@ -288,7 +288,7 @@ test("ServantSelect._loadPicks: migrates legacy 467-1 and 467-2 to 467 and dedup
   CEFilterStore.read = () => ({ servantPicks: ["001", "467-1", "467-2", "002"] });
   try {
     const loaded = ServantSelect._loadPicks();
-    assert.deepEqual(loaded, ["001", "467", "002"]);
+    assert.deepEqual(loaded, ["800100", "505600", "100100"]);
   } finally {
     CEFilterStore.read = origRead;
   }
@@ -297,7 +297,7 @@ test("ServantSelect._loadPicks: migrates legacy 467-1 and 467-2 to 467 and dedup
 test("ServantSelect._buildChip: builds swap portrait for servant 467", async () => {
   const { ServantData } = await import("../src/scripts/data.js");
   ServantData.load();
-  const chip = ServantSelect._buildChip("467");
+  const chip = ServantSelect._buildChip("505600");
   assert.ok(chip);
   const swapWrap = chip.children[0];
   assert.equal(swapWrap.className, "servant-swap-wrap");

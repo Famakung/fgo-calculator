@@ -117,7 +117,7 @@ export const ServantSelect = {
 
   _loadPicks() {
     const raw = CEFilterStore.read().servantPicks;
-    const migrated = Array.isArray(raw) ? raw.map((id) => (id === "467-1" || id === "467-2" ? "467" : id)) : [];
+    const migrated = Array.isArray(raw) ? raw.map((id) => ServantData.migrateId(id)) : [];
     return Validator.validatePicks(migrated).filter((id) => ServantData.getServant(id) != null);
   },
 

@@ -611,11 +611,11 @@ test("benchmark & verification: bitset engine on real 471 servant dataset", asyn
   assert.equal(resAll.truncated, false, "all 471 servants must complete without truncation");
   assert.equal(resAll.groups.length, 133, "must produce exactly 133 maximal closed groups");
   assert.equal(resAll.unshared.length, 22, "exactly 22 servants have no matching bond gain CEs");
-  assert.ok(resAll.unshared.includes("020"), "020 Cu Chulainn (Prototype) is correctly identified as unshared");
+  assert.ok(resAll.unshared.includes("300700"), "300700 Cu Chulainn (Prototype) is correctly identified as unshared");
   assert.ok(duration < 50, `execution must complete under 50ms, took ${duration.toFixed(2)}ms`);
 
   // Benchmark buildServantOverlapGroups on Mash Kyrielight
-  const mashEntry = allEntries.find((e) => e.servant.id === "001");
+  const mashEntry = allEntries.find((e) => e.servant.id === "800100");
   const t0 = globalThis.performance.now();
   const overlap = ServantComboCalculator.buildServantOverlapGroups(allEntries, mashEntry);
   const overlapDuration = globalThis.performance.now() - t0;
@@ -629,26 +629,26 @@ test("servant 467: unified François & Francesca Prélat traits, lookup fallback
   const { computeCEMatchMatrix } = await import("../src/scripts/domain.js");
   ServantData.load();
 
-  const svt467 = ServantData.getServant("467");
-  assert.ok(svt467, "Servant 467 exists");
+  const svt467 = ServantData.getServant("505600");
+  assert.ok(svt467, "Servant 505600 exists");
   assert.equal(svt467.name, "François Prélat");
   assert.equal(svt467.altName, "Francesca Prélat");
-  assert.ok(svt467.altImage.includes("servants/467/001.webp"));
+  assert.ok(svt467.altImage.includes("servants/505700/000.webp"));
   assert.ok(svt467.traitSet.has("0001"), "has male trait 0001");
   assert.ok(svt467.traitSet.has("0002"), "has female trait 0002");
 
   // Fallback for legacy split IDs
-  assert.equal(ServantData.getServant("467-1"), svt467, "467-1 resolves to 467");
-  assert.equal(ServantData.getServant("467-2"), svt467, "467-2 resolves to 467");
+  assert.equal(ServantData.getServant("467-1"), svt467, "467-1 resolves to 505600");
+  assert.equal(ServantData.getServant("467-2"), svt467, "467-2 resolves to 505600");
 
   // Servant 467 alone is never a combo group
   const matrix = computeCEMatchMatrix([svt467], TraitCEs);
-  const singleRes = ServantComboCalculator.buildSharedCEGroups(matrix.results, ["467"]);
+  const singleRes = ServantComboCalculator.buildSharedCEGroups(matrix.results, ["505600"]);
   assert.equal(singleRes.groups.length, 0, "467 alone is not a combo");
 
   // resolveEntryDisplay for 467
   const entry467 = matrix.results[0];
   const display = ServantData.resolveEntryDisplay(entry467, entry467.matchingCEs);
   assert.equal(display.altDisplayName, "Francesca Prélat");
-  assert.ok(display.altImgSrc.includes("servants/467/001.webp"));
+  assert.ok(display.altImgSrc.includes("servants/505700/000.webp"));
 });

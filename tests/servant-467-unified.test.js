@@ -153,14 +153,16 @@ test("servant 467: data and schema invariants", async () => {
   const { ServantData } = await import("../src/scripts/data.js");
   ServantData.load();
 
-  const svt = ServantData.getServant("467");
-  assert.ok(svt, "Servant 467 must exist in ServantData");
-  assert.equal(svt.id, "467");
+  const svt = ServantData.getServant("505600");
+  assert.ok(svt, "Servant 505600 (cno 467) must exist in ServantData");
+  assert.equal(svt.id, "505600");
+  assert.equal(svt.collectionNo, 467);
+  assert.equal(svt.altId, "505700");
   assert.equal(svt.name, "François Prélat");
   assert.equal(svt.altName, "Francesca Prélat");
   assert.equal(svt.hasAscensions, false);
-  assert.ok(svt.image.includes("servants/467/000.webp"));
-  assert.ok(svt.altImage.includes("servants/467/001.webp"));
+  assert.ok(svt.image.includes("servants/505600/000.webp"));
+  assert.ok(svt.altImage.includes("servants/505700/000.webp"));
 
   // Traits check: both male (0001) and female (0002), but not unknown gender (0003)
   assert.ok(svt.traitSet.has("0001"), "must contain male trait 0001");
@@ -168,10 +170,36 @@ test("servant 467: data and schema invariants", async () => {
   assert.ok(!svt.traitSet.has("0003"), "must NOT contain unknown-gender trait 0003");
 
   // Legacy split ID resolution
-  assert.equal(ServantData.getServant("467-1"), svt, "467-1 must resolve to 467");
-  assert.equal(ServantData.getServant("467-2"), svt, "467-2 must resolve to 467");
-  assert.equal(ServantData.getServant("467-99"), svt, "467-99 must resolve to 467");
+  assert.equal(ServantData.getServant("467"), svt, "467 must resolve to 505600");
+  assert.equal(ServantData.getServant("467-1"), svt, "467-1 must resolve to 505600");
+  assert.equal(ServantData.getServant("467-2"), svt, "467-2 must resolve to 505600");
+  assert.equal(ServantData.getServant("467-99"), svt, "467-99 must resolve to 505600");
   assert.equal(ServantData.getServant("nonexistent"), null);
+});
+
+test("ServantData.migrateId: maps legacy collection numbers and 467 splits to Atlas svt IDs", async () => {
+  const { ServantData } = await import("../src/scripts/data.js");
+  ServantData.load();
+
+  // Legacy collection numbers (string and number)
+  assert.equal(ServantData.migrateId("001"), "800100");
+  assert.equal(ServantData.migrateId("1"), "800100");
+  assert.equal(ServantData.migrateId("002"), "100100");
+  assert.equal(ServantData.migrateId("467"), "505600");
+
+  // 467 split variants
+  assert.equal(ServantData.migrateId("467-1"), "505600");
+  assert.equal(ServantData.migrateId("467-2"), "505600");
+
+  // Already-valid Atlas IDs pass through unchanged
+  assert.equal(ServantData.migrateId("800100"), "800100");
+  assert.equal(ServantData.migrateId("100100"), "100100");
+  assert.equal(ServantData.migrateId("505600"), "505600");
+
+  // Unknown IDs and falsy values pass through unchanged
+  assert.equal(ServantData.migrateId("999999"), "999999");
+  assert.equal(ServantData.migrateId(null), null);
+  assert.equal(ServantData.migrateId(""), "");
 });
 
 test("servant 467: Bond Calculator lookup and ascension helpers", async () => {
@@ -179,26 +207,25 @@ test("servant 467: Bond Calculator lookup and ascension helpers", async () => {
   ServantData.load();
 
   // Bond table lookup
-  const table467 = ServantData.getBondGrowth("467");
-  assert.ok(Array.isArray(table467), "Bond growth table must be an array for 467");
+  const table467 = ServantData.getBondGrowth("505600");
+  assert.ok(Array.isArray(table467), "Bond growth table must be an array for 505600");
   assert.equal(table467.length > 0, true);
 
-  // Split IDs also return the growth table
+  // Split and legacy IDs also return the growth table
+  assert.equal(ServantData.getBondGrowth("467"), table467);
   assert.equal(ServantData.getBondGrowth("467-1"), table467);
   assert.equal(ServantData.getBondGrowth("467-2"), table467);
 
   // Ascension helpers
-  assert.equal(ServantData.getDefaultAscension("467", null), null, "non-ascension servant returns null");
+  assert.equal(ServantData.getDefaultAscension("505600", null), null, "non-ascension servant returns null");
   assert.equal(ServantData.getDefaultAscension("467-1", null), null);
-  assert.equal(ServantData.getDefaultAscension("467", "001"), "001");
+  assert.equal(ServantData.getDefaultAscension("505600", "001"), "001");
 
-  assert.equal(ServantData.getAscensionName("467", null), "François Prélat");
-  assert.equal(ServantData.getAscensionName("467", "001"), "Francesca Prélat");
+  assert.equal(ServantData.getAscensionName("505600", null), "François Prélat");
+  assert.equal(ServantData.getAscensionName("505600", "001"), "Francesca Prélat");
 
-  const defaultImg = ServantData.getImageForAscension("467", null);
-  assert.ok(defaultImg.includes("servants/467/000.webp"), `Default image is 000.webp: ${defaultImg}`);
-  const altImg = ServantData.getImageForAscension("467", "001");
-  assert.ok(altImg.includes("servants/467/001.webp"), `Alt image is 001.webp: ${altImg}`);
+  const defaultImg = ServantData.getImageForAscension("505600", null);
+  assert.ok(defaultImg.includes("servants/505600/000.webp"), `Default image is 000.webp: ${defaultImg}`);
 });
 
 test("servant 467: search and filter behavior in modal picker", async () => {
@@ -231,17 +258,17 @@ test("servant 467: combo and overlap calculations never form single-servant grou
   const { ServantComboCalculator, computeCEMatchMatrix } = await import("../src/scripts/domain.js");
   ServantData.load();
 
-  const svt467 = ServantData.getServant("467");
-  const svt001 = ServantData.getServant("001"); // Mash
+  const svt467 = ServantData.getServant("505600");
+  const svt001 = ServantData.getServant("800100"); // Mash
 
   // 1. Single picked 467 produces 0 shared CE groups
   const matrix1 = computeCEMatchMatrix([svt467], TraitCEs);
-  const res1 = ServantComboCalculator.buildSharedCEGroups(matrix1.results, ["467"]);
+  const res1 = ServantComboCalculator.buildSharedCEGroups(matrix1.results, ["505600"]);
   assert.equal(res1.groups.length, 0, "467 alone produces 0 combo groups");
 
   // 2. 467 + 001 produces valid shared CE groups with both servants
   const matrix2 = computeCEMatchMatrix([svt467, svt001], TraitCEs);
-  const res2 = ServantComboCalculator.buildSharedCEGroups(matrix2.results, ["467", "001"]);
+  const res2 = ServantComboCalculator.buildSharedCEGroups(matrix2.results, ["505600", "800100"]);
   assert.ok(res2.groups.length > 0, "467 + Mash produces shared CE groups");
   for (const group of res2.groups) {
     const servantIds = new Set(group.members.map((m) => m.servant.id));
@@ -249,11 +276,11 @@ test("servant 467: combo and overlap calculations never form single-servant grou
   }
 
   // 3. buildServantOverlapGroups when clicking 467's result card
-  const entry467 = matrix2.results.find((r) => r.servant.id === "467");
+  const entry467 = matrix2.results.find((r) => r.servant.id === "505600");
   const overlaps = ServantComboCalculator.buildServantOverlapGroups(matrix2.results, entry467);
   for (const group of overlaps) {
     for (const other of group.otherMembers) {
-      assert.notEqual(other.servant.id, "467", "Other members must not include 467");
+      assert.notEqual(other.servant.id, "505600", "Other members must not include 467");
     }
   }
 });
@@ -272,7 +299,7 @@ test("servant 467: legacy localStorage migration in ServantSelect._loadPicks vs 
   CEFilterStore.read = () => ({ servantPicks: ["467-1", "467-2", "001"] });
   try {
     const loaded = ServantSelect._loadPicks();
-    assert.deepEqual(loaded, ["467", "001"], "migrates 467-1 and 467-2 to 467 and dedupes");
+    assert.deepEqual(loaded, ["505600", "800100"], "migrates 467-1 and 467-2 to 505600 and 001 to 800100 and dedupes");
   } finally {
     CEFilterStore.read = origRead;
   }
@@ -285,7 +312,7 @@ test("servant 467: DOM presentation, swap image, and overlap modal title", async
   const { CEServantOverlap } = await import("../src/scripts/selectors.js");
   ServantData.load();
 
-  const svt467 = ServantData.getServant("467");
+  const svt467 = ServantData.getServant("505600");
   const matrix = computeCEMatchMatrix([svt467], TraitCEs);
   const entry467 = matrix.results[0];
 
@@ -310,7 +337,7 @@ test("servant 467: DOM presentation, swap image, and overlap modal title", async
   assert.equal(titleEl.children[1].textContent, "Francesca Prélat");
 
   // Opening for servant without altName clears swap name
-  const svt001 = ServantData.getServant("001");
+  const svt001 = ServantData.getServant("800100");
   const entry001 = { servant: svt001, matchingCEs: [] };
   CEServantOverlap.open(entry001);
   assert.equal(titleEl.classList.contains("servant-swap-name"), false);
@@ -329,13 +356,13 @@ test("regression: across all 471 servants, ONLY servant 467 has altImage and alt
 
   assert.deepEqual(
     withAltImage.map((s) => s.id),
-    ["467"],
-    "ONLY servant 467 has altImage defined",
+    ["505600"],
+    "ONLY servant 505600 (467) has altImage defined",
   );
   assert.deepEqual(
     withAltName.map((s) => s.id),
-    ["467"],
-    "ONLY servant 467 has altName defined",
+    ["505600"],
+    "ONLY servant 505600 (467) has altName defined",
   );
 
   // Specifically verify single-trait-set servants with optionNames (418, 417, 431, 250, etc.)
@@ -433,17 +460,18 @@ test("BondApp: party setup slot and result card render swap display for 467", as
   globalThis.localStorage.getItem = (key) => (key === "fgo_bond_calculator_data" ? rawSave : null);
   try {
     const loaded = BondApp.loadState();
-    assert.equal(loaded.slots[0].servantId, "467", "migrates slots[0] 467-1 to 467");
-    assert.equal(loaded.slots[1].servantId, "467", "migrates slots[1] 467-2 to 467");
-    assert.equal(loaded.parties["0101"][0].servantId, "467", "migrates parties['0101'][0] 467-1 to 467");
-    assert.equal(loaded.parties.all[0].servantId, "467", "migrates parties.all[0] 467-2 to 467");
+    assert.equal(loaded.slots[0].servantId, "505600", "migrates slots[0] 467-1 to 505600");
+    assert.equal(loaded.slots[1].servantId, "505600", "migrates slots[1] 467-2 to 505600");
+    assert.equal(loaded.slots[2].servantId, "800100", "migrates slots[2] 001 to 800100");
+    assert.equal(loaded.parties["0101"][0].servantId, "505600", "migrates parties['0101'][0] 467-1 to 505600");
+    assert.equal(loaded.parties.all[0].servantId, "505600", "migrates parties.all[0] 467-2 to 505600");
     BondApp.state = loaded;
   } finally {
     globalThis.localStorage.getItem = origGet;
   }
 
   // Test slot creation for 467, including eager/fetchpriority preservation on slot 0 when bond tab is active
-  BondApp.state.slots[0] = { servantId: "467", bondNeeded: 10000, type: "normal", ascension: null, ces: [] };
+  BondApp.state.slots[0] = { servantId: "505600", bondNeeded: 10000, type: "normal", ascension: null, ces: [] };
   const mockGrid = getMockElement("servantGrid");
   BondApp.buildServantSlots();
   assert.ok(mockGrid.children.length > 0);
@@ -470,8 +498,8 @@ test("BondApp: party setup slot and result card render swap display for 467", as
   assert.ok(cardName && cardName.classList.contains("servant-swap-name"), "Result card name has swap name");
 
   // Test frontline support mini-badge swap & tooltip for 467
-  BondApp.state.slots[0] = { servantId: "001", bondNeeded: 10000, type: "normal", ascension: null, ces: [] };
-  BondApp.state.slots[1] = { servantId: "467", bondNeeded: 0, type: "support", ascension: null, ces: [] };
+  BondApp.state.slots[0] = { servantId: "800100", bondNeeded: 10000, type: "normal", ascension: null, ces: [] };
+  BondApp.state.slots[1] = { servantId: "505600", bondNeeded: 0, type: "support", ascension: null, ces: [] };
   BondApp.calculate();
   const supportBadgeWrap = resultContent.querySelector(".bond-result-ce-maxbond-wrap");
   assert.ok(supportBadgeWrap, "Support badge wrap must be rendered");
@@ -484,9 +512,9 @@ test("BondApp: party setup slot and result card render swap display for 467", as
   );
 
   // Test Max Bond mini-badge swap & tooltip for 467
-  BondApp.state.slots[0] = { servantId: "001", bondNeeded: 10000, type: "normal", ascension: null, ces: [] };
+  BondApp.state.slots[0] = { servantId: "800100", bondNeeded: 10000, type: "normal", ascension: null, ces: [] };
   BondApp.state.slots[1] = {
-    servantId: "467",
+    servantId: "505600",
     bondNeeded: 0,
     type: "maxbond",
     bond15: true,
@@ -506,7 +534,7 @@ test("BondApp: party setup slot and result card render swap display for 467", as
 
   // Test after-teapot split phase: teapot runs out mid-plan -> renders 2 cards, both with swap wrap and name
   BondApp.state.slots = [
-    { servantId: "467", bondNeeded: 50000, type: "normal", ascension: null, ces: [] },
+    { servantId: "505600", bondNeeded: 50000, type: "normal", ascension: null, ces: [] },
     ...Array.from({ length: 5 }, () => ({ servantId: null, bondNeeded: 0, type: "normal", ascension: null, ces: [] })),
   ];
   BondApp.state.teapotOn = true;
@@ -533,7 +561,7 @@ test("CEFilterApp, ServantSelect chip, and ComboCardRenderer: render swap displa
   const { ServantData } = await import("../src/scripts/data.js");
   ServantData.load();
 
-  const s467 = ServantData.getServant("467");
+  const s467 = ServantData.getServant("505600");
   assert.ok(s467);
 
   // CEFilterApp card
@@ -553,7 +581,7 @@ test("CEFilterApp, ServantSelect chip, and ComboCardRenderer: render swap displa
   assert.ok(nameEl && nameEl.classList.contains("servant-swap-name"), "CEFilter card renders swap name");
 
   // ServantSelect chip
-  const chip = ServantSelect._buildChip("467");
+  const chip = ServantSelect._buildChip("505600");
   assert.ok(chip.querySelector(".servant-swap-wrap"), "ServantSelect chip renders swap wrap");
 
   // ComboCardRenderer servant cell

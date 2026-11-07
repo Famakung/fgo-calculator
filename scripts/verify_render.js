@@ -251,9 +251,9 @@ try {
     });
   };
   await openModal();
-  const picked001 = await pickInModal("001");
-  if (!picked001.found) errors.push("servant select: picker grid has no servant 001");
-  if (!picked001.selected) errors.push("servant select: 001 picked but not marked selected");
+  const picked001 = await pickInModal("800100");
+  if (!picked001.found) errors.push("servant select: picker grid has no servant 800100");
+  if (!picked001.selected) errors.push("servant select: 800100 picked but not marked selected");
   const footerHidden = await page.evaluate(() => document.getElementById("servantModalFooter").hidden);
   if (footerHidden) errors.push("servant select: #servantModalFooter is hidden in multi-select mode");
   await applyModal();
@@ -281,19 +281,19 @@ try {
     cards: document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length,
   }));
 
-  // Reopen modal to verify 001 is selected, then pick 444
+  // Reopen modal to verify 800100 is selected, then pick 4000100
   await openModal();
   const is001Selected = await page.evaluate(() => {
     const item = Array.from(document.querySelectorAll("#servantPickerGrid .servant-picker-item")).find((el) =>
-      el.querySelector("img")?.getAttribute("src")?.includes("servants/001/"),
+      el.querySelector("img")?.getAttribute("src")?.includes("servants/800100/"),
     );
     return item?.classList.contains("selected");
   });
-  if (!is001Selected) errors.push("servant select: 001 not marked selected when reopening modal");
+  if (!is001Selected) errors.push("servant select: 800100 not marked selected when reopening modal");
 
-  const picked444 = await pickInModal("444");
-  if (!picked444.found) errors.push("servant select: picker grid has no servant 444");
-  if (!picked444.selected) errors.push("servant select: 444 picked but not marked selected");
+  const picked444 = await pickInModal("4000100");
+  if (!picked444.found) errors.push("servant select: picker grid has no servant 4000100");
+  if (!picked444.selected) errors.push("servant select: 4000100 picked but not marked selected");
 
   const stateAfter444 = await page.evaluate(() => ({
     modalOpen: document.getElementById("servantModal").classList.contains("open"),
@@ -406,10 +406,10 @@ try {
       )
       .catch(() => {});
   await openModal();
-  const oddPicked = await pickInModal("020");
+  const oddPicked = await pickInModal("300700");
   await applyModal();
   await waitForUnshared(true);
-  if (!oddPicked.found) errors.push("servant select: picker grid has no servant 020");
+  if (!oddPicked.found) errors.push("servant select: picker grid has no servant 300700");
   const withOdd = await page.evaluate(() => ({
     chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
     unshared: document.getElementById("cefilterComboUnshared").hidden
@@ -417,7 +417,7 @@ try {
       : document.getElementById("cefilterComboUnshared").textContent,
     cards: document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length,
   }));
-  if (withOdd.chips !== 3) errors.push(`servant select: expected 3 chips after adding 020, saw ${withOdd.chips}`);
+  if (withOdd.chips !== 3) errors.push(`servant select: expected 3 chips after adding 300700, saw ${withOdd.chips}`);
   if (withOdd.unshared === null || !/Cú Chulainn \(Prototype\)/.test(withOdd.unshared)) {
     errors.push(
       `servant select: a servant matching no CE was not named as unshared (${JSON.stringify(withOdd.unshared)})`,
@@ -426,7 +426,7 @@ try {
   if (withOdd.cards < 1) errors.push("servant select: the two sharing servants lost their card when a third was added");
 
   await openModal();
-  await pickInModal("020");
+  await pickInModal("300700");
   await applyModal();
   await waitForUnshared(false);
   const afterUntoggle = await page.evaluate(() => ({
@@ -1009,8 +1009,8 @@ try {
       "fgo_bond_calculator_data",
       JSON.stringify({
         slots: [
-          { servantId: "001", bondNeeded: 5000, type: "normal", bondLevel: 0, targetLevel: 1, ces: ["0910"] },
-          { servantId: "002", type: "support", ces: ["0910"] },
+          { servantId: "800100", bondNeeded: 5000, type: "normal", bondLevel: 0, targetLevel: 1, ces: ["0910"] },
+          { servantId: "100100", type: "support", ces: ["0910"] },
         ],
         selectedQuest: "custom",
         customBond: 1000,
@@ -1072,7 +1072,7 @@ try {
     localStorage.setItem(
       "fgo_bond_calculator_data",
       JSON.stringify({
-        slots: [{ servantId: "001", bondNeeded: 2500, type: "normal", bondLevel: 0, targetLevel: 3, ces: [] }],
+        slots: [{ servantId: "800100", bondNeeded: 2500, type: "normal", bondLevel: 0, targetLevel: 3, ces: [] }],
         selectedQuest: "custom",
         customBond: 1000,
       }),
@@ -1653,7 +1653,7 @@ try {
      that was never filled must come back blank. */
   await page.evaluate(() => {
     const data = JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));
-    const mash = [{ servantId: "001", bondNeeded: 2500, type: "normal", bondLevel: 0, targetLevel: 3, ces: [] }];
+    const mash = [{ servantId: "800100", bondNeeded: 2500, type: "normal", bondLevel: 0, targetLevel: 3, ces: [] }];
     // Merged, not replaced: parties[""] holds the Free Quest rack this block parked on entry, and the
     // last check below reads it back.
     data.parties = { ...data.parties, "0100": mash, all: mash.map((s) => ({ ...s })) };
@@ -1747,7 +1747,7 @@ try {
     const data = JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));
     const mash = [
       {
-        servantId: "001",
+        servantId: "800100",
         bondNeeded: 2500,
         type: "normal",
         bondLevel: 0,

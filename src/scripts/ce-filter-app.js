@@ -807,7 +807,7 @@ export const CEFilterApp = {
       entries,
       this.state.sortBy,
       this.state.sortOrder,
-      (entry) => entry.servant.id,
+      (entry) => (entry.servant && entry.servant.collectionNo) || entry.servant.id,
       (entry) => this._traitsOf(entry),
     );
   },
