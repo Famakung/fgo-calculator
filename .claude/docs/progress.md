@@ -2527,3 +2527,92 @@ Replaced the unoptimized Cartesian class intersection walk in `ServantComboCalcu
 | `tests/servant-combo.test.js` | Updated budget truncation tests and added coverage for CE pre-filtering, same-member pruning, seen-key memoization, and duplicate inputs |
 | `.claude/CLAUDE.md` | Documented hybrid intersection algorithm and same-member pruning in Servant Select specification |
 | `.claude/docs/progress.md` | Documented implementation and verification |
+
+
+## 2026-11-07 — Servant Select All-Servant Default, 5-Row Pagination & Staged Multi-Select Footer
+
+### Overview
+Enhanced the Servant Select sub-tab to default to evaluating all servants when 0 picks are selected, introduced 5-row responsive pagination (`cols * 5`), and added a staged multi-select footer to `#servantModal`.
+
+### Work Done
+1. **All-Servant Default Evaluation:**
+   - When `pickedIds` is empty, defaults to evaluating the full servant roster (`ServantData.servants.map(s => s.id)`) instead of sitting empty. Prompts "Add one more servant…" when exactly 1 servant is picked.
+2. **5-Row Pagination:**
+   - Replaced "Show N more" button with top and bottom pagination controls (`#cefilterComboPaginationTop`, `#cefilterComboPaginationBottom`) matching `CEFilterApp`'s 5-row pagination (`cols * 5`). Resets `currentPage` to 1 on pick modifications or sub-tab switch.
+3. **Staged Multi-Select Footer:**
+   - Enabled `multi: true` mode in `ServantSelector` with staged selection (`_selectedIds`) and action footer (`#servantModalFooter`: Default, Select All, Cancel, OK). Selections commit to background only on "OK".
+
+### Files Modified
+| File | Action |
+|---|---|
+| `src/scripts/ce-servant-select.js` | Added all-servant fallback, 5-row pagination controls, and staged modal opening |
+| `src/scripts/selectors.js` | Added multi-select mode and modal footer actions to `ServantSelector` |
+| `src/pages/index.astro` | Added `#servantModalFooter` markup and pagination containers |
+| `tests/ce-servant-select.test.js` | Added coverage for all-servant default and 5-row pagination |
+| `tests/servant-selector-reset.test.js` | Added tests for staged multi-select and footer actions |
+
+## 2026-11-07 — Bitset Closed-Intersection Engine for ServantComboCalculator
+
+### Overview
+Refactored `ServantComboCalculator` to use a high-performance 32-bit `Uint32Array` bitset closed-intersection engine, drastically speeding up combo computation across large rosters.
+
+### Work Done
+1. **Bitset Equivalence & Intersection (`_buildBitsetClasses`, `_intersectBitsets`, `_isSubsetMask`):**
+   - Encoded shared CE lists into bitset masks, enabling bitwise `&` operations for intersection and fast subset checks.
+2. **Closed-Itemset Pruning:**
+   - Replaced iterative array comparisons with bitwise masking, ensuring maximal CE sets are identified and non-maximal subsets pruned efficiently within node budgets.
+3. **Unit Testing:**
+   - Added exhaustive bitset correctness tests and large-roster performance verification in `tests/servant-combo.test.js`.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `src/scripts/domain.js` | Implemented bitset closed-intersection engine in `ServantComboCalculator` |
+| `tests/servant-combo.test.js` | Added unit tests covering bitset operations, subset pruning, and equivalence classes |
+
+## 2026-11-07 — Unified Servant 467 (François / Francesca Prélat) Blinking Swap Display
+
+### Overview
+Unified Servant 467 into a single entry with dual persona representation (François and Francesca Prélat) featuring synchronized 8-second CSS cross-fade swap animation.
+
+### Work Done
+1. **Unified Data Model & Sync:**
+   - Merged split records ("467" and "467-1") into unified servant entry "467" with top-level `altName: "Francesca Prélat"` and swap portrait `"002-1"` alongside `"002"`.
+   - Updated `sync_atlas_data.py` and `validate_data.js` to validate and generate unified asset mappings.
+2. **Synchronized Cross-Fade Swap Display:**
+   - Added `DOMFactory.createSwapImg` and `DOMFactory.fillSwapName` generating `.servant-swap-wrap` and `.servant-swap-name` elements with CSS keyframe animation (`servant-swap-a`, `servant-swap-b`, 8s loop, disabled under `prefers-reduced-motion`).
+3. **App Integration:**
+   - Integrated swap rendering across BondApp, CEFilterApp, ServantSelect, and Selectors.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `scripts/sync_atlas_data.py` | Unified servant 467 data sync and dual-persona asset extraction |
+| `scripts/validate_data.js` | Updated schema validation for unified dual-persona entries |
+| `src/layouts/BaseLayout.astro` | Added CSS keyframe animations and layout rules for `.servant-swap-*` |
+| `src/scripts/presentation.js` | Implemented `createSwapImg` and `fillSwapName` helpers |
+| `tests/servant-467-unified.test.js` | Added comprehensive test suite for unified data and DOM rendering |
+
+## 2026-11-07 — Modal Width Scale Unification, ARIA Dialog Attributes & 3×5 Class Filter Grid
+
+### Overview
+Unified modal width scaling across breakpoints, capped compact filter sub-modals at 540px, added accessible ARIA dialog attributes across all modals, and updated the 15 class filter buttons into a structured 3×5 grid.
+
+### Work Done
+1. **Modal Width Scale Unification:**
+   - Standardized `.servant-modal-content` max-width scale (`360px` / `>=580px: 480px` / `>=760px: 540px` / `>=940px: 720px` / `>=1120px: 900px`).
+   - Capped filter and compact sub-modals (`#servantFilterModal`, `#cefilterFilterModal`, `#ceOverlapFilterModal`, `#ascensionModal`, `#ceSubModal`) at `540px` on wide screens (`>=940px`).
+   - Unified nested filter modal stacking with `z-index: 1050`. Removed dead `.ceoverlap-grid` styles.
+2. **ARIA Dialog Attributes:**
+   - Added `role="dialog" aria-modal="true" aria-labelledby="..."` to all 6 remaining modals (`#servantModal`, `#ascensionModal`, `#ceModal`, `#ceSubModal`, `#ceFilterModal`, `#ceOverlapModal`) and associated title IDs.
+3. **3×5 Class Filter Grid:**
+   - Formatted `.class-filter` as `display: grid; grid-template-columns: repeat(5, 48px); justify-content: center; gap: 4px;` so 15 class icons render in 3 neat rows of 5 icons.
+4. **Verification:**
+   - 144/144 unit tests passing across all test suites; `verify_render.js` passing.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `src/layouts/BaseLayout.astro` | Updated modal width scales, breakpoint rules, and `.class-filter` grid CSS |
+| `src/pages/index.astro` | Added `role="dialog"`, `aria-modal="true"`, and `aria-labelledby` across modals |
+| `.claude/docs/code-style.md` | Documented updated modal width scales and 3×5 class grid |

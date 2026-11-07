@@ -51,7 +51,7 @@ prompts are still forbidden.
 npm run dev          # Astro dev server, localhost:3000
 npm run build        # production build → dist/
 npm run lint         # ESLint (src/scripts/) — no CSS linter, nothing ships a .css file
-npm run format       # Prettier + Stylelint --fix
+npm run format       # Prettier
 npm run test         # pure-domain unit tests (node --test), no browser
 npm run check:build  # assert dist/ against scripts/build_baseline.json
 npm run data:validate

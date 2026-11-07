@@ -35,25 +35,24 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - Two sub-tabs: **Craft Essence Select** (CEs → servants, default) and **Servant Select** (servants → shared CEs)
 - Servant Select: pick any number of servants, get one card per distinct shared CE list with every servant that can use it
 - Servant Select splits multi-ascension servants: when a servant's ascension groups match different CEs, each group shows its own portrait, the same way Craft Essence Select cards it — badge is image only, the ascension names sit in the hover tooltip
-- Servant Select keeps your picked servants across refreshes (`fgo_ce_filter_data`), and "Clear all (N)" empties the list in one click; the sub-tab choice still resets
+- Servant Select defaults to the full servant roster when no servants are picked, keeps your picked servants and active sub-tab across refreshes (`fgo_ce_filter_data`), and "Clear all (N)" empties the list in one click
 - Reverse lookup: select CEs to find matching servants
 - Selected-CE chips are portrait only, same shape as the Servant Select chips; "Clear all (N)" next to "Add Craft Essence" empties the selection in one click
 - Match modes: All (AND), Any (OR), and Custom Match (filter by exact CE match count)
-- Dedicated "Filter Settings" modal (`#cefilterFilterModal` in Bond Gain CE and `#servantFilterModal` in Servant Picker) with Rarity, Class, Class Group, Alignment (L/N/C), Alignment (G/B/E/Other), Sub-Attribute, Gender, and CE Bonus filter chips
-- Modal action footer with **Default** (clears selections), **Select All** (selects all valid options), **Cancel** (discards draft changes), and **OK** (applies filter changes to background and closes modal)
+- Dedicated "Filter Settings" modal (`#cefilterFilterModal` in Bond Gain CE, `#servantFilterModal` in Servant Picker, and `#ceOverlapFilterModal` in Overlap Modal) with Rarity, Class, Class Group, Alignment (L/N/C), Alignment (G/B/E/Other), Sub-Attribute, Gender, and CE Bonus filter chips
+- Modal action footer with **Default** (clears selections), **Select All** (selects all valid options), **Cancel** (discards draft changes), and **OK** (applies filter changes to background and closes modal); `#servantModal` also includes a multi-select action footer (**Default**, **Select All**, **Cancel**, **OK**) when adding servants in Servant Select
 - Direct servant search bar positioned statically above controls row
 - Direct search bar and action footer (**Default**, **Cancel**, **OK**) in "Add Craft Essence" modal (`#ceFilterModal`), applying selected CEs to the background only upon clicking OK
 - Mobile-optimized 2-per-row grid layout on narrow screens
 - CE match count buttons ("1 CE", "2 CE", etc.) disable (`.ce-count-btn--disabled`) when no servant with that match count exists in results, consistent with disabled class and group chips
 - CE picker shows grayscale indicator for CEs with no ascension-level overlap with selected CEs
-- Class and rarity filter buttons hide when no servant with that trait exists in results
+- Class (`3×5` icon grid) and rarity filter buttons disable (`.class-btn--disabled`, `.rarity-btn--disabled`) when no servant with that trait exists in results or outside an active group/quest lock
 - Searchable results by servant ID or name
 - Shows matching CE badges and trait tags per servant
 - Clickable CE badges to add to selection
-- Click servant portrait to see other servants sharing the same CEs (overlap modal with CE image filter, search, class/rarity filters, and count filter)
-- "No Matching CE" section shows servants that don't match any trait-based CE
+- Click servant portrait to see other servants sharing the same CEs (overlap modal with combo cards and Filter Settings modal)
 - Spiritron costume labels shown alongside ascension labels (e.g. "1st Ascension / 2nd Ascension / Serious Mode") when a spiritron CE is selected
-- Paginated results (30 servants per page) with prev/next navigation, page state persists on refresh
+- Paginated results (5 rows per page: 10–30 items based on viewport columns) in both Craft Essence Select and Servant Select with prev/next navigation
 
 ## Tech Stack
 
@@ -118,11 +117,12 @@ fgo-calculator/
 │       ├── ce-filter-app.js   # CEFilterApp (Worker; CE picks + match mode persist via CEFilterStore)
 │       ├── ce-servant-select.js # Servant Select sub-tab view + CEFilterStore
 │       ├── ce-match-worker.js # Worker entry (TraitMatcher inlined)
+│       ├── filter-sections.js # FilterSections chip builder + FilterModalController
 │       ├── constants.js       # All constants
-│       ├── domain.js           # Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher
+│       ├── domain.js           # Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, ServantFilters, ServantSort
 │       ├── data.js             # ServantData (incl. getBondGrowth), TraitNames, CEList, CEById, TraitCEs
 │       ├── state.js            # StateManager, Persistence
-│       ├── presentation.js     # DOMFactory, CollapsibleFactory, debounce
+│       ├── presentation.js     # DOMFactory, CollapsibleFactory, ComboCardRenderer, debounce
 │       ├── selectors.js        # ServantSelector, AscensionSelector, CESelector, etc.
 │       ├── bond-app.js         # BondApp (configure() for refs, _initialized guard)
 │       ├── event-shop.js       # UIBuilder, ViewManager, EventHandler, App
@@ -157,9 +157,9 @@ The application follows a 3-layer architecture using ES modules bundled by Astro
 
 | Layer | Modules | Purpose |
 |-------|---------|---------|
-| **Domain** | Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher | Pure business logic, no DOM |
-| **Application** | StateManager, Persistence, App, BondApp, CEFilterApp | State management and coordination |
-| **Presentation** | DOMFactory, CollapsibleFactory, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events |
+| **Domain** | Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, ServantFilters, ServantSort | Pure business logic, no DOM |
+| **Application** | StateManager, Persistence, App, BondApp, CEFilterApp, ServantSelect, CEFilterStore | State management and coordination |
+| **Presentation** | DOMFactory, CollapsibleFactory, FilterSections, FilterModalController, ComboCardRenderer, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events |
 
 ## Build & Data Commands
 
@@ -168,7 +168,7 @@ npm install          # Install dependencies
 npm run dev          # Astro dev server (localhost:3000)
 npm run build        # Build with Astro (output: dist/)
 npm run preview      # Local preview server
-npm run lint         # ESLint + Stylelint
+npm run lint         # ESLint (src/scripts/)
 npm run data:sync    # Sync latest servant & CE data from Atlas Academy
 npm run data:validate # Validate data schema, traits format, and image existence
 ```

@@ -32,9 +32,11 @@ No CSP headers possible, so site relies on:
 Inline scripts in `<head>` (BaseLayout.astro):
 | Script | Purpose |
 |--------|---------|
-| Trusted Types policy | Passthrough `default` policy (runs before any module) |
 | Wide-screen magnification | Set `zoom` on `<html>` from `window.innerWidth` (1400 base, 2x cap), `--screen-h` from `innerHeight`; no storage, no markup, no network |
-| Tab-init + image preloads | Read localStorage active tab, preload LCP images via `createElement("link")` |
+| Trusted Types policy | Passthrough `default` policy (runs before any module) |
+| Service-worker & cache cleanup | Purges active service workers and legacy caches from pre-migration visitors |
+| Build-etag poller | Checks deployment ETag against `fgo_build_etag` in sessionStorage, shows reload banner on update |
+| Tab-init + image preloads | Read localStorage active tab and `data-subtab`, preload LCP images via `createElement("link")` |
 
 All use only safe DOM APIs. No `innerHTML`, `eval`, `document.write`.
 

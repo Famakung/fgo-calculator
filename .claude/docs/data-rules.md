@@ -7,7 +7,7 @@
 - Atlas `bondGrowth` = **running total from bond 0**, not per-level cost: Altria's `[3000, 9125, 15250, …]` → Lv.0→1 costs 3,000, Lv.1→2 costs 9,125 − 3,000 = 6,125. `sync_bond_growth()` differences it, so shipped table is **per level step** — `table[i]` = cost standing at Lv.i needs to reach Lv.i+1. Never re-add totals.
 - `BOND_TABLES`: `{ "tN": [16 ints] }` — 471 playable servants share only **76** distinct tables, each shape stored once
 - `BOND_TABLE_BY_SVT`: `{ "002": "t1", … }` — servant key (zero-padding same as `SERVANT_DATA`) → table key
-- Read via `ServantData.getBondGrowth(id)`, resolves split portraits (`"467-1"` → `"467"`); UI modules don't touch maps direct
+- Read via `ServantData.getBondGrowth(id)`; UI modules don't touch maps direct
 - Levels: Current 0–15, Target 1–16 (`BOND_CONSTANTS.MIN_BOND_LEVEL` / `MAX_BOND_LEVEL`); surplus carries up to `BOND_CARRY_LIMIT` (10), discarded past bond cap. `BOND_BONUS_LEVEL` (15) pays +25% party bonus; Current Lv. select ticks "Bond ≥15" to match itself
 - Written whole-file by `sync_bond_growth()` (runs with servant step, skipped by `--skip-servants`), gitignored like other generated data files, required by `scripts/ensure_data.js`, checked by `scripts/validate_data.js`: 16 positive ints per table, every key resolves, every `SERVANT_DATA` entry has a table
 - `SERVANT_DATA` entries carry no bond field — maps keyed by servant id instead, so bond data changes never rewrite `servants.js`
@@ -28,6 +28,7 @@
 - `optionLabels`: display labels for non-standard ascensions (`{"300": "Piercing Bunny"}`)
   - **Two spiritron costume shapes**: (a) **stage costumes** — key in `traits` (e.g. `444` `{"300": ["0304"]}`) → Bond Gain CE renders as own stage-group label via `getAscensionLabel`; (b) **label-only costumes** — key in `optionLabels` but NOT in `traits` (e.g. `388` `{"300": "Serious Mode"}`) → surfaces only via `ServantData.getSpiritronLabel()` when spiritron CE (trait `2780`) matches base group
 - `optionNames`: alternate names (`{"002": "Miyu Sakatsuki"}`)
+- Dual-persona servants (Servant 467 François / Francesca Prélat): single unified entry "467" with top-level "altName": "Francesca Prélat" and swap portrait "002-1" alongside "002", rendered via DOMFactory.createSwapImg and DOMFactory.fillSwapName (8s CSS keyframe cross-fade, respects prefers-reduced-motion)
 
 ## CE_DATA
 - Keys: zero-padded CE ID strings (`"0330"`, `"1973"`, `"2509"`)
