@@ -273,6 +273,81 @@ export { TraitMatcher, computeCEMatchMatrix } from "./ce-matcher.js";
 export const ServantComboCalculator = {
   MAX_COMBO_NODES: 50000,
 
+  /* Build map from CE ID to its 0-based bit index in cePool. */
+  _createIndexMap(cePool) {
+    const map = new Map();
+    for (let i = 0; i < cePool.length; i++) map.set(cePool[i], i);
+    return map;
+  },
+
+  /* Build bitset context containing cePool, wordCount, ceIndexMap, and optional sharedCESet. */
+  _createBitsetContext(cePool, sharedCESet = null) {
+    const wordCount = Math.ceil(cePool.length / 32) || 1;
+    const ceIndexMap = this._createIndexMap(cePool);
+    return { cePool, wordCount, ceIndexMap, sharedCESet };
+  },
+
+  /* Create Uint32Array bitmask with bits set for each CE in ceIndexMap. */
+  _createMask(ceIds, ceIndexMap, wordCount) {
+    const mask = new Uint32Array(wordCount);
+    if (!ceIds) return mask;
+    const add = (id) => {
+      const idx = ceIndexMap.get(id);
+      if (idx !== undefined) mask[idx >>> 5] |= 1 << (idx & 31);
+    };
+    if (Array.isArray(ceIds) || ceIds instanceof Set) ceIds.forEach(add);
+    return mask;
+  },
+
+  /* Bitwise intersection of two masks; returns new Uint32Array or null if empty. */
+  _intersectMasks(maskA, maskB) {
+    const len = maskA.length;
+    const out = new Uint32Array(len);
+    let hasBits = false;
+    for (let w = 0; w < len; w++) {
+      const val = maskA[w] & maskB[w];
+      out[w] = val;
+      if (val !== 0) hasBits = true;
+    }
+    return hasBits ? out : null;
+  },
+
+  /* True iff subMask is a bitwise subset of superMask. */
+  _isSubsetMask(subMask, superMask) {
+    for (let w = 0; w < subMask.length; w++) {
+      if ((subMask[w] & ~superMask[w]) !== 0) return false;
+    }
+    return true;
+  },
+
+  /* Fast canonical string key for memoization. */
+  _maskKey(mask) {
+    return mask.length === 1 ? String(mask[0]) : mask.join(",");
+  },
+
+  /* True iff mask has at least one bit set. */
+  _hasAnyBit(mask) {
+    for (let w = 0; w < mask.length; w++) {
+      if (mask[w] !== 0) return true;
+    }
+    return false;
+  },
+
+  /* Decode Uint32Array bitmask back to sorted CE ID array in cePool order. */
+  _decodeMask(mask, cePool) {
+    const ceIds = [];
+    for (let w = 0; w < mask.length; w++) {
+      let word = mask[w];
+      while (word !== 0) {
+        const bit = 31 - Math.clz32(word & -word);
+        const idx = (w << 5) + bit;
+        if (idx < cePool.length) ceIds.push(cePool[idx]);
+        word &= word - 1;
+      }
+    }
+    return ceIds;
+  },
+
   /* Map each CE ID to the set of picked servant IDs that can use it. */
   _mapCEServants(entries, pickedSet) {
     const ceServants = new Map();
@@ -298,7 +373,8 @@ export const ServantComboCalculator = {
   },
 
   /* Collect candidate member entries, filtering CEs to only shared CEs. */
-  _collectMembers(entries, pickedSet, sharedCESet) {
+  _collectMembers(entries, pickedSet, bitsetCtx) {
+    const { sharedCESet, ceIndexMap, wordCount } = bitsetCtx;
     const members = [];
     (entries || []).forEach((entry) => {
       const servantId = entry?.servant?.id;
@@ -306,7 +382,7 @@ export const ServantComboCalculator = {
       const rawCeIds = entry.matchingCEIds || [];
       const ceIds = [...new Set(rawCeIds)].filter((id) => sharedCESet.has(id)).sort();
       if (ceIds.length === 0) return;
-      members.push({ servantId, entry, ceIds, ceSet: new Set(ceIds) });
+      members.push({ servantId, entry, ceIds, mask: this._createMask(ceIds, ceIndexMap, wordCount) });
     });
     return members.sort((a, b) => (a.servantId === b.servantId ? 0 : a.servantId < b.servantId ? -1 : 1));
   },
@@ -315,31 +391,36 @@ export const ServantComboCalculator = {
   _buildEquivalenceClasses(members) {
     const classMap = new Map();
     members.forEach((m) => {
-      const key = m.ceIds.join(",");
+      const key = this._maskKey(m.mask);
       if (!classMap.has(key)) {
-        classMap.set(key, { key, ceIds: m.ceIds, ceSet: m.ceSet });
+        classMap.set(key, { key, mask: m.mask, ceIds: m.ceIds });
       }
     });
     return [...classMap.values()];
   },
 
-  /* Evaluate whether candidate CE subset matches >= 2 distinct servants. */
-  _evaluateCandidateGroup(ceIds, members) {
-    const matchedIndices = [];
+  /* Collect matching member indices and distinct servant count for candidate mask. */
+  _collectMatched(mask, members) {
+    const indices = [];
     const servantIds = new Set();
     for (let i = 0; i < members.length; i++) {
-      const m = members[i];
-      if (ceIds.every((id) => m.ceSet.has(id))) {
-        matchedIndices.push(i);
-        servantIds.add(m.servantId);
+      if (this._isSubsetMask(mask, members[i].mask)) {
+        indices.push(i);
+        servantIds.add(members[i].servantId);
       }
     }
-    if (servantIds.size < 2) return null;
+    return { indices, servantCount: servantIds.size };
+  },
+
+  /* Evaluate whether candidate CE mask matches >= 2 distinct servants. */
+  _evaluateCandidateGroup(mask, members, cePool) {
+    const { indices, servantCount } = this._collectMatched(mask, members);
+    if (servantCount < 2) return null;
     return {
-      memberKey: matchedIndices.join(","),
-      ceIds,
-      members: matchedIndices.map((idx) => members[idx].entry),
-      servantCount: servantIds.size,
+      memberKey: indices.join(","),
+      ceIds: this._decodeMask(mask, cePool),
+      members: indices.map((idx) => members[idx].entry),
+      servantCount,
     };
   },
 
@@ -369,16 +450,16 @@ export const ServantComboCalculator = {
   },
 
   /* Recursive helper for intersection walk across equivalence classes. */
-  _walkCombinations(ctx, start, current) {
+  _walkCombinations(ctx, start, currentMask) {
     for (let i = start; i < ctx.classLists.length; i++) {
       if (++ctx.nodes > ctx.maxNodes) return (ctx.truncated = true);
-      const next = current.filter((id) => ctx.classLists[i].ceSet.has(id));
-      if (next.length === 0) continue;
-      const key = next.join(",");
+      const nextMask = this._intersectMasks(currentMask, ctx.classLists[i].mask);
+      if (!nextMask) continue;
+      const key = this._maskKey(nextMask);
       if (!ctx.seen.has(key)) {
         ctx.seen.add(key);
-        ctx.onVisit(next);
-        this._walkCombinations(ctx, i + 1, next);
+        ctx.onVisit(nextMask);
+        this._walkCombinations(ctx, i + 1, nextMask);
         if (ctx.truncated) return;
       }
     }
@@ -393,9 +474,9 @@ export const ServantComboCalculator = {
       const cls = classLists[i];
       if (!ctx.seen.has(cls.key)) {
         ctx.seen.add(cls.key);
-        onVisit(cls.ceIds);
+        onVisit(cls.mask);
       }
-      this._walkCombinations(ctx, i + 1, cls.ceIds);
+      this._walkCombinations(ctx, i + 1, cls.mask);
     }
     return { truncated: ctx.truncated };
   },
@@ -418,114 +499,97 @@ export const ServantComboCalculator = {
     return this._sortGroups([...groupsByMembers.values()]).map(({ ceIds, members: m }) => ({ ceIds, members: m }));
   },
 
+  /* Resolve unshared picked servants based on coverage and truncation flag. */
+  _resolveUnshared(picked, groups, truncated) {
+    if (truncated) return [];
+    const covered = new Set(groups.flatMap((g) => g.members.map((e) => e.servant.id)));
+    return picked.filter((id) => !covered.has(id));
+  },
+
   /* Every entry of a picked servant is its own member, so a multi-ascension servant whose
      ascension groups match different CE sets is split the way Craft Essence Select gives each
      group its own card. A row's members are the forms that can use all of the row's CEs at once.
      Returns { groups: [{ ceIds, members: [entry] }], unshared: [servantId], truncated: boolean }. */
   buildSharedCEGroups(entries, pickedIds) {
     const picked = [...new Set(pickedIds || [])].sort();
-    const pickedSet = new Set(picked);
-    const sharedCESet = this._filterSharedCESet(entries, pickedSet);
-    const members = this._collectMembers(entries, pickedSet, sharedCESet);
+    const sharedCESet = this._filterSharedCESet(entries, new Set(picked));
+    const cePool = [...sharedCESet].sort();
+    const bitsetCtx = this._createBitsetContext(cePool, sharedCESet);
+    const members = this._collectMembers(entries, new Set(picked), bitsetCtx);
     const classLists = this._buildEquivalenceClasses(members);
     const groupsByMembers = new Map();
 
-    const { truncated } = this._exploreCombinations(classLists, (ceIds) => {
-      const candidate = this._evaluateCandidateGroup(ceIds, members);
+    const { truncated } = this._exploreCombinations(classLists, (mask) => {
+      const candidate = this._evaluateCandidateGroup(mask, members, cePool);
       if (candidate) this._recordCandidateGroup(groupsByMembers, candidate);
     });
 
     const groups = this._formatGroups(groupsByMembers);
-    const covered = new Set(groups.flatMap((g) => g.members.map((e) => e.servant.id)));
-    const unshared = truncated ? [] : picked.filter((id) => !covered.has(id));
-    return { groups, unshared, truncated };
+    return { groups, unshared: this._resolveUnshared(picked, groups, truncated), truncated };
   },
 
-  /* Build shared CE combination groups for a single clicked servant against all other servants.
-     Collects non-empty CE intersections from other servants, closes them under pairwise intersection,
-     groups by identical other-servant list (keeping maximal CEs), and sorts maximal combinations. */
-  buildServantOverlapGroups(allMatches, clickedEntry) {
-    if (!clickedEntry || !clickedEntry.servant) return [];
-    const clickedId = clickedEntry.servant.id;
-    const clickedCEs = [];
-    const seenCEs = new Set();
-    (clickedEntry.matchingCEs || []).forEach((c) => {
-      const id = typeof c === "string" ? c : c?.id;
-      if (id && !seenCEs.has(id)) {
-        seenCEs.add(id);
-        clickedCEs.push(id);
-      }
-    });
-    if (clickedCEs.length === 0 && clickedEntry.matchingCEIds) {
-      clickedEntry.matchingCEIds.forEach((id) => {
-        if (!seenCEs.has(id)) {
-          seenCEs.add(id);
-          clickedCEs.push(id);
-        }
-      });
-    }
-
-    if (clickedCEs.length === 0) return [];
-
-    const otherMatches = [];
-    (allMatches || []).forEach((m) => {
-      if (!m.servant || m.servant.id === clickedId) return;
-      const ceSet = m.matchingCEIds;
-      if (!ceSet) return;
-      const hasCE = ceSet instanceof Set ? (id) => ceSet.has(id) : (id) => ceSet.includes(id);
-      const shared = clickedCEs.filter(hasCE);
-      if (shared.length > 0) {
-        otherMatches.push({ entry: m, shared, sharedSet: new Set(shared) });
-      }
-    });
-
-    if (otherMatches.length === 0) return [];
-
-    const classMap = new Map();
-    otherMatches.forEach((m) => {
-      const key = m.shared.join(",");
-      if (!classMap.has(key)) classMap.set(key, { ceIds: m.shared, ceSet: m.sharedSet });
-    });
-    const classLists = [...classMap.values()];
-
-    const uniqueIntersections = new Map();
-    classLists.forEach((cls) => uniqueIntersections.set(cls.ceIds.join(","), cls.ceIds));
-
-    let nodes = 0;
-    const walk = (start, current) => {
-      for (let i = start; i < classLists.length; i++) {
-        if (++nodes > this.MAX_COMBO_NODES) return;
-        const next = current.filter((id) => classLists[i].ceSet.has(id));
-        if (next.length === 0) continue;
-        const key = next.join(",");
-        if (!uniqueIntersections.has(key)) {
-          uniqueIntersections.set(key, next);
-          walk(i + 1, next);
-        }
+  /* Extract unique CE IDs matched by clickedEntry. */
+  _extractClickedCEs(clickedEntry) {
+    if (!clickedEntry?.servant) return [];
+    const seen = new Set();
+    const list = [];
+    const add = (id) => {
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        list.push(id);
       }
     };
+    (clickedEntry.matchingCEs || []).forEach((c) => add(typeof c === "string" ? c : c?.id));
+    if (list.length === 0 && clickedEntry.matchingCEIds) clickedEntry.matchingCEIds.forEach(add);
+    return list.sort();
+  },
 
-    for (let i = 0; i < classLists.length; i++) {
-      walk(i + 1, classLists[i].ceIds);
-    }
-
-    const groups = new Map();
-    uniqueIntersections.forEach((subIds) => {
-      const members = otherMatches.filter((m) => subIds.every((id) => m.sharedSet.has(id))).map((m) => m.entry);
-      if (members.length === 0) return;
-
-      const servantKey = [...new Set(members.map((m) => m.servant.id))].sort().join(",");
-      const existing = groups.get(servantKey);
-
-      if (!existing || subIds.length > existing.ceIds.length) {
-        members.sort((a, b) => (a.servant.id === b.servant.id ? 0 : a.servant.id < b.servant.id ? -1 : 1));
-        groups.set(servantKey, {
-          ceIds: subIds,
-          otherMembers: members,
-        });
-      }
+  /* Collect other servant matches having at least one CE bit in ceIndexMap. */
+  _collectOverlapMatches(allMatches, clickedId, bitsetCtx) {
+    const { ceIndexMap, wordCount } = bitsetCtx;
+    const matches = [];
+    (allMatches || []).forEach((m) => {
+      if (!m?.servant || m.servant.id === clickedId) return;
+      const ids = m.matchingCEIds || (m.matchingCEs || []).map((c) => (typeof c === "string" ? c : c?.id));
+      if (!ids) return;
+      const mask = this._createMask(ids, ceIndexMap, wordCount);
+      if (this._hasAnyBit(mask)) matches.push({ entry: m, mask });
     });
+    return matches;
+  },
 
+  /* Group other servant matches by identical mask into equivalence classes. */
+  _collectOverlapClasses(otherMatches) {
+    const classMap = new Map();
+    otherMatches.forEach((m) => {
+      const key = this._maskKey(m.mask);
+      if (!classMap.has(key)) classMap.set(key, { key, mask: m.mask });
+    });
+    return [...classMap.values()];
+  },
+
+  /* Record overlap group for visited mask with maximal CE tie-breaking. */
+  _recordOverlapGroup(mask, overlapCtx) {
+    const { groups, otherMatches, cePool } = overlapCtx;
+    const members = [];
+    for (let i = 0; i < otherMatches.length; i++) {
+      if (this._isSubsetMask(mask, otherMatches[i].mask)) members.push(otherMatches[i].entry);
+    }
+    if (members.length === 0) return;
+    const servantKey = [...new Set(members.map((m) => m.servant.id))].sort().join(",");
+    const ceIds = this._decodeMask(mask, cePool);
+    const existing = groups.get(servantKey);
+    const isLarger = !existing || ceIds.length > existing.ceIds.length;
+    const isSameBetter =
+      existing && ceIds.length === existing.ceIds.length && this._isBetterCEIds(ceIds, existing.ceIds);
+    if (isLarger || isSameBetter) {
+      members.sort((a, b) => (a.servant.id === b.servant.id ? 0 : a.servant.id < b.servant.id ? -1 : 1));
+      groups.set(servantKey, { ceIds, otherMembers: members });
+    }
+  },
+
+  /* Sort overlap groups by CE count desc, member count desc, first CE, first servant. */
+  _sortOverlapGroups(groups) {
     return [...groups.values()].sort((a, b) => {
       if (b.ceIds.length !== a.ceIds.length) return b.ceIds.length - a.ceIds.length;
       if (b.otherMembers.length !== a.otherMembers.length) return b.otherMembers.length - a.otherMembers.length;
@@ -535,6 +599,21 @@ export const ServantComboCalculator = {
       if (firstA !== firstB) return firstA < firstB ? -1 : 1;
       return 0;
     });
+  },
+
+  /* Build shared CE combination groups for a single clicked servant against all other servants.
+     Collects non-empty CE intersections from other servants, closes them under pairwise intersection,
+     groups by identical other-servant list (keeping maximal CEs), and sorts maximal combinations. */
+  buildServantOverlapGroups(allMatches, clickedEntry) {
+    const cePool = this._extractClickedCEs(clickedEntry);
+    if (cePool.length === 0) return [];
+    const bitsetCtx = this._createBitsetContext(cePool);
+    const otherMatches = this._collectOverlapMatches(allMatches, clickedEntry.servant.id, bitsetCtx);
+    if (otherMatches.length === 0) return [];
+    const classLists = this._collectOverlapClasses(otherMatches);
+    const overlapCtx = { groups: new Map(), otherMatches, cePool };
+    this._exploreCombinations(classLists, (mask) => this._recordOverlapGroup(mask, overlapCtx));
+    return this._sortOverlapGroups(overlapCtx.groups);
   },
 };
 

@@ -37,68 +37,45 @@ export const ServantSelector = {
 
   _listenersBound: false,
 
-  // Called by both the Bond tab and the Bond Gain CE's Servant Select sub-tab: the modal is
-  // shared, and its close controls must work whichever tab opens it first.
-  init() {
-    if (this._listenersBound) return;
-    this._listenersBound = true;
-
-    const modal = document.getElementById("servantModal");
-    const closeBtn = document.getElementById("servantModalClose");
+  _bindFilterModalEvents() {
+    const bind = (id, fn) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("click", fn);
+    };
+    bind("servantPickerFilterBtn", () => this._openFilterModal());
+    bind("servantFilterModalClose", () => this._cancelFilterModal());
+    bind("servantFilterDefaultBtn", () => this._defaultFilterModal());
+    bind("servantFilterSelectAllBtn", () => this._selectAllFilterModal());
+    bind("servantFilterCancelBtn", () => this._cancelFilterModal());
+    bind("servantFilterOkBtn", () => this._okFilterModal());
     const subModal = document.getElementById("servantFilterModal");
-
-    if (closeBtn) {
-      closeBtn.addEventListener("click", () => this.close());
-    }
-
-    /* Search sits outside the filters and the sort row sits beside them, like the Bond Gain CE tab: the
-       controls live in the page, so they are wired once here and only read back on every open(). */
-    const searchInput = document.getElementById("servantPickerSearch");
-    if (searchInput) {
-      const debouncedSearch = debounce((query) => {
-        // Bounded, so a pasted wall of text cannot become the matcher's input or the reopened box.
-        this._searchQuery = query.slice(0, MAX_SEARCH);
-        this.filter();
-      }, DEBOUNCE_MS);
-      searchInput.addEventListener("input", (e) => debouncedSearch(e.target.value));
-    }
-
-    const filterBtn = document.getElementById("servantPickerFilterBtn");
-    if (filterBtn) {
-      filterBtn.addEventListener("click", () => this._openFilterModal());
-    }
-
-    const subClose = document.getElementById("servantFilterModalClose");
-    if (subClose) {
-      subClose.addEventListener("click", () => this._cancelFilterModal());
-    }
-
     if (subModal) {
       subModal.addEventListener("click", (e) => {
         if (e.target === subModal) this._cancelFilterModal();
       });
     }
+  },
 
-    const defaultBtn = document.getElementById("servantFilterDefaultBtn");
-    if (defaultBtn) {
-      defaultBtn.addEventListener("click", () => this._defaultFilterModal());
+  _bindFooterEvents() {
+    const bind = (id, fn) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("click", fn);
+    };
+    bind("servantModalDefaultBtn", () => this._defaultMulti());
+    bind("servantModalSelectAllBtn", () => this._selectAllMulti());
+    bind("servantModalCancelBtn", () => this.close());
+    bind("servantModalOkBtn", () => this._okMulti());
+  },
+
+  _bindSearchAndSort() {
+    const searchInput = document.getElementById("servantPickerSearch");
+    if (searchInput) {
+      const debounced = debounce((q) => {
+        this._searchQuery = q.slice(0, MAX_SEARCH);
+        this.filter();
+      }, DEBOUNCE_MS);
+      searchInput.addEventListener("input", (e) => debounced(e.target.value));
     }
-
-    const selectAllBtn = document.getElementById("servantFilterSelectAllBtn");
-    if (selectAllBtn) {
-      selectAllBtn.addEventListener("click", () => this._selectAllFilterModal());
-    }
-
-    const cancelBtn = document.getElementById("servantFilterCancelBtn");
-    if (cancelBtn) {
-      cancelBtn.addEventListener("click", () => this._cancelFilterModal());
-    }
-
-    const okBtn = document.getElementById("servantFilterOkBtn");
-    if (okBtn) {
-      okBtn.addEventListener("click", () => this._okFilterModal());
-    }
-
     const sortSelect = document.getElementById("servantPickerSortBy");
     if (sortSelect) {
       sortSelect.addEventListener("change", () => {
@@ -107,7 +84,9 @@ export const ServantSelector = {
         this.filter();
       });
     }
+  },
 
+  _bindOrderAndModal() {
     const orderBtn = document.getElementById("servantPickerSortOrder");
     if (orderBtn) {
       orderBtn.addEventListener("click", () => {
@@ -117,21 +96,37 @@ export const ServantSelector = {
       });
       this._paintSortOrder();
     }
-
+    const closeBtn = document.getElementById("servantModalClose");
+    if (closeBtn) closeBtn.addEventListener("click", () => this.close());
+    const modal = document.getElementById("servantModal");
     if (modal) {
       modal.addEventListener("click", (e) => {
         if (e.target === modal) this.close();
       });
-      document.addEventListener("keydown", (e) => {
-        if (e.key !== "Escape" || !modal.classList.contains("open")) return;
-        // The filter modal sits on top of this one, so Escape takes the top layer off first.
-        if (subModal && subModal.classList.contains("open")) {
-          this._cancelFilterModal();
-          return;
-        }
-        this.close();
-      });
     }
+    document.addEventListener("keydown", (e) => this._handleKeydown(e));
+  },
+
+  _handleKeydown(e) {
+    const modal = document.getElementById("servantModal");
+    if (e.key !== "Escape" || !modal?.classList.contains("open")) return;
+    const subModal = document.getElementById("servantFilterModal");
+    if (subModal?.classList.contains("open")) {
+      this._cancelFilterModal();
+      return;
+    }
+    this.close();
+  },
+
+  // Called by both the Bond tab and the Bond Gain CE's Servant Select sub-tab: the modal is
+  // shared, and its close controls must work whichever tab opens it first.
+  init() {
+    if (this._listenersBound) return;
+    this._listenersBound = true;
+    this._bindFilterModalEvents();
+    this._bindFooterEvents();
+    this._bindSearchAndSort();
+    this._bindOrderAndModal();
   },
 
   _paintSortOrder() {
@@ -146,6 +141,12 @@ export const ServantSelector = {
     if (icon) icon.textContent = isDesc ? "▼" : "▲";
   },
 
+  _resolveLockChanged(newLock) {
+    if ((this.lockedClasses === null) !== (newLock === null)) return true;
+    if (!this.lockedClasses || !newLock) return false;
+    return this.lockedClasses.length !== newLock.length || !this.lockedClasses.every((id, i) => id === newLock[i]);
+  },
+
   open(slotIndex, pending = false, callbacks = null, options = {}) {
     this.activeSlotIndex = slotIndex;
     this.pendingSlot = pending;
@@ -155,22 +156,13 @@ export const ServantSelector = {
     // Multi keeps the modal open and marks items like the CE picker does.
     this._multi = options.multi === true;
     this._selectedIds = new Set(this._multi ? options.selected : []);
+    const footer = document.getElementById("servantModalFooter");
+    if (footer) footer.hidden = !this._multi;
     const newLock = Array.isArray(options.lockClasses) && options.lockClasses.length ? options.lockClasses : null;
-    const lockChanged =
-      (this.lockedClasses === null) !== (newLock === null) ||
-      (Boolean(this.lockedClasses) &&
-        Boolean(newLock) &&
-        (this.lockedClasses.length !== newLock.length || !this.lockedClasses.every((id, i) => id === newLock[i])));
-    if (lockChanged) {
-      this.resetFilters();
-    }
+    if (this._resolveLockChanged(newLock)) this.resetFilters();
     this.lockedClasses = newLock;
-    // The row is kept as the player left it for the rest of the page, and starts blank again after a refresh.
-
     this.syncPickerControls();
-    // Filtered, not raw: a locked party has to be filtered from the first paint, not after a click.
     this.renderGrid(this.getFilteredServants());
-
     const modal = document.getElementById("servantModal");
     if (modal) modal.classList.add("open");
   },
@@ -204,73 +196,99 @@ export const ServantSelector = {
     // The filter sub-modal belongs to this one: never leave it sitting over the tab behind.
     const subModal = document.getElementById("servantFilterModal");
     if (subModal) subModal.classList.remove("open");
+    const footer = document.getElementById("servantModalFooter");
+    if (footer) footer.hidden = true;
     this.activeSlotIndex = null;
     this.pendingSlot = false;
+  },
+
+  _defaultMulti() {
+    this._selectedIds.clear();
+    const items = document.querySelectorAll("#servantPickerGrid .servant-picker-item.selected");
+    items.forEach((item) => item.classList.remove("selected"));
+  },
+
+  _selectAllMulti() {
+    const filtered = this.getFilteredServants();
+    filtered.forEach((s) => this._selectedIds.add(s.id));
+    const items = document.querySelectorAll("#servantPickerGrid .servant-picker-item");
+    items.forEach((item) => item.classList.add("selected"));
+  },
+
+  _okMulti() {
+    this._callbacks?.onApply?.([...this._selectedIds]);
+    this.close();
+  },
+
+  _handleMultiItemClick(item, servantId) {
+    if (this._selectedIds.has(servantId)) {
+      this._selectedIds.delete(servantId);
+      item.classList.remove("selected");
+    } else {
+      this._selectedIds.add(servantId);
+      item.classList.add("selected");
+    }
+    if (!this._callbacks?.onApply) {
+      this._callbacks?.onToggle?.(this.activeSlotIndex, servantId, this._selectedIds.has(servantId));
+    }
+  },
+
+  _handleSingleItemClick(servant) {
+    const wasPending = this.pendingSlot;
+    this.pendingSlot = false;
+    if (servant.hasAscensions && !this._skipAscension) {
+      const idx = this.activeSlotIndex;
+      this.close();
+      AscensionSelector.open(servant, idx, this._callbacks, {
+        pending: wasPending,
+        pickerOptions: {
+          lockClasses: this.lockedClasses,
+          skipAscension: this._skipAscension,
+          multi: this._multi,
+          selected: this._selectedIds,
+        },
+      });
+    } else {
+      this._callbacks?.onSelect?.(this.activeSlotIndex, servant.id, null);
+      this.close();
+    }
+  },
+
+  _buildPickerImg(servant) {
+    if (servant.altImage) {
+      return DOMFactory.createSwapImg({
+        src: servant.image,
+        altSrc: servant.altImage,
+        attrs: { alt: servant.name },
+        fallbackId: servant.id,
+      });
+    }
+    const img = DOMFactory.createLazyImg(servant.image, null, { alt: servant.name });
+    DOMFactory.addAscensionFallback(img, servant.id);
+    return img;
+  },
+
+  _createGridItem(servant) {
+    const classes = this._multi
+      ? ["servant-picker-item", "ce-filter-picker-item", ...(this._selectedIds.has(servant.id) ? ["selected"] : [])]
+      : "servant-picker-item";
+    const item = DOMFactory.el("div", classes);
+    if (this._multi) DOMFactory.appendCheckMark(item);
+    item.appendChild(this._buildPickerImg(servant));
+    const name = DOMFactory.el("div", "servant-picker-name");
+    DOMFactory.fillSwapName(name, servant.name, servant.altName);
+    item.appendChild(name);
+    item.addEventListener("click", () =>
+      this._multi ? this._handleMultiItemClick(item, servant.id) : this._handleSingleItemClick(servant),
+    );
+    return item;
   },
 
   renderGrid(servants) {
     const grid = document.getElementById("servantPickerGrid");
     if (!grid) return;
-
     const frag = document.createDocumentFragment();
-
-    servants.forEach((servant) => {
-      // ce-filter-picker-item carries the highlight and the tick, so every multi item needs it,
-      // not only the ones already picked.
-      const classes = this._multi
-        ? ["servant-picker-item", "ce-filter-picker-item", ...(this._selectedIds.has(servant.id) ? ["selected"] : [])]
-        : "servant-picker-item";
-      const item = DOMFactory.el("div", classes);
-      if (this._multi) DOMFactory.appendCheckMark(item);
-
-      const img = DOMFactory.createLazyImg(servant.image, null, {
-        alt: servant.name,
-      });
-      DOMFactory.addAscensionFallback(img, servant.id);
-
-      const name = DOMFactory.el("div", "servant-picker-name");
-      name.textContent = servant.name;
-
-      item.appendChild(img);
-      item.appendChild(name);
-
-      item.addEventListener("click", () => {
-        if (this._multi) {
-          const picked = new Set(this._selectedIds);
-          if (picked.has(servant.id)) {
-            picked.delete(servant.id);
-            item.classList.remove("selected");
-          } else {
-            picked.add(servant.id);
-            item.classList.add("selected");
-          }
-          this._selectedIds = picked;
-          this._callbacks?.onToggle?.(this.activeSlotIndex, servant.id, picked.has(servant.id));
-          return; // stay open, like the CE picker
-        }
-        const wasPending = this.pendingSlot;
-        this.pendingSlot = false; // servant selected, don't remove on close
-        if (servant.hasAscensions && !this._skipAscension) {
-          const idx = this.activeSlotIndex;
-          this.close();
-          AscensionSelector.open(servant, idx, this._callbacks, {
-            pending: wasPending,
-            pickerOptions: {
-              lockClasses: this.lockedClasses,
-              skipAscension: this._skipAscension,
-              multi: this._multi,
-              selected: this._selectedIds,
-            },
-          });
-        } else {
-          this._callbacks?.onSelect?.(this.activeSlotIndex, servant.id, null);
-          this.close();
-        }
-      });
-
-      frag.appendChild(item);
-    });
-
+    servants.forEach((servant) => frag.appendChild(this._createGridItem(servant)));
     grid.replaceChildren(frag);
   },
 
@@ -1059,24 +1077,27 @@ export const CEServantOverlap = {
     this._getCEMatches = getCEMatches;
   },
 
+  _resolveDisplayName(entry) {
+    const imgAsc =
+      !entry.baseMatchesAll && entry.matchedAscensions && entry.matchedAscensions.length > 0
+        ? entry.primaryAscension || entry.matchedAscensions[0]
+        : null;
+    const name = imgAsc
+      ? ServantData.getAscensionName(entry.servant.id, imgAsc) || entry.servant.name
+      : entry.servant.name;
+    const altName = !imgAsc ? entry.servant.altName : null;
+    return { name, altName };
+  },
+
   open(entry) {
     if (!this._modal || !entry) return;
-
     const titleEl = document.getElementById("ceOverlapTitle");
     if (titleEl) {
-      const imgAsc =
-        !entry.baseMatchesAll && entry.matchedAscensions && entry.matchedAscensions.length > 0
-          ? entry.primaryAscension || entry.matchedAscensions[0]
-          : null;
-      const displayName = imgAsc
-        ? ServantData.getAscensionName(entry.servant.id, imgAsc) || entry.servant.name
-        : entry.servant.name;
-      titleEl.textContent = displayName;
+      const { name, altName } = this._resolveDisplayName(entry);
+      DOMFactory.fillSwapName(titleEl, name, altName);
     }
-
     const allMatches = this._getCEMatches ? this._getCEMatches() : [];
     this._groups = ServantComboCalculator.buildServantOverlapGroups(allMatches, entry);
-
     this.renderGrid();
     this._modal.classList.add("open");
   },

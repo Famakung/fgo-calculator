@@ -57,6 +57,34 @@ export const DOMFactory = {
       img.replaceWith(fb);
     };
   },
+
+  createSwapImg(srcOrConfig, altSrc, options = {}) {
+    const cfg = typeof srcOrConfig === "object" ? srcOrConfig : { src: srcOrConfig, altSrc, ...options };
+    const { src, altSrc: secondSrc, className, attrs = {}, fallbackId } = cfg;
+    const wrap = this.el("div", "servant-swap-wrap");
+    const classListA = [].concat(className || [], "servant-swap-a");
+    const classListB = [].concat(className || [], "servant-swap-b");
+    const imgA = this.createLazyImg(src, classListA, attrs);
+    const imgB = this.createLazyImg(secondSrc, classListB, { ...attrs, "aria-hidden": "true" });
+    if (fallbackId) this.addAscensionFallback(imgA, fallbackId);
+    wrap.appendChild(imgA);
+    wrap.appendChild(imgB);
+    return wrap;
+  },
+
+  fillSwapName(container, primaryName, altName) {
+    if (!altName) {
+      container.classList.remove("servant-swap-name");
+      container.textContent = primaryName;
+      return;
+    }
+    container.classList.add("servant-swap-name");
+    const spanA = this.el("span", "servant-swap-a");
+    spanA.textContent = primaryName;
+    const spanB = this.el("span", "servant-swap-b", { "aria-hidden": "true" });
+    spanB.textContent = altName;
+    container.replaceChildren(spanA, spanB);
+  },
 };
 
 function debounce(fn, delay) {
@@ -118,14 +146,21 @@ export const CollapsibleFactory = {
 export const ComboCardRenderer = {
   buildServantCell(entry, rowCEs) {
     const servant = entry.servant;
-    const { imgSrc, fullName } = ServantData.resolveEntryDisplay(entry, rowCEs);
+    const { imgSrc, altImgSrc, fullName } = ServantData.resolveEntryDisplay(entry, rowCEs);
     const cell = DOMFactory.el("div", "cefilter-combo-servant");
-    const img = DOMFactory.createLazyImg(imgSrc, ["cefilter-match-badge", "cefilter-combo-servant-badge"], {
-      alt: fullName,
-      title: fullName,
-    });
-    DOMFactory.addAscensionFallback(img, servant.id);
-    cell.appendChild(img);
+    const title = servant.altName ? `${fullName} / ${servant.altName}` : fullName;
+    const badgeClasses = ["cefilter-match-badge", "cefilter-combo-servant-badge"];
+    const element = altImgSrc
+      ? DOMFactory.createSwapImg({
+          src: imgSrc,
+          altSrc: altImgSrc,
+          className: badgeClasses,
+          attrs: { alt: fullName, title },
+          fallbackId: servant.id,
+        })
+      : DOMFactory.createLazyImg(imgSrc, badgeClasses, { alt: fullName, title });
+    if (!altImgSrc) DOMFactory.addAscensionFallback(element, servant.id);
+    cell.appendChild(element);
     return cell;
   },
 

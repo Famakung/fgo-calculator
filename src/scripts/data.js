@@ -104,6 +104,11 @@ export const ServantData = {
           _search: `${id}\n${allNames.join("\n")}`.toLowerCase(),
         };
 
+        if (id === "467" && optionNames && optionNames["001"]) {
+          servant.altImage = `servants/${id}/001.webp?v=${IMAGE_VERSION}`;
+          servant.altName = optionNames["001"];
+        }
+
         // Pre-compute ascension trait sets (C3 optimization)
         if (hasAscensions) {
           const base = rawTraits.base || [];
@@ -135,11 +140,11 @@ export const ServantData = {
   },
 
   getServant(id) {
-    return this.byId.get(id) || null;
+    return this.byId.get(id) || this.byId.get(String(id).split("-")[0]) || null;
   },
 
   /* Bond point cost per level: index i is the cost of Lv.i -> Lv.i+1 for this servant.
-     Split portraits ("467-1") share the base collection's table. Null when the data has none. */
+     Merged/split portraits ("467-1") share the base collection's table. Null when the data has none. */
   getBondGrowth(id) {
     const key = BOND_TABLE_BY_SVT[id] || BOND_TABLE_BY_SVT[String(id).split("-")[0]];
     return (key && BOND_TABLES[key]) || null;
@@ -218,12 +223,14 @@ export const ServantData = {
     const imgAsc =
       !entry.baseMatchesAll && matchedAscensions.length > 0 ? entry.primaryAscension || matchedAscensions[0] : null;
     const imgSrc = imgAsc ? this.getImageForAscension(servant.id, imgAsc) : servant.image;
+    const altImgSrc = !imgAsc && servant.altImage ? servant.altImage : null;
     const labelParts = matchedAscensions.map((key) => this.getAscensionLabel(servant.id, key));
     const spiritronLabel = this.getSpiritronLabel(servant.id, rowCEs, matchedAscensions, entry.baseMatchesAll);
     if (spiritronLabel) labelParts.push(spiritronLabel);
     const displayName = imgAsc ? this.getAscensionName(servant.id, imgAsc) || servant.name : servant.name;
+    const altDisplayName = !imgAsc && servant.altName ? servant.altName : null;
     const fullName = labelParts.length > 0 ? `${displayName} (${labelParts.join(", ")})` : displayName;
-    return { imgAsc, imgSrc, displayName, labelParts, fullName };
+    return { imgAsc, imgSrc, altImgSrc, displayName, altDisplayName, labelParts, fullName };
   },
 
   getImageForAscension(id, ascension) {
