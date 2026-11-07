@@ -57,7 +57,7 @@ export const Validator = {
   },
 
   /* Bond Gain CE picks (either sub-tab) come back from localStorage as an arbitrary value. Keep only
-     zero-padded numeric id strings (servant ids are "001"-style, CE ids "0099"-style, so 3 digits or
+     zero-padded numeric id strings (servant ids are "001"-style, CE ids "9400970"-style, so 3 digits or
      more), deduped, in the order they were saved; ids gone from the data files are dropped by the
      caller. Not validateStorageData — that coerces every key through parseFloat. */
   validatePicks(value) {
@@ -841,7 +841,13 @@ export const ServantSort = {
 
      A Bond Gain CE result card is not a servant — it is a servant plus the ascension its traits came from —
      so the two readers say where a row's id and trait list live instead of this code guessing. */
-  sorted(rows, sortBy = "id", order = "asc", idOf = (row) => row.id, traitsOf = (row) => row.traits) {
+  sorted(
+    rows,
+    sortBy = "id",
+    order = "asc",
+    idOf = (row) => (row && (row.collectionNo || (row.servant && row.servant.collectionNo))) || (row && row.id),
+    traitsOf = (row) => row.traits,
+  ) {
     const key = this.KEYS.includes(sortBy) ? sortBy : "id";
     const dir = order === "desc" ? -1 : 1;
     const len = rows.length;

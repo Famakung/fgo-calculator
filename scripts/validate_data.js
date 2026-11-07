@@ -56,8 +56,14 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
     errors.push(`${ctx}: Invalid servant entry`);
     continue;
   }
+  if (!/^\d{5,7}$/.test(id)) {
+    errors.push(`${ctx}: Key must be numeric Atlas svt ID (5-7 digits)`);
+  }
   if (!svt.name || typeof svt.name !== "string") {
     errors.push(`${ctx}: Missing or invalid name`);
+  }
+  if (typeof svt.collectionNo !== "number" || svt.collectionNo <= 0) {
+    errors.push(`${ctx}: Missing or invalid collectionNo (expected positive integer)`);
   }
 
   // Validate traits
@@ -90,10 +96,10 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
   }
 
   // Validate unified dual-portrait for servant 467
-  if (String(id) === "467") {
-    const altImg = path.join(ROOT_DIR, "public", "servants", "467", "001.webp");
+  if (svt.altId) {
+    const altImg = path.join(ROOT_DIR, "public", "servants", String(svt.altId), "000.webp");
     if (!fs.existsSync(altImg)) {
-      errors.push(`${ctx}: Missing alt image for unified servant at public/servants/467/001.webp`);
+      errors.push(`${ctx}: Missing alt image for unified servant at public/servants/${svt.altId}/000.webp`);
     }
   }
 
@@ -132,8 +138,7 @@ for (const [id, key] of Object.entries(BOND_TABLE_BY_SVT)) {
   }
 }
 for (const id of Object.keys(SERVANT_DATA)) {
-  const base = String(id).split("-")[0];
-  if (!BOND_TABLE_BY_SVT[id] && !BOND_TABLE_BY_SVT[base]) {
+  if (!BOND_TABLE_BY_SVT[id]) {
     errors.push(`Servant ${id}: no bond point table`);
   }
 }
@@ -142,6 +147,9 @@ for (const id of Object.keys(SERVANT_DATA)) {
 console.log(`Validating CE_DATA (${Object.keys(CE_DATA).length} entries)...`);
 for (const [id, ce] of Object.entries(CE_DATA)) {
   const ctx = `CE ${id}`;
+  if (!/^\d{5,8}$/.test(id)) {
+    errors.push(`${ctx}: Key must be numeric Atlas equip ID (5-8 digits)`);
+  }
   if (!ce || typeof ce !== "object") {
     errors.push(`${ctx}: Invalid CE entry`);
     continue;
@@ -149,10 +157,19 @@ for (const [id, ce] of Object.entries(CE_DATA)) {
   if (!ce.name) {
     errors.push(`${ctx}: Missing CE name`);
   }
+  if (typeof ce.collectionNo !== "number" || ce.collectionNo <= 0) {
+    errors.push(`${ctx}: Missing or invalid collectionNo (expected positive integer)`);
+  }
 
   // Check CEs image
   if (ce.isGroup && ce.options) {
-    for (const optId of Object.keys(ce.options)) {
+    for (const [optId, opt] of Object.entries(ce.options)) {
+      if (!/^\d{5,8}$/.test(optId)) {
+        errors.push(`${ctx}: Group option key "${optId}" must be numeric Atlas equip ID (5-8 digits)`);
+      }
+      if (!opt || typeof opt.collectionNo !== "number" || opt.collectionNo <= 0) {
+        errors.push(`${ctx}: Group option "${optId}" missing or invalid collectionNo (expected positive integer)`);
+      }
       const optImg = path.join(ROOT_DIR, "public", "craft_essences", `${optId}.webp`);
       if (!fs.existsSync(optImg)) {
         errors.push(`${ctx}: Group option image missing at public/craft_essences/${optId}.webp`);

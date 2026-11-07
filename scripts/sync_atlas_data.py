@@ -86,13 +86,17 @@ SERIES_NAME_OVERRIDES = {
 # Unofficial English translations for JP-only CEs unreleased in NA
 UNOFFICIAL_JP_TRANSLATIONS = {
     "2583": "Great Library of Memories",
+    "9409210": "Great Library of Memories",
     "2607": "Sword Saints of Wandering",
+    "9409320": "Sword Saints of Wandering",
     "2701": "Gun Dealer",
+    "9409490": "Gun Dealer",
 }
 
 # Unofficial English translations for JP-only Servants unreleased in NA
 UNOFFICIAL_SERVANT_TRANSLATIONS = {
     "483": "Tamamo Aria",
+    "406000": "Tamamo Aria",
 }
 
 CE_OVERRIDES = {}
@@ -258,18 +262,22 @@ def get_cached_json(cache_dir: str, filename: str, url: str, force: bool = False
     if not force:
         cached = _load_cached(cache_path)
         if cached is not None:
-            raw_bytes, etag = fetch_url(url, if_none_match=_stored_etag(cache_dir, filename))
-            if raw_bytes is None:
-                return cached  # 304: server data unchanged
-            data = json.loads(raw_bytes.decode("utf-8"))
-            if data == cached:
-                # Body differs (e.g. encoding) but payload is identical.
+            try:
+                raw_bytes, etag = fetch_url(url, if_none_match=_stored_etag(cache_dir, filename))
+                if raw_bytes is None:
+                    return cached  # 304: server data unchanged
+                data = json.loads(raw_bytes.decode("utf-8"))
+                if data == cached:
+                    # Body differs (e.g. encoding) but payload is identical.
+                    _save_etag(cache_dir, filename, etag)
+                    return data
+                with open(cache_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
                 _save_etag(cache_dir, filename, etag)
                 return data
-            with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            _save_etag(cache_dir, filename, etag)
-            return data
+            except Exception as e:
+                print(f"  [INFO] Offline/network error ({e}), using cached {filename}.")
+                return cached
 
     raw_bytes, etag = fetch_url(url)
     data = json.loads(raw_bytes.decode("utf-8"))
@@ -468,17 +476,17 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
     return base_traits, ascension_diffs, option_labels, option_names, costume_battle_ids
 
 
-def download_face_icon(short_id: str, long_id: int, stage: Union[int, str] = "000", dest_filename: Optional[str] = None, battle_chara_id: Optional[int] = None, force: bool = False, dry_run: bool = False) -> bool:
+def download_face_icon(folder_id: str, long_id: int, stage: Union[int, str] = "000", dest_filename: Optional[str] = None, battle_chara_id: Optional[int] = None, force: bool = False, dry_run: bool = False) -> bool:
     """Download bordered face icon from Atlas Academy CDN and save as 142x155 WebP."""
     stage_str = str(stage).zfill(3) if str(stage).isdigit() else str(stage)
-    dest_dir = os.path.join(PUBLIC_SERVANTS_DIR, short_id)
+    dest_dir = os.path.join(PUBLIC_SERVANTS_DIR, folder_id)
     dest_file = os.path.join(dest_dir, dest_filename or f"{stage_str}.webp")
 
     if not force and os.path.exists(dest_file):
         return True
 
     if dry_run:
-        print(f"  [DRY-RUN] Would download face icon for {short_id}/{stage_str} -> {dest_file}")
+        print(f"  [DRY-RUN] Would download face icon for {folder_id}/{stage_str} -> {dest_file}")
         return True
 
     os.makedirs(dest_dir, exist_ok=True)
@@ -510,12 +518,12 @@ def download_face_icon(short_id: str, long_id: int, stage: Union[int, str] = "00
             img = Image.open(io.BytesIO(raw_data)).convert("RGBA")
             if img.size != (142, 155):
                 img = img.resize((142, 155), Image.Resampling.LANCZOS)
-            img.save(dest_file, "WEBP", quality=80, method=6)
+            img.save(dest_file, "WEBP", lossless=True, method=6)
             return True
         except Exception:
             continue
 
-    print(f"  [WARN] Failed to download face icon for {short_id}/{stage_str} (long_id={long_id})", file=sys.stderr)
+    print(f"  [WARN] Failed to download face icon for {folder_id}/{stage_str} (long_id={long_id})", file=sys.stderr)
     return False
 
 
@@ -565,23 +573,29 @@ def load_all_servant_stages() -> Dict[str, List[str]]:
 
 
 def format_servant_js_entry(
-    short_id: str,
+    svt_id: str,
     name: str,
     base_traits: List[str],
     ascension_diffs: Dict[str, List[str]],
     option_labels: Optional[Dict[str, str]] = None,
     option_names: Optional[Dict[str, str]] = None,
+    collection_no: Optional[int] = None,
+    alt_id: Optional[str] = None,
 ) -> str:
     """Format a servant JS entry matching code conventions."""
-    key_repr = f'"{short_id}"' if (short_id.startswith("0") or "-" in short_id) else short_id
     escaped_name = name.replace('"', '\\"')
+    cno_part = f", collectionNo: {collection_no}" if collection_no is not None else ""
 
-    if not ascension_diffs and not option_labels and not option_names:
+    if not ascension_diffs and not option_labels and not option_names and not alt_id:
         traits_json = json.dumps(base_traits)
-        return f'  {key_repr}: {{ name: "{escaped_name}", traits: {{ base: {traits_json} }} }},'
+        return f'  "{svt_id}": {{ name: "{escaped_name}"{cno_part}, traits: {{ base: {traits_json} }} }},'
 
-    lines = [f'  {key_repr}: {{']
+    lines = [f'  "{svt_id}": {{']
     lines.append(f'    name: "{escaped_name}",')
+    if collection_no is not None:
+        lines.append(f'    collectionNo: {collection_no},')
+    if alt_id:
+        lines.append(f'    altId: "{alt_id}",')
     lines.append('    traits: {')
     lines.append(f'      base: {json.dumps(base_traits)},')
     for stage, diff in sorted(ascension_diffs.items()):
@@ -685,15 +699,25 @@ def update_servants_js_full(replace_entries: Dict[str, str], dry_run: bool = Fal
         entries[key] = body[text_start:end]
 
     replaced = [k for k in replace_entries if k in entries]
-    if "467" in replace_entries:
+    if "505600" in replace_entries or "467" in replace_entries:
         entries.pop("467-1", None)
         entries.pop("467-2", None)
+        entries.pop("467", None)
+
+    # Drop any legacy collectionNo keys (< 10000 or containing a dash)
+    for lk in [k for k in entries if "-" in k or (k.isdigit() and int(k) < 10000)]:
+        entries.pop(lk, None)
+
     for k, v in replace_entries.items():
         entries[k] = v  # replace existing keys, add new ones
 
     def _sort_key(k: str):
+        entry_text = entries.get(k, "")
+        m = re.search(r"collectionNo:\s*([0-9]+)", entry_text)
+        if m:
+            return (int(m.group(1)), 0)
         base, _, suffix = k.partition("-")
-        return (int(base), int(suffix) if suffix else 0)
+        return (int(base) if base.isdigit() else 999999, int(suffix) if suffix and suffix.isdigit() else 0)
 
     new_body = "\n" + "\n".join(entries[k] for k in sorted(entries, key=_sort_key))
 
@@ -745,13 +769,22 @@ def _parse_servant_entries() -> Dict[str, str]:
 def format_467_split(svt: dict) -> Dict[str, str]:
     """Format the François/Francesca Prélat (cno 467) unified entry.
 
-    cno 467 is unified under single ID "467" with traits from both forms:
+    cno 467 is unified under single ID "505600" with traits from both forms:
     François ("0001") and Francesca ("0002"), omitting "0003" (unknown gender).
-    Francesca Prélat is mapped to optionNames["001"]."""
+    altId is "505700", optionNames["001"] is "Francesca Prélat"."""
     base, _diffs, _ol, _on, _cb = extract_servant_traits(svt)
     traits = sorted(list((set(base) - {"0003"}) | {"0001", "0002"}), key=lambda x: (len(x), x))
     return {
-        "467": format_servant_js_entry("467", "François Prélat", traits, {}, {}, {"001": "Francesca Prélat"}),
+        "505600": format_servant_js_entry(
+            "505600",
+            "François Prélat",
+            traits,
+            {},
+            {},
+            {"001": "Francesca Prélat"},
+            collection_no=467,
+            alt_id="505700",
+        ),
     }
 
 
@@ -762,7 +795,7 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
     changes, a new Spiritron Dress granting costume-stage traits (turning a
     base-only servant into a multi-ascension entry), or label/name changes.
     The basic export alone only reveals additions, so each stored entry is
-    reformatted and diffed against the current file text (467 via its unified
+    reformatted and diffed against the current file text (505600 via its unified
     entry, everyone else via format_servant_js_entry). The bulk fetch is one
     conditional GET (304 = ~0 bytes idle). Returns the collectionNos whose
     entry drifted (need a fresh entry)."""
@@ -777,17 +810,19 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
             continue
         if cno == 467:
             fresh = format_467_split(s)
-            if "467-1" in existing or "467-2" in existing or fresh["467"] != existing.get("467"):
+            if "467-1" in existing or "467-2" in existing or "467" in existing or fresh["505600"] != existing.get("505600"):
                 print(f"  Entry change detected for servant 467 (split traits differ)")
                 changed.append(cno)
             continue
-        key = f"{cno:03d}" if cno < 100 else str(cno)
-        if key not in existing:
+        long_id = s.get("id")
+        key = str(long_id) if long_id else (f"{cno:03d}" if cno < 100 else str(cno))
+        old_key = f"{cno:03d}" if cno < 100 else str(cno)
+        if key not in existing and old_key not in existing:
             continue
         base, asc_diffs, opt_labels, opt_names, _ = extract_servant_traits(s)
-        name = UNOFFICIAL_SERVANT_TRANSLATIONS.get(key) or s.get("name") or ""
-        fresh = format_servant_js_entry(key, name, base, asc_diffs, opt_labels, opt_names)
-        if fresh != existing[key]:
+        name = UNOFFICIAL_SERVANT_TRANSLATIONS.get(key) or UNOFFICIAL_SERVANT_TRANSLATIONS.get(str(cno)) or s.get("name") or ""
+        fresh = format_servant_js_entry(key, name, base, asc_diffs, opt_labels, opt_names, collection_no=cno)
+        if key not in existing or fresh != existing[key]:
             print(f"  Entry change detected for servant {key} (traits/ascensions/labels differ)")
             changed.append(cno)
     if changed:
@@ -805,6 +840,98 @@ def _extra_image_stages(asc_diffs: Dict[str, List[str]], costume_battle_ids: Dic
     return sorted((set(asc_diffs) | set(costume_battle_ids) | set(opt_labels)) - {"000", "001", "002"})
 
 
+def migrate_servant_image_folders(playable_by_cno: Dict[int, dict], dry_run: bool = False):
+    """One-time migration renaming existing public/servants/{cno} folders to {atlasId}.
+
+    Idempotent: local checkouts and CI cache-restores rename existing image folders
+    in place instead of redownloading. 467/000.webp -> 505600/000.webp, 467/001.webp -> 505700/000.webp.
+    Leaves no leftover collectionNo-named folders.
+    """
+    if not os.path.isdir(PUBLIC_SERVANTS_DIR):
+        return
+
+    migrated = 0
+
+    # 1. Servant 467 split portraits
+    old_467 = os.path.join(PUBLIC_SERVANTS_DIR, "467")
+    if os.path.isdir(old_467):
+        if not dry_run:
+            dir_505600 = os.path.join(PUBLIC_SERVANTS_DIR, "505600")
+            dir_505700 = os.path.join(PUBLIC_SERVANTS_DIR, "505700")
+            os.makedirs(dir_505600, exist_ok=True)
+            os.makedirs(dir_505700, exist_ok=True)
+            f000 = os.path.join(old_467, "000.webp")
+            f001 = os.path.join(old_467, "001.webp")
+            if os.path.exists(f000):
+                dst = os.path.join(dir_505600, "000.webp")
+                if not os.path.exists(dst):
+                    shutil.move(f000, dst)
+                else:
+                    os.remove(f000)
+            if os.path.exists(f001):
+                dst = os.path.join(dir_505700, "000.webp")
+                if not os.path.exists(dst):
+                    shutil.move(f001, dst)
+                else:
+                    os.remove(f001)
+            for extra in os.listdir(old_467):
+                src = os.path.join(old_467, extra)
+                dst = os.path.join(dir_505600, extra)
+                if not os.path.exists(dst):
+                    shutil.move(src, dst)
+                else:
+                    os.remove(src)
+            try:
+                os.rmdir(old_467)
+            except OSError:
+                pass
+        migrated += 1
+
+    # 2. All other playable servants
+    for cno, s_info in playable_by_cno.items():
+        if cno == 467:
+            continue
+        long_id = s_info.get("id")
+        if not long_id:
+            continue
+        target_dir = os.path.join(PUBLIC_SERVANTS_DIR, str(long_id))
+        candidates = [f"{cno:03d}", str(cno)]
+        for cand in candidates:
+            if cand == str(long_id):
+                continue
+            old_dir = os.path.join(PUBLIC_SERVANTS_DIR, cand)
+            if os.path.isdir(old_dir):
+                if not dry_run:
+                    if not os.path.exists(target_dir):
+                        os.rename(old_dir, target_dir)
+                    else:
+                        for item in os.listdir(old_dir):
+                            src = os.path.join(old_dir, item)
+                            dst = os.path.join(target_dir, item)
+                            if not os.path.exists(dst):
+                                shutil.move(src, dst)
+                            else:
+                                os.remove(src)
+                        try:
+                            os.rmdir(old_dir)
+                        except OSError:
+                            pass
+                migrated += 1
+
+    # 3. Clean up any leftover empty cno folders (numeric <= 4 digits)
+    if not dry_run:
+        for entry in os.listdir(PUBLIC_SERVANTS_DIR):
+            folder = os.path.join(PUBLIC_SERVANTS_DIR, entry)
+            if os.path.isdir(folder) and entry.isdigit() and int(entry) < 10000:
+                try:
+                    os.rmdir(folder)
+                except OSError:
+                    pass
+
+    if migrated > 0:
+        print(f"Migrated {migrated} servant image folder(s) to Atlas IDs.")
+
+
 def sync_servants(args):
     """Check for new servants and sync traits and face icons."""
     print("Checking Atlas Academy API for latest servant data...")
@@ -820,6 +947,9 @@ def sync_servants(args):
         if cno > 0:
             playable_by_cno[cno] = s
 
+    # Ensure image folders are migrated to Atlas IDs
+    migrate_servant_image_folders(playable_by_cno, dry_run=args.dry_run)
+
     servant_stages_map = load_all_servant_stages()
 
     # Bulk detail export: used for revalidating existing servants' traits and as
@@ -834,27 +964,32 @@ def sync_servants(args):
             print(f"Bulk nice_servant_lore_lang_en.json fetch failed ({e}), trait revalidation skipped.", file=sys.stderr)
 
     if args.ids:
-        target_cnos = [int(x) for x in args.ids if x.isdigit() and int(x) in playable_by_cno]
+        target_cnos = []
+        cno_by_id = {s.get("id"): cno for cno, s in playable_by_cno.items() if s.get("id")}
+        for x in args.ids:
+            if x.isdigit():
+                val = int(x)
+                if val in playable_by_cno:
+                    target_cnos.append(val)
+                elif val in cno_by_id:
+                    target_cnos.append(cno_by_id[val])
     else:
         target_cnos = []
         for cno in sorted(playable_by_cno.keys()):
-            cno_str = str(cno)
-            cno_padded = cno_str.zfill(3)
-            short_id = cno_padded if cno < 100 else cno_str
+            s_info = playable_by_cno[cno]
+            long_id = s_info.get("id")
+            svt_id = "505600" if cno == 467 else str(long_id)
 
-            has_existing = any(
-                k == cno_str or k == cno_padded or k.startswith(f"{cno_str}-") or k.startswith(f"{cno_padded}-")
-                for k in existing_keys
-            )
+            has_existing = svt_id in existing_keys
             if cno == 467:
                 img_missing = (
-                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "467", "000.webp")) or
-                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "467", "001.webp"))
+                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "505600", "000.webp")) or
+                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, "505700", "000.webp"))
                 )
             else:
-                expected_stages = servant_stages_map.get(short_id, ["000"])
+                expected_stages = servant_stages_map.get(svt_id, ["000"])
                 img_missing = any(
-                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, short_id, f"{st}.webp"))
+                    not os.path.exists(os.path.join(PUBLIC_SERVANTS_DIR, svt_id, f"{st}.webp"))
                     for st in expected_stages
                 )
 
@@ -877,21 +1012,18 @@ def sync_servants(args):
     print(f"Found {len(target_cnos)} servant(s) to synchronize: {target_cnos}")
 
     new_entries = {}
-    full_replacement = False
+    full_replacement = any("-" in k or (k.isdigit() and int(k) < 10000) for k in existing_keys)
     for cno in target_cnos:
         s_info = playable_by_cno[cno]
         long_id = s_info.get("id")
-        short_id = str(cno).zfill(3) if cno < 100 else str(cno)
+        svt_id = "505600" if cno == 467 else str(long_id)
 
-        has_existing = any(
-            k == short_id or k == str(cno) or k.startswith(f"{short_id}-") or k.startswith(f"{cno}-")
-            for k in existing_keys
-        )
+        has_existing = svt_id in existing_keys
 
         if not has_existing:
             svt_payload = bulk_svt_map.get(long_id)
             if svt_payload is None and not args.dry_run:
-                print(f"Fetching new Servant {short_id} (long ID: {long_id})...")
+                print(f"Fetching new Servant {cno} (ID: {svt_id})...")
                 svt_url = f"{API_BASE}/nice/JP/svt/{long_id}?lore=true&lang=en"
                 svt_payload = get_cached_json(
                     os.path.join(args.cache_dir, "svt"),
@@ -900,11 +1032,12 @@ def sync_servants(args):
                     force=args.force
                 )
             if svt_payload is None:
-                print(f"  [DRY-RUN] Skipping new servant {short_id} (bulk detail unavailable)")
+                print(f"  [DRY-RUN] Skipping new servant {svt_id} (bulk detail unavailable)")
                 continue
 
             name = (
-                UNOFFICIAL_SERVANT_TRANSLATIONS.get(short_id)
+                UNOFFICIAL_SERVANT_TRANSLATIONS.get(svt_id)
+                or UNOFFICIAL_SERVANT_TRANSLATIONS.get(str(cno))
                 or svt_payload.get("name")
                 or s_info.get("name", f"Servant {cno}")
             )
@@ -912,53 +1045,54 @@ def sync_servants(args):
 
             if cno == 467:
                 # Handle François and Francesca Prélat unified entry
-                download_face_icon("467", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                download_face_icon("467", 505700, stage="001", force=args.force, dry_run=args.dry_run)
+                download_face_icon("505600", 505600, stage="000", force=args.force, dry_run=args.dry_run)
+                download_face_icon("505700", 505700, stage="000", force=args.force, dry_run=args.dry_run)
                 new_entries.update(format_467_split(svt_payload))
                 continue
 
-            download_face_icon(short_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
+            download_face_icon(svt_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
             if asc_diffs:
-                download_face_icon(short_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
-                download_face_icon(short_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
+                download_face_icon(svt_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
+                download_face_icon(svt_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
             for stage in _extra_image_stages(asc_diffs, costume_battle_ids, opt_labels):
-                download_face_icon(short_id, long_id, stage=stage, battle_chara_id=costume_battle_ids.get(stage), force=args.force, dry_run=args.dry_run)
+                download_face_icon(svt_id, long_id, stage=stage, battle_chara_id=costume_battle_ids.get(stage), force=args.force, dry_run=args.dry_run)
 
-            entry_code = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_labels, opt_names)
-            new_entries[short_id] = entry_code
+            entry_code = format_servant_js_entry(svt_id, name, base_traits, asc_diffs, opt_labels, opt_names, collection_no=cno)
+            new_entries[svt_id] = entry_code
         else:
             svt_payload = bulk_svt_map.get(long_id)
             if svt_payload is not None and cno in drifted_cnos:
                 # Trait drift detected for this existing servant: replace its entry
                 # with fresh data (name, traits, option labels) and backfill images.
                 if cno == 467:
-                    # The unified entry stores as "467"; rebuild and download both portraits
-                    download_face_icon("467", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                    download_face_icon("467", 505700, stage="001", force=args.force, dry_run=args.dry_run)
+                    # The unified entry stores as "505600"; rebuild and download both portraits
+                    download_face_icon("505600", 505600, stage="000", force=args.force, dry_run=args.dry_run)
+                    download_face_icon("505700", 505700, stage="000", force=args.force, dry_run=args.dry_run)
                     new_entries.update(format_467_split(svt_payload))
                     full_replacement = True
                     continue
                 name = (
-                    UNOFFICIAL_SERVANT_TRANSLATIONS.get(short_id)
+                    UNOFFICIAL_SERVANT_TRANSLATIONS.get(svt_id)
+                    or UNOFFICIAL_SERVANT_TRANSLATIONS.get(str(cno))
                     or svt_payload.get("name")
                     or s_info.get("name", f"Servant {cno}")
                 )
                 base_traits, asc_diffs, opt_labels, opt_names, costume_battle_ids = extract_servant_traits(svt_payload)
-                download_face_icon(short_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
+                download_face_icon(svt_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
                 if asc_diffs:
-                    download_face_icon(short_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
-                    download_face_icon(short_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
+                    download_face_icon(svt_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
+                    download_face_icon(svt_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
                 for stage in _extra_image_stages(asc_diffs, costume_battle_ids, opt_labels):
-                    download_face_icon(short_id, long_id, stage=stage, battle_chara_id=costume_battle_ids.get(stage), force=args.force, dry_run=args.dry_run)
-                new_entries[short_id] = format_servant_js_entry(short_id, name, base_traits, asc_diffs, opt_labels, opt_names)
+                    download_face_icon(svt_id, long_id, stage=stage, battle_chara_id=costume_battle_ids.get(stage), force=args.force, dry_run=args.dry_run)
+                new_entries[svt_id] = format_servant_js_entry(svt_id, name, base_traits, asc_diffs, opt_labels, opt_names, collection_no=cno)
                 full_replacement = True
             elif cno == 467:
-                download_face_icon("467", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                download_face_icon("467", 505700, stage="001", force=args.force, dry_run=args.dry_run)
+                download_face_icon("505600", 505600, stage="000", force=args.force, dry_run=args.dry_run)
+                download_face_icon("505700", 505700, stage="000", force=args.force, dry_run=args.dry_run)
             else:
-                stages_to_fetch = servant_stages_map.get(short_id, ["000"])
+                stages_to_fetch = servant_stages_map.get(svt_id, ["000"])
                 for st in stages_to_fetch:
-                    download_face_icon(short_id, long_id, stage=st, force=args.force, dry_run=args.dry_run)
+                    download_face_icon(svt_id, long_id, stage=st, force=args.force, dry_run=args.dry_run)
 
     if new_entries:
         if full_replacement:
@@ -999,9 +1133,9 @@ def sync_bond_growth(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"),
         if not all(v > 0 for v in steps):
             skipped += 1
             continue
-        short_id = str(cno).zfill(3) if cno < 100 else str(cno)
+        svt_id = str(s.get("id"))
         canonical = json.dumps(steps)
-        by_svt[short_id] = tables.setdefault(canonical, f"t{len(tables)}")
+        by_svt[svt_id] = tables.setdefault(canonical, f"t{len(tables)}")
 
     if skipped:
         print(f"[WARN] {skipped} playable servant(s) have no complete bondGrowth table; skipped.", file=sys.stderr)
@@ -1012,8 +1146,8 @@ def sync_bond_growth(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"),
     lines.append("};")
     lines.append("")
     lines.append("export const BOND_TABLE_BY_SVT = {")
-    for short_id in sorted(by_svt, key=lambda k: int(k.split("-")[0])):
-        lines.append(f'  "{short_id}": "{by_svt[short_id]}",')
+    for svt_id in sorted(by_svt, key=lambda k: int(k)):
+        lines.append(f'  "{svt_id}": "{by_svt[svt_id]}",')
     lines.append("};\n")
     content = "\n".join(lines)
 
@@ -1069,9 +1203,12 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
         # shortcut: only the percentage differs today, no followerVals carries AddCount, so flat gains ignore it.
         support_rate, _support_add = _bond_rates(f.get("followerVals"))
 
+        ce_id = str(ce.get("id"))
         cid_str = f"{cid:04d}"
         if cid_str in CE_OVERRIDES and "bonus" in CE_OVERRIDES[cid_str]:
             max_rate = CE_OVERRIDES[cid_str]["bonus"]
+        elif ce_id in CE_OVERRIDES and "bonus" in CE_OVERRIDES[ce_id]:
+            max_rate = CE_OVERRIDES[ce_id]["bonus"]
 
         traits = []
         match_all = False
@@ -1100,10 +1237,14 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             traits = sorted([normalize_trait_id(tid) or f"{tid:04d}" for tid in raw_tids], key=lambda x: (len(x), x))
 
         raw_name = ce.get("name", "").strip()
-        if na_names and cid_str in na_names and na_names[cid_str]:
-            raw_name = na_names[cid_str]
+        if na_names and (ce_id in na_names or cid_str in na_names):
+            raw_name = na_names.get(ce_id) or na_names.get(cid_str)
+        elif ce_id in UNOFFICIAL_JP_TRANSLATIONS:
+            raw_name = UNOFFICIAL_JP_TRANSLATIONS[ce_id]
         elif cid_str in UNOFFICIAL_JP_TRANSLATIONS:
             raw_name = UNOFFICIAL_JP_TRANSLATIONS[cid_str]
+        elif ce_id in CE_OVERRIDES and "name" in CE_OVERRIDES[ce_id]:
+            raw_name = CE_OVERRIDES[ce_id]["name"]
         elif cid_str in CE_OVERRIDES and "name" in CE_OVERRIDES[cid_str]:
             raw_name = CE_OVERRIDES[cid_str]["name"]
 
@@ -1113,6 +1254,7 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
         parsed_ces.append({
             "cid": cid,
             "cid_str": cid_str,
+            "ce_id": ce_id,
             "name": raw_name,
             "base_title": base_title,
             "flag": ce.get("flag"),
@@ -1168,15 +1310,16 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
                 opt_name = opt["name"]
                 if base_title in SERIES_NAME_OVERRIDES:
                     opt_name = re.sub(r"^" + re.escape(base_title), group_name, opt_name)
-                options[opt["cid_str"]] = {"name": opt_name}
+                options[opt["ce_id"]] = {"name": opt_name, "collectionNo": opt["cid"]}
                 if "Mash" in opt_name:
-                    group_image = opt["cid_str"]
+                    group_image = opt["ce_id"]
 
             entry = {
-                "id": first["cid_str"],
+                "id": first["ce_id"],
+                "collectionNo": first["cid"],
                 "name": group_name,
                 "isGroup": True,
-                "folder": f"{first['cid_str']}-{last['cid_str']}",
+                "folder": f"{first['ce_id']}-{last['ce_id']}",
                 "options": options,
             }
             if group_image:
@@ -1198,7 +1341,8 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
             result.append(entry)
         else:
             entry = {
-                "id": first["cid_str"],
+                "id": first["ce_id"],
+                "collectionNo": first["cid"],
                 "name": first["name"],
             }
             if first["bonus"]:
@@ -1335,6 +1479,7 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
         key_repr = f'"{entry["id"]}"'
         lines.append(f"  {key_repr}: {{")
         lines.append(f'    name: {json.dumps(entry["name"])},')
+        lines.append(f'    collectionNo: {entry["collectionNo"]},')
         if entry.get("isGroup"):
             lines.append("    isGroup: true,")
             if entry.get("flatBonus"):
@@ -1351,7 +1496,7 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
                 lines.append(f'    folder: "{entry["folder"]}",')
             lines.append("    options: {")
             for opt_id, opt in entry["options"].items():
-                lines.append(f'      "{opt_id}": {{ name: {json.dumps(opt["name"])} }},')
+                lines.append(f'      "{opt_id}": {{ name: {json.dumps(opt["name"])}, collectionNo: {opt["collectionNo"]} }},')
             lines.append("    },")
         else:
             if entry.get("bonus"):
@@ -1390,7 +1535,14 @@ def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas
     na_names = {}
     try:
         na_data = get_cached_json(cache_dir, "na_basic_equip.json", na_url, force=force)
-        na_names = {f"{eq.get('collectionNo', 0):04d}": eq.get("name", "").strip() for eq in na_data if eq.get("collectionNo")}
+        for eq in na_data:
+            cno = eq.get("collectionNo", 0)
+            eid = str(eq.get("id")) if eq.get("id") else ""
+            name = eq.get("name", "").strip()
+            if cno:
+                na_names[f"{cno:04d}"] = name
+            if eid:
+                na_names[eid] = name
     except Exception as e:
         print(f"  [WARN] NA basic_equip fetch failed, falling back to JP names/overrides: {e}", file=sys.stderr)
 

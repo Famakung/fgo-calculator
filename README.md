@@ -138,8 +138,8 @@ fgo-calculator/
 │   ├── robots.txt              # Allow all
 │   ├── .nojekyll               # Prevent Jekyll processing on GitHub Pages
 │   ├── favicon.svg             # SVG favicon
-│   ├── servants/               # Servant portraits ({ID}/{ascension}.webp) [build-cached]
-│   ├── craft_essences/         # CE images: {ID}.webp (unified 142×155 bordered WebP) [build-cached]
+│   ├── servants/               # Servant portraits ({atlasId}/{stage}.webp) [build-cached]
+│   ├── craft_essences/         # CE images: {atlasId}.webp (unified 142×155 bordered WebP) [build-cached]
 │   └── icons/                  # UI icons (classes, materials, PWA)
 │
 ├── scripts/                    # Build-time sync and validation engine
@@ -182,7 +182,7 @@ Astro produces optimized chunks via Vite:
 
 - Vanilla JavaScript with no external runtime dependencies
 - Native system fonts (`system-ui`, `ui-monospace`) with zero font payload
-- All images in WebP format
+- All images WebP format
 - Trusted Types policy (`default`) enforced via inline script in `<head>`
 - All DOM elements created safely with `createElement()` (no innerHTML)
 - Data files use `export const` imported by `src/scripts/data.js`, bundled by Vite
