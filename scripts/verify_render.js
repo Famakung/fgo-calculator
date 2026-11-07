@@ -22,6 +22,7 @@
  */
 
 import puppeteer from "puppeteer";
+import { SERVANT_DATA } from "../src/scripts/data/servants.js";
 
 const url = process.argv[2] || "http://localhost:3000/fgo-calculator/";
 const errors = [];
@@ -1506,6 +1507,7 @@ try {
 
   /* The sort row beside the Filter button: the grid re-orders on it, the choice is remembered with the rest
      of the picker row, and a Grand Duel group that names one class greys Class out and falls back to ID. */
+  const cnoOf = (id) => (SERVANT_DATA[id] ? SERVANT_DATA[id].collectionNo : 0);
   const gridIds = () =>
     page.evaluate(() =>
       [...document.getElementById("servantPickerGrid").children].map((item) => {
@@ -1597,7 +1599,7 @@ try {
     sDefault.collapsible ||
     sDefault.subOpen ||
     ascIds.length < 2 ||
-    ascIds.join() !== ascIds.slice().sort().join() ||
+    ascIds.join() !== ascIds.slice().sort((a, b) => cnoOf(a) - cnoOf(b)).join() ||
     !underFilter.main ||
     !underFilter.sub ||
     topPeeled !== true ||
