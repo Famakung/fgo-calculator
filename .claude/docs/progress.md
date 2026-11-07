@@ -2499,3 +2499,31 @@ Key logic:
 | `README.md` | Documented modal action buttons, deferred filtering, and CE bonus chip disabling |
 | `.claude/CLAUDE.md` | Documented draft filter state and action footers in filter settings and CE picker modals |
 | `.claude/docs/progress.md` | Documented implementation and verification |
+
+## 2026-11-07 — Servant Select Hybrid CE Intersection & Same-Member Pruning
+
+### Overview
+Replaced the unoptimized Cartesian class intersection walk in `ServantComboCalculator.buildSharedCEGroups` with a hybrid closed-itemset approach featuring unshared CE pre-filtering, same-member pruning, and `seen` memoization.
+
+### Work Done
+1. **Pre-Filtering Unshared CEs (`_filterSharedCESet`, `_mapCEServants`):**
+   - Collects CEs usable by ≥2 distinct picked servants. CEs appearing on only one picked servant cannot form any combo and are discarded upfront, collapsing servant equivalence classes before enumeration.
+2. **Equivalence Classes & Member Order (`_buildEquivalenceClasses`, `_collectMembers`):**
+   - Deduplicates array/Set `matchingCEIds` with `[...new Set(rawCeIds)].filter(...)`.
+   - Groups interchangeable members with identical shared CE signatures into equivalence classes.
+3. **Closed Intersection Walk & Memoization (`_exploreCombinations`, `_walkCombinations`):**
+   - Walks pairwise intersections of equivalence classes with `seen` Set memoization, skipping redundant search branches and respecting `MAX_COMBO_NODES`.
+4. **Same-Member Pruning (`_recordCandidateGroup`, `_isBetterCEIds`, `_evaluateCandidateGroup`):**
+   - Keys combo candidate groups by member index signature (`memberKey`). When multiple candidate CE subsets match the exact same subset of members, retains only the maximal CE set (with deterministic lexicographical tie-breaking on equal length).
+5. **Clean Code Decomposition & Testing:**
+   - Decomposed into 11 focused helper methods on `ServantComboCalculator`, each strictly ≤18 lines.
+   - Updated node-budget truncation tests in `tests/servant-combo.test.js` to assert bounded search without relying on unshared CE Cartesian explosion. Added regression assertions for duplicate array inputs and multi-ascension single-servant isolation.
+   - 107/107 unit tests passing across all test suites.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `src/scripts/domain.js` | Implemented hybrid CE-intersection, pre-filtering, same-member pruning, and equivalence memoization in `ServantComboCalculator` |
+| `tests/servant-combo.test.js` | Updated budget truncation tests and added coverage for CE pre-filtering, same-member pruning, seen-key memoization, and duplicate inputs |
+| `.claude/CLAUDE.md` | Documented hybrid intersection algorithm and same-member pruning in Servant Select specification |
+| `.claude/docs/progress.md` | Documented implementation and verification |
