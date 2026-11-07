@@ -159,7 +159,10 @@ try {
   await page.click('button.cefilter-subtab-btn[data-subtab="servant"]');
   // Notes paint inside ServantSelect.render()'s double rAF, so give it a frame before reading.
   try {
-    await page.waitForFunction(() => !document.getElementById("cefilterComboEmpty").hidden, { timeout: 15000 });
+    await page.waitForFunction(
+      () => document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length > 0,
+      { timeout: 15000 },
+    );
   } catch {
     /* falls through to the hint check below */
   }
@@ -167,6 +170,13 @@ try {
     const visible = (name) =>
       Array.from(document.querySelectorAll(`.cefilter-subpanel[data-subpanel="${name}"]`)).filter((p) => !p.hidden)
         .length;
+    const cards = document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length;
+    const grid = document.querySelector("#cefilterComboResults .cefilter-combo-grid");
+    const gridCols = grid
+      ? window.getComputedStyle(grid).getPropertyValue("grid-template-columns").trim().split(/\s+/).length
+      : 0;
+    const pageIndicator =
+      document.querySelector("#cefilterComboPaginationTop .cefilter-page-indicator")?.textContent.trim() || "";
     return {
       ce: visible("ce"),
       servant: visible("servant"),
@@ -177,6 +187,9 @@ try {
       tabStyledLikeNavbar: document.querySelector(".cefilter-subtab-btn")?.classList.contains("tab-btn"),
       hintHidden: document.getElementById("cefilterComboEmpty").hidden,
       hintText: document.getElementById("cefilterComboEmpty").textContent.trim(),
+      cards,
+      gridCols,
+      pageIndicator,
     };
   });
   if (panels.activeTab !== "servant") errors.push(`sub-tab: active button is ${panels.activeTab}, expected servant`);
@@ -186,9 +199,21 @@ try {
   if (!panels.titles.includes("Servants") || !panels.titles.includes("Shared Craft Essences")) {
     errors.push(`sub-tab: Servant Select card titles wrong: ${JSON.stringify(panels.titles)}`);
   }
-  // With nothing picked the card has to say what to do instead of sitting blank.
-  if (panels.hintHidden || !panels.hintText.includes("two or more servants")) {
-    errors.push(`sub-tab: no how-to line with an empty pick list (hidden=${panels.hintHidden}, "${panels.hintText}")`);
+  if (!panels.hintHidden) {
+    errors.push(
+      `sub-tab: empty hint shown when 0 servants are picked (hidden=${panels.hintHidden}, "${panels.hintText}")`,
+    );
+  }
+  if (panels.cards === 0) {
+    errors.push("sub-tab: no combo cards rendered for all-servant combinations with 0 picks");
+  }
+  if (!panels.pageIndicator) {
+    errors.push("sub-tab: #cefilterComboPaginationTop missing page indicator");
+  }
+  if (panels.gridCols > 0 && panels.cards !== panels.gridCols * 5) {
+    errors.push(
+      `sub-tab: expected ${panels.gridCols * 5} cards (5 rows x ${panels.gridCols} cols), saw ${panels.cards}`,
+    );
   }
 
   // Picking marks items and keeps the modal open, like the CE picker. 444 U-Olga Marie has
@@ -213,48 +238,88 @@ try {
       timeout: 15000,
     });
   };
+  const applyModal = async () => {
+    await page.click("#servantModalOkBtn");
+    await page.waitForFunction(() => !document.getElementById("servantModal").classList.contains("open"), {
+      timeout: 15000,
+    });
+  };
+  const cancelModal = async () => {
+    await page.click("#servantModalCancelBtn");
+    await page.waitForFunction(() => !document.getElementById("servantModal").classList.contains("open"), {
+      timeout: 15000,
+    });
+  };
   await openModal();
-  await page.waitForFunction(() => document.getElementById("servantModal").classList.contains("open"), {
-    timeout: 15000,
-  });
-  let solo = null;
-  for (const servantId of ["001", "444"]) {
-    const picked = await pickInModal(servantId);
-    if (!picked.found) errors.push(`servant select: picker grid has no servant ${servantId}`);
-    if (!picked.selected) errors.push(`servant select: ${servantId} picked but not marked selected`);
-    if (servantId === "001") {
-      // One servant has nobody to share with: the line must ask for one more, and must not name the
-      // lone pick as unshared. The note is already visible from the empty-list paint, so waiting on
-      // its hidden flag proves nothing — yield the two frames ServantSelect.render() paints on.
-      let settled = true;
-      try {
-        await page.waitForFunction(
-          () => document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length === 1,
-          { timeout: 15000 },
-        );
-      } catch {
-        settled = false;
-      }
-      // ServantSelect.render() paints on a double rAF, so let the pick's frame budget run out
-      // before reading the note.
-      await new Promise((r) => setTimeout(r, 300));
-      if (!settled) errors.push("servant select: the first pick never reached #cefilterServantChips");
-      solo = await page.evaluate(() => ({
-        chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
-        hidden: document.getElementById("cefilterComboEmpty").hidden,
-        text: document.getElementById("cefilterComboEmpty").textContent.trim(),
-        unsharedHidden: document.getElementById("cefilterComboUnshared").hidden,
-        unsharedText: document.getElementById("cefilterComboUnshared").textContent.trim(),
-      }));
-    }
-    const stateAfter = await page.evaluate(() => ({
-      modalOpen: document.getElementById("servantModal").classList.contains("open"),
-      ascensionOpen: document.getElementById("ascensionModal").classList.contains("open"),
-    }));
-    if (!stateAfter.modalOpen) errors.push(`servant select: picking ${servantId} closed the modal`);
-    if (stateAfter.ascensionOpen) errors.push(`servant select: picking ${servantId} opened the ascension prompt`);
+  const picked001 = await pickInModal("001");
+  if (!picked001.found) errors.push("servant select: picker grid has no servant 001");
+  if (!picked001.selected) errors.push("servant select: 001 picked but not marked selected");
+  const footerHidden = await page.evaluate(() => document.getElementById("servantModalFooter").hidden);
+  if (footerHidden) errors.push("servant select: #servantModalFooter is hidden in multi-select mode");
+  await applyModal();
+
+  // One servant has nobody to share with: the line must ask for one more, and must not name the
+  // lone pick as unshared. The note is already visible from the empty-list paint, so waiting on
+  // its hidden flag proves nothing — yield the two frames ServantSelect.render() paints on.
+  let settled = true;
+  try {
+    await page.waitForFunction(() => document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length === 1, {
+      timeout: 15000,
+    });
+  } catch {
+    settled = false;
   }
-  await closeModal();
+  await new Promise((r) => setTimeout(r, 300));
+  if (!settled) errors.push("servant select: the first pick never reached #cefilterServantChips");
+  const solo = await page.evaluate(() => ({
+    chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
+    hidden: document.getElementById("cefilterComboEmpty").hidden,
+    text: document.getElementById("cefilterComboEmpty").textContent.trim(),
+    unsharedHidden: document.getElementById("cefilterComboUnshared").hidden,
+    unsharedText: document.getElementById("cefilterComboUnshared").textContent.trim(),
+    paginationHidden: document.getElementById("cefilterComboPaginationTop").hidden,
+    cards: document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length,
+  }));
+
+  // Reopen modal to verify 001 is selected, then pick 444
+  await openModal();
+  const is001Selected = await page.evaluate(() => {
+    const item = Array.from(document.querySelectorAll("#servantPickerGrid .servant-picker-item")).find((el) =>
+      el.querySelector("img")?.getAttribute("src")?.includes("servants/001/"),
+    );
+    return item?.classList.contains("selected");
+  });
+  if (!is001Selected) errors.push("servant select: 001 not marked selected when reopening modal");
+
+  const picked444 = await pickInModal("444");
+  if (!picked444.found) errors.push("servant select: picker grid has no servant 444");
+  if (!picked444.selected) errors.push("servant select: 444 picked but not marked selected");
+
+  const stateAfter444 = await page.evaluate(() => ({
+    modalOpen: document.getElementById("servantModal").classList.contains("open"),
+    ascensionOpen: document.getElementById("ascensionModal").classList.contains("open"),
+  }));
+  if (!stateAfter444.modalOpen) errors.push("servant select: picking 444 closed the modal");
+  if (stateAfter444.ascensionOpen) errors.push("servant select: picking 444 opened the ascension prompt");
+
+  await applyModal();
+
+  // Test Cancel staging: open modal, click Default, click Cancel, verify chips still 2
+  await openModal();
+  await page.click("#servantModalDefaultBtn");
+  const selectedCountAfterDefault = await page.evaluate(
+    () => document.querySelectorAll("#servantPickerGrid .servant-picker-item.selected").length,
+  );
+  if (selectedCountAfterDefault !== 0) {
+    errors.push(`servant select: Default button did not unselect items (${selectedCountAfterDefault} still selected)`);
+  }
+  await cancelModal();
+  const chipsAfterCancel = await page.evaluate(
+    () => document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
+  );
+  if (chipsAfterCancel !== 2) {
+    errors.push(`servant select: Cancel button did not discard changes (expected 2 chips, saw ${chipsAfterCancel})`);
+  }
 
   if (solo?.chips === 1) {
     if (solo.hidden || !solo.text.includes("Add one more servant")) {
@@ -262,6 +327,11 @@ try {
     }
     if (!solo.unsharedHidden) {
       errors.push(`servant select: lone pick named as unshared ("${solo.unsharedText}")`);
+    }
+    if (!solo.paginationHidden || solo.cards !== 0) {
+      errors.push(
+        `servant select: pagination not hidden or cards rendered for single pick (cards=${solo.cards}, paginationHidden=${solo.paginationHidden})`,
+      );
     }
   }
 
@@ -337,7 +407,7 @@ try {
       .catch(() => {});
   await openModal();
   const oddPicked = await pickInModal("020");
-  await closeModal();
+  await applyModal();
   await waitForUnshared(true);
   if (!oddPicked.found) errors.push("servant select: picker grid has no servant 020");
   const withOdd = await page.evaluate(() => ({
@@ -357,7 +427,7 @@ try {
 
   await openModal();
   await pickInModal("020");
-  await closeModal();
+  await applyModal();
   await waitForUnshared(false);
   const afterUntoggle = await page.evaluate(() => ({
     chips: document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length,
@@ -556,7 +626,7 @@ try {
     await page.waitForFunction(
       () =>
         document.querySelectorAll("#cefilterServantChips > .cefilter-chip").length === 0 &&
-        document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length === 0,
+        document.querySelectorAll("#cefilterComboResults .cefilter-combo-card").length > 0,
       { timeout: 15000 },
     );
   } catch {
@@ -569,7 +639,9 @@ try {
     stored: localStorage.getItem("fgo_ce_filter_data"),
   }));
   if (cleared.chips !== 0) errors.push(`clear all: ${cleared.chips} chip(s) left after clicking`);
-  if (cleared.cards !== 0) errors.push(`clear all: ${cleared.cards} card(s) left after clicking`);
+  if (cleared.cards === 0) {
+    errors.push("clear all: combo grid emptied instead of falling back to all-servant combinations");
+  }
   if (!cleared.clearHidden) errors.push("clear all: button still shown with an empty pick list");
   // Both sub-tabs share this key, so each write has to be read-modify-write: the servant Clear all
   // must empty servantPicks and leave the CE side's picks standing.
@@ -1379,9 +1451,7 @@ try {
         document.getElementById("servantFilterOkBtn").click();
       }
       const on = (sel) =>
-        [...document.querySelectorAll(sel)]
-          .filter((b) => b.classList.contains("active"))
-          .map(labelOf);
+        [...document.querySelectorAll(sel)].filter((b) => b.classList.contains("active")).map(labelOf);
       return {
         classes: on("#servantClassFilter .class-btn"),
         rarities: on("#servantRarityFilter .rarity-btn"),

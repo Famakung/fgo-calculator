@@ -660,7 +660,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <div class="card-title cefilter-results-header">
                   <span>Shared Craft Essences</span>
                 </div>
+                <div class="cefilter-pagination" id="cefilterComboPaginationTop"></div>
                 <div class="cefilter-combo-results" id="cefilterComboResults"></div>
+                <div class="cefilter-pagination" id="cefilterComboPaginationBottom"></div>
                 <div class="cefilter-combo-empty" id="cefilterComboEmpty" hidden></div>
                 <div class="cefilter-combo-unshared" id="cefilterComboUnshared" hidden></div>
                 <div class="cefilter-combo-truncated" id="cefilterComboTruncated" hidden>Too many combinations — remove a servant.</div>
@@ -719,6 +721,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               </button>
             </div>
             <div class="servant-picker-grid grid-sm servant-picker-grid--servant" id="servantPickerGrid"></div>
+            <div class="cefilter-modal-footer" id="servantModalFooter" hidden>
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="servantModalDefaultBtn">Default</button>
+                <button type="button" class="cefilter-footer-btn" id="servantModalSelectAllBtn">Select All</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="servantModalCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="servantModalOkBtn">OK</button>
+              </div>
+            </div>
           </div>
         </div>
 
