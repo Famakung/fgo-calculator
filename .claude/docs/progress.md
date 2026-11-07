@@ -2616,3 +2616,67 @@ Unified modal width scaling across breakpoints, capped compact filter sub-modals
 | `src/layouts/BaseLayout.astro` | Updated modal width scales, breakpoint rules, and `.class-filter` grid CSS |
 | `src/pages/index.astro` | Added `role="dialog"`, `aria-modal="true"`, and `aria-labelledby` across modals |
 | `.claude/docs/code-style.md` | Documented updated modal width scales and 3×5 class grid |
+
+
+## 2026-11-07 — Servant Atlas ID Migration
+
+### Overview
+Migrated servant identification and asset folder structure from 3-digit zero-padded collection numbers (`"001"`, `"467"`) to official Atlas Academy servant IDs (`"100100"`, `"505600"`), storing `collectionNo` as an explicit integer field and keeping dual-persona Servant 467 unified via `altId: "505700"`.
+
+### Work Done
+1. **Schema & Extraction:**
+   - Updated `scripts/sync_atlas_data.py` to key `SERVANT_DATA` and `BOND_TABLE_BY_SVT` by Atlas servant IDs.
+   - Preserved `collectionNo: <int>` on each servant record; sorted servant arrays ascending by `collectionNo`.
+   - Asset portraits organized in `public/servants/{atlasId}/{stage}.webp`.
+2. **Backwards Compatibility & App Controllers:**
+   - Updated `src/scripts/data.js` and `src/scripts/domain.js` with collection number to Atlas ID resolution maps.
+   - Sanitized and migrated legacy saved parties and picks in `BondApp` and `CEFilterApp`.
+3. **Verification:**
+   - 150/150 unit tests passing; `scripts/validate_data.js` and `verify_render.js` clean.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `scripts/sync_atlas_data.py` | Extracted Atlas svt IDs, output `collectionNo: <int>` |
+| `scripts/validate_data.js` | Updated schema validation for Atlas svt IDs |
+| `src/scripts/data.js` | Built `cnoToId` reverse mapping and servant lookup |
+| `src/scripts/domain.js` | Adapted validators and calculators to Atlas svt IDs |
+| `tests/*` | Updated unit test fixtures and assertions |
+
+## 2026-11-08 — Craft Essence Atlas ID Migration with Collection Number Ordering & Back-Compat
+
+### Overview
+Migrated Craft Essences from 4-digit collection numbers (`"0099"`, `"0910"`) to 7-digit Atlas equip IDs (`"9400970"`, `"9401970"`), matching the servant architecture pattern. Added robust `localStorage` backwards compatibility and preserved in-game collection number display and LCP preload order.
+
+### Work Done
+1. **Schema & Extraction:**
+   - Updated `scripts/sync_atlas_data.py` to extract 7-digit Atlas equip IDs as keys, emit `collectionNo: <int>` on base entries and campaign series group `options`.
+   - Updated `scripts/fetch_bordered_ces.py` to key face icon mappings by Atlas ID and migrated all 59 WebP assets in `public/craft_essences/` to 7-digit filenames (`9400970.webp`, etc.).
+2. **Data & State Migration Layer:**
+   - In `src/scripts/data.js`, implemented `CEData.cnoToId` reverse map and exported `CEData.migrateId(oldId)` and `CEData.migrateEntry(entry)` supporting both string IDs and numeric primitive literals.
+   - Enforced `CEList` sorting by `(a.collectionNo - b.collectionNo) || a.id.localeCompare(b.id)` so UI ordering, LCP preloads, and modal grids follow in-game collection numbers rather than lexical Atlas ID strings.
+   - Indexed raw `collectionNo`, 4-digit zero-padded `collectionNo`, Atlas equip ID, and name in `_search` token sets.
+3. **Application Controllers:**
+   - Updated `BondApp.loadState()` to sanitize and migrate slot `ces` via `CEData.migrateEntry()`.
+   - Updated `CEFilterApp._loadPicks()` to migrate saved `cePicks` via `CEData.migrateId()`.
+4. **Validation & Testing:**
+   - Updated `scripts/validate_data.js` with 5-8 digit numeric ID format and positive integer `collectionNo` assertions.
+   - Created comprehensive adversarial regression harness `tests/ce-atlas-id-migration.test.js` covering sorting stability, grouped CE option migrations, search tokenization, and numeric primitive migration.
+   - Updated `tests/bond-slot-ces.test.js`, `tests/ce-filter-store.test.js`, `tests/servant-filters.test.js`, and `tests/validate-picks.test.js`.
+   - 162/162 unit tests pass; ESLint clean; build baseline and Puppeteer render gates clean.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `scripts/sync_atlas_data.py` | Extracted Atlas equip IDs, exported `collectionNo` on entries and grouped options |
+| `scripts/fetch_bordered_ces.py` | Migrated CE face mapping and 59 WebP image assets to 7-digit Atlas IDs |
+| `scripts/validate_data.js` | Added Atlas ID format and integer `collectionNo` validation |
+| `src/scripts/data.js` | Built `CEData.cnoToId`, `migrateId`, `migrateEntry`, `collectionNo` sorting, and search indexing |
+| `src/scripts/domain.js` | Updated `Validator.validatePicks` docstring to cite 7-digit Atlas IDs |
+| `src/scripts/bond-app.js` | Migrated legacy `ces` entries in `loadState()` |
+| `src/scripts/ce-filter-app.js` | Migrated legacy `cePicks` in `_loadPicks()` |
+| `.claude/docs/data-rules.md` | Updated `CE_DATA` schema, fields, and image asset paths |
+| `.claude/docs/structure.md` | Updated asset layout and image conventions |
+| `.claude/CLAUDE.md` | Aligned asset paths, bond table ID references, and removed token gate policy |
+| `README.md` | Updated asset paths to `{atlasId}` |
+| `tests/*` | Added 12 new migration regression tests, updated existing test fixtures |

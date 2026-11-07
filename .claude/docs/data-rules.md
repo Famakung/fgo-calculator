@@ -56,7 +56,7 @@
 - Trait `0200` fixed and preserved as `"Heaven Attribute"` (matches official in-game NA status screen)
 - New CE field → whitelist in `CEList` IIFE `src/scripts/data.js` (silently stripped otherwise)
 - New servant field → handle in `ServantData.load()` `src/scripts/data.js`
-- Images: `public/servants/{atlasId}/{stage}.webp`, `public/craft_essences/...`
+- Images: `public/servants/{atlasId}/{stage}.webp`, `public/craft_essences/{atlasId}.webp`
 
 ## Zero-Commit Architecture
 - Game images (`public/servants/`, `public/craft_essences/`) + generated data (`src/scripts/data/*.js`) follow **Zero-Commit Architecture**:
@@ -66,7 +66,7 @@
   - Git repo stays 100% pure source code, zero asset bloat, zero data diff noise.
 
 ## Image Paths
-- Servants: `public/servants/{ID}/{ascension}.webp` (142×155 WebP, bordered in-game card frame, e.g. `public/servants/001/000.webp`)
-- CEs: `public/craft_essences/{ID}.webp` (142×155 bordered WebP, same for all display sizes)
+- Servants: `public/servants/{atlasId}/{stage}.webp` (142×155 WebP, bordered in-game card frame, e.g. `public/servants/100100/000.webp`)
+- CEs: `public/craft_essences/{atlasId}.webp` (142×155 bordered WebP, same for all display sizes, e.g. `public/craft_essences/9400970.webp`)
 - Icons: `public/icons/*.webp`, `public/icons/{category}/*.webp`
-- Astro copies `public/` to `dist/` keeping paths — servant + CE image refs use relative URLs with `IMAGE_VERSION` cache-bust query param (e.g. `servants/001/000.webp?v=${IMAGE_VERSION}` — never literal number, `BaseLayout.astro`'s preload reads same constant)
+- Astro copies `public/` to `dist/` keeping paths — servant + CE image refs use relative URLs with `IMAGE_VERSION` cache-bust query param (e.g. `servants/100100/000.webp?v=${IMAGE_VERSION}` — never literal number, `BaseLayout.astro`'s preload reads same constant)

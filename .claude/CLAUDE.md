@@ -14,25 +14,6 @@ On demand only (large):
 - **`fetch-data-guideline.md`** — fetch/process game data from Atlas Academy API.
 - **`progress.md`** — implementation status, testing checklists, roadmap.
 
-## ⚠️ Token Spend — Ask Before a Big Burn (owner rule, applies to every repo)
-
-Owner decides what run costs; workflow does not. Name step in one line + **wait for approval**
-before any of:
-
-- dispatch reviewer, auditor, any subagent, or parallel agent fan-out
-- run multi-agent `Workflow`
-- read large file whole (on-demand docs above, generated data, lockfiles) instead of grepping
-- repeat `npm run build` + `node scripts/verify_render.js` with no source change
-
-No approval needed for what task already calls for: `npm run test`, `npm run lint`,
-`node scripts/check_build_output.js`, `git` reads, targeted greps.
-
-**Never auto-run final whole-branch code review.** Owner reviews diff + tests by hand (now
-against served build at `localhost:3000`). Report gate evidence + stop; no self-review pass
-replacing reviewer you were told to skip. Same in `AGENTS.md`, `GEMINI.md`, globally in
-`~/.claude/CLAUDE.md`. Not permission to pause between plan tasks asking "should I continue?" —
-progress prompts stay forbidden.
-
 ## Project
 
 FGO Calculator — Astro static site on GitHub Pages. Three tools:
@@ -234,8 +215,8 @@ Bond Gain CE uses Web Worker (`ce-match-worker.js`) for trait matching off main 
 
 1. Trait IDs: sort ascending in arrays
 2. New trait: add to `TRAIT_DATA` (`src/scripts/data/traits.js`) with display name
-3. Servant images: `public/servants/{ID}/{ascension}.webp`
-4. CE images: `public/craft_essences/{ID}.webp` (bordered 142×155, unified for all display sizes)
+3. Servant images: `public/servants/{atlasId}/{stage}.webp`
+4. CE images: `public/craft_essences/{atlasId}.webp` (bordered 142×155, unified for all display sizes)
 
 ## Deployment & CI/CD Pipeline
 
