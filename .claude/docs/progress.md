@@ -2732,3 +2732,40 @@ Converted the "Craft Essence Select" and "Servant Select" sub-tab buttons in `#p
 | `src/layouts/BaseLayout.astro` | Added mobile full bar and desktop segmented track in inline `<style>` |
 | `scripts/verify_render.js` | Updated subtab layout comment to reflect unified segmented track |
 | `.claude/docs/progress.md` | Documented responsive design enhancement |
+
+
+## 2026-11-08 — fix(ui): Mobile Card Layout Hardening & 2-1 Pyramid Centering
+
+### Overview
+Audited and resolved 5 mobile card layout anomalies across Event Shop Calculator, Bond Calculator, and Bond Gain CE tabs for mobile viewports (<580px, <380px, 320px–360px).
+
+### Work Done
+1. **2-Column Grid Centering (2-1 Pyramid Hierarchy) (<580px):**
+   - Centered odd 3rd card in 2-column mobile grids across `#materialsGrid`, `#questDropsGrid`, `#deficitGrid`, `#questGrid`, and `#servantGrid` (slots 2 & 5) using `grid-column: 1 / -1; justify-self: center; width: 100%;`.
+   - Set `max-width: 160px` for materials, deficit, quest, and servant slots (ensuring 1:1 visual parity across Bronze, Silver, Gold tiers in a balanced 2-1 pyramid).
+   - Set `max-width: 328px` for quest drops to give horizontal drop rows ample room.
+   - Clean desktop reset at `@media (width >= 580px)`: `grid-column: auto; justify-self: auto; max-width: none;`.
+2. **Combo Card Grid Overflow Protection (320px Viewports & Modals):**
+   - Replaced rigid `minmax(280px, 320px)` with `minmax(min(100%, 280px), 320px)` in `.cefilter-combo-grid`.
+   - Added narrow mobile override (<380px): `#ceOverlapModal .cefilter-combo-grid, .cefilter-combo-grid { grid-template-columns: minmax(0, 1fr); padding: 4px; }`.
+3. **Combo Card CE Portrait Scaling (<580px):**
+   - Applied `@media (width < 580px) { .cefilter-combo-ce-img { height: var(--slot-ce-h); } }` (64px) so 3 CEs fit horizontally on a single line without wrapping.
+4. **Bond Party Actions Stacked Layout (<380px):**
+   - Eliminated zig-zag alignment on narrow screens with `.bond-teapot { margin-left: 0; }` and full-width calculate CTA `.bond-card-actions .calculate-btn { width: 100%; }`.
+5. **Servant Slot Internal Overflow Prevention (320px–360px):**
+   - Enabled `flex-wrap: wrap; gap: 6px;` on `.bond-checkbox-row` to prevent text truncation on narrow slots.
+   - Set `max-width: 100%; flex-wrap: wrap;` on `.slot-ce-strip` to contain multi-CE Grand Servants.
+   - Reduced `.quest-drops-item` padding to `10px 8px` on `<380px`.
+6. **CSS Cascade Precedence:**
+   - Positioned component `@media (width < 380px)` downstream after all base component and modal declarations in `src/layouts/BaseLayout.astro`.
+7. **Verification & Testing:**
+   - Created regression harnesses `scripts/test_repro_mobile_cascade_bug.js` and `scripts/test_mobile_cards_qa.js` testing 9 viewport sizes (320px–1120px) with 0px overflow and optical centering verified.
+   - 162/162 unit tests, ESLint, production build baseline, and Python test suites pass cleanly.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `src/layouts/BaseLayout.astro` | Added mobile centering, portrait scaling, and narrow-screen layout overrides in inline `<style>` |
+| `scripts/test_repro_mobile_cascade_bug.js` | Added regression test for media query cascade precedence |
+| `scripts/test_mobile_cards_qa.js` | Added 9-viewport responsive layout testing harness |
+| `.claude/docs/progress.md` | Documented mobile card layout fixes |
