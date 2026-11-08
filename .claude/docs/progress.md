@@ -2705,3 +2705,30 @@ Migrated Craft Essences from 4-digit collection numbers (`"0099"`, `"0910"`) to 
 | `.claude/CLAUDE.md` | Aligned asset paths, bond table ID references, and removed token gate policy |
 | `README.md` | Updated asset paths to `{atlasId}` |
 | `tests/*` | Added 12 new migration regression tests, updated existing test fixtures |
+
+## 2026-11-08 — style(ui): Bond Gain CE Sub-Tab Unified Segmented Track (Mobile Full Bar & Desktop Pill Bar)
+
+### Overview
+Converted the "Craft Essence Select" and "Servant Select" sub-tab buttons in `#panel-cefilter` from an uncontained right-aligned row into a unified tactile segmented control track across all viewports: top-center full-width bar on small devices (<760px), and top-right positioned segmented track on desktop (>=760px).
+
+### Work Done
+1. **Mobile (<760px) Full Bar Segmented Track:**
+   - `.cefilter-subtabs`: full width (`width: 100%`), tactile recessed container track with `background: var(--bg)`, `border: 2px solid var(--border)`, `border-radius: var(--radius-sm)`, `padding: 4px`, `gap: 4px`, `box-sizing: border-box`, `margin-bottom: 12px`.
+   - `.cefilter-subtab-btn`: equal distribution (`flex: 1 1 0; min-width: 0`), centered text, `padding: 8px 4px`, `font-size: 0.8rem`, `border-radius: calc(var(--radius-sm) - 2px)`.
+   - Active state `#cefilterSubtabs .cefilter-subtab-btn.active`: `background: var(--accent); color: #fff; font-weight: 600;`, overriding the generic navbar tab-switching reset rule.
+   - Text fits comfortably across mobile viewports down to 320px with zero overflow.
+2. **Desktop (>=760px) Segmented Track:**
+   - `#panel-cefilter > .card:first-child .cefilter-subtabs`: retains the segmented track container (`background: var(--bg); border: 2px solid var(--border); border-radius: var(--radius-sm); padding: 4px; gap: 4px; box-sizing: border-box;`), positioned absolute at `top: -11px; right: 0; margin-bottom: 0; overflow-x: visible; width: auto;`.
+   - `.cefilter-subtab-btn`: natural content width (`flex: initial`), `padding: 6px 14px`, `font-size: 0.85rem`, `border-radius: calc(var(--radius-sm) - 2px)`.
+   - Vertically optically centered with `.card-title` ("Craft Essences" / "Servant Select").
+3. **Verification:**
+   - Verified across viewports (320px, 375px, 760px, 940px, 1120px, 1400px) with Puppeteer; 0px text overflow, 0px card overflow, optical vertical centering.
+   - All 162 unit tests pass (`npm test`).
+   - Production build baseline check (`npm run check:build`), ESLint, and browser render verification (`scripts/verify_render.js`) pass cleanly.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `src/layouts/BaseLayout.astro` | Added mobile full bar and desktop segmented track in inline `<style>` |
+| `scripts/verify_render.js` | Updated subtab layout comment to reflect unified segmented track |
+| `.claude/docs/progress.md` | Documented responsive design enhancement |

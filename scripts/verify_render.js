@@ -155,8 +155,8 @@ try {
   }
 
   // Servant Select sub-tab: the reverse direction. The sub-tab bar sits in the top-right corner
-  // of the controls card (its own right-aligned row below 760px), and both cards swap panels
-  // together by data-subpanel.
+  // of the controls card on desktop (>= 760px), and renders as a top-center full bar
+  // below 760px (both using a unified segmented track). Both cards swap panels together by data-subpanel.
   await page.click('button.cefilter-subtab-btn[data-subtab="servant"]');
   // Notes paint inside ServantSelect.render()'s double rAF, so give it a frame before reading.
   try {
