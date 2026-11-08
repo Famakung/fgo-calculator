@@ -421,19 +421,19 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <option value="">-- Select a Quest --</option>
               </select>
             </div>
-            <div class="input-row">
+            <div class="input-row bond-quest-row--free">
               <label class="input-label" for="bondFreeQuestSelect">Quest</label>
               <select class="select-field" id="bondFreeQuestSelect">
                 <option value="">-- Select --</option>
               </select>
             </div>
-            <div class="input-row">
+            <div class="input-row bond-quest-row--grand">
               <label class="input-label" for="bondGrandClassSelect">Class</label>
               <select class="select-field" id="bondGrandClassSelect">
                 <option value="">-- Select --</option>
               </select>
             </div>
-            <div class="input-row">
+            <div class="input-row bond-quest-row--grand">
               <label class="input-label" for="bondGrandDiffSelect">Difficulty</label>
               <select class="select-field" id="bondGrandDiffSelect">
                 <option value="">-- Select --</option>
@@ -475,7 +475,34 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           <div class="card">
             <div class="card-inner">
               <div class="card-title">Party Setup</div>
-            <div class="servant-grid grid" id="servantGrid"></div>
+            <div class="servant-grid grid" id="servantGrid">
+              <div class="bond-group-label bond-group-label--frontline">Starting Member</div>
+              <div class="servant-slot servant-slot--frontline servant-add-slot" data-slot-index="0">
+                <div class="servant-slot-portrait-fallback">+</div>
+                <div><div class="servant-slot-name">Add Servant</div></div>
+              </div>
+              <div class="servant-slot servant-slot--frontline servant-add-slot" data-slot-index="1">
+                <div class="servant-slot-portrait-fallback">+</div>
+                <div><div class="servant-slot-name">Add Servant</div></div>
+              </div>
+              <div class="servant-slot servant-slot--frontline servant-add-slot" data-slot-index="2">
+                <div class="servant-slot-portrait-fallback">+</div>
+                <div><div class="servant-slot-name">Add Servant</div></div>
+              </div>
+              <div class="bond-group-label bond-group-label--backline">Sub Member</div>
+              <div class="servant-slot servant-slot--backline servant-add-slot" data-slot-index="3">
+                <div class="servant-slot-portrait-fallback">+</div>
+                <div><div class="servant-slot-name">Add Servant</div></div>
+              </div>
+              <div class="servant-slot servant-slot--backline servant-add-slot" data-slot-index="4">
+                <div class="servant-slot-portrait-fallback">+</div>
+                <div><div class="servant-slot-name">Add Servant</div></div>
+              </div>
+              <div class="servant-slot servant-slot--backline servant-add-slot" data-slot-index="5">
+                <div class="servant-slot-portrait-fallback">+</div>
+                <div><div class="servant-slot-name">Add Servant</div></div>
+              </div>
+            </div>
             <div class="bond-card-actions">
               <div class="bond-max-ap">
                 <img

@@ -230,6 +230,7 @@ export const BondApp = {
     const customApInput = document.getElementById("customApPerRun");
     const freeOn = this.state.questMain === "fq";
     const grandOn = this.state.questMain === "gd";
+    this._syncQuestAttributes(freeOn, grandOn);
     free.closest(".input-row").style.display = freeOn ? "flex" : "none";
     gdClass.closest(".input-row").style.display = grandOn ? "flex" : "none";
     gdDiff.closest(".input-row").style.display = grandOn ? "flex" : "none";
@@ -237,6 +238,21 @@ export const BondApp = {
     if (customInput) customInput.disabled = !customOn;
     if (customApInput) customApInput.disabled = !customOn;
     if (customRow) customRow.style.display = customOn ? "block" : "none";
+  },
+
+  _syncQuestAttributes(freeOn, grandOn) {
+    const de = document.documentElement;
+    if (freeOn) {
+      de.setAttribute("data-bond-quest", "fq");
+      if (this.state.questSub === "custom") de.setAttribute("data-bond-custom", "1");
+      else de.removeAttribute("data-bond-custom");
+    } else if (grandOn) {
+      de.setAttribute("data-bond-quest", "gd");
+      de.removeAttribute("data-bond-custom");
+    } else {
+      de.removeAttribute("data-bond-quest");
+      de.removeAttribute("data-bond-custom");
+    }
   },
 
   /* A Grand Duel class choice limits the party, so the servant picker opens already filtered to those
@@ -792,7 +808,6 @@ export const BondApp = {
         slot.appendChild(info);
       } else {
         // --- Empty slot (Add Servant) ---
-        slot.style.cursor = "pointer";
         slot.classList.add("servant-add-slot");
 
         const addPortrait = DOMFactory.el("div", "servant-slot-portrait-fallback");

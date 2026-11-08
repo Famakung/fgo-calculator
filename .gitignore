@@ -31,3 +31,4 @@ styles.min.css
 
 # Temp/test files
 lighthouse-runner.js
+.bin/

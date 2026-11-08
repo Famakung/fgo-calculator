@@ -65,7 +65,7 @@ dist/                         — Static site output for GitHub Pages
 3. Inline `<script>` in `<head>` — Trusted Types policy (passthrough)
 4. Inline `<script>` in `<head>` — Service-worker/cache cleanup
 5. Inline `<script>` in `<head>` — Build-etag poller (`fgo_build_etag`, "new version available" banner)
-6. Inline `<script>` in `<head>` — Tab init (reads localStorage, sets `data-tab`, preloads LCP images; Bond Gain CE preload list = **first row only** — first servants ordered by collectionNo matching `CEFilterApp._getCols()` — high-priority image preloads outrank tab's own chunks, 39-link list pushed LCP 1684 ms to 2944 ms under 1.6 Mbps / CPU 4x. `plain` skips list when saved `cePicks` or Servant Select sub-tab renders a different first page)
+6. Inline `<script>` in `<head>` — Tab init (reads localStorage, sets `data-tab`, `data-bond-quest` / `data-bond-custom` for zero-CLS pre-paint quest row display, preloads LCP images; Bond Gain CE preload list = **first row only** — first servants ordered by collectionNo matching `CEFilterApp._getCols()` — high-priority image preloads outrank tab's own chunks, 39-link list pushed LCP 1684 ms to 2944 ms under 1.6 Mbps / CPU 4x. `plain` skips list when saved `cePicks` or Servant Select sub-tab renders a different first page)
 7. `<script type="module">` — Astro entry chunk (imports main-entry + shared chunks eager)
 8. Lazy chunks via dynamic `import()` on tab switch (bond-lazy, event-lazy)
 9. Web Worker (`ce-match-worker.js`) spawned by CEFilterApp for first trait match compute

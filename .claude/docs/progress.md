@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-11-08 — fix(bond): eliminate layout shift in Bond Calculator tab
+
+- **Problem**: Opening or refreshing the Bond Calculator tab (#panel-bond) suffered dual layout shifts:
+  1. Select Quest card in static HTML displayed all 4 dropdown rows (Main, Quest, Class, Difficulty) plus the custom quest section (~366px tall), which abruptly collapsed by up to 226px when `syncQuestRows()` hid unselected rows after lazy hydration.
+  2. `#servantGrid` was empty in static HTML (height: 16px), and expanded by ~358px to 374px+ once `buildServantSlots()` dynamically inserted 8 elements (2 group labels + 6 servant slots), violently shifting down `.bond-card-actions` (Max AP, Teapot, Calculate Quest Runs button) by over 130px.
+- **Pre-paint Quest Synchronization**:
+  - `BaseLayout.astro`: Synchronous `<head>` script inspects `fgo_bond_calculator_data` in localStorage on initial parse. Sets `data-bond-quest="fq"` or `"gd"` (and `data-bond-custom="1"`) on `<html>`.
+  - Inlined `<style is:inline>`: Added display rules hiding `.bond-quest-row--free`, `.bond-quest-row--grand`, and `.custom-quest-section` by default (`display: none;`), un-hiding matching rows via `html[data-bond-quest="..."]` before first paint.
+  - `src/pages/index.astro`: Added `.bond-quest-row--free` and `.bond-quest-row--grand` classes to respective quest `.input-row`s.
+  - `src/scripts/bond-app.js`: Extracted `_syncQuestAttributes(freeOn, grandOn)` in `syncQuestRows()` (<15 lines each) to keep live DOM attributes and inline styles synchronized during runtime select changes.
+- **Pre-rendered Default Servant Grid**:
+  - `src/pages/index.astro`: Pre-populated `#servantGrid` with the 2 group labels ("Starting Member", "Sub Member") and 6 empty `.servant-add-slot` elements matching the exact DOM output of `buildServantSlots()`.
+  - `BaseLayout.astro`: Added `.servant-add-slot { cursor: pointer; }` to inline stylesheet, eliminating repetitive inline styles.
+- **Verification & Zero CLS Proof**:
+  - Created automated regression suite `scripts/test_bond_layout_shift.js` asserting pre-hydration vs post-hydration element geometry across 7 scenarios (fresh session, saved Free Quest, saved Custom FQ, saved Grand Duel, viewports 320px–1600px, and malformed storage). Measured layout shift is exactly **0.00px**.
+  - All 162 unit tests passing, all Python regression checks passing, baseline updated via `scripts/check_build_output.js --write`.
+
 ## 2026-11-08 — feat(sync): switch Atlas image fetching to lossless WebP
 
 - `scripts/sync_atlas_data.py` (`download_face_icon`) and `scripts/fetch_bordered_ces.py` (`download_ce_icon`): changed WebP encoding from lossy `quality=80, method=6` to `lossless=True, method=6`.
