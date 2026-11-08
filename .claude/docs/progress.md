@@ -2769,3 +2769,27 @@ Audited and resolved 5 mobile card layout anomalies across Event Shop Calculator
 | `scripts/test_repro_mobile_cascade_bug.js` | Added regression test for media query cascade precedence |
 | `scripts/test_mobile_cards_qa.js` | Added 9-viewport responsive layout testing harness |
 | `.claude/docs/progress.md` | Documented mobile card layout fixes |
+
+## 2026-11-08 — build(deploy): Scrub Develop-Only Puppeteer Tests from Main and Enforce In Merge Tooling
+
+### Overview
+Scrubbed develop-only puppeteer test harnesses (`scripts/test_*.js`) from `main` to align with the repository contract that public `main` only tracks deploy/build scripts and CI-executed Python self-checks.
+
+### Work Done
+1. **Scrub from `main`**:
+   - Removed `scripts/test_bond_layout_shift.js`, `scripts/test_mobile_cards_qa.js`, `scripts/test_repro_mobile_cascade_bug.js`, and `scripts/test_subtabs_adversarial.js` from `main`'s git index.
+   - Preserved files on disk via `--cached`.
+   - Updated `main`'s `.gitignore` to ignore `scripts/test_*.js`.
+   - Committed (`b51592b`) and pushed to `origin/main`.
+2. **Harden `scripts/merge_code_only.sh`**:
+   - Added `'scripts/test_*.js'` to `HIDDEN_PATHS` array so future merges automatically drop all local JavaScript test harnesses alongside `tests/` and `scripts/verify_render.js`.
+3. **Synchronize Documentation**:
+   - Updated `AGENTS.md` to explicitly state `scripts/test_*.js` are develop-only and ignored on `main`.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `scripts/merge_code_only.sh` | Added `'scripts/test_*.js'` to `HIDDEN_PATHS` |
+| `AGENTS.md` | Documented `scripts/test_*.js` develop-only status alongside `verify_render.js` |
+| `.gitignore` (on `main`) | Added `scripts/test_*.js` ignore rule |
+| `.claude/docs/progress.md` | Documented scrub and tooling hardening |

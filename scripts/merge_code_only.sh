@@ -2,12 +2,12 @@
 # Merge a source branch into main carrying code only.
 #
 # The agent-doc tree (.claude/, AGENTS.md, GEMINI.md), this script itself,
-# the browser gate (scripts/verify_render.js, which CI never runs) and the unit
-# tests (tests/, which CI never runs either — deploy.yml's only test steps are
-# `npm run check:build` and the Python self-checks under scripts/) are tracked on
-# develop alone: a plain `git merge develop` would drag them
-# onto the public branch. This script runs the merge and drops those paths
-# from the merge result before the commit, and keeps main's own .gitignore —
+# the browser gate (scripts/verify_render.js, which CI never runs), puppeteer test
+# scripts (scripts/test_*.js), and the unit tests (tests/, which CI never runs
+# either — deploy.yml's only test steps are `npm run check:build` and the Python
+# self-checks under scripts/) are tracked on develop alone: a plain `git merge develop`
+# would drag them onto the public branch. This script runs the merge and drops
+# those paths from the merge result before the commit, and keeps main's own .gitignore —
 # its blanket `.claude` line and its `scripts/merge_code_only.sh` line are
 # what hide the leftover files on disk, so the work tree stays clean.
 #
@@ -20,7 +20,7 @@ MSG="${2:-}"
 TARGET="main"
 # develop-only paths; HIDDEN must stay a subset of '$TARGET's .gitignore entries.
 # scripts/fetch_bordered_ces.py stays public: sync_atlas_data.py imports it at build time.
-HIDDEN_PATHS=(.claude AGENTS.md GEMINI.md scripts/merge_code_only.sh scripts/verify_render.js tests)
+HIDDEN_PATHS=(.claude AGENTS.md GEMINI.md scripts/merge_code_only.sh scripts/verify_render.js 'scripts/test_*.js' tests)
 
 cd "$(git rev-parse --show-toplevel)"
 
