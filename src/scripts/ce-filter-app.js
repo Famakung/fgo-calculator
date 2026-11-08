@@ -191,9 +191,6 @@ export const CEFilterApp = {
     }
 
     if (filterModal) {
-      filterModal.addEventListener("click", (e) => {
-        if (e.target === filterModal) this._cancelFilterModal();
-      });
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && filterModal.classList.contains("open")) {
           this._cancelFilterModal();

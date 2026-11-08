@@ -2793,3 +2793,75 @@ Scrubbed develop-only puppeteer test harnesses (`scripts/test_*.js`) from `main`
 | `AGENTS.md` | Documented `scripts/test_*.js` develop-only status alongside `verify_render.js` |
 | `.gitignore` (on `main`) | Added `scripts/test_*.js` ignore rule |
 | `.claude/docs/progress.md` | Documented scrub and tooling hardening |
+
+## 2026-11-08 — fix(modals): Disable Click-Outside Dismiss and Convert Ascension & CE Group to True Sub-Modals
+
+### Overview
+Addressed user-reported accidental dismissals during item selection in modals by disabling backdrop click-to-close across all modals, and refactored the Ascension Selector and CE Group Selector into non-destructive layered sub-modals over their parent pickers.
+
+### Problem
+1. **Misclick Dismissals**: Users browsing items or scrolling on touch/trackpad devices frequently hit the modal margin/backdrop, accidentally closing the picker and losing their place.
+2. **State Destruction on Secondary Selection**: Clicking a multi-ascension servant or a group CE previously closed the parent picker modal (`ServantSelector.close()` / `CESelector.close()`), destroying the search input, active filter pill selections, and scroll position. Hitting Back re-opened the parent picker from scratch.
+
+### Work Done
+1. **Backdrop Click Immunity (Solution 1)**:
+   - Removed `if (e.target === modal)` / `if (e.target === subModal)` backdrop click event listeners across all 9 modals:
+     - `servantModal`, `servantFilterModal`, `ascensionModal`, `ceModal`, `ceSubModal`, `ceFilterModal`, `ceOverlapModal`, `ceOverlapFilterModal` (`src/scripts/selectors.js`)
+     - `cefilterFilterModal` (`src/scripts/ce-filter-app.js`)
+   - Modals now only close via deliberate user interaction (`✕` close button, `Back`/`Cancel` button, or `Escape` key).
+2. **Ascension Selector as a True Sub-Modal**:
+   - Updated `src/layouts/BaseLayout.astro` CSS rule: `#servantFilterModal, #ceOverlapFilterModal, #ascensionModal, #ceSubModal { z-index: 1050; }`.
+   - `ServantSelector._handleSingleItemClick`: Kept `servantModal` open underneath when opening `AscensionSelector`.
+   - `AscensionSelector.back()`: Closes `ascensionModal` directly without rebuilding `ServantSelector`. The parent picker remains immediately visible with search query, active filters, and scroll position intact.
+   - `AscensionSelector` Close (`✕`): Closes both `ascensionModal` and `servantModal`, properly cleaning up any `pendingSlot`.
+   - `ServantSelector._handleKeydown`: Hierarchical LIFO `Escape` stack (dismisses filter sub-modal first, then ascension sub-modal, then parent servant modal).
+3. **CE Group Sub-Selector as a True Sub-Modal**:
+   - `CESelector.renderGrid`: Kept `ceModal` open underneath on group CE selection.
+   - `CESubSelector.back()`: Closes `ceSubModal` directly without rebuilding `CESelector`.
+   - `CESubSelector` Close (`✕`): Closes both `ceSubModal` and `ceModal` with pending slot cleanup.
+   - `CESelector`: Added keydown `Escape` listener that unwinds `ceSubModal` first before closing `ceModal`.
+
+### Files Modified
+| File | Action |
+|---|---|
+| `src/layouts/BaseLayout.astro` | Added `#ascensionModal` and `#ceSubModal` to `z-index: 1050` rule |
+| `src/scripts/selectors.js` | Removed backdrop clicks, implemented sub-modal stacking, back transitions, and Escape stacks |
+| `src/scripts/ce-filter-app.js` | Removed backdrop click listener on `#cefilterFilterModal` |
+| `.claude/docs/progress.md` | Documented modal click-outside immunity and sub-modal architecture |
+
+## 2026-11-08 — fix(selectors): Restore Standalone onBack Navigation for Multi-Ascension Servants
+
+### Overview
+Fixed bug where clicking a multi-ascension servant already placed in party setup opened `AscensionSelector`, but clicking Back (`←`) failed to open `ServantSelector`, leaving the user unable to change the servant.
+
+### Root Cause
+During the sub-modal refactoring, `AscensionSelector.back()` and `CESubSelector.back()` unconditionally closed the sub-modal without checking if the parent modal (`#servantModal` / `#ceModal`) was already open. When invoked directly from the party card portrait/chip (standalone mode), the parent modal was not open in the DOM, so simply closing the sub-modal left no active dialog, dropping `cb.onBack(idx)`.
+
+### Fix
+1. **Conditional onBack Dispatch in `AscensionSelector.back()` & `CESubSelector.back()`**:
+   - Check if parent modal is active (`parentModal?.classList.contains('open')`).
+   - If parent is open (drill-down mode from inside selector), simply close sub-modal to reveal parent without rebuild.
+   - If parent is not open (standalone mode from party setup), close sub-modal and execute `cb?.onBack?.(idx)` (or fallback to `ServantSelector.open(idx, ...)`), allowing the player to change the servant or CE.
+2. **Keydown Escape Separation**:
+   - `Escape` continues to act purely as cancel/dismiss (closes child modal without navigating backwards into servant picker).
+3. **Automated Regression Harness**:
+   - Added Scenario 7 to `tests/test_servant_submodal_lifecycle.test.js`.
+   - Added Scenario 4 to `tests/test_ce_submodal_lifecycle.test.js`.
+   - 173/173 tests pass.
+
+## 2026-11-08 — feat(selectors): Direct Main Modal Selection from Party Cards and Sub-Modal X Fix
+
+### Overview
+Refactored party setup servant/CE click interactions to always pop up the main selection modal, removed redundant Back buttons from sub-modals, and fixed sub-modal close button (`✕`) behavior so dismissing a sub-modal leaves the parent picker open underneath.
+
+### Work Done
+1. **Direct Main Modal on Slot Replace**:
+   - In `src/scripts/bond-app.js`, clicking a servant portrait (`portraitArea`) now always opens `ServantSelector` directly regardless of `servant.hasAscensions`.
+   - Clicking a CE chip now always opens `CESelector` directly regardless of `ce.isGroup`.
+2. **Removed Redundant Back Buttons**:
+   - Removed `#ascensionModalBack` and `#ceSubModalBack` buttons from `src/pages/index.astro`. Sub-modals now feature a clean header with title and close (`✕`) button only.
+3. **Sub-Modal X Isolation Fix**:
+   - In `src/scripts/selectors.js`, `ascensionModalClose` and `ceSubModalClose` now invoke `this.close()` only, properly dismissing the sub-modal without closing `ServantSelector` or `CESelector`.
+4. **Verification & Baseline**:
+   - Updated `tests/test_servant_submodal_lifecycle.test.js` and `tests/test_ce_submodal_lifecycle.test.js` (169/169 unit tests passing).
+   - Rebuilt static distribution via Astro in 652ms; refreshed build baseline via `check_build_output.js --write`.
