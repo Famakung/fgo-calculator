@@ -4,6 +4,20 @@
 
 ---
 
+## 2026-11-08 — refactor(filter): extract availability predicates and active filter pruning
+
+- **Shared Predicate Extraction (`createAvailPredicates`)**:
+  - `src/scripts/filter-sections.js`: Extracted `createAvailPredicates(avail = {})` to unify predicate checking between `selectAll` and `renderStandardRows`. Standardized predicate signatures to `(chip) => boolean` handling both chip objects and direct ID strings.
+  - Decomposed `FilterModalController.renderStandardRows` into single-responsibility helpers `_renderClassAndGroupRows` and `_renderTraitRows`, keeping all controller and section functions strictly < 20 lines.
+- **Active Filter Pruning & GBE Alignment (`CEFilterApp`)**:
+  - `src/scripts/ce-filter-app.js`: Extracted `_pruneActiveFilters(avail)` from `renderResults(ceFiltered)` (< 20 lines) to eliminate duplication and keep filter pruning modular.
+  - In `_computeAvail(base)`: Replaced hardcoded `"0303"`, `"0304"`, `"0305"` trait checks with `ServantFilters.GBE.includes(t)`.
+- **Test Suite Updates**:
+  - `tests/ce-filter-modal-avail.test.js`: Fixed comment labeling `"0301"` as "Chaotic" instead of "Neutral". Added unit tests covering `createAvailPredicates` and `_pruneActiveFilters`.
+  - All 190 tests pass with zero regressions; ESLint passes with 0 errors.
+
+---
+
 ## 2026-11-08 — fix(bond): eliminate layout shift in Bond Calculator tab
 
 - **Problem**: Opening or refreshing the Bond Calculator tab (#panel-bond) suffered dual layout shifts:

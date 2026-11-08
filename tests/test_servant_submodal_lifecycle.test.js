@@ -34,7 +34,10 @@ class MockElement {
   }
   removeEventListener(type, fn) {
     const list = this._listeners.get(type) || [];
-    this._listeners.set(type, list.filter((l) => l !== fn));
+    this._listeners.set(
+      type,
+      list.filter((l) => l !== fn),
+    );
   }
   click() {
     const list = this._listeners.get("click") || [];
@@ -78,7 +81,10 @@ globalThis.document = {
   },
   removeEventListener: (type, fn) => {
     const list = docListeners.get(type) || [];
-    docListeners.set(type, list.filter((l) => l !== fn));
+    docListeners.set(
+      type,
+      list.filter((l) => l !== fn),
+    );
   },
   dispatchEvent: (event) => {
     const list = docListeners.get(event.type) || [];

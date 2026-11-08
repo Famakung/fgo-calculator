@@ -18,6 +18,20 @@ import {
    not touch it", and the class row now has to say exactly that for every class outside the chosen group,
    so a chip is a button and carries aria-pressed, disabled and the --disabled class together. */
 export const FilterSections = {
+  _setChipContent(btn, chip) {
+    if (chip.icon) {
+      // src, never data-src: nothing promotes a deferred icon once the row sits inside a modal.
+      btn.appendChild(
+        DOMFactory.el("img", "", {
+          src: `icons/classes/${chip.icon}.webp`,
+          alt: chip.label,
+        }),
+      );
+    } else {
+      btn.textContent = chip.label;
+    }
+  },
+
   /* `className` wins, then icon / group / count decide: the CE Bonus row counts numbers, not traits, and
      the house `ce-count-btn` box is the one that sizes it. */
   chipEl(chip, isActive, isDisabled, className, isWord) {
@@ -33,16 +47,28 @@ export const FilterSections = {
     btn.setAttribute("aria-pressed", String(isActive));
     btn.dataset.traitId = chip.id === null || chip.id === undefined ? String(chip.value) : chip.id;
     if (isDisabled) btn.disabled = true;
-    if (chip.icon) {
-      // src, never data-src: nothing promotes a deferred icon once the row sits inside a modal.
-      btn.appendChild(
-        DOMFactory.el("img", "", {
-          src: `icons/classes/${chip.icon}.webp`,
-          alt: chip.label,
-        }),
-      );
-    } else {
-      btn.textContent = chip.label;
+    this._setChipContent(btn, chip);
+    return btn;
+  },
+
+  _buildRowBtn(chip, chosen, onToggle, opts) {
+    const value = chip.value !== undefined ? chip.value : chip.other ? ServantFilters.SUB_ALI_OTHER : chip.id;
+    const isDisabled = opts.disabled ? opts.disabled(chip) : false;
+    /* A greyed chip cannot be honoured — `ServantFilters.effectiveClassIds` drops a class pick outside the
+       group, and a Grand Duel lock drops one outside its bound — so it must not press itself out. Kept in
+       state, so leaving the group highlights it again; only the paint says "not in force right now". */
+    const btn = this.chipEl(chip, isDisabled ? false : chosen.has(value), isDisabled, opts.className, opts.word);
+    if (!isDisabled) {
+      btn.addEventListener("click", () => {
+        const nowActive = !chosen.has(value);
+        if (nowActive) chosen.add(value);
+        else chosen.delete(value);
+        /* Paint the chip itself: a row is only rebuilt when something else asks for it, so the row
+           cannot wait for a render to show what the click it just made actually did. */
+        btn.classList.toggle("active", nowActive);
+        btn.setAttribute("aria-pressed", String(nowActive));
+        onToggle([...chosen]);
+      });
     }
     return btn;
   },
@@ -54,35 +80,33 @@ export const FilterSections = {
     if (!container) return;
     const chosen = selected instanceof Set ? selected : new Set(selected || []);
     const frag = document.createDocumentFragment();
-    chips.forEach((chip) => {
-      const value = chip.value !== undefined ? chip.value : chip.other ? ServantFilters.SUB_ALI_OTHER : chip.id;
-      const isDisabled = opts.disabled ? opts.disabled(chip) : false;
-      /* A greyed chip cannot be honoured — `ServantFilters.effectiveClassIds` drops a class pick outside the
-         group, and a Grand Duel lock drops one outside its bound — so it must not press itself out. Kept in
-         state, so leaving the group highlights it again; only the paint says "not in force right now". */
-      const btn = this.chipEl(chip, isDisabled ? false : chosen.has(value), isDisabled, opts.className, opts.word);
-      if (!isDisabled) {
-        btn.addEventListener("click", () => {
-          const nowActive = !chosen.has(value);
-          if (nowActive) chosen.add(value);
-          else chosen.delete(value);
-          /* Paint the chip itself: a row is only rebuilt when something else asks for it, so the row
-             cannot wait for a render to show what the click it just made actually did. */
-          btn.classList.toggle("active", nowActive);
-          btn.setAttribute("aria-pressed", String(nowActive));
-          onToggle([...chosen]);
-        });
-      }
-      frag.appendChild(btn);
-    });
+    chips.forEach((chip) => frag.appendChild(this._buildRowBtn(chip, chosen, onToggle, opts)));
     container.replaceChildren(frag);
   },
 };
 
 /* ============================================
+   AVAILABILITY PREDICATES (shared between selectAll & renderStandardRows)
+   ============================================ */
+export function createAvailPredicates(avail = {}) {
+  const hasId = (set, id) => !set || set.size === 0 || set.has(id);
+  const getSubAliId = (chip) => (chip?.other ? ServantFilters.SUB_ALI_OTHER : (chip?.id ?? chip));
+  return {
+    hasRarity: (chip) => hasId(avail?.rarity, chip?.id ?? chip),
+    hasClass: (chip) => hasId(avail?.class, chip?.id ?? chip),
+    hasGroup: (chip) => !avail?.class || avail.class.size === 0 || chip.classes.some((id) => avail.class.has(id)),
+    hasAli: (chip) => hasId(avail?.ali, chip?.id ?? chip),
+    hasSubAli: (chip) => hasId(avail?.subAli, getSubAliId(chip)),
+    hasSubAttr: (chip) => hasId(avail?.subAttr, chip?.id ?? chip),
+    hasGender: (chip) => hasId(avail?.gender, chip?.id ?? chip),
+  };
+}
+
+/* ============================================
    FILTER MODAL CONTROLLER (shared modal lifecycle & row orchestration)
    ============================================ */
 export const FilterModalController = {
+  createAvailPredicates,
   STANDARD_KEYS: [
     "rarityFilters",
     "classFilters",
@@ -114,82 +138,70 @@ export const FilterModalController = {
   },
 
   selectAll(avail = {}, extraHandler = null) {
-    const hasRarity = (id) => !avail.rarity || avail.rarity.size === 0 || avail.rarity.has(id);
-    const hasClass = (id) => !avail.class || avail.class.size === 0 || avail.class.has(id);
-    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra].map((c) => c.id);
-
+    const p = createAvailPredicates(avail);
+    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra];
     const res = {
-      rarityFilters: RARITY_FILTERS.map((c) => c.id).filter(hasRarity),
-      groupClassFilters: CLASS_GROUPS.map((g) => g.key),
-      classFilters: allClasses.filter(hasClass),
-      aliFilters: ALIGNMENT_LNC_FILTERS.map((c) => c.id),
-      subAliFilters: ALIGNMENT_GBE_FILTERS.map((c) => (c.other ? ServantFilters.SUB_ALI_OTHER : c.id)),
-      subAttrFilters: SUB_ATTR_FILTERS.map((c) => c.id),
-      genderFilters: GENDER_FILTERS.map((c) => c.id),
+      rarityFilters: RARITY_FILTERS.filter(p.hasRarity).map((c) => c.id),
+      groupClassFilters: CLASS_GROUPS.filter(p.hasGroup).map((g) => g.key),
+      classFilters: allClasses.filter(p.hasClass).map((c) => c.id),
+      aliFilters: ALIGNMENT_LNC_FILTERS.filter(p.hasAli).map((c) => c.id),
+      subAliFilters: ALIGNMENT_GBE_FILTERS.filter(p.hasSubAli).map((c) =>
+        c.other ? ServantFilters.SUB_ALI_OTHER : c.id,
+      ),
+      subAttrFilters: SUB_ATTR_FILTERS.filter(p.hasSubAttr).map((c) => c.id),
+      genderFilters: GENDER_FILTERS.filter(p.hasGender).map((c) => c.id),
     };
     if (extraHandler) extraHandler(res);
     return res;
   },
 
-  renderStandardRows(prefix, filterState, toggle, opts = {}) {
-    const scope = ServantFilters.rowScope(filterState.groupClassFilters, opts.lockedClasses);
-    const hasRarity = opts.avail?.rarity
-      ? (chip) => opts.avail.rarity.size === 0 || opts.avail.rarity.has(chip.id)
-      : () => true;
-    const hasClass = opts.avail?.class
-      ? (chip) => opts.avail.class.size === 0 || opts.avail.class.has(chip.id)
-      : () => true;
+  _renderTraitRows(prefix, filterState, toggle, p) {
+    const traitRows = [
+      { key: "aliFilters", id: `${prefix}AliFilter`, chips: ALIGNMENT_LNC_FILTERS, pred: p.hasAli },
+      { key: "subAliFilters", id: `${prefix}SubAliFilter`, chips: ALIGNMENT_GBE_FILTERS, pred: p.hasSubAli },
+      { key: "subAttrFilters", id: `${prefix}AttrFilter`, chips: SUB_ATTR_FILTERS, pred: p.hasSubAttr },
+      { key: "genderFilters", id: `${prefix}GenderFilter`, chips: GENDER_FILTERS, pred: p.hasGender },
+    ];
+    traitRows.forEach(({ key, id, chips, pred }) => {
+      FilterSections.renderRow(document.getElementById(id), chips, filterState[key], toggle(key), {
+        disabled: (chip) => !pred(chip),
+        word: true,
+      });
+    });
+  },
 
+  _renderClassAndGroupRows(prefix, filterState, toggle, p, opts) {
+    const scope = ServantFilters.rowScope(filterState.groupClassFilters, opts.lockedClasses);
+    const isLocked = (c) => Boolean(opts.lockedClasses) && !c.classes.some((id) => opts.lockedClasses.includes(id));
+    const groupChips = CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true, classes: g.classes }));
+    const allClasses = [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra];
+
+    FilterSections.renderRow(
+      document.getElementById(`${prefix}ClassFilter`),
+      allClasses,
+      filterState.classFilters,
+      toggle("classFilters"),
+      { disabled: (chip) => !p.hasClass(chip) || (scope !== null && !scope.includes(chip.id)) },
+    );
+    FilterSections.renderRow(
+      document.getElementById(`${prefix}GroupFilter`),
+      groupChips,
+      filterState.groupClassFilters,
+      toggle("groupClassFilters"),
+      { disabled: (chip) => isLocked(chip) || !p.hasGroup(chip) },
+    );
+  },
+
+  renderStandardRows(prefix, filterState, toggle, opts = {}) {
+    const p = createAvailPredicates(opts.avail);
     FilterSections.renderRow(
       document.getElementById(`${prefix}RarityFilter`),
       RARITY_FILTERS,
       filterState.rarityFilters,
       toggle("rarityFilters"),
-      { disabled: (chip) => !hasRarity(chip) },
+      { disabled: (chip) => !p.hasRarity(chip) },
     );
-    FilterSections.renderRow(
-      document.getElementById(`${prefix}ClassFilter`),
-      [...CLASS_FILTERS.standard, ...CLASS_FILTERS.extra],
-      filterState.classFilters,
-      toggle("classFilters"),
-      { disabled: (chip) => !hasClass(chip) || (scope !== null && !scope.includes(chip.id)) },
-    );
-    FilterSections.renderRow(
-      document.getElementById(`${prefix}GroupFilter`),
-      CLASS_GROUPS.map((g) => ({ id: g.key, label: g.label, group: true, classes: g.classes })),
-      filterState.groupClassFilters,
-      toggle("groupClassFilters"),
-      {
-        disabled: (chip) => Boolean(opts.lockedClasses) && !chip.classes.some((id) => opts.lockedClasses.includes(id)),
-      },
-    );
-    FilterSections.renderRow(
-      document.getElementById(`${prefix}AliFilter`),
-      ALIGNMENT_LNC_FILTERS,
-      filterState.aliFilters,
-      toggle("aliFilters"),
-      { word: true },
-    );
-    FilterSections.renderRow(
-      document.getElementById(`${prefix}SubAliFilter`),
-      ALIGNMENT_GBE_FILTERS,
-      filterState.subAliFilters,
-      toggle("subAliFilters"),
-      { word: true },
-    );
-    FilterSections.renderRow(
-      document.getElementById(`${prefix}AttrFilter`),
-      SUB_ATTR_FILTERS,
-      filterState.subAttrFilters,
-      toggle("subAttrFilters"),
-      { word: true },
-    );
-    FilterSections.renderRow(
-      document.getElementById(`${prefix}GenderFilter`),
-      GENDER_FILTERS,
-      filterState.genderFilters,
-      toggle("genderFilters"),
-      { word: true },
-    );
+    this._renderClassAndGroupRows(prefix, filterState, toggle, p, opts);
+    this._renderTraitRows(prefix, filterState, toggle, p);
   },
 };
