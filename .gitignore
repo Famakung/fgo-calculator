@@ -31,7 +31,8 @@ lighthouse-runner.js
 
 # develop-only release tooling, keeps itself off this branch
 scripts/merge_code_only.sh
-# local browser gate: CI never runs it (needs a Chromium download)
+# local browser and puppeteer QA gates: CI never runs them (needs Chromium download)
 scripts/verify_render.js
+scripts/test_*.js
 # unit tests: CI never runs npm run test, so they live on develop only
 /tests/
