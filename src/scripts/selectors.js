@@ -48,12 +48,6 @@ export const ServantSelector = {
     bind("servantFilterSelectAllBtn", () => this._selectAllFilterModal());
     bind("servantFilterCancelBtn", () => this._cancelFilterModal());
     bind("servantFilterOkBtn", () => this._okFilterModal());
-    const subModal = document.getElementById("servantFilterModal");
-    if (subModal) {
-      subModal.addEventListener("click", (e) => {
-        if (e.target === subModal) this._cancelFilterModal();
-      });
-    }
   },
 
   _bindFooterEvents() {
@@ -98,24 +92,25 @@ export const ServantSelector = {
     }
     const closeBtn = document.getElementById("servantModalClose");
     if (closeBtn) closeBtn.addEventListener("click", () => this.close());
-    const modal = document.getElementById("servantModal");
-    if (modal) {
-      modal.addEventListener("click", (e) => {
-        if (e.target === modal) this.close();
-      });
-    }
     document.addEventListener("keydown", (e) => this._handleKeydown(e));
   },
 
   _handleKeydown(e) {
-    const modal = document.getElementById("servantModal");
-    if (e.key !== "Escape" || !modal?.classList.contains("open")) return;
+    if (e.key !== "Escape") return;
     const subModal = document.getElementById("servantFilterModal");
     if (subModal?.classList.contains("open")) {
       this._cancelFilterModal();
       return;
     }
-    this.close();
+    const ascModal = document.getElementById("ascensionModal");
+    if (ascModal?.classList.contains("open")) {
+      AscensionSelector.close();
+      return;
+    }
+    const modal = document.getElementById("servantModal");
+    if (modal?.classList.contains("open")) {
+      this.close();
+    }
   },
 
   // Called by both the Bond tab and the Bond Gain CE's Servant Select sub-tab: the modal is
@@ -193,9 +188,11 @@ export const ServantSelector = {
     }
     const modal = document.getElementById("servantModal");
     if (modal) modal.classList.remove("open");
-    // The filter sub-modal belongs to this one: never leave it sitting over the tab behind.
+    // Sub-modals belong to this one: never leave them sitting over the tab behind.
     const subModal = document.getElementById("servantFilterModal");
     if (subModal) subModal.classList.remove("open");
+    const ascModal = document.getElementById("ascensionModal");
+    if (ascModal) ascModal.classList.remove("open");
     const footer = document.getElementById("servantModalFooter");
     if (footer) footer.hidden = true;
     this.activeSlotIndex = null;
@@ -235,10 +232,8 @@ export const ServantSelector = {
 
   _handleSingleItemClick(servant) {
     const wasPending = this.pendingSlot;
-    this.pendingSlot = false;
     if (servant.hasAscensions && !this._skipAscension) {
       const idx = this.activeSlotIndex;
-      this.close();
       AscensionSelector.open(servant, idx, this._callbacks, {
         pending: wasPending,
         pickerOptions: {
@@ -249,6 +244,7 @@ export const ServantSelector = {
         },
       });
     } else {
+      this.pendingSlot = false;
       this._callbacks?.onSelect?.(this.activeSlotIndex, servant.id, null);
       this.close();
     }
@@ -413,21 +409,20 @@ export const AscensionSelector = {
   _options: null,
 
   init() {
-    const modal = document.getElementById("ascensionModal");
     const closeBtn = document.getElementById("ascensionModalClose");
-    const backBtn = document.getElementById("ascensionModalBack");
 
     if (closeBtn) {
       closeBtn.addEventListener("click", () => this.close());
     }
-    if (backBtn) {
-      backBtn.addEventListener("click", () => this.back());
-    }
-    if (modal) {
-      modal.addEventListener("click", (e) => {
-        if (e.target === modal) this.close();
-      });
-    }
+
+    document.addEventListener("keydown", (e) => {
+      const modal = document.getElementById("ascensionModal");
+      const parentModal = document.getElementById("servantModal");
+      if (e.key !== "Escape" || !modal?.classList.contains("open")) return;
+      if (!parentModal?.classList.contains("open")) {
+        this.close();
+      }
+    });
   },
 
   open(servant, slotIndex, callbacks = null, options = null) {
@@ -449,49 +444,39 @@ export const AscensionSelector = {
     this.servant = null;
     this.slotIndex = null;
     this._options = null;
+    this._callbacks = null;
   },
 
   back() {
-    const idx = this.slotIndex;
-    const cb = this._callbacks;
-    const opts = this._options;
     this.close();
-    if (cb?.onBack) {
-      cb.onBack(idx);
-    } else if (idx !== null) {
-      ServantSelector.open(idx, opts?.pending || false, cb, opts?.pickerOptions || {});
-    }
+  },
+
+  _createAscensionItem(asc) {
+    const item = DOMFactory.el("div", "servant-picker-item");
+    const labelText = ServantData.getAscensionLabel(this.servant.id, asc);
+    const imgSrc = ServantData.getImageForAscension(this.servant.id, asc);
+    const img = DOMFactory.createLazyImg(imgSrc, null, { alt: labelText });
+    DOMFactory.addSimpleFallback(img, "servant-slot-portrait-fallback", this.servant.id);
+    const label = DOMFactory.el("div", "servant-picker-name");
+    label.textContent = labelText;
+    item.appendChild(img);
+    item.appendChild(label);
+    item.addEventListener("click", () => {
+      ServantSelector.pendingSlot = false;
+      this._callbacks?.onSelect?.(this.slotIndex, this.servant.id, asc);
+      this.close();
+      ServantSelector.close();
+    });
+    return item;
   },
 
   renderGrid() {
     const grid = document.getElementById("ascensionPickerGrid");
     if (!grid || !this.servant) return;
-    grid.replaceChildren();
-
     const options = ServantData.getAscensionOptions(this.servant.id);
-    options.forEach((asc) => {
-      const item = DOMFactory.el("div", "servant-picker-item");
-
-      const imgSrc = ServantData.getImageForAscension(this.servant.id, asc);
-      const img = DOMFactory.createLazyImg(imgSrc, null, {
-        alt: ServantData.getAscensionLabel(this.servant.id, asc),
-      });
-      DOMFactory.addSimpleFallback(img, "servant-slot-portrait-fallback", this.servant.id);
-
-      const label = DOMFactory.el("div", "servant-picker-name");
-      label.textContent = ServantData.getAscensionLabel(this.servant.id, asc);
-
-      item.appendChild(img);
-      item.appendChild(label);
-
-      item.addEventListener("click", () => {
-        this._callbacks?.onSelect?.(this.slotIndex, this.servant.id, asc);
-        this.close();
-        ServantSelector.close();
-      });
-
-      grid.appendChild(item);
-    });
+    const frag = document.createDocumentFragment();
+    options.forEach((asc) => frag.appendChild(this._createAscensionItem(asc)));
+    grid.replaceChildren(frag);
   },
 };
 
@@ -602,17 +587,24 @@ export const CESelector = {
   _callbacks: null,
 
   init() {
-    const modal = document.getElementById("ceModal");
     const closeBtn = document.getElementById("ceModalClose");
 
     if (closeBtn) {
       closeBtn.addEventListener("click", () => this.close());
     }
+    document.addEventListener("keydown", (e) => this._handleKeydown(e));
+  },
 
-    if (modal) {
-      modal.addEventListener("click", (e) => {
-        if (e.target === modal) this.close();
-      });
+  _handleKeydown(e) {
+    if (e.key !== "Escape") return;
+    const subModal = document.getElementById("ceSubModal");
+    if (subModal?.classList.contains("open")) {
+      CESubSelector.close();
+      return;
+    }
+    const modal = document.getElementById("ceModal");
+    if (modal?.classList.contains("open")) {
+      this.close();
     }
   },
 
@@ -635,6 +627,8 @@ export const CESelector = {
     }
     const modal = document.getElementById("ceModal");
     if (modal) modal.classList.remove("open");
+    const subModal = document.getElementById("ceSubModal");
+    if (subModal) subModal.classList.remove("open");
     this.activeSlotIndex = null;
     this.pendingSlot = false;
   },
@@ -659,8 +653,6 @@ export const CESelector = {
       item.addEventListener("click", () => {
         if (ce.isGroup) {
           const idx = this.activeSlotIndex;
-          this.pendingSlot = false;
-          this.close();
           CESubSelector.open(ce, idx, this._callbacks);
           return;
         }
@@ -707,21 +699,20 @@ export const CESubSelector = {
   _selected: false,
 
   init() {
-    const modal = document.getElementById("ceSubModal");
     const closeBtn = document.getElementById("ceSubModalClose");
-    const backBtn = document.getElementById("ceSubModalBack");
 
     if (closeBtn) {
       closeBtn.addEventListener("click", () => this.close());
     }
-    if (backBtn) {
-      backBtn.addEventListener("click", () => this.back());
-    }
-    if (modal) {
-      modal.addEventListener("click", (e) => {
-        if (e.target === modal) this.close();
-      });
-    }
+
+    document.addEventListener("keydown", (e) => {
+      const modal = document.getElementById("ceSubModal");
+      const parentModal = document.getElementById("ceModal");
+      if (e.key !== "Escape" || !modal?.classList.contains("open")) return;
+      if (!parentModal?.classList.contains("open")) {
+        this.close();
+      }
+    });
   },
 
   open(groupCE, slotIndex, callbacks = null) {
@@ -738,57 +729,44 @@ export const CESubSelector = {
   },
 
   close() {
-    const idx = this.activeSlotIndex;
     const modal = document.getElementById("ceSubModal");
     if (modal) modal.classList.remove("open");
     this.groupCE = null;
     this.activeSlotIndex = null;
-    // Remove pending null slot if no option was selected
-    if (!this._selected && idx !== null) {
-      this._callbacks?.onPendingRemove?.(idx);
-    }
+    this._callbacks = null;
     this._selected = false;
   },
 
   back() {
-    const idx = this.activeSlotIndex;
-    const cb = this._callbacks;
-    this._selected = true; // prevent close() from removing pending slot
     this.close();
-    if (idx !== null) {
-      CESelector.open(idx, false, cb);
-    }
+  },
+
+  _createSubItem(opt) {
+    const item = DOMFactory.el("div", "servant-picker-item");
+    const img = DOMFactory.createLazyImg(opt.image, null, { alt: opt.name });
+    DOMFactory.addSimpleFallback(img, "servant-slot-portrait-fallback", opt.id);
+    const label = DOMFactory.el("div", "servant-picker-name");
+    const colonIdx = opt.name.indexOf(": ");
+    label.textContent = colonIdx !== -1 ? opt.name.substring(colonIdx + 2) : opt.name;
+    item.appendChild(img);
+    item.appendChild(label);
+    item.addEventListener("click", () => {
+      this._selected = true;
+      CESelector.pendingSlot = false;
+      this._callbacks?.onSelect?.(this.activeSlotIndex, this.groupCE.id, opt.id);
+      this.close();
+      CESelector.close();
+    });
+    return item;
   },
 
   renderGrid() {
     const grid = document.getElementById("ceSubPickerGrid");
     if (!grid || !this.groupCE) return;
-    grid.replaceChildren();
-
     const options = this.groupCE.options || [];
-    options.forEach((opt) => {
-      const item = DOMFactory.el("div", "servant-picker-item");
-
-      const img = DOMFactory.createLazyImg(opt.image, null, { alt: opt.name });
-      DOMFactory.addSimpleFallback(img, "servant-slot-portrait-fallback", opt.id);
-
-      const label = DOMFactory.el("div", "servant-picker-name");
-      const colonIdx = opt.name.indexOf(": ");
-      label.textContent = colonIdx !== -1 ? opt.name.substring(colonIdx + 2) : opt.name;
-
-      item.appendChild(img);
-      item.appendChild(label);
-
-      item.addEventListener("click", () => {
-        this._selected = true;
-        CESelector.pendingSlot = false;
-        this._callbacks?.onSelect?.(this.activeSlotIndex, this.groupCE.id, opt.id);
-        this.close();
-        CESelector.close();
-      });
-
-      grid.appendChild(item);
-    });
+    const frag = document.createDocumentFragment();
+    options.forEach((opt) => frag.appendChild(this._createSubItem(opt)));
+    grid.replaceChildren(frag);
   },
 };
 
@@ -821,9 +799,6 @@ export const CEFilterPicker = {
       okBtn.addEventListener("click", () => this.ok());
     }
     if (modal) {
-      modal.addEventListener("click", (e) => {
-        if (e.target === modal) this.cancel();
-      });
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && modal.classList.contains("open")) {
           this.cancel();
@@ -1025,22 +1000,11 @@ export const CEServantOverlap = {
     if (closeBtn) {
       closeBtn.addEventListener("click", () => this.close());
     }
-    if (modal) {
-      modal.addEventListener("click", (e) => {
-        if (e.target === modal) this.close();
-      });
-    }
-
     if (filterBtn) {
       filterBtn.addEventListener("click", () => this._openFilterModal());
     }
     if (subCloseBtn) {
       subCloseBtn.addEventListener("click", () => this._cancelFilterModal());
-    }
-    if (subModal) {
-      subModal.addEventListener("click", (e) => {
-        if (e.target === subModal) this._cancelFilterModal();
-      });
     }
 
     const defaultBtn = document.getElementById("ceOverlapFilterDefaultBtn");

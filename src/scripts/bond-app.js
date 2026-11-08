@@ -350,14 +350,10 @@ export const BondApp = {
       chip.appendChild(fb);
     }
 
-    // Click to re-pick this position, straight to the options when it is a grouped essence.
+    // Click to re-pick this position via main CE selector.
     chip.addEventListener("click", () => {
       const callbacks = this._createCECallbacks(slotIndex, position);
-      if (ce && ce.isGroup) {
-        this._refs.CESubSelector.open(ce, position, callbacks);
-      } else {
-        this._refs.CESelector.open(position, false, callbacks);
-      }
+      this._refs.CESelector.open(position, false, callbacks);
     });
 
     const removeBtn = DOMFactory.el("button", "ce-chip-x", { type: "button" });
@@ -490,11 +486,8 @@ export const BondApp = {
 
         // Portrait area (clickable to open selector)
         const portraitArea = DOMFactory.el("div", "servant-slot-select-btn");
-        let servantHasAscensions = false;
-
         const servant = ServantData.getServant(slotData.servantId);
         if (servant) {
-          servantHasAscensions = servant.hasAscensions;
           const ascension = ServantData.getDefaultAscension(slotData.servantId, slotData.ascension);
           const imgSrc = ServantData.getImageForAscension(servant.id, ascension);
           const isFirstPortrait = bondTabActive && !firstPortraitCreated;
@@ -518,41 +511,22 @@ export const BondApp = {
             DOMFactory.addAscensionFallback(portraitEl, servant.id);
           }
           portraitArea.appendChild(portraitEl);
-          if (servant.hasAscensions) {
-            const ascSlotIndex = i;
-            portraitArea.style.cursor = "pointer";
-            portraitArea.addEventListener("click", () => {
-              this._refs.AscensionSelector.open(servant, ascSlotIndex, {
-                onSelect: (_si, servantId, asc) => this.setServant(ascSlotIndex, servantId, asc),
-                onBack: (backIdx) => {
-                  this._refs.ServantSelector.open(
-                    backIdx,
-                    false,
-                    this._createServantCallbacks(backIdx),
-                    this._pickerOptions(),
-                  );
-                },
-              });
-            });
-          }
         } else {
           const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
           fb.textContent = slotData.servantId;
           portraitArea.appendChild(fb);
         }
 
-        if (!servantHasAscensions) {
-          const selectorSlotIndex = i;
-          portraitArea.addEventListener("click", () => {
-            this._refs.ServantSelector.open(
-              selectorSlotIndex,
-              false,
-              this._createServantCallbacks(selectorSlotIndex),
-              this._pickerOptions(),
-            );
-          });
-          portraitArea.style.cursor = "pointer";
-        }
+        const selectorSlotIndex = i;
+        portraitArea.addEventListener("click", () => {
+          this._refs.ServantSelector.open(
+            selectorSlotIndex,
+            false,
+            this._createServantCallbacks(selectorSlotIndex),
+            this._pickerOptions(),
+          );
+        });
+        portraitArea.style.cursor = "pointer";
 
         // Badges: Frontline bonus and/or Bond >= 15 bonus (placed at top-left outside servant portrait)
         const slotType = slotData.type || "normal";
