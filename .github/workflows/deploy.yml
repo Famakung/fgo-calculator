@@ -37,11 +37,11 @@ jobs:
       # historically could — see "actually stop idle schedule runs").
       DO_WORK: ${{ steps.do_work.outputs.DO_WORK }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Restore cached images and API payloads
       - name: Restore Atlas Data & Asset Cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .cache/atlas/
@@ -69,7 +69,7 @@ jobs:
       # newest one. First run on a branch: no match → files missing → gate
       # yields CHANGED → saved. Self-healing.
       - name: Restore version baselines
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .ci-baselines/
           key: fgo-version-baseline-${{ github.run_id }}-${{ github.run_attempt }}
@@ -108,7 +108,7 @@ jobs:
       # Every step below is skipped when DO_WORK=false (idle poll / no-force dispatch)
       - name: Set up Python
         if: steps.do_work.outputs.DO_WORK == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -116,7 +116,7 @@ jobs:
         if: steps.do_work.outputs.DO_WORK == 'true'
         run: pip install Pillow
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.do_work.outputs.DO_WORK == 'true'
         with:
           node-version-file: .nvmrc
@@ -197,7 +197,7 @@ jobs:
 
       - name: Upload Pages artifact
         if: steps.data_change.outputs.DEPLOY == 'true'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: dist
 
@@ -209,7 +209,7 @@ jobs:
       # the stored condition string as-is.
       - name: Save version baselines
         if: github.event_name == 'push' || steps.data_version.outputs.CHECK == 'CHANGED' || steps.data_change.outputs.DATA_DIRTY == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .ci-baselines/
           key: fgo-version-baseline-${{ github.run_id }}-${{ github.run_attempt }}
@@ -238,8 +238,8 @@ jobs:
     if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: pip install pyyaml

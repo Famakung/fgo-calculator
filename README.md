@@ -190,7 +190,7 @@ Astro produces optimized chunks via Vite:
 - Debounced input handlers (100ms)
 - Multi-ascension servant support with per-ascension traits, ascension stage face icons, and spiriton dress images
 - Automated build-time data sync pipeline (`scripts/sync_atlas_data.py`) with polite rate limiting (`0.1s`), automatic multi-ascension detection, full-auto Craft Essence data detection & series grouping, dynamic bordered icon synchronization, and bond point tables converted from Atlas' running totals into per-level-step costs (471 playable servants deduped into 76 shared tables)
-- Zero-commit binary assets architecture: servant and CE images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v4`), and synced at build time
+- Zero-commit binary assets architecture: servant and CE images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v6`), and synced at build time
 - PWA manifest with standalone display mode
 - Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, critical CSS inlined, zero web-font network overhead, CLS prevention with `min-width` and `tabular-nums`
 
