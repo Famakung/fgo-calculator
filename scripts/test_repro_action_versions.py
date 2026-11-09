@@ -18,8 +18,8 @@ KNOWN_MAX_ACTION_VERSIONS = {
     "actions/cache/save": 6,
     "actions/setup-python": 7,
     "actions/setup-node": 7,
-    "actions/upload-pages-artifact": 4,  # v4 is current latest major; v5 does not exist
-    "actions/deploy-pages": 4,          # v4 is current latest major; v5 does not exist
+    "actions/upload-pages-artifact": 5,
+    "actions/deploy-pages": 5,
 }
 
 
