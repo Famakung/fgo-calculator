@@ -11,18 +11,48 @@
 # its blanket `.claude` line and its `scripts/merge_code_only.sh` line are
 # what hide the leftover files on disk, so the work tree stays clean.
 #
-# Usage: scripts/merge_code_only.sh [source] [commit_message]   # default: develop
+# Usage: scripts/merge_code_only.sh <commit_message>              # default source: develop
+#        scripts/merge_code_only.sh [source] <commit_message>
 # Nothing is pushed — the script prints the push command when it is done.
 set -euo pipefail
 
-SRC="${1:-develop}"
-MSG="${2:-}"
 TARGET="main"
 # develop-only paths; HIDDEN must stay a subset of '$TARGET's .gitignore entries.
 # scripts/fetch_bordered_ces.py stays public: sync_atlas_data.py imports it at build time.
 HIDDEN_PATHS=(.claude AGENTS.md GEMINI.md scripts/merge_code_only.sh scripts/verify_render.js 'scripts/test_*.js' tests)
 
 cd "$(git rev-parse --show-toplevel)"
+
+if [ "$#" -gt 2 ]; then
+  echo "merge_code_only: too many arguments (got $#) — quote commit message if it contains spaces" >&2
+  exit 1
+fi
+
+if [ "$#" -eq 1 ]; then
+  if git rev-parse --verify --quiet "refs/heads/$1" >/dev/null; then
+    SRC="$1"
+    MSG=""
+  else
+    SRC="develop"
+    MSG="$1"
+  fi
+elif [ "$#" -eq 2 ]; then
+  SRC="$1"
+  MSG="$2"
+else
+  SRC="develop"
+  MSG=""
+fi
+
+if [ -z "${MSG//[[:space:]]/}" ]; then
+  echo "merge_code_only: commit message required — describe what updated (e.g. 'feat(scope): ...'), do not use generic 'Merge branch develop'" >&2
+  exit 1
+fi
+
+if [[ "$MSG" =~ ^[[:space:]]*[Mm]erge[[:space:]]+branch ]]; then
+  echo "merge_code_only: commit message must describe what updated, not 'Merge branch ...'" >&2
+  exit 1
+fi
 
 git rev-parse --verify --quiet "refs/heads/$SRC" >/dev/null || {
   echo "merge_code_only: no local branch '$SRC' — $0 must run in the clone that has it" >&2
@@ -82,11 +112,7 @@ if [ -n "$conflicts" ]; then
   exit 1
 fi
 
-if [ -n "$MSG" ]; then
-  git commit -m "$MSG" --quiet
-else
-  git commit --no-edit --quiet
-fi
+git commit -m "$MSG" --quiet
 
 leftover="$(git ls-tree -r --name-only HEAD -- "${HIDDEN_PATHS[@]}")"
 if [ -n "$leftover" ]; then

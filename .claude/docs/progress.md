@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-11-09 — feat(ci): enforce update-describing commit messages in merge_code_only and align branch docs
+
+- **Commit Message Enforcement & Hardening in `scripts/merge_code_only.sh`**:
+  - Updated argument parsing to support `scripts/merge_code_only.sh <commit_message>` (defaulting source branch to `develop`) as well as `scripts/merge_code_only.sh [source] <commit_message>`.
+  - Added strict validation requiring a non-empty, non-whitespace commit message (`[ -z "${MSG//[[:space:]]/}" ]`) describing what was updated.
+  - Added regex guard rejecting generic `Merge branch ...` messages including leading whitespace and flexible spacing (`^[[:space:]]*[Mm]erge[[:space:]]+branch`).
+  - Added unquoted argument count guard (`[ "$#" -gt 2 ]`) warning users to quote multi-word commit messages if spaces are unquoted.
+  - Switched commit step to always commit with the validated message (`git commit -m "$MSG" --quiet`).
+- **Documentation & Workflow Alignment Across Specs**:
+  - `AGENTS.md`: Updated merge-to-main instructions to require an update-describing commit message and forbid generic "Merge branch 'develop'".
+  - `.claude/CLAUDE.md`: Updated Deployment & CI/CD Pipeline section to mandate `<commit_message>` for `merge_code_only.sh`.
+  - `skills/fgo-calculator/SKILL.md`: Completely purged obsolete mentions of deleted `global.css`/`critical.css` (warning box and checklist) and removed Stylelint reference; updated Git Branch Workflow to document local-only `develop`, prohibit plain merges into `main`, and mandate `scripts/merge_code_only.sh "<commit_message>"`.
+- **Verification & Test Coverage**:
+  - Added comprehensive test suite in `tests/merge-code-only.test.js` covering 0 args, branch-only args, generic merge message variants, whitespace-only messages (`"   "`, `"\t\n "`), leading-space bypasses (`"  Merge branch ..."`), and excessive unquoted arguments (`>2`).
+  - All 199 unit tests pass cleanly (`npm test`).
+  - ESLint (`npm run lint`) and Prettier (`npm run format:check`) pass with 0 errors and 0 warnings.
+
+---
+
 ## 2026-11-09 — feat(layout): adopt fluid dynamic pure CSS zoom for seamless wide-screen scaling
 
 - **Fluid Auto-Dynamic Pure CSS Zoom Architecture**:
