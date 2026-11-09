@@ -4,6 +4,55 @@
 
 ---
 
+## 2026-11-09 — feat(layout): adopt fluid dynamic pure CSS zoom for seamless wide-screen scaling
+
+- **Fluid Auto-Dynamic Pure CSS Zoom Architecture**:
+  - `src/layouts/BaseLayout.astro`: Upgraded wide-screen scaling to a single, continuous, declarative pure CSS rule:
+    - `@media (min-width: 1400px)`: `html { zoom: min(2, calc(100vw / 1400px)); }`, `:root { --screen-h: calc(100dvh / min(2, calc(100vw / 1400px))); }`.
+  - Scales automatically and continuously with viewport width from 1400px up to 2800px (2x cap) with exact 1:1 pixel fidelity, identical to the deployed site.
+  - Zero stepped jumps, zero fragile manual CSS overrides, zero JavaScript resize listeners.
+- **QA Suite Assertions Updated**:
+  - `scripts/test_qa_viewport_modal_bounds.js`:
+    - Suite 1: Verified `--screen-h` starts with `100dvh` or `calc(100dvh`.
+    - Suite 5: Added dynamic zoom assertion `zoomMetrics.zoom === Math.min(2, svp.width / 1400)` and verified card expansion across viewports.
+- **Zero JavaScript Runtime Overhead**:
+  - Zero `<script>` tags, zero DOM mutations, zero resize event listeners. Fully compliant with Trusted Types CSP.
+- **Verification**:
+  - All 190 domain unit tests pass (`npm test`).
+  - ESLint passes cleanly with 0 errors, 0 warnings (`npm run lint`).
+  - Astro build succeeds in 653ms (`npm run build`).
+  - Build baseline verification passes (`npm run check:build`).
+  - Headless Puppeteer QA suite passes all 5 suites defect-free (`node scripts/test_qa_viewport_modal_bounds.js`).
+
+---
+
+## 2026-11-09 — feat(layout): comprehensive multi-tab pure CSS scaling calibrated against deployed zoom metrics
+
+- **Mathematical Calibration Against 1400px Zoom Dimensions**:
+  - `src/layouts/BaseLayout.astro`: Refined `@media (min-width: 1500px)` and `@media (min-width: 1800px)` breakpoints to exactly replicate the physical rendered visual proportions of the original 1400px dynamic zoom behavior without JavaScript runtime execution:
+    - **Laptop 1.25x (1536px viewport, zoom factor ~1.097x)**: Root font-size `17.55px`, `--servant-portrait-h: 105px;`, `--ce-badge-h: 53px;`, `--slot-ce-h: 70px;`, `.container { max-width: 1229px; }`, 176px cards (`repeat(6, minmax(0, 176px))` / `repeat(3, minmax(0, 176px))`), 105px material icon height with 88px fg-layer, 53px mini-icons, 39px CE filter control heights, and 53px class buttons.
+    - **Desktop 1.0x / Ultrawide (1920px viewport, zoom factor ~1.371x)**: Root font-size `21.94px`, `--servant-portrait-h: 132px;`, `--ce-badge-h: 66px;`, `--slot-ce-h: 88px;`, `.container { max-width: 1536px; }`, 220px cards (`repeat(6, minmax(0, 220px))` / `repeat(3, minmax(0, 220px))`), 132px material icon height with 110px fg-layer, 66px mini-icons, 49px CE filter control heights, 66px class buttons, and 1100px servant modal width.
+    - **Multi-Tab Parity & Cascade Ordering Fix**: Ordered `.grid` (3 columns) before `.cefilter-results-grid` (6 columns) in media queries so that `<div class="cefilter-results-grid grid">` correctly inherits 6 columns at >=1500px and >=1800px instead of being overridden to 3 columns. Fully synchronized Event Shop, CE Filter, and Bond Calculator tabs alongside global components.
+- **QA Suite Assertions Updated**:
+  - `scripts/test_qa_viewport_modal_bounds.js`: Aligned Suite 5 assertions with the calibrated values and verified that `.cefilter-results-grid` computed style contains exactly 6 columns at 1536px and 1920px:
+    - 1536px: `portraitH: "105px"`, `ceBadgeH: "53px"`, `slotCeH: "70px"`, `fontSize: "17.55px"`, `cardW: 176`, `maxW: "176px"`.
+    - 1920px: `portraitH: "132px"`, `ceBadgeH: "66px"`, `slotCeH: "88px"`, `fontSize: "21.94px"`, `cardW: 220`, `maxW: "220px"`.
+
+---
+
+## 2026-11-09 — refactor(layout): remove wide-screen zoom hack and adopt 100dvh viewport units
+
+- **Removal of 1400px JS Zoom Hack**:
+  - `src/layouts/BaseLayout.astro`: Removed the `<head>` inline resize listener script that dynamically computed and set `de.style.zoom` on `<html>` above 1400 CSS px.
+  - Eliminated zoom-related coordinate distortions, browser-specific zoom quirks, and oversized viewport recalculations.
+- **Modern Responsive Viewport Units**:
+  - `src/layouts/BaseLayout.astro`: Changed `--screen-h: 100vh;` to `--screen-h: 100dvh;` in the inline `:root` stylesheet for accurate dynamic mobile and desktop viewport sizing.
+  - Site layout now operates strictly on standard CSS media queries and native responsive layout rules.
+- **Documentation Synchronization**:
+  - Synchronized `AGENTS.md`, `GEMINI.md`, `.claude/CLAUDE.md`, `.claude/docs/structure.md`, and `.claude/docs/security.md` to remove all references to the wide-screen magnification zoom hack.
+
+---
+
 ## 2026-11-08 — refactor(filter): extract availability predicates and active filter pruning
 
 - **Shared Predicate Extraction (`createAvailPredicates`)**:

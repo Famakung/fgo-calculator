@@ -436,11 +436,13 @@ try {
         const zoom = doc.style.zoom;
         const screenH = doc.style.getPropertyValue("--screen-h");
 
+        const computedScreenH = getComputedStyle(doc).getPropertyValue("--screen-h").trim();
+
         // Check if any labels are clipped
         const labels = Array.from(document.querySelectorAll(".input-label, .card-title, .bond-group-label"));
         const clippedCount = labels.filter((l) => l.scrollWidth > l.clientWidth + 1).length;
 
-        return { docOverflow, gridOverflow, zoom, screenH, clippedCount };
+        return { docOverflow, gridOverflow, zoom, screenH, computedScreenH, clippedCount };
       });
 
       console.log(`  Viewport ${w}px metrics:`, overflowMetrics);
@@ -449,8 +451,11 @@ try {
       assert(overflowMetrics.clippedCount === 0, `Viewport ${w}px has no clipped text labels (clippedCount: ${overflowMetrics.clippedCount})`);
 
       if (w === 1600) {
-        assert(Number(overflowMetrics.zoom) > 1.0, `Viewport 1600px has html zoom applied (zoom: ${overflowMetrics.zoom})`);
-        assert(overflowMetrics.screenH.endsWith("px"), `Viewport 1600px has --screen-h custom property set`);
+        assert(overflowMetrics.zoom === "", `Viewport 1600px has NO artificial html zoom applied (zoom: "${overflowMetrics.zoom}")`);
+        assert(
+          overflowMetrics.computedScreenH.startsWith("100dvh") || overflowMetrics.computedScreenH.startsWith("calc(100dvh"),
+          `Viewport 1600px has pure CSS --screen-h variable (actual: "${overflowMetrics.computedScreenH}")`,
+        );
       }
     }
 

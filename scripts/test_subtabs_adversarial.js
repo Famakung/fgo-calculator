@@ -72,9 +72,9 @@ try {
     { name: "Desktop Breakpoint Boundary (760px)", width: 760, height: 900, isMobile: false },
     { name: "Medium Desktop (940px)", width: 940, height: 900, isMobile: false },
     { name: "Large Desktop (1120px)", width: 1120, height: 900, isMobile: false },
-    { name: "Zoom Transition (1400px)", width: 1400, height: 900, isMobile: false },
-    { name: "Zoomed Desktop (1600px)", width: 1600, height: 1000, isMobile: false },
-    { name: "Full HD Zoomed (1920px)", width: 1920, height: 1080, isMobile: false },
+    { name: "Desktop 1400px", width: 1400, height: 900, isMobile: false },
+    { name: "Desktop 1600px", width: 1600, height: 1000, isMobile: false },
+    { name: "Full HD Desktop (1920px)", width: 1920, height: 1080, isMobile: false },
   ];
 
   await page.goto(url, { waitUntil: "networkidle0" });
@@ -180,7 +180,7 @@ try {
       `Button whitespace is nowrap at ${vp.width}px`,
     );
 
-    // Track presence across ALL viewports: 2px border (accounting for zoom at >=1400px), var(--bg), 10px radius
+    // Track presence across ALL viewports: 2px border (accounting for devicePixelRatio / rounding), var(--bg), 10px radius
     assert(
       metrics.subtabsBorder >= 1.4,
       `Subtabs track has visible border (${metrics.subtabsBorder}px) at ${vp.width}px`,

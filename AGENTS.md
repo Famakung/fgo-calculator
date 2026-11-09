@@ -22,7 +22,6 @@ On demand, do **not** load them by default (they are big):
 ## The rules that break the site if ignored
 
 - **Never `innerHTML`, never `insertAdjacentHTML`.** `createElement()` + `textContent` + `setAttribute()`; heavy renders build a `DocumentFragment` then one `replaceChildren()`. A `<head>` inline Trusted Types policy makes unsanitized sinks throw at runtime.
-- **No `100vh` / `80vh` lengths.** The layout applies `zoom` on `<html>` above 1400 CSS px, so viewport units overshoot; use the `--screen-h` variable. Any new viewport-unit length must go through it.
 - **All visual CSS is the single inline `<style>` in `src/layouts/BaseLayout.astro`** — that block is the only stylesheet the site has. There is no `src/styles/` directory: `global.css` and `critical.css` sat there unread by any build step and were deleted, after the duplicate had already drifted (a rule kept only there never shipped).
 - **JS style**: ES modules, 2-space indent, semicolons, **double quotes** (Prettier `printWidth: 120`, `trailingComma: "all"`). Files kebab-case.
 - **Trait IDs are 4-digit zero-padded strings** (`"0100"`, `"0002"`), sorted ascending in arrays.
@@ -51,7 +50,7 @@ Unit tests (`npm run test`) run only in the `develop` clone: `tests/` is tracked
 
 | Path | Role |
 |------|------|
-| `src/layouts/BaseLayout.astro` | HTML shell, the shipped inline CSS, Trusted Types, zoom + tab/LCP head scripts |
+| `src/layouts/BaseLayout.astro` | HTML shell, the shipped inline CSS, Trusted Types, tab/LCP head scripts |
 | `src/pages/index.astro` | page structure, sub-tab markup, imports JS |
 | `src/scripts/main.js` | entry, `DOMContentLoaded` → lazy `import()` per tab |
 | `src/scripts/domain.js` | Domain layer: validators, calculators, trait matcher, `ServantComboCalculator` |

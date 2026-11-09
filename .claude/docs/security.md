@@ -32,7 +32,6 @@ No CSP headers possible, so site relies on:
 Inline scripts in `<head>` (BaseLayout.astro):
 | Script | Purpose |
 |--------|---------|
-| Wide-screen magnification | Set `zoom` on `<html>` from `window.innerWidth` (1400 base, 2x cap), `--screen-h` from `innerHeight`; no storage, no markup, no network |
 | Trusted Types policy | Passthrough `default` policy (runs before any module) |
 | Service-worker & cache cleanup | Purges active service workers and legacy caches from pre-migration visitors |
 | Build-etag poller | Checks deployment ETag against `fgo_build_etag` in sessionStorage, shows reload banner on update |
