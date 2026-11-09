@@ -1,4 +1,4 @@
-import { DEBOUNCE_MS } from "./constants.js";
+import { DEBOUNCE_MS, CLASS_GROUPS } from "./constants.js";
 import { Validator, ServantSort, ServantFilters, computeCEMatchMatrix } from "./domain.js";
 import { FilterSections, FilterModalController } from "./filter-sections.js";
 import { ServantData, CEData, CEById, TraitCEs, TraitNames } from "./data.js";
@@ -347,6 +347,35 @@ export const CEFilterApp = {
     return filtered.filter((s) => matcher(ServantData.getEntryTraitSet(s)));
   },
 
+  _computeAvail(base) {
+    const avail = {
+      class: new Set(),
+      rarity: new Set(),
+      ali: new Set(),
+      subAli: new Set(),
+      subAttr: new Set(),
+      gender: new Set(),
+      count: new Set(),
+    };
+    (base || []).forEach((entry) => {
+      avail.count.add(entry.matchingCEs.length);
+      let hasGBE = false;
+      this._traitsOf(entry).forEach((t) => {
+        if (t.startsWith("01")) avail.class.add(t);
+        else if (t.startsWith("04")) avail.rarity.add(t);
+        else if (t.startsWith("00")) avail.gender.add(t);
+        else if (t.startsWith("02")) avail.subAttr.add(t);
+        else if (t === "0300" || t === "0301" || t === "0302") avail.ali.add(t);
+        else if (ServantFilters.GBE.includes(t)) {
+          avail.subAli.add(t);
+          hasGBE = true;
+        }
+      });
+      if (!hasGBE) avail.subAli.add(ServantFilters.SUB_ALI_OTHER);
+    });
+    return avail;
+  },
+
   /* The eight modal sections, in modal order, on the page the results grid is showing.
      Renders only when the filter modal is actually open. */
   _renderFilterRows(customFilters = null) {
@@ -355,14 +384,7 @@ export const CEFilterApp = {
 
     const filterState = customFilters || this.draftFilters || this.state;
     const base = this._lastCEFiltered || [];
-    const avail = { class: new Set(), rarity: new Set(), count: new Set() };
-    base.forEach((entry) => {
-      avail.count.add(entry.matchingCEs.length);
-      this._traitsOf(entry).forEach((t) => {
-        if (t.startsWith("01")) avail.class.add(t);
-        if (t.startsWith("04")) avail.rarity.add(t);
-      });
-    });
+    const avail = this._computeAvail(base);
 
     const toggle = (key) => (ids) => {
       if (this.draftFilters) {
@@ -493,14 +515,7 @@ export const CEFilterApp = {
   _selectAllFilterModal() {
     if (!this.draftFilters) return;
     const base = this._lastCEFiltered || [];
-    const avail = { class: new Set(), rarity: new Set(), count: new Set() };
-    base.forEach((entry) => {
-      avail.count.add(entry.matchingCEs.length);
-      this._traitsOf(entry).forEach((t) => {
-        if (t.startsWith("01")) avail.class.add(t);
-        if (t.startsWith("04")) avail.rarity.add(t);
-      });
-    });
+    const avail = this._computeAvail(base);
 
     this.draftFilters = FilterModalController.selectAll(avail, (res) => {
       const maxCeCount = Math.max(5, ...(this._allCEMatchesCache || []).map((r) => r.matchingCEs.length));
@@ -562,6 +577,23 @@ export const CEFilterApp = {
     });
   },
 
+  _pruneActiveFilters(avail) {
+    if (avail.class?.size > 0) {
+      const groups = new Set(CLASS_GROUPS.filter((g) => g.classes.some((id) => avail.class.has(id))).map((g) => g.key));
+      this.state.classFilters = this.state.classFilters.filter((id) => avail.class.has(id));
+      this.state.groupClassFilters = this.state.groupClassFilters.filter((k) => groups.has(k));
+    }
+    const prune = (key, set) => {
+      if (set?.size > 0) this.state[key] = this.state[key].filter((v) => set.has(v));
+    };
+    prune("rarityFilters", avail.rarity);
+    prune("aliFilters", avail.ali);
+    prune("subAliFilters", avail.subAli);
+    prune("subAttrFilters", avail.subAttr);
+    prune("genderFilters", avail.gender);
+    prune("matchCounts", avail.count);
+  },
+
   renderResults(ceFiltered) {
     const grid = document.getElementById("cefilterResults");
     const modeSelect = document.getElementById("cefilterMode");
@@ -581,21 +613,8 @@ export const CEFilterApp = {
     }
 
     const base = ceFiltered || this._lastCEFiltered || [];
-
-    // Grey out class/rarity/count chips not present in CE-filtered results, and re-read what that leaves selected
-    const availableClassIds = new Set();
-    const availableRarityIds = new Set();
-    const availableCounts = new Set();
-    base.forEach((entry) => {
-      availableCounts.add(entry.matchingCEs.length);
-      this._traitsOf(entry).forEach((t) => {
-        if (t.startsWith("01")) availableClassIds.add(t);
-        if (t.startsWith("04")) availableRarityIds.add(t);
-      });
-    });
-    this.state.classFilters = this.state.classFilters.filter((id) => availableClassIds.has(id));
-    this.state.rarityFilters = this.state.rarityFilters.filter((id) => availableRarityIds.has(id));
-    this.state.matchCounts = this.state.matchCounts.filter((n) => availableCounts.has(n));
+    const avail = this._computeAvail(base);
+    this._pruneActiveFilters(avail);
     this._renderFilterRows();
 
     // Apply search and every Filter Settings row
