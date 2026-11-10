@@ -1214,6 +1214,8 @@ export const BondApp = {
       runsEl.textContent = `${runs} ${runs === 1 ? "run" : "runs"}`;
       card.appendChild(runsEl);
 
+      if (apPerRun > 0 && runs > 0) card.appendChild(buildCardAp(runs));
+
       /* Each block names only the levels its own runs actually cleared. Runs that died inside a level
          — the last teapot spent on a stretch it never finished — belong to no row here: the servant is
          still on that level, and the continuation block below owns it. A split plan prints its rows even
@@ -1258,34 +1260,36 @@ export const BondApp = {
       return row;
     };
 
-    const buildTotalApBadge = (totalAp, totalRuns, maxAp) => {
-      const row = DOMFactory.el("div", "bond-total-ap");
-      const badge = DOMFactory.el("div", "bond-ap-badge");
-
-      const apLine = DOMFactory.el("div", "bond-ap-line");
-      apLine.textContent = `Total AP: ${totalAp.toLocaleString()} AP (${totalRuns.toLocaleString()} ${totalRuns === 1 ? "run" : "runs"})`;
-      badge.appendChild(apLine);
-
-      if (maxAp > 0 && totalAp > 0) {
-        const fruitCount = Quest.goldenFruit(totalAp, maxAp);
-        const fruitLine = DOMFactory.el("div", "bond-ap-fruit-line");
-        const fruitText = DOMFactory.el("span", null);
-        fruitText.textContent = `Use ${fruitCount.toLocaleString()} Golden Fruit`;
-        const fruitImg = DOMFactory.el("img", "bond-ap-fruit-img", {
-          src: "icons/100_bordered.webp",
-          alt: "Golden Fruit",
-          width: "142",
-          height: "155",
-        });
-        fruitImg.onerror = () => {
-          fruitImg.style.display = "none";
-        };
-        fruitLine.append(fruitText, fruitImg);
-        badge.appendChild(fruitLine);
-      }
-
-      row.appendChild(badge);
+    /* The count rides on the fruit's own picture, so a broken icon never costs the number: only the
+       image hides on error, and the overlay stays. The alt has to name the item now, since no text
+       line on the card does. */
+    const buildCardFruit = (fruitCount) => {
+      const row = DOMFactory.el("div", "bond-result-fruit");
+      const img = DOMFactory.el("img", "bond-result-fruit-img", {
+        src: "icons/100_bordered.webp",
+        alt: "Golden Fruit",
+      });
+      img.onerror = () => {
+        img.style.display = "none";
+      };
+      const count = DOMFactory.el("span", "bond-result-fruit-count");
+      count.textContent = `x${fruitCount.toLocaleString()}`;
+      row.appendChild(img);
+      row.appendChild(count);
       return row;
+    };
+
+    /* One card's own AP bill: the runs this segment of this servant's bond still needs. There is no
+       party-wide total any more — it priced the longest stretch rather than the sum of these cards, so
+       the max-runs card's own line already said the same number. */
+    const buildCardAp = (runs) => {
+      const cardAp = runs * apPerRun;
+      const apEl = DOMFactory.el("div", "bond-result-ap");
+      apEl.textContent = `${cardAp.toLocaleString()} AP`;
+      const lines = document.createDocumentFragment();
+      lines.appendChild(apEl);
+      lines.appendChild(buildCardFruit(Quest.goldenFruit(cardAp, this.state.maxAp)));
+      return lines;
     };
 
     const boostedGrid = DOMFactory.el("div", "bond-result-servant-grid");
@@ -1301,15 +1305,6 @@ export const BondApp = {
         rest.forEach((sr) => plainGrid.appendChild(buildCard(sr, true)));
         frag.appendChild(plainGrid);
       }
-    }
-
-    const maxRuns = Math.max(
-      ...slotResults.map((sr) => (sr.teapotOut ? sr.teapotRuns + sr.teapotOffRuns : sr.runs)),
-      0,
-    );
-    const totalAp = maxRuns * apPerRun;
-    if (maxRuns > 0) {
-      frag.appendChild(buildTotalApBadge(totalAp, maxRuns, this.state.maxAp));
     }
 
     container.replaceChildren(frag);
