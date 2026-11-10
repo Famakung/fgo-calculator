@@ -116,6 +116,174 @@ try {
   console.log(`NOTE: ${cards} Bond Gain CE card(s), ${workerResults} worker result message(s)`);
   if (workerResults === 0) errors.push("ce filter: worker sent no message carrying a non-empty results array");
 
+  /* The frozen card geometry: rows equalize by grid stretch, content stays flush to the top, every card edge
+     carries 8px, the result card carries no 208px floor, and the tallest card of each row therefore shows
+     exactly 8px under its last child. One grid rule is shared by `.grid`, `.bond-result-servant-grid` and
+     `.cefilter-results-grid`, so an `align-items` added there leaks into the Bond tab's five grids — that is
+     what failed review, and nothing in the repo pinned it. `padding`, `min-height` and `align-items` come from
+     selector matching alone, so the two classes with no element on screen yet are read off a bare probe node
+     mounted in its real parent and removed again. */
+  const cardCss = await page.evaluate(async () => {
+    const f = (n) => Math.round(n * 100) / 100;
+    const box = (el) => {
+      const cs = getComputedStyle(el);
+      return { pad: [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].join(" "), minH: cs.minHeight };
+    };
+    // The grid repaints inside two frames, so read the rows only after them.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const grid = document.getElementById("cefilterResults");
+    const cards = [...grid.querySelectorAll(":scope > .cefilter-servant-card")];
+    const rows = {};
+    cards.forEach((c) => (rows[Math.round(c.offsetTop)] = rows[Math.round(c.offsetTop)] || []).push(c));
+    const mk = (cls, parent) => {
+      const el = document.createElement("div");
+      el.className = cls;
+      parent.appendChild(el);
+      return el;
+    };
+    const bondPanel = document.querySelector("#panel-bond .card-inner");
+    const bondGridProbe = mk("bond-result-servant-grid", bondPanel);
+    const bondCardProbe = mk("bond-result-servant-card", bondGridProbe);
+    const comboGridProbe = mk("cefilter-combo-grid", document.getElementById("cefilterComboResults"));
+    const comboProbe = mk("cefilter-servant-card cefilter-combo-card", comboGridProbe);
+    const out = {
+      ceGridAlign: getComputedStyle(grid).alignItems,
+      gridAligns: [...document.querySelectorAll(".grid, .bond-result-servant-grid")].map((g) => ({
+        id: g.id || null,
+        align: getComputedStyle(g).alignItems,
+      })),
+      cePads: [...new Set(cards.map((c) => box(c).pad))],
+      ceMinH: [...new Set(cards.map((c) => box(c).minH))],
+      slotPads: [...new Set([...document.querySelectorAll(".servant-slot")].map((s) => box(s).pad))],
+      bondCardPad: box(bondCardProbe).pad,
+      bondGridAlign: getComputedStyle(bondGridProbe).alignItems,
+      comboPad: box(comboProbe).pad,
+      comboMinH: getComputedStyle(comboProbe).minHeight,
+      rows: Object.entries(rows).map(([top, list]) => {
+        // Stretch makes every card in a row the same height, so the row's driver is the card whose own
+        // content (children + margins + padding + border) equals that height — the one with no free space.
+        const natural = (c) => {
+          const kcs = getComputedStyle(c);
+          let n =
+            parseFloat(kcs.paddingTop) +
+            parseFloat(kcs.paddingBottom) +
+            parseFloat(kcs.borderTopWidth) +
+            parseFloat(kcs.borderBottomWidth);
+          for (const k of c.children) {
+            const kc = getComputedStyle(k);
+            n += k.getBoundingClientRect().height + parseFloat(kc.marginTop) + parseFloat(kc.marginBottom);
+          }
+          return f(n);
+        };
+        const tallest = list.reduce((a, b) => (natural(a) >= natural(b) ? a : b));
+        const cs = getComputedStyle(tallest);
+        const last = tallest.children[tallest.children.length - 1];
+        return {
+          top: Number(top),
+          heights: [...new Set(list.map((c) => f(c.getBoundingClientRect().height)))],
+          natural: [...new Set(list.map(natural))],
+          // border edge -> last child edge = padding-bottom + the child's own bottom margin + pooled free space
+          inset: f(
+            tallest.getBoundingClientRect().bottom -
+              parseFloat(cs.borderBottomWidth) -
+              last.getBoundingClientRect().bottom,
+          ),
+          lastChild: last.className.split(" ").pop(),
+          /* Flush-to-top is the other half of the frozen contract: the pooled space may only collect BELOW the
+             badges, so every card — not just the row's tallest — keeps its first child 8px under the border edge.
+             Without this read a `justify-content: center` on the card passes every other check here, because
+             centring splits the slack and the zero-free-space card still bottoms at 8px. */
+          cards: list.map((c) => {
+            const kcs = getComputedStyle(c);
+            const first = c.children[0];
+            return {
+              name: ((c.querySelector(".cefilter-servant-name") || {}).textContent || "?").trim().slice(0, 18),
+              justify: kcs.justifyContent,
+              topInset: f(first.getBoundingClientRect().top - (c.getBoundingClientRect().top + parseFloat(kcs.borderTopWidth))),
+            };
+          }),
+        };
+      }),
+    };
+    bondGridProbe.remove();
+    comboGridProbe.remove();
+    return out;
+  });
+  const wantPad = "8px 8px 8px 8px";
+  if (cardCss.ceGridAlign !== "normal" && cardCss.ceGridAlign !== "stretch") {
+    errors.push(
+      `ce card css: #cefilterResults computes align-items ${JSON.stringify(cardCss.ceGridAlign)}, want normal (rows must equalize)`,
+    );
+  }
+  const startGrids = cardCss.gridAligns.filter((g) => g.align === "start");
+  if (startGrids.length) {
+    errors.push(
+      `ce card css: align-items:start leaked into ${JSON.stringify(startGrids)} — the shared .grid rule is Bond tab territory`,
+    );
+  }
+  // The leak check above only means something if the grids were actually found: 6 `.grid` containers in the
+  // markup plus the `.bond-result-servant-grid` probe. An empty list would pass it vacuously.
+  if (cardCss.gridAligns.length < 7) {
+    errors.push(
+      `ce card css: only ${cardCss.gridAligns.length} grid container(s) read, want 7 (${JSON.stringify(cardCss.gridAligns.map((g) => g.id))}) — nothing to check for a start leak`,
+    );
+  }
+  const everyCard = cardCss.rows.flatMap((r) => r.cards);
+  const notFlush = everyCard.filter((c) => c.justify !== "normal" && c.justify !== "flex-start");
+  if (notFlush.length) {
+    errors.push(
+      `ce card css: ${notFlush.length} card(s) are not flush to the top (justify-content ${JSON.stringify([...new Set(notFlush.map((c) => c.justify))])}, want normal/flex-start), e.g. ${JSON.stringify(notFlush.slice(0, 2))}`,
+    );
+  }
+  const topOff = everyCard.filter((c) => Math.abs(c.topInset - 8) > 0.01);
+  if (topOff.length) {
+    errors.push(
+      `ce card css: ${topOff.length} card(s) top inset is not 8px, want 8px, e.g. ${JSON.stringify(topOff.slice(0, 2))}`,
+    );
+  }
+  if (cardCss.bondGridAlign !== "normal") {
+    errors.push(
+      `ce card css: .bond-result-servant-grid computes align-items ${JSON.stringify(cardCss.bondGridAlign)}, want normal`,
+    );
+  }
+  if (cardCss.cePads.join() !== wantPad)
+    errors.push(`ce card css: .cefilter-servant-card padding ${JSON.stringify(cardCss.cePads)}, want ${wantPad}`);
+  if (cardCss.ceMinH.some((m) => m !== "auto" && m !== "0px")) {
+    errors.push(
+      `ce card css: .cefilter-servant-card min-height ${JSON.stringify(cardCss.ceMinH)}, want no floor (auto/0px)`,
+    );
+  }
+  if (cardCss.slotPads.join() !== wantPad)
+    errors.push(`ce card css: .servant-slot padding ${JSON.stringify(cardCss.slotPads)}, want ${wantPad}`);
+  if (cardCss.bondCardPad !== wantPad)
+    errors.push(`ce card css: .bond-result-servant-card padding ${cardCss.bondCardPad}, want ${wantPad}`);
+  if (cardCss.comboPad !== wantPad)
+    errors.push(`ce card css: .cefilter-combo-card padding ${cardCss.comboPad}, want ${wantPad}`);
+  if (cardCss.comboMinH !== "208px")
+    errors.push(`ce card css: .cefilter-combo-card min-height ${cardCss.comboMinH}, want 208px`);
+  for (const r of cardCss.rows) {
+    if (r.heights.length > 1)
+      errors.push(`ce card css: row@${r.top} is not equalized, heights ${JSON.stringify(r.heights)}`);
+    if (Math.abs(r.inset - 8) > 0.01) {
+      errors.push(
+        `ce card css: row@${r.top} tallest card bottoms at ${r.inset}px (last child ${r.lastChild}), want 8px`,
+      );
+    }
+    if (!r.natural.includes(r.heights[0])) {
+      errors.push(
+        `ce card css: row@${r.top} no card carries the row height ${r.heights[0]}, naturals ${JSON.stringify(r.natural)}`,
+      );
+    }
+  }
+  console.log(
+    // These px figures are measured at the 800x600 default viewport this script runs under.
+    `NOTE: ce card css — grid ${cardCss.ceGridAlign}, ${cardCss.gridAligns.length} grid(s) read, card padding ` +
+      `${JSON.stringify(cardCss.cePads)}, min-height ${JSON.stringify(cardCss.ceMinH)}, ${cardCss.rows.length} row(s) ` +
+      `heights ${JSON.stringify(cardCss.rows.map((r) => r.heights))}, tallest-card bottom inset ${JSON.stringify([...new Set(cardCss.rows.map((r) => r.inset))])}, ` +
+      `${everyCard.length} card(s) justify ${JSON.stringify([...new Set(everyCard.map((c) => c.justify))])} top inset ${JSON.stringify([...new Set(everyCard.map((c) => c.topInset))])}, ` +
+      `combo ${cardCss.comboPad}/${cardCss.comboMinH}, bond card ${cardCss.bondCardPad}`,
+  );
+
   /* The result cards and the servant picker share one comparator: `CEFilterApp._sortEntries` delegates to
      `ServantSort`, so this tab's own select and order button must still move the grid — and be put back,
      because every block below reads the cards in their default ID order. */
