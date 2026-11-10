@@ -2947,3 +2947,24 @@ Refactored party setup servant/CE click interactions to always pop up the main s
 4. **Verification & Baseline**:
    - Updated `tests/test_servant_submodal_lifecycle.test.js` and `tests/test_ce_submodal_lifecycle.test.js` (169/169 unit tests passing).
    - Rebuilt static distribution via Astro in 652ms; refreshed build baseline via `check_build_output.js --write`.
+
+## 2026-11-10 — feat(bond): Per-Card AP + Golden Fruit Overlay, Total AP Badge Removed
+
+### Overview
+Each Bond Calculator servant result card now prices its own runs: an `<ap> AP` line plus the Golden Fruit count as an `x<n>` overlay on a 48px fruit icon, flush with the image's bottom-right corner. The aggregate Total AP badge was removed at the user's direction — its max-runs-based total repeated the longest card's own line (team farms in parallel; the sum of per-card AP is deliberately not the session figure).
+
+### Work Done
+1. **`src/scripts/bond-app.js`**:
+   - New `buildCardAp(runs)` + `buildCardFruit(fruitCount)` closures inside `calculate()`; appended to every result card (teapot-boosted and continuation segments each price their own runs) under the guard `apPerRun > 0 && runs > 0`.
+   - Deleted `buildTotalApBadge`, its call site, and the trailing `maxRuns`/`totalAp` computation. Teapot-exhaust chip unchanged.
+   - Overlay: `img` (`icons/100_bordered.webp`, `alt="Golden Fruit"`, `onerror` hides the IMG only — the count survives) + `span.bond-result-fruit-count` `x${fruitCount.toLocaleString()}` via `Quest.goldenFruit(cardAp, state.maxAp)`. Fragment built with `appendChild` (unit-harness stub has no `.append`).
+2. **`src/layouts/BaseLayout.astro`** (single inline `<style>`):
+   - Added `.bond-result-ap` (0.7rem mono secondary, margin-top 4px), `.bond-result-fruit` (relative fit-content wrapper, 48px = `--ce-badge-h`), `.bond-result-fruit-img`, `.bond-result-fruit-count` (absolute `right: 0; bottom: 0`, 1rem/700, white text-shadow stack per `.servant-slot-badge-overlay` precedent, nowrap, pointer-events none).
+   - Deleted dead rules: `.bond-total-ap`, `.bond-ap-badge`, `.bond-ap-line`, `.bond-ap-fruit-line`, `.bond-ap-fruit-img`.
+3. **`scripts/test_bond_card_ap.js`** (new, develop-only puppeteer suite, 213 asserts):
+   - Per-card exact text/structure; icon load (naturalWidth > 0, 48px computed) and abort-hide (overlay persists with correct count); corner-flush geometry (dx/dy 0.00 vs img and wrapper); extreme `x8,123` pinned against the card (span wider than img by design, zero overflow at 375/900px); customAp=0 → neither element; teapot split segments; badge-absence pins; row uniformity relational (heights 333px).
+4. **Verification**: unit 199/199, ESLint clean, `check:build` SUCCESS (bond-lazy 25211 B, −186 B vs pre-feature baseline after badge deletion), repro suite 213/213 across repeated runs.
+
+### Known / Deferred
+- Overlay contrast over arbitrary icon pixels is visual-only (house shadow stack, not pixel-verified).
+- If the icon fails to load, the wrapper collapses and the count floats at the card centre line, fully visible (measured).
