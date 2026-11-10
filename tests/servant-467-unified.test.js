@@ -635,17 +635,17 @@ test("CSS verification: BaseLayout.astro contains all required swap layout selec
   );
   assert.ok(pickerImgMatch && pickerImgMatch[1].includes("margin-bottom: 0"));
 
-  // 2. .cefilter-servant-card: margin-bottom: 6px on wrap, margin-bottom: 0 on inner img
+  // 2. .cefilter-servant-card: margin-bottom: 4px on wrap, margin-bottom: 0 on inner img
   const cefilterWrapMatch = content.match(/\.cefilter-servant-card \.servant-swap-wrap\s*\{([^}]+)\}/);
-  assert.ok(cefilterWrapMatch && cefilterWrapMatch[1].includes("margin-bottom: 6px"));
+  assert.ok(cefilterWrapMatch && cefilterWrapMatch[1].includes("margin-bottom: 4px"));
   const cefilterImgMatch = content.match(
     /\.cefilter-servant-card \.servant-swap-wrap img\.servant-slot-portrait\s*\{([^}]+)\}/,
   );
   assert.ok(cefilterImgMatch && cefilterImgMatch[1].includes("margin-bottom: 0"));
 
-  // 3. .bond-result-servant-card: margin-bottom: 6px on wrap, margin-bottom: 0 on inner img
+  // 3. .bond-result-servant-card: margin-bottom: 4px on wrap, margin-bottom: 0 on inner img
   const bondResultWrapMatch = content.match(/\.bond-result-servant-card \.servant-swap-wrap\s*\{([^}]+)\}/);
-  assert.ok(bondResultWrapMatch && bondResultWrapMatch[1].includes("margin-bottom: 6px"));
+  assert.ok(bondResultWrapMatch && bondResultWrapMatch[1].includes("margin-bottom: 4px"));
   const bondResultImgMatch = content.match(
     /\.bond-result-servant-card \.servant-swap-wrap \.servant-slot-portrait\s*\{([^}]+)\}/,
   );
