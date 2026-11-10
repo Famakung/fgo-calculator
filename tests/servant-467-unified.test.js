@@ -617,7 +617,7 @@ test("CSS verification: BaseLayout.astro contains all required swap layout selec
     ".servant-swap-name must use display: grid (not inline-grid)",
   );
 
-  // Party setup slot select button must not have margin-bottom (slot-name already has margin-top: 6px)
+  // Party setup slot select button must not have margin-bottom (.servant-slot supplies gap: 4px, slot-name has margin-top: 0)
   const slotBtnMatch = content.match(/\.servant-slot-select-btn \.servant-swap-wrap\s*\{([^}]+)\}/);
   assert.ok(slotBtnMatch, "Must find .servant-slot-select-btn .servant-swap-wrap rule");
   assert.equal(
@@ -626,26 +626,36 @@ test("CSS verification: BaseLayout.astro contains all required swap layout selec
     ".servant-slot-select-btn .servant-swap-wrap must not contain margin-bottom",
   );
 
+  // The .servant-slot container gap is what separates portrait from name now, so it must stay pinned
+  const slotMatch = content.match(/\.servant-slot\s*\{([^}]+)\}/);
+  assert.ok(slotMatch && slotMatch[1].includes("gap: 4px"), ".servant-slot must keep gap: 4px");
+
   // Verify other portrait-to-name gaps match standard servant rules:
-  // 1. .servant-picker-item: margin-bottom: 4px on wrap, margin-bottom: 0 on inner img
+  // 1. .servant-picker-item: gap: 4px on the item container, margin-bottom: 0 on wrap, margin-bottom: 0 on inner img
+  const pickerItemMatch = content.match(/\.servant-picker-item\s*\{([^}]+)\}/);
+  assert.ok(pickerItemMatch && pickerItemMatch[1].includes("gap: 4px"), ".servant-picker-item must keep gap: 4px");
   const pickerWrapMatch = content.match(/\.servant-picker-item \.servant-swap-wrap\s*\{([^}]+)\}/);
-  assert.ok(pickerWrapMatch && pickerWrapMatch[1].includes("margin-bottom: 4px"));
+  assert.ok(pickerWrapMatch && pickerWrapMatch[1].includes("margin-bottom: 0"));
   const pickerImgMatch = content.match(
     /\.servant-picker-grid--servant \.servant-picker-item \.servant-swap-wrap img,\s*\.servant-picker-item \.servant-swap-wrap img\s*\{([^}]+)\}/,
   );
   assert.ok(pickerImgMatch && pickerImgMatch[1].includes("margin-bottom: 0"));
 
-  // 2. .cefilter-servant-card: margin-bottom: 4px on wrap, margin-bottom: 0 on inner img
+  // 2. .cefilter-servant-card: gap: 4px on card, margin-bottom: 0 on wrap, margin-bottom: 0 on inner img
+  const cefilterCardMatch = content.match(/\.cefilter-servant-card\s*\{([^}]+)\}/);
+  assert.ok(cefilterCardMatch && cefilterCardMatch[1].includes("gap: 4px"));
   const cefilterWrapMatch = content.match(/\.cefilter-servant-card \.servant-swap-wrap\s*\{([^}]+)\}/);
-  assert.ok(cefilterWrapMatch && cefilterWrapMatch[1].includes("margin-bottom: 4px"));
+  assert.ok(cefilterWrapMatch && cefilterWrapMatch[1].includes("margin-bottom: 0"));
   const cefilterImgMatch = content.match(
     /\.cefilter-servant-card \.servant-swap-wrap img\.servant-slot-portrait\s*\{([^}]+)\}/,
   );
   assert.ok(cefilterImgMatch && cefilterImgMatch[1].includes("margin-bottom: 0"));
 
-  // 3. .bond-result-servant-card: margin-bottom: 4px on wrap, margin-bottom: 0 on inner img
+  // 3. .bond-result-servant-card: gap: 4px on card, margin-bottom: 0 on wrap, margin-bottom: 0 on inner img
+  const bondResultCardMatch = content.match(/\.bond-result-servant-card\s*\{([^}]+)\}/);
+  assert.ok(bondResultCardMatch && bondResultCardMatch[1].includes("gap: 4px"));
   const bondResultWrapMatch = content.match(/\.bond-result-servant-card \.servant-swap-wrap\s*\{([^}]+)\}/);
-  assert.ok(bondResultWrapMatch && bondResultWrapMatch[1].includes("margin-bottom: 4px"));
+  assert.ok(bondResultWrapMatch && bondResultWrapMatch[1].includes("margin-bottom: 0"));
   const bondResultImgMatch = content.match(
     /\.bond-result-servant-card \.servant-swap-wrap \.servant-slot-portrait\s*\{([^}]+)\}/,
   );

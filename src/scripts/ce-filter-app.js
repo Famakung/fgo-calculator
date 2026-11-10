@@ -743,9 +743,6 @@ export const CEFilterApp = {
     }
 
     if (matchingCEs.length > 0) {
-      // Invariant: this badge grid must stay the card's last child — BaseLayout.astro's
-      // `.cefilter-servant-card .ce-badges:last-child { margin-bottom: 0 }` depends on it,
-      // or the card's bottom inset silently returns to 12px.
       const badges = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
       matchingCEs.forEach((ce) => {
         const badge = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-match-badge", {
