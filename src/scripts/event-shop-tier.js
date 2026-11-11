@@ -39,7 +39,9 @@ export function eventTierNeeds(requires) {
   return needs;
 }
 
-function buildFallbackIcon(tier) {
+/* The tier-colour letter badge, shared by both icon paths: event imgs fall back to it on a missing
+   or failed icon, and the legacy builder in event-shop.js fills the empty markup boxes with it. */
+export function buildFallbackIcon(tier) {
   const fallback = document.createElement("div");
   fallback.className = "icon-fallback";
   fallback.style.background = TIER_COLORS[tier];

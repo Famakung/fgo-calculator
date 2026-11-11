@@ -1,44 +1,34 @@
-import { TIERS, TIER_FIELDS, QUEST_DROPS, TIER_COLORS, DEBOUNCE_MS } from "./constants.js";
+import { TIERS, TIER_FIELDS, QUEST_DROPS, DEBOUNCE_MS } from "./constants.js";
 import { Schema, Validator, Calculator } from "./domain.js";
 import { StateManager, Persistence } from "./state.js";
-import { DOMFactory, debounce } from "./presentation.js";
+import { debounce } from "./presentation.js";
 import { EventPlanner } from "./event-planner.js";
-import { eventTierNeeds, hydrateTierCards, hydrateQuestIcons } from "./event-shop-tier.js";
+import { eventTierNeeds, hydrateTierCards, hydrateQuestIcons, buildFallbackIcon } from "./event-shop-tier.js";
 
 /* ============================================
    PRESENTATION LAYER - UI Builder
    ============================================ */
+
+/* The markup ships icon boxes empty (Amendment C: no generic material art), so the tier-colour
+   letter badge is built here. Built unconditionally: hydrateTierCards/hydrateQuestIcons below run
+   in the same tick and replaceChildren() the badge wherever a currency is mapped, so event mode
+   never paints it and an unmapped tier keeps its badge. */
+function buildTierFallback(container, tier) {
+  if (container) container.replaceChildren(buildFallbackIcon(tier));
+}
+
 export const UIBuilder = {
   // DOM cache
   elements: {},
 
   buildMaterialsGrid(container, _state) {
-    // Elements already exist in HTML — cache input refs and add icon error handlers
+    // Elements already exist in HTML — cache input refs, then fill the empty icon boxes
     TIERS.forEach((tier) => {
       TIER_FIELDS.forEach((field) => {
         const id = `${tier}${field}`;
         this.elements[id] = document.getElementById(id);
       });
-
-      // Add icon error handlers
-      const card = container.querySelector(`[data-tier="${tier}"]`);
-      if (card) {
-        const bgImg = card.querySelector(".bg-layer");
-        const fgImg = card.querySelector(".fg-layer");
-        if (bgImg)
-          bgImg.onerror = () => {
-            bgImg.style.display = "none";
-          };
-        if (fgImg) {
-          fgImg.onerror = () => {
-            const fallback = document.createElement("div");
-            fallback.className = "icon-fallback";
-            fallback.style.background = TIER_COLORS[tier];
-            fallback.textContent = DOMFactory.capitalize(tier).charAt(0);
-            fgImg.replaceWith(fallback);
-          };
-        }
-      }
+      buildTierFallback(document.getElementById(`${tier}Icon`), tier);
     });
 
     // Event mode (Amendment A): mapped tiers show the currency's art, name and plan total
@@ -46,27 +36,10 @@ export const UIBuilder = {
   },
 
   loadQuestIcons() {
-    // Add error handlers to existing quest drop icons in HTML
+    // Every drop line has an empty `…_icon` span to fill with its material's badge
     Object.entries(QUEST_DROPS).forEach(([quest, drops]) => {
       [drops.primary, drops.secondary].forEach((material) => {
-        const container = document.getElementById(`${quest}Quest_${material}_icon`);
-        if (container) {
-          const bgImg = container.querySelector(".bg-layer");
-          const fgImg = container.querySelector(".fg-layer");
-          if (bgImg)
-            bgImg.onerror = () => {
-              bgImg.style.display = "none";
-            };
-          if (fgImg) {
-            fgImg.onerror = () => {
-              const fallback = document.createElement("div");
-              fallback.className = "icon-fallback";
-              fallback.style.background = TIER_COLORS[material];
-              fallback.textContent = DOMFactory.capitalize(material).charAt(0);
-              fgImg.replaceWith(fallback);
-            };
-          }
-        }
+        buildTierFallback(document.getElementById(`${quest}Quest_${material}_icon`), material);
       });
     });
 

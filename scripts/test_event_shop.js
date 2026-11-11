@@ -2,9 +2,10 @@
 /**
  * scripts/test_event_shop.js
  *
- * Browser gate for the Event Shop surfaces under Amendment B (planner card REMOVED — the
+ * Browser gate for the Event Shop surfaces under Amendment C (planner card REMOVED — the
  * per-currency modal is the sole configuration surface; tier Required boxes are read-only
- * modal openers with Held/Bonus box parity; event icons render standalone, no grey plate).
+ * modal openers with Held/Bonus box parity; event icons render standalone, no grey plate;
+ * the generic bronze/silver/gold material mockup art is DELETED — nothing may request it).
  *
  * Pins, against the PRODUCTION build:
  *  - ABSENCE of every planner-card surface: #eventPlannerCard, #eventPlannerSummary/Controls/
@@ -22,7 +23,8 @@
  *    reported as a failure for not applying;
  *  - standalone icons: every mapped tier's .material-icon carries .material-icon--event with a
  *    computed transparent background while the base .material-icon grey rule still exists for
- *    the legacy (generic bg/fg) look; the event art decodes (naturalWidth > 0);
+ *    the stub (badge) look; the event art decodes (naturalWidth > 0), all 9 boxes carry exactly
+ *    one img and NO .icon-fallback badge — the badge is built then replaced in the same tick;
  *  - the currency modal #eventShopModal opens from a tier Required (click, Enter, Space) and
  *    Escape / ✕ / Cancel / backdrop mousedown close it as a discard;
  *  - ALL clamping lives in the modal draft rows (limit clamp, focus-preserving typing, schema
@@ -43,8 +45,15 @@
  * Legacy fallback (stub snapshot: event null) is pinned with --legacy against a patched bundle
  * copy served on a spare port — the production snapshot always has an event, so the stub branch
  * cannot be reached through the unpatched site. In stub mode the Required fields must be plain
- * editable inputs (no display class, no popup, solid border) on generic grey icon plates, and
+ * editable inputs (no display class, no popup, solid border) on grey icon plates that are filled
+ * with the tier-colour LETTER BADGES the legacy builder makes (3 tier + 6 quest = 9 boxes, each
+ * one .icon-fallback div, background TIER_COLORS[tier], text = tier initial, zero imgs), and
  * clicking one must NOT open the modal.
+ *
+ * Amendment C absence pins, both modes: zero network requests whose URL contains
+ * icons/materials, and zero HTTP responses >= 400. The assets are deleted and the markup ships
+ * empty boxes, so any such request means dead art came back, and any 4xx means it was asked for
+ * and 404'd.
  *
  * Run it against the static dist on the spare port (3000 is the owner's server — never gate
  * there, never stop daemons that are not yours):
@@ -53,8 +62,17 @@
  *   node scripts/test_event_shop.js http://localhost:4199/fgo-calculator/ --legacy   (stub copy)
  *
  * Patched-copy recipe (mutants + stub, outside the repo, served from throwaway dirs):
- *   stub:   in dist/_astro/event-lazy.*.js replace the balanced object literal that starts
- *           `={event:{id:<live id>` with `={event:null,currencies:[],items:[]}`;
+ *   stub:   in dist/_astro/event-lazy.*.js replace `event:{id:<live id>` with
+ *           `event:null&&{id:<live id>` — `null && {…}` is null, braces stay balanced, and
+ *           eventShopSnapshot() then returns null (must reach the badge pins, not the event pins);
+ *   badge:  in the same chunk replace the fallback builder `function z(e,t){e&&e.replaceChildren(j(t))}`
+ *           with `function z(e,t){}` (must redden the stub badge pins only);
+ *   mockup: in index.html put `<img class="bg-layer" alt="" src="icons/materials/bronze_bg.webp">`
+ *           inside `<div class="material-icon" id="bronzeIcon">` (must redden the icons/materials
+ *           absence + zero-4xx pins);
+ *   hydrate: in the chunk replace `a.classList.add(\`material-icon--event\`),a.replaceChildren(M(t,e))`
+ *           with `a.classList.add(\`material-icon--event\`)` (must redden the event art / no-badge
+ *           pins and the 9/9 decoded pin);
  *   parity: append `min-height: 44px;` to the `input.eshop-require-display` rule in index.html
  *           (must redden the offsetHeight parity pin);
  *   grey:   set `.material-icon--event { background: transparent }` to `#e5e7eb` in index.html
@@ -70,7 +88,7 @@
 
 import puppeteer from "puppeteer";
 import { EVENT_SHOP_DATA } from "../src/scripts/data/event_shop.js";
-import { EVENT_SHOP_STORAGE_KEY, STORAGE_KEY, QUEST_DROPS } from "../src/scripts/constants.js";
+import { EVENT_SHOP_STORAGE_KEY, STORAGE_KEY, QUEST_DROPS, TIER_COLORS } from "../src/scripts/constants.js";
 
 const argv = process.argv.slice(2);
 const LEGACY = argv.includes("--legacy");
@@ -113,6 +131,31 @@ const currencyOf = (item) => CURRENCIES.find((c) => String(c.id) === String(item
 const tierOfCurrency = (currency) => currency.background;
 const itemsOfCurrency = (currencyId) => ITEMS.filter((item) => String(item.cost.itemId) === String(currencyId));
 const num = (text) => Number(String(text).replace(/[^0-9.-]/g, ""));
+
+/* Amendment C: the stub badge's background is TIER_COLORS[tier] applied through style.background,
+   which the CSSOM normalises to rgb(...) — compare against the same normalisation here. */
+const rgbOf = (hex) => {
+  const v = hex.replace("#", "");
+  return `rgb(${parseInt(v.slice(0, 2), 16)}, ${parseInt(v.slice(2, 4), 16)}, ${parseInt(v.slice(4, 6), 16)})`;
+};
+const BADGE_WANT = Object.fromEntries(
+  Object.entries(TIER_COLORS).map(([tier, hex]) => [tier, { bg: rgbOf(hex), letter: tier.charAt(0).toUpperCase() }]),
+);
+/* the 9 icon containers Amendment C leaves empty in markup, and fills from JS */
+const ICON_CONTAINERS = [
+  ...TIERS.map((t) => `${t}Icon`),
+  ...Object.entries(QUEST_DROPS).flatMap(([quest, drops]) => [
+    `${quest}Quest_${drops.primary}_icon`,
+    `${quest}Quest_${drops.secondary}_icon`,
+  ]),
+];
+/* which material's colour + letter each container must carry as its fallback badge */
+const CONTAINER_TIER = {};
+for (const t of TIERS) CONTAINER_TIER[`${t}Icon`] = t;
+for (const [quest, drops] of Object.entries(QUEST_DROPS)) {
+  CONTAINER_TIER[`${quest}Quest_${drops.primary}_icon`] = drops.primary;
+  CONTAINER_TIER[`${quest}Quest_${drops.secondary}_icon`] = drops.secondary;
+}
 
 /* Amendment B data truth (plan round tracker, id asc): never trust the UI against itself. */
 const BUY_ALL_TRUTH = { 94164000: 5740, 94164001: 5390, 94164002: 6610 };
@@ -182,6 +225,8 @@ try {
   const pageErrors = [];
   const consoleMessages = [];
   const shopResponses = [];
+  const materialRequests = [];
+  const httpFailures = [];
   const externalHosts = new Set();
   const origin = new URL(url).origin;
   page.on("pageerror", (e) => pageErrors.push(e.message));
@@ -191,8 +236,12 @@ try {
     consoleMessages.filter((m) => m.type === "warn" || m.type === "warning").map((m) => m.text);
   page.on("response", (res) => {
     if (/event_shop/.test(res.url())) shopResponses.push({ url: res.url(), status: res.status() });
+    if (res.status() >= 400) httpFailures.push({ url: res.url(), status: res.status() });
   });
   page.on("request", (req) => {
+    /* Amendment C absence pin: the generic material mockup is deleted — asking for it is a defect,
+       whether the answer is 404 (httpFailures) or a cached copy that should never have shipped. */
+    if (/icons\/materials\//.test(req.url())) materialRequests.push(req.url());
     try {
       const u = new URL(req.url());
       if (u.origin !== origin) externalHosts.add(u.origin);
@@ -271,6 +320,20 @@ try {
               readOnly: el.readOnly,
             }
           : null;
+      const badgeOf = (box) => {
+        const b = box ? box.querySelector(".icon-fallback") : null;
+        if (!b) return null;
+        const s = getComputedStyle(b);
+        return {
+          tag: b.tagName,
+          cls: b.className,
+          text: b.textContent,
+          bg: s.backgroundColor,
+          w: b.offsetWidth,
+          h: b.offsetHeight,
+          count: box.querySelectorAll(".icon-fallback").length,
+        };
+      };
       const tiers = {};
       for (const t of ["bronze", "silver", "gold"]) {
         const card = document.querySelector(`#materialsGrid [data-tier="${t}"]`);
@@ -291,6 +354,7 @@ try {
           bonusBox: box(bonus),
           iconEventClass: iconBox ? iconBox.classList.contains("material-icon--event") : null,
           iconBoxBg: iconBox ? getComputedStyle(iconBox).backgroundColor : null,
+          badge: badgeOf(iconBox),
           imgs: imgs.map((i) => ({ cls: i.className, src: i.getAttribute("src"), w: i.naturalWidth })),
         };
       }
@@ -302,7 +366,11 @@ try {
           const span = document.getElementById(`${t}Quest_${m}_icon`);
           if (span) {
             const img = span.querySelector("img.fg-layer") || span.querySelector("img");
-            icons[m] = img ? { cls: img.className, src: img.getAttribute("src"), w: img.naturalWidth } : "no-img";
+            icons[m] = {
+              img: img ? { cls: img.className, src: img.getAttribute("src"), w: img.naturalWidth } : null,
+              badge: badgeOf(span),
+              imgCount: span.querySelectorAll("img").length,
+            };
             icons[`${m}_spanBg`] = getComputedStyle(span).backgroundColor;
           }
         }
@@ -317,6 +385,123 @@ try {
         polluted: Object.prototype.hasOwnProperty.call(Object.prototype, "polluted"),
       };
     });
+
+  /* Amendment C: all 9 icon containers read the same way in both modes — how many imgs, how many
+     tier-colour badges, what the badge shows. Empty containers in markup means either the fallback
+     builder ran (stub) or hydration replaced it (event); anything else is a defect. */
+  const readIconBoxes = () =>
+    page.evaluate((ids) => {
+      const out = {};
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (!el) {
+          out[id] = null;
+          continue;
+        }
+        const badges = [...el.querySelectorAll(".icon-fallback")];
+        const imgs = [...el.querySelectorAll("img")];
+        const b = badges[0];
+        out[id] = {
+          childCount: el.children.length,
+          imgCount: imgs.length,
+          badgeCount: badges.length,
+          imgSrcs: imgs.map((i) => i.getAttribute("src")),
+          imgW: imgs.map((i) => i.naturalWidth),
+          badgeText: b ? b.textContent : null,
+          badgeBg: b ? getComputedStyle(b).backgroundColor : null,
+          badgeW: b ? b.offsetWidth : 0,
+          badgeH: b ? b.offsetHeight : 0,
+          boxW: el.offsetWidth,
+          boxH: el.offsetHeight,
+          boxBg: getComputedStyle(el).backgroundColor,
+          eventClass: el.classList.contains("material-icon--event"),
+        };
+      }
+      return out;
+    }, ICON_CONTAINERS);
+
+  /* Stub mode contract: one tier-colour letter badge, zero imgs, in every container. */
+  const assertStubBadges = (boxes, label) => {
+    for (const id of ICON_CONTAINERS) {
+      const box = boxes[id];
+      const tier = CONTAINER_TIER[id];
+      if (!box) {
+        errors.push(`${label}: #${id} is missing from the document — Amendment C keeps every icon id`);
+        continue;
+      }
+      if (box.imgCount !== 0)
+        errors.push(
+          `${label}: #${id} shows ${box.imgCount} img(s) ${JSON.stringify(box.imgSrcs)}, want 0 — the generic material mockup is deleted`,
+        );
+      if (box.badgeCount !== 1 || box.childCount !== 1)
+        errors.push(
+          `${label}: #${id} holds ${box.childCount} child node(s), ${box.badgeCount} .icon-fallback badge(s), want exactly 1 badge (buildTierFallback never ran or left residue)`,
+        );
+      const want = BADGE_WANT[tier];
+      if (box.badgeText !== want.letter)
+        errors.push(
+          `${label}: #${id} badge letter is ${JSON.stringify(box.badgeText)}, want ${JSON.stringify(want.letter)} (TIER_COLORS key "${tier}")`,
+        );
+      if (box.badgeBg !== want.bg)
+        errors.push(
+          `${label}: #${id} badge background is ${JSON.stringify(box.badgeBg)}, want ${want.bg} = TIER_COLORS.${tier}`,
+        );
+      if (!(box.badgeW > 0 && box.badgeH > 0))
+        errors.push(
+          `${label}: #${id} badge collapsed to ${box.badgeW}×${box.badgeH}px — the .icon-fallback CSS is gone`,
+        );
+      /* and it must FILL the container: .icon-fallback is absolutely inset 0, width/height 100%
+         (2px rounding slack). A badge that survives as a strip means that rule went with .bg-layer. */
+      if (box.badgeCount === 1 && (Math.abs(box.badgeW - box.boxW) > 2 || Math.abs(box.badgeH - box.boxH) > 2))
+        errors.push(
+          `${label}: #${id} badge is ${box.badgeW}×${box.badgeH}px in a ${box.boxW}×${box.boxH}px box, want it to fill the box`,
+        );
+    }
+  };
+
+  /* Event mode contract: the badge is replaced by decoded currency art in the same tick, so no
+     container may still hold one, and each must hold exactly one img that decoded. Decode is
+     optional for late re-reads, where a lazy img below the fold has not been fetched yet. */
+  const assertEventBoxes = (boxes, label, checkDecode = true) => {
+    for (const id of ICON_CONTAINERS) {
+      const box = boxes[id];
+      const tier = CONTAINER_TIER[id];
+      const currency = CURRENCIES.find((c) => c.background === tier);
+      if (!currency) {
+        errors.push(`${label}: no currency maps to tier ${tier} — the event-art pin is blind, snapshot drifted`);
+        continue;
+      }
+      if (!box) {
+        errors.push(`${label}: #${id} is missing from the document`);
+        continue;
+      }
+      if (box.badgeCount !== 0)
+        errors.push(
+          `${label}: #${id} still shows ${box.badgeCount} fallback badge(s) in event mode — hydration did not replace it (${JSON.stringify(box.badgeText)})`,
+        );
+      if (box.imgCount !== 1)
+        errors.push(
+          `${label}: #${id} holds ${box.imgCount} img(s) ${JSON.stringify(box.imgSrcs)}, want the single event currency art`,
+        );
+      if (checkDecode && box.imgW.some((w) => !(w > 0)))
+        errors.push(`${label}: #${id} event img did not decode (naturalWidth ${JSON.stringify(box.imgW)})`);
+      const wantFile = `event_shop/${currency.icon.split("/").pop()}`;
+      if (!box.imgSrcs.some((s) => (s || "").includes(wantFile)))
+        errors.push(`${label}: #${id} img srcs ${JSON.stringify(box.imgSrcs)}, want ${wantFile}`);
+    }
+  };
+
+  /* Amendment C absence pins, identical in both modes. */
+  const assertMaterialAbsence = (label) => {
+    if (materialRequests.length)
+      errors.push(
+        `${label}: ${materialRequests.length} request(s) asked for the deleted material mockup — ${JSON.stringify(materialRequests.slice(0, 3))}`,
+      );
+    if (httpFailures.length)
+      errors.push(
+        `${label}: ${httpFailures.length} HTTP response(s) >= 400 — ${JSON.stringify(httpFailures.slice(0, 3))}`,
+      );
+  };
 
   /* The static skeleton: dead card surfaces must not exist, the modal chrome must, and the first
      card of the Event panel is the requirements calculator the planner used to sit above. */
@@ -720,13 +905,13 @@ try {
         errors.push(`legacy: ${t} generic icon plate is ${td.iconBoxBg}, want the grey #e5e7eb`);
       if (td.name !== t.charAt(0).toUpperCase() + t.slice(1))
         errors.push(`legacy: ${t} card name is ${JSON.stringify(td.name)}`);
-      const srcs = td.imgs.map((i) => i.src || "");
-      if (
-        !srcs.some((s) => s.includes(`icons/materials/${t}_bg.webp`)) ||
-        !srcs.some((s) => s.includes(`icons/materials/${t}_fg.webp`))
-      ) {
-        errors.push(`legacy: ${t} icon shows ${JSON.stringify(srcs)}, want the generic bg+fg pair`);
-      }
+      /* Amendment C: the generic bg/fg pair is deleted — the stub box holds a badge, nothing else */
+      if (td.imgs.length)
+        errors.push(
+          `legacy: ${t} icon box shows ${td.imgs.length} img(s) ${JSON.stringify(td.imgs.map((i) => i.src || ""))}, want 0 — the material mockup must not come back`,
+        );
+      if (!td.badge)
+        errors.push(`legacy: ${t} icon box has no .icon-fallback badge — buildTierFallback never ran on it`);
       /* parity by construction holds in legacy too: one shared field class */
       if (!(td.needBox.h > 0) || td.needBox.h !== td.heldBox.h || td.needBox.h !== td.bonusBox.h)
         errors.push(
@@ -755,6 +940,11 @@ try {
     await page.keyboard.press("Enter");
     await wait(SETTLE_MS);
     if ((await readModal()).open) errors.push("legacy: Enter on a stub Required opened the modal");
+    /* Amendment C stub pins: 9 tier-colour letter badges, zero imgs, and no request for the
+       deleted mockup anywhere in the run. */
+    const boxes = await readIconBoxes();
+    assertStubBadges(boxes, "legacy");
+    assertMaterialAbsence("legacy");
     for (const [quest, drops] of Object.entries(QUEST_DROPS)) {
       const qd = tier.quests[quest];
       const wantTitle = `${quest.charAt(0).toUpperCase() + quest.slice(1)} Quest`;
@@ -762,11 +952,21 @@ try {
         errors.push(`legacy: ${quest} quest title is ${JSON.stringify(qd.title)}, want ${JSON.stringify(wantTitle)}`);
       for (const m of [drops.primary, drops.secondary]) {
         const icon = qd.icons[m];
-        if (!icon || icon === "no-img" || !(icon.src || "").includes(`icons/materials/${m}_fg.webp`)) {
-          errors.push(`legacy: ${quest}Quest_${m}_icon is ${JSON.stringify(icon)}, want the generic fg icon`);
+        if (!icon) {
+          errors.push(`legacy: ${quest}Quest_${m}_icon span is missing from the document`);
+          continue;
         }
+        if (icon.imgCount !== 0 || icon.img)
+          errors.push(
+            `legacy: ${quest}Quest_${m}_icon shows ${JSON.stringify(icon.img && icon.img.src)}, want no img — the material mockup is deleted`,
+          );
+        if (!icon.badge)
+          errors.push(`legacy: ${quest}Quest_${m}_icon has no .icon-fallback badge — loadQuestIcons never filled it`);
       }
     }
+    console.log(
+      `NOTE: legacy stub badges ${ICON_CONTAINERS.filter((id) => boxes[id] && boxes[id].badgeCount === 1).length}/${ICON_CONTAINERS.length}, stub imgs in boxes ${ICON_CONTAINERS.reduce((n, id) => n + (boxes[id] ? boxes[id].imgCount : 0), 0)}, icons/materials requests ${materialRequests.length}, >=400 responses ${httpFailures.length}`,
+    );
     if (!pg.calculatorBtn || !pg.questRows)
       errors.push("legacy: the tier/run calculator is broken next to the stub planner");
     if (pageErrors.length) for (const e of pageErrors) errors.push(`legacy pageerror: ${e}`);
@@ -911,6 +1111,11 @@ try {
         errors.push(
           `icons: ${tier} icon box has ${fg.length} fg + ${bg.length} bg img(s), want a single event fg-layer`,
         );
+      /* Amendment C: the badge the legacy builder put there must be replaced, not left behind */
+      if (td.badge)
+        errors.push(
+          `icons: ${tier} icon box still shows the ${JSON.stringify(td.badge.text)} fallback badge in event mode — hydration did not replace it`,
+        );
       const src = fg[0] ? fg[0].src : "";
       const wantSrc = `event_shop/${currency.icon.split("/").pop()}?v=`;
       if (!src || !src.includes(wantSrc))
@@ -930,9 +1135,14 @@ try {
         const icon = qd.icons[m];
         const wantCur = CURRENCIES.find((c) => c.background === m);
         const wantFile = `event_shop/${wantCur.icon.split("/").pop()}`;
-        if (!icon || icon === "no-img" || !(icon.src || "").includes(wantFile)) {
+        if (!icon || !icon.img || !(icon.img.src || "").includes(wantFile)) {
           errors.push(`quest drops: ${quest}Quest_${m}_icon is ${JSON.stringify(icon)}, want ${wantFile}`);
         }
+        /* Amendment C: the badge must be gone here — hydration replaces it in the same tick */
+        if (icon && (icon.badge || icon.imgCount !== 1))
+          errors.push(
+            `quest drops: ${quest}Quest_${m}_icon holds ${icon ? icon.imgCount : "?"} img(s) + ${icon ? (icon.badge ? 1 : 0) : "?"} badge(s), want 1 event img and no fallback`,
+          );
         /* Amendment B §5 audit: the drop span must not keep a grey plate either */
         if (qd.icons[`${m}_spanBg`] && qd.icons[`${m}_spanBg`] !== "rgba(0, 0, 0, 0)")
           errors.push(
@@ -980,8 +1190,16 @@ try {
       errors.push(
         `tier icons: ${deadTier.length}/${tierDecoded.length} event image(s) never decoded — ${JSON.stringify(deadTier.slice(0, 3))}`,
       );
+    /* non-vacuity: the sweep must actually see all 9 event boxes (3 tier + 6 quest) */
+    if (tierDecoded.length !== 9)
+      errors.push(
+        `tier icons: the event-art sweep found ${tierDecoded.length} img(s) in the tier + quest boxes, want 9 — the boxes are empty or the art never rendered`,
+      );
+    const evBoxes = await readIconBoxes();
+    assertEventBoxes(evBoxes, "event art");
+    assertMaterialAbsence("event art");
     console.log(
-      `NOTE: tier + quest event images decoded ${tierDecoded.length - deadTier.length}/${tierDecoded.length}`,
+      `NOTE: tier + quest event images decoded ${tierDecoded.length - deadTier.length}/${tierDecoded.length}, fallback badges left in event boxes ${ICON_CONTAINERS.reduce((n, id) => n + (evBoxes[id] ? evBoxes[id].badgeCount : 0), 0)}, icons/materials requests ${materialRequests.length}, >=400 responses ${httpFailures.length}`,
     );
 
     /* ================= 5. modal opens from bronze Required; Escape discards =================== */
@@ -1678,6 +1896,13 @@ try {
       errors.push(
         `planner security: runtime fetched ${JSON.stringify([...externalHosts])} — the site must ship zero external resources`,
       );
+    /* Amendment C, end-of-run: across every reload and viewport the mockup was never asked for and
+       no response in the whole session was an error. */
+    assertMaterialAbsence("network hygiene");
+    const stillEmpty = await readIconBoxes();
+    if (ICON_CONTAINERS.some((id) => !stillEmpty[id]))
+      errors.push("network hygiene: an icon container id vanished after the modal scenes");
+    assertEventBoxes(stillEmpty, "network hygiene", false);
     console.log(
       `NOTE: ${shopResponses.length} /event_shop/ response(s) seen, all 2xx=${badResponses.length === 0}, external origins ${JSON.stringify([...externalHosts])}`,
     );
@@ -1710,5 +1935,5 @@ if (errors.length) {
 }
 
 console.log(
-  `SUCCESS: event shop ${LEGACY ? "legacy stub fallback" : "Amendment B modal-only surface + tier parity"} verified against ${url}`,
+  `SUCCESS: event shop ${LEGACY ? "legacy stub fallback (tier-colour badges, zero mockup requests)" : "Amendment C modal-only surface + tier parity + event art"} verified against ${url}`,
 );
