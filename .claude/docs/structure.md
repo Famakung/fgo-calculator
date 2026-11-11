@@ -30,9 +30,8 @@ src/
     event-shop.js              — UIBuilder, ViewManager, EventHandler, App (tier calculator)
     event-shop-tier.js         — event-native tier skin: currency images/names, read-only Required displays
     event-shop-modal.js        — EventShopModal: per-currency draft config modal (Default/Select All/Cancel/Done)
-    event-planner.js           — EventPlanner: shop plan state, applyRequires, persistence
-    event-planner-view.js      — EventPlannerView: planner card DOM (render/renderList/updateTotals/syncInputs)
-    event-planner-parts.js     — pure builders: card display rows, modal draft rows, chips
+    event-planner.js           — EventPlanner: shop plan state, applyRequires, persistence (state-only)
+    event-planner-parts.js     — pure builders for the modal draft rows (buildDraftRow chain)
     tab-navigator.js           — TabNavigator (lazy init callbacks)
     data/
       traits.js                — TRAIT_DATA

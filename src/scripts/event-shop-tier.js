@@ -72,7 +72,12 @@ function bindRequiredDisplay(input, currency) {
 
 function applyEventTier({ tier, currency, card, needInput, need }) {
   const iconBox = card?.querySelector(".material-icon");
-  if (iconBox) iconBox.replaceChildren(buildCurrencyImg(currency, tier));
+  if (iconBox) {
+    /* .material-icon carries a grey background meant for the generic bg/fg art; event currency art
+       is bordered on its own, so mark the box for the transparent-background CSS override. */
+    iconBox.classList.add("material-icon--event");
+    iconBox.replaceChildren(buildCurrencyImg(currency, tier));
+  }
   const nameEl = card?.querySelector(".material-name");
   if (nameEl) nameEl.textContent = currency.name;
   if (!needInput) return;

@@ -2,35 +2,65 @@
 /**
  * scripts/test_event_shop.js
  *
- * Browser gate for the Event Shop planner under Amendment A (event-native tier cards +
- * per-currency draft modal). Pins, against the PRODUCTION build:
+ * Browser gate for the Event Shop surfaces under Amendment B (planner card REMOVED — the
+ * per-currency modal is the sole configuration surface; tier Required boxes are read-only
+ * modal openers with Held/Bonus box parity; event icons render standalone, no grey plate).
  *
- *  - planner card rows are read-only displays (role=button, tabindex, aria-haspopup, live
- *    aria-label); the old Buy all / Clear buttons and card-side steppers must NOT exist;
- *  - the currency modal #eventShopModal opens from a planner row (click / Tab+Enter) AND from a
- *    tier Required input; Escape / ✕ / Cancel / backdrop close it as a discard;
- *  - all clamping (limitNum, schema max 999999, focus-preserving typing, negative input, rapid
- *    stepper race) now lives INSIDE the modal draft rows — moved, never weakened;
+ * Pins, against the PRODUCTION build:
+ *  - ABSENCE of every planner-card surface: #eventPlannerCard, #eventPlannerSummary/Controls/
+ *    List/EventName/Window/BuyAll/Clear and the .eshop-summary/.eshop-filter-chip/.eshop-group/
+ *    .eshop-list/.eshop-controls/.eshop-empty classes must NOT exist anywhere; the first card
+ *    of #panel-event is "Shop Requirements";
+ *  - geometry parity: per tier, Required offsetHeight === Held === Bonus offsetHeight AND
+ *    offsetWidth parity (> 0, and not the old 44px override); Required carries both
+ *    .material-input-box-field and .eshop-require-display; its computed border-style is dashed
+ *    and its cursor pointer, while Held/Bonus stay solid-bordered editable fields;
+ *  - editability cues: the hover accent rule exists in the stylesheet inside
+ *    @media (hover: hover) with border-color/background on the accent tokens, and the :focus
+ *    rule flips the border to solid — pinned live, because this headless Chrome reports
+ *    (hover: hover) = false and CDP cannot flip it, so :hover is CSSOM-pinned, never
+ *    reported as a failure for not applying;
+ *  - standalone icons: every mapped tier's .material-icon carries .material-icon--event with a
+ *    computed transparent background while the base .material-icon grey rule still exists for
+ *    the legacy (generic bg/fg) look; the event art decodes (naturalWidth > 0);
+ *  - the currency modal #eventShopModal opens from a tier Required (click, Enter, Space) and
+ *    Escape / ✕ / Cancel / backdrop mousedown close it as a discard;
+ *  - ALL clamping lives in the modal draft rows (limit clamp, focus-preserving typing, schema
+ *    max 999999, negative input, rapid stepper race) — moved, never weakened;
  *  - Select All = clearRequires semantics, Default = zero the draft; only Done commits;
- *  - Done agreement: localStorage fgo_event_shop_data, planner displays/chips/group totals and
- *    the tier Required displays (plus the legacy calculator state) all show the same numbers,
- *    cross-checked against this file's independent reference math over
- *    src/scripts/data/event_shop.js — never through the app's EventShop;
- *  - tier cards and quest-drop titles/icons show the live event currency art and names;
+ *  - Done agreement: localStorage fgo_event_shop_data, the tier Required values and the legacy
+ *    calculator state all show the same numbers, cross-checked against this file's independent
+ *    reference math over src/scripts/data/event_shop.js — never through the app's EventShop;
+ *    buy-out data truth MISO 5740 / SHIMONITA 5390 / YAKI 6610;
+ *  - modal draft-row icon fallback: when an icon request is refused (request interception
+ *    aborts one /event_shop/ file), the .eshop-item-icon-fallback badge is transparent with a
+ *    dashed border — no grey plate behind or in place of the art;
  *  - persistence across reload, event-id mismatch reset, hostile storage sanitisation, storage
  *    write discipline (draft typing writes nothing; Done writes once), quota-failure path,
- *    filter chips, keyboard operation, zero sideways overflow / zero page errors at 360px and
- *    1120px, and zero runtime external fetches.
+ *    keyboard operation, zero sideways overflow / zero page errors at 360px and 1120px, and
+ *    zero runtime external fetches.
  *
  * Legacy fallback (stub snapshot: event null) is pinned with --legacy against a patched bundle
  * copy served on a spare port — the production snapshot always has an event, so the stub branch
- * cannot be reached through the unpatched site. See the footer notes for the patch recipe.
+ * cannot be reached through the unpatched site. In stub mode the Required fields must be plain
+ * editable inputs (no display class, no popup, solid border) on generic grey icon plates, and
+ * clicking one must NOT open the modal.
  *
- * Run it against `astro preview` on the spare port (3000 is the owner's live test server):
+ * Run it against the static dist on the spare port (3000 is the owner's server — never gate
+ * there, never stop daemons that are not yours):
  *   npm run build
- *   npx astro preview --port 4173
  *   node scripts/test_event_shop.js http://localhost:4173/fgo-calculator/
  *   node scripts/test_event_shop.js http://localhost:4199/fgo-calculator/ --legacy   (stub copy)
+ *
+ * Patched-copy recipe (mutants + stub, outside the repo, served from throwaway dirs):
+ *   stub:   in dist/_astro/event-lazy.*.js replace the balanced object literal that starts
+ *           `={event:{id:<live id>` with `={event:null,currencies:[],items:[]}`;
+ *   parity: append `min-height: 44px;` to the `input.eshop-require-display` rule in index.html
+ *           (must redden the offsetHeight parity pin);
+ *   grey:   set `.material-icon--event { background: transparent }` to `#e5e7eb` in index.html
+ *           (must redden the standalone-icon pin);
+ *   commit: in the event-lazy chunk replace `onCommit:e=>{<planner>.applyRequires(e),` with
+ *           `onCommit:e=>{void 0,` (must redden the Done-agreement / write-discipline pins).
  *
  * WARNING: the HMR dev server is not a valid target (see scripts/verify_render.js): it creates
  * duplicate module instances, so what it renders is not what ships.
@@ -84,44 +114,65 @@ const tierOfCurrency = (currency) => currency.background;
 const itemsOfCurrency = (currencyId) => ITEMS.filter((item) => String(item.cost.itemId) === String(currencyId));
 const num = (text) => Number(String(text).replace(/[^0-9.-]/g, ""));
 
-/* Amendment A data truth (plan round tracker, id asc): never trust the UI against itself. */
+/* Amendment B data truth (plan round tracker, id asc): never trust the UI against itself. */
 const BUY_ALL_TRUTH = { 94164000: 5740, 94164001: 5390, 94164002: 6610 };
 const BUY_ALL_NAMES = { 94164000: "MISOおでん", 94164001: "SHIMONITAネギ", 94164002: "YAKIまんじゅう" };
 
-/* Fixed sample rows used by the modal clamp / unlimited / keyboard checks. */
-const limitedRows = ITEMS.filter((item) => item.limitNum === 1);
-const bigLimitRows = ITEMS.filter((item) => item.limitNum > 1);
-const unlimitedRows = ITEMS.filter((item) => item.limitNum === 0);
-const costumeRow = ITEMS.find((item) => item.purchaseType === "costumeRelease");
-const equipRow = ITEMS.find((item) => item.purchaseType === "servant" && /equip_/.test(item.icon || ""));
-const multiSetRow = ITEMS.find((item) => item.setNum > 1);
+/* Scene rows: the gold draft carries the clamp suite, the bronze draft the commit scenes. */
+const goldCurrency = CURRENCIES.find((c) => c.background === "gold");
+const silverCurrency = CURRENCIES.find((c) => c.background === "silver");
+const bronzeCurrency = CURRENCIES.find((c) => c.background === "bronze");
+const goldItems = goldCurrency ? itemsOfCurrency(String(goldCurrency.id)) : [];
+const bronzeItems = bronzeCurrency ? itemsOfCurrency(String(bronzeCurrency.id)) : [];
+const clampRow = goldItems.find((i) => i.limitNum === 1); // + twice must stop at 1
+const draftFree = goldItems.find((i) => i.limitNum === 0); // unlimited row in the gold draft
+const costumeRow = goldItems.find((i) => i.purchaseType === "costumeRelease");
+const equipRow = goldItems.find((i) => i.purchaseType === "servant" && /equip_/.test(i.icon || ""));
+const multiSetRow = goldItems.find((i) => i.setNum > 1);
+const freeRow = bronzeItems.find((i) => i.limitNum === 0); // unlimited row in the bronze draft
+const bronzeSteppable = bronzeItems.find((i) => maxRequire(i) >= 2); // write-discipline stepper row
+const silverFree = silverCurrency ? itemsOfCurrency(String(silverCurrency.id)).find((i) => maxRequire(i) > 3) : null;
 
-if (!LEGACY && (!limitedRows.length || !unlimitedRows.length || CURRENCIES.length < 3)) {
+if (!LEGACY && (!clampRow || !draftFree || !freeRow || !bronzeSteppable || CURRENCIES.length < 3)) {
   console.error("[ERROR] planner: the data snapshot has no limited/unlimited rows to pin — gate is blind");
   process.exit(1);
 }
 
-const clampRow = limitedRows[0];
-const stepRow = bigLimitRows[0] || limitedRows[0];
-/* Scenes that open a currency modal need rows OF THAT CURRENCY: gold carries the clamp scene
-   (clampRow/stepRow/draftFree), bronze carries the commit/quota/backdrop scenes (freeRow). */
-const goldCurrency = CURRENCIES.find((c) => c.background === "gold");
-const bronzeCurrency = CURRENCIES.find((c) => c.background === "bronze");
-const sameCurrency = (item, currency) => String(item.cost.itemId) === String(currency.id);
-const freeRow = unlimitedRows.find((item) => sameCurrency(item, bronzeCurrency)) || unlimitedRows[0];
-const draftFree = unlimitedRows.find((item) => sameCurrency(item, currencyOf(clampRow))) || clampRow;
-
 const sel = {
-  cardRow: (id) => `#eventPlannerList .eshop-item[data-item-id="${id}"]`,
-  cardDisplay: (id) => `${sel.cardRow(id)} .eshop-require-display`,
-  chip: (key) => `#eventPlannerControls .eshop-filter-chip[data-filter="${key}"]`,
+  tierNeed: (tier) => `#${tier}Need`,
+  tierHeld: (tier) => `#${tier}Have`,
+  tierBonus: (tier) => `#${tier}Bonus`,
   modalRow: (id) => `#eventShopModalList .eshop-item[data-item-id="${id}"]`,
   modalInput: (id) => `${sel.modalRow(id)} .eshop-require-input`,
   modalPlus: (id) => `${sel.modalRow(id)} .eshop-step-btn[data-step="1"]`,
   modalMinus: (id) => `${sel.modalRow(id)} .eshop-step-btn[data-step="-1"]`,
-  tierNeed: (tier) => `#${tier}Need`,
   footer: (name) => `#eventShopModal${name}Btn`,
 };
+
+/* Amendment B: every one of these must be GONE from the live document. */
+const DEAD_IDS = [
+  "eventPlannerCard",
+  "eventPlannerEventName",
+  "eventPlannerWindow",
+  "eventPlannerSummary",
+  "eventPlannerControls",
+  "eventPlannerList",
+  "eventPlannerBuyAll",
+  "eventPlannerClear",
+];
+const DEAD_CLASS_SELECTOR = [
+  ".eshop-summary",
+  ".eshop-summary-chip",
+  ".eshop-filter-chip",
+  ".eshop-group",
+  ".eshop-group-header",
+  ".eshop-group-total",
+  ".eshop-list",
+  ".eshop-controls",
+  ".eshop-empty",
+  ".eshop-event-name",
+  ".eshop-window",
+].join(", ");
 
 const browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox"] });
 try {
@@ -150,7 +201,7 @@ try {
     }
   });
 
-  /* --- harness helpers (identical discipline to round 1) --- */
+  /* --- harness helpers (identical discipline to the earlier rounds) --- */
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   /* Lazy icons grow the document as they decode, so a click can aim at a box that already moved:
      scroll in, wait for geometry to stop, prove the target is under the cursor, retry if not. */
@@ -206,100 +257,20 @@ try {
     errors.push(`harness click: ${target} never became a stable on-screen target — ${JSON.stringify(detail)}`);
   };
 
-  const readCard = () =>
-    page.evaluate(
-      (k, legacyKey) => {
-        const fmt = (v) => Number(v).toLocaleString("en-US");
-        const rows = [...document.querySelectorAll("#eventPlannerList .eshop-item")].map((row) => {
-          const display = row.querySelector(".eshop-require-display");
-          return {
-            id: row.getAttribute("data-item-id"),
-            display: display ? display.textContent : null,
-            displayItemId: display ? display.getAttribute("data-item-id") : null,
-            total: (row.querySelector(".eshop-item-total") || {}).textContent || null,
-            active: row.classList.contains("eshop-item--active"),
-            meta: (row.querySelector(".eshop-item-meta") || {}).textContent || "",
-            name: (row.querySelector(".eshop-item-name") || {}).textContent || "",
-            ariaLabel: row.getAttribute("aria-label"),
-            role: row.getAttribute("role"),
-            tabindex: row.getAttribute("tabindex"),
-            haspopup: row.getAttribute("aria-haspopup"),
-            editable: row.classList.contains("eshop-item--editable"),
-            hasImg: !!row.querySelector("img.eshop-item-icon"),
-            hasFallback: !!row.querySelector(".eshop-item-icon-fallback"),
-          };
-        });
-        return {
-          rows,
-          groups: [...document.querySelectorAll("#eventPlannerList .eshop-group")].map((g) => ({
-            currency: g.getAttribute("data-currency"),
-            tier: g.getAttribute("data-tier"),
-            total: (g.querySelector(".eshop-group-total") || {}).textContent || "",
-            rows: g.querySelectorAll(":scope > .eshop-item").length,
-            headerImg: !!g.querySelector(".eshop-group-header img"),
-          })),
-          chips: [...document.querySelectorAll("#eventPlannerSummary .eshop-summary-chip")].map((c) => ({
-            currency: c.getAttribute("data-currency"),
-            tier: c.getAttribute("data-tier"),
-            name: (c.querySelector(".eshop-summary-name") || {}).textContent || "",
-            total: (c.querySelector(".eshop-summary-total") || {}).textContent || "",
-            hasImg: !!c.querySelector("img"),
-          })),
-          filters: [...document.querySelectorAll("#eventPlannerControls .eshop-filter-chip")].map((b) => ({
-            key: b.getAttribute("data-filter"),
-            pressed: b.getAttribute("aria-pressed"),
-            active: b.classList.contains("eshop-filter-chip--active"),
-            label: b.textContent.trim(),
-          })),
-          emptyMsg: (document.querySelector("#eventPlannerList .eshop-empty") || {}).textContent || null,
-          cardSteppers: document.querySelectorAll("#eventPlannerList .eshop-require-input").length,
-          cardStepBtns: document.querySelectorAll("#eventPlannerList .eshop-step-btn").length,
-          buyAllBtn: !!document.getElementById("eventPlannerBuyAll"),
-          clearBtn: !!document.getElementById("eventPlannerClear"),
-          eventName: (document.getElementById("eventPlannerEventName") || {}).textContent || "",
-          activeTab: (document.querySelector(".tab-btn.active") || {}).dataset?.tab || null,
-          eventWindow: (document.getElementById("eventPlannerWindow") || {}).textContent || "",
-          summaryHidden: !!document.getElementById("eventPlannerSummary").hasAttribute("hidden"),
-          controlsHidden: !!document.getElementById("eventPlannerControls").hasAttribute("hidden"),
-          fallbacks: document.querySelectorAll(
-            "#eventPlannerCard .eshop-item-icon-fallback, #eventPlannerCard .eshop-icon-fallback",
-          ).length,
-          storage: localStorage.getItem(k),
-          legacyStorage: localStorage.getItem(legacyKey),
-          polluted: Object.prototype.hasOwnProperty.call(Object.prototype, "polluted"),
-          fmtCheck: fmt(5740),
-        };
-      },
-      KEY,
-      STORAGE_KEY,
-    );
-
-  const readModal = () =>
-    page.evaluate(() => {
-      const modal = document.getElementById("eventShopModal");
-      return {
-        open: modal.classList.contains("open"),
-        title: (document.getElementById("eventShopModalTitle") || {}).textContent || "",
-        rows: [...document.querySelectorAll("#eventShopModalList .eshop-item")].map((row) => {
-          const input = row.querySelector(".eshop-require-input");
-          return {
-            id: row.getAttribute("data-item-id"),
-            value: input ? input.value : null,
-            max: input ? input.getAttribute("max") : null,
-            ariaLabel: input ? input.getAttribute("aria-label") : null,
-            total: (row.querySelector(".eshop-item-total") || {}).textContent || "",
-            active: row.classList.contains("eshop-item--active"),
-            minusLabel:
-              (row.querySelector('.eshop-step-btn[data-step="-1"]') || {}).getAttribute?.("aria-label") || null,
-            plusLabel: (row.querySelector('.eshop-step-btn[data-step="1"]') || {}).getAttribute?.("aria-label") || null,
-          };
-        }),
-        displaySpans: document.querySelectorAll("#eventShopModalList .eshop-require-display").length,
-      };
-    });
-
+  /* The whole Amendment B read surface: tier boxes (values, geometry, computed cues, icon plates),
+     quest drops, planner storage, legacy calculator storage, tab state. */
   const readTier = () =>
     page.evaluate(() => {
+      const box = (el) =>
+        el
+          ? {
+              h: el.offsetHeight,
+              w: el.offsetWidth,
+              borderStyle: getComputedStyle(el).borderStyle,
+              cursor: getComputedStyle(el).cursor,
+              readOnly: el.readOnly,
+            }
+          : null;
       const tiers = {};
       for (const t of ["bronze", "silver", "gold"]) {
         const card = document.querySelector(`#materialsGrid [data-tier="${t}"]`);
@@ -313,9 +284,13 @@ try {
           needValue: need ? need.value : null,
           needReadOnly: need ? need.readOnly : null,
           needDisplayClass: need ? need.classList.contains("eshop-require-display") : null,
+          needFieldClass: need ? need.classList.contains("material-input-box-field") : null,
           needHaspopup: need ? need.getAttribute("aria-haspopup") : null,
-          heldReadOnly: held ? held.readOnly : null,
-          bonusReadOnly: bonus ? bonus.readOnly : null,
+          needBox: box(need),
+          heldBox: box(held),
+          bonusBox: box(bonus),
+          iconEventClass: iconBox ? iconBox.classList.contains("material-icon--event") : null,
+          iconBoxBg: iconBox ? getComputedStyle(iconBox).backgroundColor : null,
           imgs: imgs.map((i) => ({ cls: i.className, src: i.getAttribute("src"), w: i.naturalWidth })),
         };
       }
@@ -328,79 +303,145 @@ try {
           if (span) {
             const img = span.querySelector("img.fg-layer") || span.querySelector("img");
             icons[m] = img ? { cls: img.className, src: img.getAttribute("src"), w: img.naturalWidth } : "no-img";
+            icons[`${m}_spanBg`] = getComputedStyle(span).backgroundColor;
           }
         }
         quests[t] = { title: titleEl ? titleEl.textContent : null, icons };
       }
-      return { tiers, quests };
-    }, KEY);
+      return {
+        tiers,
+        quests,
+        storage: localStorage.getItem("fgo_event_shop_data"),
+        legacyStorage: localStorage.getItem("fgo_calculator_data"),
+        activeTab: (document.querySelector(".tab-btn.active") || {}).dataset?.tab || null,
+        polluted: Object.prototype.hasOwnProperty.call(Object.prototype, "polluted"),
+      };
+    });
 
-  const rowMap = (state) => new Map(state.rows.map((r) => [r.id, r]));
-  const chipMap = (state) => new Map(state.chips.map((c) => [c.currency, c]));
+  /* The static skeleton: dead card surfaces must not exist, the modal chrome must, and the first
+     card of the Event panel is the requirements calculator the planner used to sit above. */
+  const readPage = () =>
+    page.evaluate(
+      (deadIds, deadSel) => {
+        const ids = {};
+        for (const id of deadIds) ids[id] = !!document.getElementById(id);
+        return {
+          deadIds: ids,
+          deadClassCount: document.querySelectorAll(deadSel).length,
+          firstCardTitle: (document.querySelector("#panel-event .card .card-title") || {}).textContent?.trim() || null,
+          modalPresent: !!document.getElementById("eventShopModal"),
+          modalList: !!document.getElementById("eventShopModalList"),
+          footerBtns: ["Default", "SelectAll", "Cancel", "Done"].map(
+            (n) => !!document.getElementById(`eventShopModal${n}Btn`),
+          ),
+          closeBtn: !!document.getElementById("eventShopModalClose"),
+          calculatorBtn: !!document.getElementById("calculateBtn"),
+          questRows: document.querySelectorAll("#questGrid > *").length,
+          anyRequireInputsOnPage: document.querySelectorAll(
+            "#panel-event .eshop-require-input, #panel-event .eshop-step-btn",
+          ).length,
+        };
+      },
+      DEAD_IDS,
+      DEAD_CLASS_SELECTOR,
+    );
 
-  /* Asserts the visible card plan against the reference plan: the read-only display text, the row
-     subtotal, the active tint, the summary chips and the group headers all carry the same number.
-     Only on-screen rows are compared, so a currency filter narrows the check instead of breaking
-     it; every planned purchase still has to be visible in its group. Card displays have no typed
-     exemption any more — they mirror committed state exactly. */
-  const assertPlan = (state, expected, label) => {
+  const readModal = () =>
+    page.evaluate(() => {
+      const modal = document.getElementById("eventShopModal");
+      return {
+        open: modal.classList.contains("open"),
+        title: (document.getElementById("eventShopModalTitle") || {}).textContent || "",
+        rows: [...document.querySelectorAll("#eventShopModalList .eshop-item")].map((row) => {
+          const input = row.querySelector(".eshop-require-input");
+          const icon = row.querySelector(".eshop-item-icon-wrap > *");
+          return {
+            id: row.getAttribute("data-item-id"),
+            value: input ? input.value : null,
+            max: input ? input.getAttribute("max") : null,
+            ariaLabel: input ? input.getAttribute("aria-label") : null,
+            total: (row.querySelector(".eshop-item-total") || {}).textContent || "",
+            active: row.classList.contains("eshop-item--active"),
+            meta: (row.querySelector(".eshop-item-meta") || {}).textContent || "",
+            name: (row.querySelector(".eshop-item-name") || {}).textContent || "",
+            minusLabel:
+              (row.querySelector('.eshop-step-btn[data-step="-1"]') || {}).getAttribute?.("aria-label") || null,
+            plusLabel: (row.querySelector('.eshop-step-btn[data-step="1"]') || {}).getAttribute?.("aria-label") || null,
+            iconKind: icon ? (icon.tagName === "IMG" ? "img" : "fallback") : null,
+            iconSrc: icon && icon.tagName === "IMG" ? icon.getAttribute("src") : null,
+            iconW: icon && icon.tagName === "IMG" ? icon.naturalWidth : null,
+            iconText: icon && icon.tagName !== "IMG" ? icon.textContent : null,
+          };
+        }),
+        displaySpans: document.querySelectorAll("#eventShopModalList .eshop-require-display").length,
+      };
+    });
+
+  /* CSSOM evidence for the hover cue — headless Chrome reports (hover: hover) = false and CDP
+     cannot flip it, so the RULE is the pin; the :focus flip is additionally tested live. */
+  const readCssCues = () =>
+    page.evaluate(() => {
+      const decl = (rule, props) => {
+        const out = {};
+        for (const p of props) out[p] = rule.style.getPropertyValue(p);
+        return out;
+      };
+      const out = { hover: null, focus: null, requireBase: null, iconBase: null, iconEvent: null };
+      const walk = (rules, mediaText) => {
+        for (const r of rules) {
+          if (r.media) {
+            walk(r.cssRules, r.conditionText || "");
+            continue;
+          }
+          if (r.cssRules && !r.selectorText) {
+            walk(r.cssRules, mediaText);
+            continue;
+          }
+          if (!r.selectorText) continue;
+          const s = r.selectorText.replace(/\s+/g, "");
+          if (s === "input.eshop-require-display:hover" && /hover:\s*hover/.test(mediaText))
+            out.hover = {
+              media: mediaText,
+              decl: decl(r, ["border-style", "border-color", "background", "background-color"]),
+            };
+          if (s === "input.eshop-require-display:focus") out.focus = { decl: decl(r, ["border-style"]) };
+          if (s === "input.eshop-require-display")
+            out.requireBase = {
+              decl: decl(r, [
+                "border-style",
+                "cursor",
+                "user-select",
+                "min-height",
+                "height",
+                "width",
+                "padding",
+                "font-size",
+                "display",
+              ]),
+            };
+          if (s === ".material-icon") out.iconBase = { decl: decl(r, ["background", "background-color"]) };
+          if (s === ".material-icon--event") out.iconEvent = { decl: decl(r, ["background", "background-color"]) };
+        }
+      };
+      for (const sheet of document.styleSheets) {
+        try {
+          walk(sheet.cssRules, "");
+        } catch {
+          /* cross-origin sheets are unreadable; the shipped CSS is inline, so this never fires */
+        }
+      }
+      return out;
+    });
+
+  /* Asserts the committed plan against the reference plan through the Amendment B surfaces only:
+     the tier Required values, the planner storage blob and the legacy calculator state. */
+  const assertPlan = (tierState, expected, label) => {
     const want = refTotals(expected);
-    const rows = rowMap(state);
-    if (state.activeTab && state.activeTab !== "event") {
+    if (tierState.activeTab && tierState.activeTab !== "event") {
       errors.push(
-        `${label}: the active tab is ${JSON.stringify(state.activeTab)} — a planner gesture moved the user off the Event tab`,
+        `${label}: the active tab is ${JSON.stringify(tierState.activeTab)} — a modal gesture moved the user off the Event tab`,
       );
     }
-    const badRows = [];
-    if (state.groups.length === CURRENCIES.length && rows.size !== ITEMS.length) {
-      badRows.push(`${rows.size} of ${ITEMS.length} rows on screen`);
-    }
-    for (const row of state.rows) {
-      const item = byId.get(row.id);
-      if (!item) {
-        badRows.push(`${row.id}: not in the data snapshot`);
-        continue;
-      }
-      const count = expected[row.id] || 0;
-      if (row.display !== fmtRef(count) || num(row.total) !== count * item.cost.amount) {
-        badRows.push(
-          `${row.id}: display=${JSON.stringify(row.display)} total=${row.total} want ${count}/${count * item.cost.amount}`,
-        );
-      }
-      if (row.active !== count > 0) badRows.push(`${row.id}: active tint ${row.active}, want ${count > 0}`);
-    }
-    const visibleCurrencies = new Set(state.groups.map((g) => String(g.currency)));
-    const hiddenPlan = Object.keys(expected).filter((id) => {
-      if (expected[id] <= 0 || rows.has(id)) return false;
-      const item = byId.get(id);
-      return !item || visibleCurrencies.has(String(item.cost.itemId));
-    });
-    if (hiddenPlan.length)
-      errors.push(`planned row(s) missing from a visible group ${hiddenPlan.slice(0, 3).join("/")}`);
-    if (badRows.length) errors.push(`${label}: ${badRows.length} row(s) off plan — ${badRows.slice(0, 4).join(" | ")}`);
-    const chips = chipMap(state);
-    for (const currency of CURRENCIES) {
-      const chip = chips.get(String(currency.id));
-      const got = chip ? num(chip.total) : null;
-      if (got !== want[String(currency.id)]) {
-        errors.push(
-          `${label}: ${currency.name} (${currency.id}) summary chip shows ${got}, want ${want[String(currency.id)]}`,
-        );
-      }
-    }
-    for (const group of state.groups) {
-      if (num(group.total) !== want[String(group.currency)]) {
-        errors.push(
-          `${label}: group ${group.currency} header shows ${group.total}, want ×${want[String(group.currency)]}`,
-        );
-      }
-    }
-    return want;
-  };
-
-  /* Tier Required displays and the legacy calculator state must agree with the same totals. */
-  const assertTierNeeds = (tierState, expected, label) => {
-    const want = refTotals(expected);
     for (const currency of CURRENCIES) {
       const tier = tierOfCurrency(currency);
       const t = tierState.tiers[tier];
@@ -428,6 +469,39 @@ try {
         /* the legacy blob format is the calculator's own business; the DOM pin above already ran */
       }
     }
+    return want;
+  };
+
+  const assertStorage = (raw, expected, label, { exact = false } = {}) => {
+    const stored = raw ? JSON.parse(raw) : null;
+    if (!stored) {
+      errors.push(`${label}: storage blob missing`);
+      return null;
+    }
+    if (stored.eventId !== EVENT_ID)
+      errors.push(`${label}: stored eventId ${JSON.stringify(stored.eventId)}, want ${EVENT_ID}`);
+    const req = stored.requires || {};
+    for (const [id, value] of Object.entries(expected)) {
+      if ((req[id] ?? 0) !== value)
+        errors.push(`${label}: storage row ${id} is ${JSON.stringify(req[id])}, want ${value}`);
+    }
+    for (const [id, value] of Object.entries(req)) {
+      if (value !== 0 && !(id in expected))
+        errors.push(`${label}: storage holds unplanned row ${id} = ${JSON.stringify(value)}`);
+      if (!byId.has(id)) errors.push(`${label}: storage holds unknown item id ${id}`);
+    }
+    if (exact) {
+      const wantKeys = Object.keys(expected)
+        .filter((k) => expected[k] !== 0)
+        .sort()
+        .join();
+      const gotKeys = Object.keys(req)
+        .filter((k) => req[k] !== 0)
+        .sort()
+        .join();
+      if (wantKeys !== gotKeys) errors.push(`${label}: storage nonzero keys ${gotKeys}, want ${wantKeys}`);
+    }
+    return stored;
   };
 
   const typeInto = async (inputSel, text) => {
@@ -460,10 +534,6 @@ try {
       errors.push(`${label}: #eventShopModal never became open=${wantOpen}`);
       return false;
     }
-  };
-  const openRowModal = async (itemId, label) => {
-    await safeClick(sel.cardRow(itemId));
-    return modalGate(true, label || `open modal from row ${itemId}`);
   };
   const openTierModal = async (tier, label) => {
     await safeClick(sel.tierNeed(tier));
@@ -534,30 +604,48 @@ try {
   };
   async function ensureEventTab() {
     const visible = () =>
-      page.evaluate(() => ({
-        rows: document.querySelectorAll("#eventPlannerList .eshop-item").length,
-        empty: !!document.querySelector("#eventPlannerList .eshop-empty"),
-        built: !!document.querySelector("#eventPlannerList"),
-        activeTab: (document.querySelector(".tab-btn.active") || {}).dataset?.tab || null,
-        panelShown: getComputedStyle(document.getElementById("panel-event")).display !== "none",
-      }));
+      page.evaluate(() => {
+        const need = document.getElementById("goldNeed");
+        return {
+          hasNeed: !!need,
+          displayClass: need ? need.classList.contains("eshop-require-display") : null,
+          activeTab: (document.querySelector(".tab-btn.active") || {}).dataset?.tab || null,
+          panelShown: getComputedStyle(document.getElementById("panel-event")).display !== "none",
+        };
+      });
     let st = await visible();
-    if (st.activeTab !== "event" || !st.panelShown) {
-      // main.js warms the Event tab while idle, so its rows exist inside a hidden panel; a user only
-      // ever reaches them through the tab button, and the gate has to take that same route.
+    /* main.js warms the Event tab while idle; a user only reaches the tier cards through the tab
+       button, and the gate has to take that same route. Readiness = hydrated tier surface. */
+    const ready = (s) =>
+      s.hasNeed &&
+      s.activeTab === "event" &&
+      s.panelShown &&
+      (LEGACY ? s.displayClass === false : s.displayClass === true);
+    if (!ready(st)) {
       await safeClick('.tab-btn[data-tab="event"]');
       try {
-        await page.waitForFunction(() => document.querySelector(".tab-btn.active")?.dataset.tab === "event", {
-          timeout: 15000,
-        });
+        await page.waitForFunction(
+          (legacy) => {
+            const need = document.getElementById("goldNeed");
+            if (!need) return false;
+            const hasClass = need.classList.contains("eshop-require-display");
+            return (
+              document.querySelector(".tab-btn.active")?.dataset.tab === "event" &&
+              getComputedStyle(document.getElementById("panel-event")).display !== "none" &&
+              (legacy ? !hasClass : hasClass)
+            );
+          },
+          { timeout: 15000 },
+          LEGACY,
+        );
       } catch {
         /* falls through to the read below, which reports it */
       }
       st = await visible();
     }
-    if (st.activeTab !== "event" || !st.panelShown) {
+    if (!ready(st)) {
       errors.push(
-        `planner tab: the Event tab is not the visible panel (active=${JSON.stringify(st.activeTab)}, panelShown=${st.panelShown}) — nothing in the planner is reachable`,
+        `planner tab: the Event tab is not the visible/hydrated panel (${JSON.stringify(st)}, eventMode=${!LEGACY}) — nothing in the shop UI is reachable`,
       );
     }
     return st;
@@ -602,29 +690,34 @@ try {
   if (LEGACY) {
     /* ================= LEGACY FALLBACK (stub snapshot, patched bundle) ================= */
     const t0 = Date.now();
-    const st0 = await ensureEventTab();
-    console.log(`NOTE: legacy mode — tab ready in ${Date.now() - t0}ms (rows=${st0.rows}, empty=${st0.empty})`);
-    if (st0.rows !== 0) errors.push(`legacy: planner shows ${st0.rows} rows with a stub snapshot, want 0`);
-    if (!st0.empty) errors.push("legacy: #eventPlannerList has no .eshop-empty message");
-    const base = await readCard();
-    if (base.emptyMsg !== "No event shop data yet \u2014 run npm run data:sync.") {
-      errors.push(`legacy: empty message reads ${JSON.stringify(base.emptyMsg)}`);
-    }
-    if (base.eventName !== "Event Shop")
-      errors.push(`legacy: card name is ${JSON.stringify(base.eventName)}, want "Event Shop"`);
-    if (!base.summaryHidden || !base.controlsHidden) {
-      errors.push(
-        `legacy: summary hidden=${base.summaryHidden} controls hidden=${base.controlsHidden}, want both hidden`,
-      );
-    }
-    if (base.chips.length || base.groups.length) errors.push("legacy: chips/groups rendered with no event");
+    await ensureEventTab();
+    console.log(`NOTE: legacy mode — tab ready in ${Date.now() - t0}ms`);
+    const pg = await readPage();
+    const survivors = DEAD_IDS.filter((id) => pg.deadIds[id]);
+    if (survivors.length) errors.push(`legacy: planner card ids still present ${JSON.stringify(survivors)}`);
+    if (pg.deadClassCount) errors.push(`legacy: ${pg.deadClassCount} dead card-class node(s) in the document`);
+    if (pg.firstCardTitle !== "Shop Requirements")
+      errors.push(`legacy: first card title is ${JSON.stringify(pg.firstCardTitle)}, want "Shop Requirements"`);
+    if (!pg.modalPresent || !pg.modalList)
+      errors.push("legacy: #eventShopModal markup is static and must ship regardless of data");
+
     const tier = await readTier();
     for (const t of TIERS) {
       const td = tier.tiers[t];
+      if (td.needValue !== "0")
+        errors.push(`legacy: ${t} Required reads ${JSON.stringify(td.needValue)} at cold start, want "0"`);
       if (td.needReadOnly !== false)
         errors.push(`legacy: ${t} Required is readOnly — the editable field must survive a stub snapshot`);
       if (td.needDisplayClass) errors.push(`legacy: ${t} Required carries the eshop-require-display class`);
       if (td.needHaspopup !== null) errors.push(`legacy: ${t} Required has aria-haspopup=${td.needHaspopup}`);
+      if (td.needBox.borderStyle !== "solid")
+        errors.push(
+          `legacy: ${t} Required border-style is ${td.needBox.borderStyle}, want solid (no dashed display cue)`,
+        );
+      if (td.iconEventClass)
+        errors.push(`legacy: ${t} icon box carries material-icon--event — the transparent override is event-mode only`);
+      if (td.iconBoxBg !== "rgb(229, 231, 235)")
+        errors.push(`legacy: ${t} generic icon plate is ${td.iconBoxBg}, want the grey #e5e7eb`);
       if (td.name !== t.charAt(0).toUpperCase() + t.slice(1))
         errors.push(`legacy: ${t} card name is ${JSON.stringify(td.name)}`);
       const srcs = td.imgs.map((i) => i.src || "");
@@ -634,6 +727,11 @@ try {
       ) {
         errors.push(`legacy: ${t} icon shows ${JSON.stringify(srcs)}, want the generic bg+fg pair`);
       }
+      /* parity by construction holds in legacy too: one shared field class */
+      if (!(td.needBox.h > 0) || td.needBox.h !== td.heldBox.h || td.needBox.h !== td.bonusBox.h)
+        errors.push(
+          `legacy: ${t} box heights differ — need ${td.needBox.h} held ${td.heldBox.h} bonus ${td.bonusBox.h}`,
+        );
       const before = td.needValue;
       await page.focus(sel.tierNeed(t));
       await page.keyboard.down("Control");
@@ -647,11 +745,16 @@ try {
           `legacy: typing into ${t} Required left it at ${JSON.stringify(after)} (was ${JSON.stringify(before)}), want editable "7"`,
         );
     }
+    /* a stub snapshot maps no currency: clicking a Required must NOT open the modal */
     await safeClick("#bronzeNeed");
     await wait(SETTLE_MS);
     const modalAfterTierClick = await readModal();
     if (modalAfterTierClick.open)
       errors.push("legacy: clicking a tier Required opened the currency modal — no currency is mapped under a stub");
+    await page.focus("#goldNeed");
+    await page.keyboard.press("Enter");
+    await wait(SETTLE_MS);
+    if ((await readModal()).open) errors.push("legacy: Enter on a stub Required opened the modal");
     for (const [quest, drops] of Object.entries(QUEST_DROPS)) {
       const qd = tier.quests[quest];
       const wantTitle = `${quest.charAt(0).toUpperCase() + quest.slice(1)} Quest`;
@@ -664,170 +767,161 @@ try {
         }
       }
     }
-    const neighbours = await page.evaluate(() => ({
-      calculateBtn: !!document.getElementById("calculateBtn"),
-      questRows: document.querySelectorAll("#questGrid > *").length,
-      modalPresent: !!document.getElementById("eventShopModal"),
-    }));
-    if (!neighbours.calculateBtn || !neighbours.questRows)
+    if (!pg.calculatorBtn || !pg.questRows)
       errors.push("legacy: the tier/run calculator is broken next to the stub planner");
-    if (!neighbours.modalPresent)
-      errors.push("legacy: #eventShopModal markup is static and must ship regardless of data");
     if (pageErrors.length) for (const e of pageErrors) errors.push(`legacy pageerror: ${e}`);
     if (consoleErrors().length) errors.push(`legacy console errors: ${JSON.stringify(consoleErrors().slice(0, 3))}`);
     if (externalHosts.size) errors.push(`legacy: external origins ${JSON.stringify([...externalHosts])}`);
   } else {
-    /* ================= 1. structure: Amendment A read-only planner card ================= */
-    const t0 = Date.now();
-    const st0 = await ensureEventTab();
-    const renderMs = Date.now() - t0;
-    const rowCount = st0.rows;
+    /* ================= 1. Amendment B structure: card is GONE, modal chrome is static ========== */
+    await ensureEventTab();
 
-    const base = await readCard();
-    if (rowCount !== ITEMS.length) {
-      errors.push(`planner render: #eventPlannerList shows ${rowCount} .eshop-item rows, want ${ITEMS.length}`);
-    }
-    if (base.groups.length !== CURRENCIES.length) {
-      errors.push(`planner render: ${base.groups.length} .eshop-group(s), want ${CURRENCIES.length}`);
-    }
-    if (base.chips.length !== CURRENCIES.length) {
-      errors.push(`planner render: ${base.chips.length} summary chip(s), want ${CURRENCIES.length}`);
-    }
-    if (renderMs > 5000) errors.push(`planner render: ${ITEMS.length} rows took ${renderMs}ms, want under 5000ms`);
-
-    const firstCard = await page.evaluate(() => {
-      const card = document.querySelector("#panel-event > .card:first-child");
-      return card ? card.id : null;
-    });
-    if (firstCard !== "eventPlannerCard") {
-      errors.push(`planner markup: first card in #panel-event is ${JSON.stringify(firstCard)}, want eventPlannerCard`);
-    }
-
-    /* REMOVED-by-Amendment-A surfaces: the card is read-only, the modal is the mutation surface. */
-    if (base.buyAllBtn)
-      errors.push("Amendment A: #eventPlannerBuyAll still exists — Buy all moved to the modal (Select All)");
-    if (base.clearBtn) errors.push("Amendment A: #eventPlannerClear still exists — Clear moved to the modal (Default)");
-    if (base.cardSteppers)
+    const pg = await readPage();
+    const survivors = DEAD_IDS.filter((id) => pg.deadIds[id]);
+    if (survivors.length)
+      errors.push(`card absence: these planner-card ids still exist in the document ${JSON.stringify(survivors)}`);
+    if (pg.deadClassCount)
+      errors.push(`card absence: ${pg.deadClassCount} node(s) still carry dead card classes (${DEAD_CLASS_SELECTOR})`);
+    if (pg.firstCardTitle !== "Shop Requirements")
       errors.push(
-        `Amendment A: ${base.cardSteppers} .eshop-require-input on the CARD, want 0 — steppers live in the modal draft rows only`,
+        `card absence: first card of #panel-event is ${JSON.stringify(pg.firstCardTitle)}, want "Shop Requirements"`,
       );
-    if (base.cardStepBtns) errors.push(`Amendment A: ${base.cardStepBtns} .eshop-step-btn on the CARD, want 0`);
-
-    const wantGroups = CURRENCIES.map((c) => ({ currency: String(c.id), rows: itemsOfCurrency(String(c.id)).length }));
-    for (const want of wantGroups) {
-      const group = base.groups.find((g) => g.currency === want.currency);
-      if (!group) {
-        errors.push(`planner groups: no .eshop-group for currency ${want.currency}`);
-        continue;
-      }
-      if (group.rows !== want.rows)
-        errors.push(`planner groups: currency ${want.currency} has ${group.rows} rows, want ${want.rows}`);
-      if (want.headerImg && !group.headerImg)
-        errors.push(`planner groups: currency ${want.currency} header has no icon img`);
-    }
-    const groupOrder = base.groups.map((g) => g.currency).join();
-    const wantOrder = CURRENCIES.map((c) => String(c.id)).join();
-    if (groupOrder !== wantOrder) errors.push(`planner groups: order ${groupOrder}, want ${wantOrder}`);
-
-    for (const currency of CURRENCIES) {
-      const chip = chipMap(base).get(String(currency.id));
-      if (!chip) {
-        errors.push(`planner chips: no summary chip for ${currency.name} (${currency.id})`);
-        continue;
-      }
-      if (chip.name !== currency.name)
-        errors.push(`planner chips: chip name ${JSON.stringify(chip.name)}, want ${JSON.stringify(currency.name)}`);
-      if (chip.tier !== (currency.background || "silver"))
-        errors.push(`planner chips: ${currency.name} data-tier ${chip.tier}, want ${currency.background || "silver"}`);
-      if (!chip.hasImg) errors.push(`planner chips: ${currency.name} chip has no icon <img>`);
-    }
-
-    assertPlan(base, {}, "planner initial state");
-    /* Row surface = a dialog opener: role/tabindex/haspopup/live label, display mirrors state. */
-    const rowsById = rowMap(base);
-    const ariaBad = [];
-    for (const item of ITEMS) {
-      const row = rowsById.get(String(item.id));
-      if (!row) continue;
-      const currency = currencyOf(item);
-      const wantMeta =
-        `${currency.name} \u00d7${fmtRef(item.cost.amount)} \u00b7 ` +
-        (item.limitNum > 0 ? `Limit ${fmtRef(item.limitNum)}` : "Unlimited") +
-        (item.setNum > 1 ? ` \u00b7 \u00d7${fmtRef(item.setNum)} per buy` : "");
-      if (row.meta !== wantMeta)
-        ariaBad.push(`${item.id} meta ${JSON.stringify(row.meta)} want ${JSON.stringify(wantMeta)}`);
-      if (row.role !== "button") ariaBad.push(`${item.id} role=${JSON.stringify(row.role)}, want button`);
-      if (row.tabindex !== "0") ariaBad.push(`${item.id} tabindex=${JSON.stringify(row.tabindex)}, want 0`);
-      if (row.haspopup !== "dialog")
-        ariaBad.push(`${item.id} aria-haspopup=${JSON.stringify(row.haspopup)}, want dialog`);
-      if (row.displayItemId !== String(item.id))
-        ariaBad.push(`${item.id} display carries data-item-id ${JSON.stringify(row.displayItemId)}`);
-      const wantLabel = `${item.name}: require 0, edit`;
-      if (row.ariaLabel !== wantLabel)
-        ariaBad.push(`${item.id} aria-label ${JSON.stringify(row.ariaLabel)} want ${JSON.stringify(wantLabel)}`);
-      if (!row.editable) ariaBad.push(`${item.id} lost the eshop-item--editable marker`);
-      if (!row.hasImg && !row.hasFallback) ariaBad.push(`${item.id} row has neither an icon nor a fallback`);
-    }
-    if (ariaBad.length)
-      errors.push(`planner rows: ${ariaBad.length} row(s) fail meta/label/role — ${ariaBad.slice(0, 3).join(" | ")}`);
-
-    if (!base.eventName) errors.push("planner header: #eventPlannerEventName is empty");
-    const wantName = (DATA.event.shortName || DATA.event.name || "Event Shop").replace(/\n/g, " ").trim();
-    if (base.eventName !== wantName)
-      errors.push(`planner header: name reads ${JSON.stringify(base.eventName)}, want ${JSON.stringify(wantName)}`);
-    const tokyo = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "Asia/Tokyo" });
-    const wantWindow = `${tokyo.format(new Date(DATA.event.startedAt * 1000))} \u2013 ${tokyo.format(new Date(DATA.event.endedAt * 1000))}`;
-    if (base.eventWindow !== wantWindow)
+    if (!pg.modalPresent || !pg.modalList)
+      errors.push("modal chrome: #eventShopModal / #eventShopModalList missing from static markup");
+    if (pg.footerBtns.some((b) => !b))
       errors.push(
-        `planner header: window reads ${JSON.stringify(base.eventWindow)}, want ${JSON.stringify(wantWindow)}`,
+        `modal chrome: footer buttons present ${JSON.stringify(pg.footerBtns)}, want Default/SelectAll/Cancel/Done`,
       );
-    if (base.summaryHidden || base.controlsHidden) {
+    if (!pg.closeBtn) errors.push("modal chrome: #eventShopModalClose missing");
+    if (pg.anyRequireInputsOnPage)
       errors.push(
-        `planner render: summary hidden=${base.summaryHidden} controls hidden=${base.controlsHidden} with ${ITEMS.length} items present`,
+        `card absence: ${pg.anyRequireInputsOnPage} .eshop-require-input/.eshop-step-btn node(s) sit on the closed page — steppers may exist only inside an open modal draft`,
       );
-    }
-    const role = await page.evaluate(() => document.getElementById("eventPlannerSummary").getAttribute("role"));
-    if (role !== "status") errors.push(`planner a11y: #eventPlannerSummary role=${JSON.stringify(role)}, want status`);
-    console.log(
-      `NOTE: planner rendered ${rowCount}/${ITEMS.length} read-only rows, ${base.groups.length} group(s), ${base.chips.length} chip(s) in ${renderMs}ms; window "${base.eventWindow}"`,
-    );
 
-    /* ================= 2. event-native tier cards + quest drops ================= */
-    const tierBase = await readTier();
+    /* ================= 2. Required box parity + editability cues (all tiers) ================== */
+    const base = await readTier();
+    for (const t of TIERS) {
+      const td = base.tiers[t];
+      if (!td.needFieldClass)
+        errors.push(`parity: ${t} Required lost the material-input-box-field class — geometry comes from it`);
+      if (!td.needDisplayClass) errors.push(`parity: ${t} Required lacks the eshop-require-display class`);
+      if (td.needReadOnly !== true) errors.push(`parity: ${t} Required is not read-only`);
+      if (td.needHaspopup !== "dialog")
+        errors.push(`parity: ${t} Required aria-haspopup=${JSON.stringify(td.needHaspopup)}, want dialog`);
+      if (!(td.needBox.h > 0)) errors.push(`parity: ${t} Required has no height (${td.needBox.h}px)`);
+      if (td.needBox.h !== td.heldBox.h || td.needBox.h !== td.bonusBox.h)
+        errors.push(
+          `parity: ${t} offsetHeight mismatch — Required ${td.needBox.h}px, Held ${td.heldBox.h}px, Bonus ${td.bonusBox.h}px`,
+        );
+      if (td.needBox.h === 44)
+        errors.push(
+          `parity: ${t} Required is exactly 44px tall — the removed min-height override is back (Held ${td.heldBox.h}px)`,
+        );
+      if (td.needBox.w !== td.heldBox.w || td.needBox.w !== td.bonusBox.w)
+        errors.push(
+          `parity: ${t} offsetWidth mismatch — Required ${td.needBox.w}px, Held ${td.heldBox.w}px, Bonus ${td.bonusBox.w}px`,
+        );
+      if (td.needBox.borderStyle !== "dashed")
+        errors.push(`cues: ${t} Required computed border-style is ${td.needBox.borderStyle}, want dashed`);
+      if (td.heldBox.borderStyle !== "solid")
+        errors.push(
+          `cues: ${t} Held computed border-style is ${td.heldBox.borderStyle}, want solid (dashed pin must discriminate)`,
+        );
+      if (td.needBox.cursor !== "pointer")
+        errors.push(`cues: ${t} Required computed cursor is ${td.needBox.cursor}, want pointer`);
+      if (td.needValue !== "0")
+        errors.push(`parity: ${t} Required reads ${JSON.stringify(td.needValue)} on an empty plan, want "0"`);
+    }
+
+    /* CSSOM: hover cue rule + focus cue rule + the base rule must carry NO geometry. */
+    const css = await readCssCues();
+    if (!css.hover)
+      errors.push(
+        "cues CSSOM: no input.eshop-require-display:hover rule inside an @media (hover: hover) block — hover accent cue never ships (headless cannot apply it; the rule is the pin)",
+      );
+    else {
+      const hd = css.hover.decl;
+      if (hd["border-style"] !== "solid")
+        errors.push(`cues CSSOM: hover border-style is ${JSON.stringify(hd["border-style"])}, want solid`);
+      if (!/--accent/.test(hd["border-color"] || ""))
+        errors.push(`cues CSSOM: hover border-color ${JSON.stringify(hd["border-color"])}, want the accent token`);
+      if (!/--accent-light/.test((hd.background || "") + (hd["background-color"] || "")))
+        errors.push(
+          `cues CSSOM: hover background ${JSON.stringify([hd.background, hd["background-color"]])}, want --accent-light`,
+        );
+    }
+    if (!css.focus || css.focus.decl["border-style"] !== "solid")
+      errors.push("cues CSSOM: input.eshop-require-display:focus border-style solid rule missing");
+    if (
+      !css.requireBase ||
+      css.requireBase.decl["border-style"] !== "dashed" ||
+      css.requireBase.decl.cursor !== "pointer"
+    )
+      errors.push(`cues CSSOM: base eshop-require-display rule wrong — ${JSON.stringify(css.requireBase)}`);
+    if (css.requireBase) {
+      const geometry = ["min-height", "height", "width", "padding", "font-size", "display"].filter(
+        (p) => css.requireBase.decl[p],
+      );
+      if (geometry.length)
+        errors.push(
+          `parity CSSOM: eshop-require-display still overrides box geometry (${geometry.join("/")}) — Amendment B says geometry inherits from material-input-box-field`,
+        );
+    }
+    if (
+      !css.iconBase ||
+      !/#e5e7eb|rgb\(229, 231, 235\)/.test(
+        (css.iconBase.decl.background || "") + (css.iconBase.decl["background-color"] || ""),
+      )
+    )
+      errors.push(
+        `icons CSSOM: base .material-icon grey plate rule missing or changed — ${JSON.stringify(css.iconBase)}`,
+      );
+    if (
+      !css.iconEvent ||
+      !/transparent/.test((css.iconEvent.decl.background || "") + (css.iconEvent.decl["background-color"] || ""))
+    )
+      errors.push(`icons CSSOM: .material-icon--event transparent rule missing — ${JSON.stringify(css.iconEvent)}`);
+    /* live :focus flip */
+    await page.focus("#goldNeed");
+    const focusBorder = await page.evaluate(() => getComputedStyle(document.getElementById("goldNeed")).borderStyle);
+    if (focusBorder !== "solid")
+      errors.push(`cues live: focused gold Required border-style is ${focusBorder}, want solid`);
+    await page.focus("#goldHave");
+    const blurBorder = await page.evaluate(() => getComputedStyle(document.getElementById("goldNeed")).borderStyle);
+    if (blurBorder !== "dashed")
+      errors.push(`cues live: blurred gold Required border-style is ${blurBorder}, want dashed`);
+
+    /* ================= 3. event-native tier cards: standalone icons, names, art ================ */
     for (const currency of CURRENCIES) {
       const tier = tierOfCurrency(currency);
-      const t = tierBase.tiers[tier];
-      if (!t) {
-        errors.push(`tier card: no [data-tier="${tier}"] under #materialsGrid`);
-        continue;
-      }
-      if (t.name !== BUY_ALL_NAMES[currency.id])
+      const td = base.tiers[tier];
+      if (td.name !== BUY_ALL_NAMES[currency.id])
         errors.push(
-          `tier card: ${tier} material-name is ${JSON.stringify(t.name)}, want ${JSON.stringify(BUY_ALL_NAMES[currency.id])}`,
+          `tier card: ${tier} material-name is ${JSON.stringify(td.name)}, want ${JSON.stringify(BUY_ALL_NAMES[currency.id])}`,
         );
-      if (t.needReadOnly !== true) errors.push(`tier card: ${tier} Required is not read-only`);
-      if (!t.needDisplayClass) errors.push(`tier card: ${tier} Required lacks the eshop-require-display class`);
-      if (t.needHaspopup !== "dialog")
-        errors.push(`tier card: ${tier} Required aria-haspopup=${JSON.stringify(t.needHaspopup)}, want dialog`);
-      if (t.needValue !== "0")
-        errors.push(`tier card: ${tier} Required reads ${JSON.stringify(t.needValue)} on an empty plan, want "0"`);
-      const fg = t.imgs.filter((i) => i.cls.includes("fg-layer"));
-      const bg = t.imgs.filter((i) => i.cls.includes("bg-layer"));
+      if (!td.iconEventClass)
+        errors.push(`icons: ${tier} .material-icon did not gain material-icon--event on hydration`);
+      if (td.iconBoxBg !== "rgba(0, 0, 0, 0)")
+        errors.push(
+          `icons: ${tier} event icon plate background is ${JSON.stringify(td.iconBoxBg)}, want transparent rgba(0,0,0,0)`,
+        );
+      const fg = td.imgs.filter((i) => i.cls.includes("fg-layer"));
+      const bg = td.imgs.filter((i) => i.cls.includes("bg-layer"));
       if (fg.length !== 1 || bg.length !== 0)
         errors.push(
-          `tier card: ${tier} icon box has ${fg.length} fg + ${bg.length} bg img(s), want a single event fg-layer`,
+          `icons: ${tier} icon box has ${fg.length} fg + ${bg.length} bg img(s), want a single event fg-layer`,
         );
       const src = fg[0] ? fg[0].src : "";
       const wantSrc = `event_shop/${currency.icon.split("/").pop()}?v=`;
       if (!src || !src.includes(wantSrc))
-        errors.push(`tier card: ${tier} icon src ${JSON.stringify(src)}, want ${JSON.stringify(wantSrc)}…`);
-      if (t.heldReadOnly !== false || t.bonusReadOnly !== false)
+        errors.push(`icons: ${tier} icon src ${JSON.stringify(src)}, want ${JSON.stringify(wantSrc)}…`);
+      if (td.heldBox.readOnly !== false || td.bonusBox.readOnly !== false)
         errors.push(
-          `tier card: ${tier} Held/Bonus must stay editable (held readOnly=${t.heldReadOnly}, bonus readOnly=${t.bonusReadOnly})`,
+          `tier card: ${tier} Held/Bonus must stay editable (held readOnly=${td.heldBox.readOnly}, bonus readOnly=${td.bonusBox.readOnly})`,
         );
     }
     for (const [quest, drops] of Object.entries(QUEST_DROPS)) {
-      const qd = tierBase.quests[quest];
+      const qd = base.quests[quest];
       const cur = CURRENCIES.find((c) => c.background === quest);
       const wantTitle = `${cur.name} Quest`;
       if (qd.title !== wantTitle)
@@ -839,13 +933,31 @@ try {
         if (!icon || icon === "no-img" || !(icon.src || "").includes(wantFile)) {
           errors.push(`quest drops: ${quest}Quest_${m}_icon is ${JSON.stringify(icon)}, want ${wantFile}`);
         }
+        /* Amendment B §5 audit: the drop span must not keep a grey plate either */
+        if (qd.icons[`${m}_spanBg`] && qd.icons[`${m}_spanBg`] !== "rgba(0, 0, 0, 0)")
+          errors.push(
+            `quest drops: ${quest}Quest_${m}_icon span background is ${qd.icons[`${m}_spanBg`]}, want transparent`,
+          );
       }
     }
-    console.log(
-      `NOTE: tier cards hydrated — ${TIERS.map((t) => `${t}="${tierBase.tiers[t].name}"`).join(", ")}; quest titles ${TIERS.map((t) => JSON.stringify(tierBase.quests[t].title)).join(", ")}`,
-    );
 
-    /* ================= 3. icons actually decode, and only from this origin ================= */
+    /* data truth: never trust the UI against itself */
+    {
+      const wantTruth = refTotals(refClear(ITEMS));
+      for (const currency of CURRENCIES) {
+        const id = String(currency.id);
+        if (wantTruth[id] !== BUY_ALL_TRUTH[id])
+          errors.push(
+            `data truth: reference buy-all for ${currency.name} (${id}) is ${wantTruth[id]}, the pinned plan truth says ${BUY_ALL_TRUTH[id]} — the snapshot drifted, re-verify before pinning`,
+          );
+        if (currency.name !== BUY_ALL_NAMES[id])
+          errors.push(
+            `data truth: currency ${id} is named ${JSON.stringify(currency.name)}, want ${JSON.stringify(BUY_ALL_NAMES[id])}`,
+          );
+      }
+    }
+
+    /* ================= 4. event images actually decode ======================================== */
     await page.evaluate(() => {
       for (const t of ["bronze", "silver", "gold"]) {
         const card = document.querySelector(`#materialsGrid [data-tier="${t}"]`);
@@ -868,107 +980,22 @@ try {
       errors.push(
         `tier icons: ${deadTier.length}/${tierDecoded.length} event image(s) never decoded — ${JSON.stringify(deadTier.slice(0, 3))}`,
       );
-
-    await page.evaluate(() => window.scrollTo(0, 0));
-    const iconSelectors = [
-      ...CURRENCIES.map((c) => `#eventPlannerSummary .eshop-summary-chip[data-currency="${c.id}"] img`),
-      ...CURRENCIES.map((c) => `#eventPlannerList .eshop-group[data-currency="${c.id}"] img`),
-    ];
-    if (costumeRow) iconSelectors.push(`${sel.cardRow(costumeRow.id)} img.eshop-item-icon`);
-    if (equipRow) iconSelectors.push(`${sel.cardRow(equipRow.id)} img.eshop-item-icon`);
-    if (multiSetRow) iconSelectors.push(`${sel.cardRow(multiSetRow.id)} img.eshop-item-icon`);
-    for (let i = 0; i < ITEMS.length; i += 6) iconSelectors.push(`${sel.cardRow(ITEMS[i].id)} img.eshop-item-icon`);
-
-    const iconResults = await page.evaluate(async (sels) => {
-      const card = document.getElementById("eventPlannerCard");
-      const out = [];
-      for (const s of sels) {
-        const img = card.querySelector(s);
-        if (!img) {
-          out.push({ s, ok: false, detail: "no <img> — icon replaced by a fallback" });
-          continue;
-        }
-        img.scrollIntoView({ block: "center" });
-        let ok = img.complete && img.naturalWidth > 0;
-        for (let i = 0; i < 60 && !ok; i++) {
-          await new Promise((r) => setTimeout(r, 100));
-          ok = img.complete && img.naturalWidth > 0;
-        }
-        out.push({ s, ok, w: img.naturalWidth, h: img.naturalHeight, src: img.getAttribute("src") });
-      }
-      return out;
-    }, iconSelectors);
-    const deadIcons = iconResults.filter((i) => !i.ok);
-    if (deadIcons.length) {
-      errors.push(
-        `planner icons: ${deadIcons.length}/${iconResults.length} sampled icon(s) never decoded — ${JSON.stringify(deadIcons.slice(0, 3))}`,
-      );
-    }
-    if (base.fallbacks > 0)
-      errors.push(
-        `planner icons: ${base.fallbacks} fallback badge(s) on screen, want 0 — some shop icons 404 or failed`,
-      );
-    const badResponses = shopResponses.filter((r) => r.status >= 400);
-    if (badResponses.length)
-      errors.push(
-        `planner icons: ${badResponses.length} /event_shop/ response(s) >= 400 — ${JSON.stringify(badResponses.slice(0, 3))}`,
-      );
-    const versioned = shopResponses.every((r) => /[?&]v=\d+/.test(r.url));
-    if (shopResponses.length && !versioned)
-      errors.push(`planner icons: ${shopResponses.length} request(s) fetched, some without the ?v= cache buster`);
     console.log(
-      `NOTE: icons sampled ${iconResults.length}, ${shopResponses.length} /event_shop/ response(s) seen, all 2xx=${badResponses.length === 0}, external origins ${JSON.stringify([...externalHosts])}`,
-    );
-    if (externalHosts.size)
-      errors.push(
-        `planner security: runtime fetched ${JSON.stringify([...externalHosts])} — the site must ship zero external resources`,
-      );
-
-    /* Sweep the page so every lazy icon decodes before any click is aimed, and the sampled check
-       becomes a check of every icon in the card. */
-    const iconSweep = await page.evaluate(async () => {
-      const step = 400;
-      for (let y = 0; y <= document.documentElement.scrollHeight; y += step) {
-        window.scrollTo(0, y);
-        await new Promise((r) => setTimeout(r, 40));
-      }
-      let pending = -1;
-      let rounds = 0;
-      for (; rounds < 60; rounds++) {
-        const imgs = [...document.querySelectorAll("#eventPlannerCard img")];
-        pending = imgs.filter((im) => !(im.complete && im.naturalWidth > 0)).length;
-        if (pending === 0) break;
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      window.scrollTo(0, 0);
-      await new Promise((r) => setTimeout(r, 100));
-      const imgs = [...document.querySelectorAll("#eventPlannerCard img")];
-      return {
-        total: imgs.length,
-        pending: imgs.filter((im) => !(im.complete && im.naturalWidth > 0)).length,
-        rounds,
-        height: document.documentElement.scrollHeight,
-      };
-    });
-    if (iconSweep.pending > 0)
-      errors.push(
-        `planner icons: ${iconSweep.pending}/${iconSweep.total} image(s) in the card never decoded after a full page sweep`,
-      );
-    console.log(
-      `NOTE: icon sweep — ${iconSweep.total - iconSweep.pending}/${iconSweep.total} card image(s) decoded after ${iconSweep.rounds} round(s), document ${iconSweep.height}px tall`,
+      `NOTE: tier + quest event images decoded ${tierDecoded.length - deadTier.length}/${tierDecoded.length}`,
     );
 
-    /* ================= 4. modal opens from a planner row; Escape discards ================= */
-    const misoCurrency = CURRENCIES.find((c) => String(c.id) === String(freeRow.cost.itemId));
-    if (misoCurrency.background !== "bronze")
-      errors.push(`data sanity: MISO row currency maps to ${misoCurrency.background}, want bronze`);
-    await openRowModal(freeRow.id, "open modal from planner row click");
+    /* ================= 5. modal opens from bronze Required; Escape discards =================== */
+    if (tierOfCurrency(currencyOf(freeRow)) !== "bronze")
+      errors.push(`data sanity: the bronze scene row maps to ${tierOfCurrency(currencyOf(freeRow))}, want bronze`);
+    await openTierModal("bronze", "open modal from bronze Required click");
     let modal = await readModal();
-    const wantMisoRows = itemsOfCurrency(String(freeRow.cost.itemId));
-    if (modal.title !== `${misoCurrency.name} \u2014 Shop Items`)
-      errors.push(`modal title: reads ${JSON.stringify(modal.title)}, want "${misoCurrency.name} \u2014 Shop Items"`);
-    if (modal.rows.length !== wantMisoRows.length)
-      errors.push(`modal rows: ${modal.rows.length} draft rows for ${misoCurrency.name}, want ${wantMisoRows.length}`);
+    const wantBronzeRows = itemsOfCurrency(String(bronzeCurrency.id));
+    if (modal.title !== `${bronzeCurrency.name} — Shop Items`)
+      errors.push(`modal title: reads ${JSON.stringify(modal.title)}, want "${bronzeCurrency.name} — Shop Items"`);
+    if (modal.rows.length !== wantBronzeRows.length)
+      errors.push(
+        `modal rows: ${modal.rows.length} draft rows for ${bronzeCurrency.name}, want ${wantBronzeRows.length}`,
+      );
     if (modal.displaySpans)
       errors.push(
         `modal: ${modal.displaySpans} read-only display span(s) inside the draft list, want 0 — draft rows must carry steppers`,
@@ -980,7 +1007,7 @@ try {
         draftBad.push(`${row.id}: not in the snapshot`);
         continue;
       }
-      if (String(item.cost.itemId) !== String(freeRow.cost.itemId))
+      if (String(item.cost.itemId) !== String(bronzeCurrency.id))
         draftBad.push(`${row.id}: belongs to another currency, leaked into the draft`);
       if (row.value !== "0")
         draftBad.push(`${row.id}: draft opens at ${JSON.stringify(row.value)}, want storage value "0"`);
@@ -990,60 +1017,62 @@ try {
         draftBad.push(`${row.id}: input aria ${JSON.stringify(row.ariaLabel)}`);
       if (row.minusLabel !== `Decrease ${item.name}` || row.plusLabel !== `Increase ${item.name}`)
         draftBad.push(`${row.id}: step labels ${JSON.stringify([row.minusLabel, row.plusLabel])}`);
+      const wantMeta =
+        `${bronzeCurrency.name} \u00d7${fmtRef(item.cost.amount)} \u00b7 ` +
+        (item.limitNum > 0 ? `Limit ${fmtRef(item.limitNum)}` : "Unlimited") +
+        (item.setNum > 1 ? ` \u00b7 \u00d7${fmtRef(item.setNum)} per buy` : "");
+      if (row.meta !== wantMeta)
+        draftBad.push(`${row.id}: meta ${JSON.stringify(row.meta)} want ${JSON.stringify(wantMeta)}`);
+      if (row.active) draftBad.push(`${row.id}: active tint on a zero draft`);
+      if (num(row.total) !== 0) draftBad.push(`${row.id}: subtotal ${JSON.stringify(row.total)} on a zero draft`);
+      if (!row.iconKind) draftBad.push(`${row.id}: draft row has neither an icon nor a fallback`);
     }
     if (draftBad.length)
       errors.push(`modal draft: ${draftBad.length} row(s) wrong — ${draftBad.slice(0, 3).join(" | ")}`);
     await closeBy("Escape", "Escape closes the modal");
-    const afterEscape = await readCard();
-    assertPlan(afterEscape, {}, "Escape-discard");
+    assertPlan(await readTier(), {}, "Escape-discard");
 
-    /* ================= 5. modal opens from a tier Required; ✕ discards ================= */
-    await openTierModal("gold", "open modal from gold Required click");
+    /* ================= 6. keyboard: Enter and Space open from a focused Required ============== */
+    await page.focus(sel.tierNeed("gold"));
+    await page.keyboard.press("Enter");
+    await modalGate(true, "Enter opens the gold modal from the focused Required");
     modal = await readModal();
-    const goldCurrency = CURRENCIES.find((c) => c.background === "gold");
-    if (modal.title !== `${goldCurrency.name} \u2014 Shop Items`)
+    if (!modal.title.startsWith(goldCurrency.name))
+      errors.push(`keyboard: Enter on goldNeed opened ${JSON.stringify(modal.title)}, want ${goldCurrency.name}`);
+    /* gold draft carries the interesting art: costume + equip + multi-set rows are all gold */
+    const artSamples = [costumeRow, equipRow, multiSetRow].filter(Boolean).map((i) => String(i.id));
+    if (artSamples.length < 3)
       errors.push(
-        `modal via tier: title ${JSON.stringify(modal.title)}, want "${goldCurrency.name} \u2014 Shop Items"`,
+        `data sanity: costume/equip/multi-set sample rows ${JSON.stringify(artSamples)} — re-verify the art pins against the snapshot`,
       );
-    if (modal.rows.length !== itemsOfCurrency(String(goldCurrency.id)).length)
-      errors.push(`modal via tier: ${modal.rows.length} rows, want ${itemsOfCurrency(String(goldCurrency.id)).length}`);
-    await closeBy("X", "\u2715 closes the modal");
-
-    /* ================= 6. keyboard: Tab reaches a row, Enter opens, Escape closes = */
-    await page.evaluate(() => {
-      const chips = document.querySelectorAll("#eventPlannerControls .eshop-filter-chip");
-      chips[chips.length - 1].focus();
-    });
-    await page.keyboard.press("Tab");
-    const tabbed = await page.evaluate(() => {
-      const el = document.activeElement;
-      return {
-        cls: el.className,
-        id: el.getAttribute ? el.getAttribute("data-item-id") : null,
-        isRow: el.classList.contains("eshop-item"),
-      };
-    });
-    if (!tabbed.isRow) {
-      errors.push(
-        `keyboard: Tab from the last filter chip landed on ${JSON.stringify(tabbed.cls || tabbed.id)}, want the first planner row (tabindex=0 button)`,
-      );
-    } else {
-      await page.keyboard.press("Enter");
-      await modalGate(true, "Enter opens the modal from a focused row");
-      const kbdCurrency = byId.get(tabbed.id) ? currencyOf(byId.get(tabbed.id)) : null;
+    /* the draft list was just built; lazy art decodes as it is painted — wait for it */
+    for (let i = 0; i < 60; i++) {
+      const artNow = modal.rows.filter((r) => artSamples.includes(r.id));
+      if (artNow.length === artSamples.length && artNow.every((r) => r.iconKind === "img" && r.iconW > 0)) break;
+      await wait(100);
       modal = await readModal();
-      if (kbdCurrency && !modal.title.startsWith(kbdCurrency.name))
-        errors.push(
-          `keyboard: Enter on row ${tabbed.id} opened ${JSON.stringify(modal.title)}, want ${kbdCurrency.name}`,
-        );
-      await closeBy("Escape", "Escape after Enter-open");
     }
+    const artRows = artSamples.map((id) => modal.rows.find((r) => r.id === id)).filter(Boolean);
+    if (artRows.length < artSamples.length)
+      errors.push(
+        `modal art: ${artRows.length}/${artSamples.length} sample art rows present in the gold draft — data moved between currencies, re-verify before trusting this pin`,
+      );
+    const deadArt = artRows.filter((r) => r.iconKind !== "img" || !(r.iconW > 0));
+    if (deadArt.length)
+      errors.push(
+        `modal icons: costume/equip/multi-set draft icon(s) not decoded — ${JSON.stringify(deadArt.map((r) => [r.id, r.iconKind, r.iconW]))}`,
+      );
+    await closeBy("Escape", "Escape after Enter-open");
+    await page.focus(sel.tierNeed("silver"));
+    await page.keyboard.press("Space");
+    await modalGate(true, "Space opens the silver modal from the focused Required");
+    modal = await readModal();
+    if (!modal.title.startsWith(silverCurrency.name))
+      errors.push(`keyboard: Space on silverNeed opened ${JSON.stringify(modal.title)}, want ${silverCurrency.name}`);
+    await closeBy("Escape", "Escape after Space-open");
 
-    /* ================= 7. clamp moved INTO the modal draft rows ================= */
-    const yakiCurrency = CURRENCIES.find((c) => c.background === "gold");
-    const clampCurItems = itemsOfCurrency(String(clampRow.cost.itemId));
-    await openRowModal(clampRow.id, "open modal for clamp scene");
-    /* + twice on a limit-1 row stops at the limit */
+    /* ================= 7. clamp suite lives INSIDE the modal draft rows ======================= */
+    await openTierModal("gold", "open modal for clamp scene");
     await safeClick(sel.modalPlus(clampRow.id));
     await safeClick(sel.modalPlus(clampRow.id));
     await wait(SETTLE_MS);
@@ -1083,7 +1112,6 @@ try {
       errors.push(
         `draft stepper sync: + after typing 999 left ${JSON.stringify(dr && dr.value)}, want the committed "${clampMax}"`,
       );
-    /* ArrowUp from 0 is an input event, not a rewrite: unlimited row accepts it */
     await safeClick(sel.modalMinus(clampRow.id)); // back to a known low value path (clamped at 0)
     await wait(SETTLE_MS);
     /* Default zeroes the whole draft (write-back through the sync path) */
@@ -1093,7 +1121,7 @@ try {
     const notZero = modal.rows.filter((r) => r.value !== "0" || num(r.total) !== 0);
     if (notZero.length)
       errors.push(`modal Default: ${notZero.length} row(s) survived the zero — ${JSON.stringify(notZero.slice(0, 2))}`);
-    /* unlimited rows accept 5000 and cap the subtotal at the schema max (gold draft row) */
+    /* unlimited rows accept 5000 and cap the subtotal at the schema max */
     await typeInto(sel.modalInput(draftFree.id), "5000");
     await wait(SETTLE_MS);
     modal = await readModal();
@@ -1132,15 +1160,15 @@ try {
     const wantRace = Math.min(8, maxRequire(draftFree));
     if (dr && dr.value !== String(wantRace))
       errors.push(`draft race: 8 synchronous + clicks left ${JSON.stringify(dr && dr.value)}, want "${wantRace}"`);
-    /* Cancel discards: storage untouched, displays unchanged, reopen re-clones from state */
+    /* Cancel discards: storage untouched, tier reads stay 0, reopen re-clones from state */
     await closeBy("Cancel", "Cancel discards the draft");
-    let card = await readCard();
-    assertPlan(card, {}, "Cancel-discard leaves the plan");
-    if (card.storage !== null)
+    let tierState = await readTier();
+    assertPlan(tierState, {}, "Cancel-discard leaves the plan");
+    if (tierState.storage !== null)
       errors.push(
-        `Cancel-discard: localStorage was written by draft editing (${JSON.stringify(card.storage)}) — nothing publishes before Done`,
+        `Cancel-discard: localStorage was written by draft editing (${JSON.stringify(tierState.storage)}) — nothing publishes before Done`,
       );
-    await openRowModal(clampRow.id, "reopen after Cancel");
+    await openTierModal("gold", "reopen after Cancel");
     modal = await readModal();
     const leaked = modal.rows.filter((r) => r.value !== "0");
     if (leaked.length)
@@ -1149,13 +1177,12 @@ try {
       );
     await closeBy("Cancel", "close reopen check");
 
-    /* ================= 8. write discipline: drafts never touch storage, Done writes once = */
+    /* ================= 8. write discipline: drafts never touch storage, Done writes once ====== */
     await installWriteSpy();
-    await openRowModal(freeRow.id, "open modal for write-count scene");
+    await openTierModal("bronze", "open modal for write-count scene");
     await typeInto(sel.modalInput(freeRow.id), "12345");
-    const localStep = itemsOfCurrency(String(freeRow.cost.itemId)).find((i) => maxRequire(i) >= 2);
-    await safeClick(sel.modalPlus(localStep.id));
-    await safeClick(sel.modalPlus(localStep.id));
+    await safeClick(sel.modalPlus(bronzeSteppable.id));
+    await safeClick(sel.modalPlus(bronzeSteppable.id));
     await wait(SETTLE_MS);
     const draftWrites = await writeCount();
     if (draftWrites !== 0)
@@ -1167,28 +1194,36 @@ try {
     if (doneWrites !== 1)
       errors.push(`write discipline: Done wrote localStorage ${doneWrites} time(s), want exactly 1 whole-plan commit`);
     await uninstallWriteSpy();
-    card = await readCard();
-    const plan8 = { [String(freeRow.id)]: 12345, [String(localStep.id)]: Math.min(2, maxRequire(localStep)) };
-    assertPlan(card, plan8, "Done commits typed + stepped values");
-    const stored8 = card.storage ? JSON.parse(card.storage) : null;
-    if (!stored8 || stored8.eventId !== EVENT_ID)
+    tierState = await readTier();
+    const plan8 = {
+      [String(freeRow.id)]: 12345,
+      [String(bronzeSteppable.id)]: Math.min(2, maxRequire(bronzeSteppable)),
+    };
+    assertPlan(tierState, plan8, "Done commits typed + stepped values");
+    assertStorage(tierState.storage, plan8, "Done commit", { exact: true });
+    /* committed rows reopen pre-filled with live values and active tint */
+    await openTierModal("bronze", "reopen with the committed plan");
+    modal = await readModal();
+    const cr8 = modal.rows.find((r) => r.id === String(freeRow.id));
+    if (!cr8 || cr8.value !== "12345" || !cr8.active)
       errors.push(
-        `Done commit: stored blob ${JSON.stringify(stored8 && stored8.eventId)} lacks the current eventId ${EVENT_ID}`,
+        `draft prefill: committed row reads ${JSON.stringify(cr8 && [cr8.value, cr8.active])}, want "12345" + active`,
       );
+    await closeBy("Cancel", "close prefill check");
 
     /* draft isolation ACROSS currencies: another currency's rows are not in this draft */
     await openTierModal("silver", "open SHIMONITA modal for isolation");
     modal = await readModal();
-    const silverItems = itemsOfCurrency(String(CURRENCIES.find((c) => c.background === "silver").id));
+    const silverItems = itemsOfCurrency(String(silverCurrency.id));
     const foreign = modal.rows.filter((r) => !silverItems.some((i) => String(i.id) === r.id));
     if (foreign.length)
       errors.push(
         `draft isolation: the silver draft contains ${foreign.length} foreign row(s) ${JSON.stringify(foreign.slice(0, 2).map((r) => r.id))}`,
       );
-    await typeInto(sel.modalInput(String(silverItems.find((i) => i.limitNum === 0 || i.limitNum > 3).id)), "9");
+    await typeInto(sel.modalInput(String(silverFree.id)), "9");
     await closeBy("Cancel", "cancel silver edit");
-    card = await readCard();
-    assertPlan(card, plan8, "silver Cancel leaves the committed plan");
+    tierState = await readTier();
+    assertPlan(tierState, plan8, "silver Cancel leaves the committed plan");
     await openTierModal("silver", "reopen silver after Cancel");
     modal = await readModal();
     const kept9 = modal.rows.filter((r) => r.value === "9");
@@ -1198,42 +1233,30 @@ try {
       );
     await closeBy("Cancel", "close silver");
 
-    /* ================= 9. Done agreement: storage + displays + tier all match = */
+    /* ================= 9. Done agreement: storage + tier + legacy all match ================== */
     await resetPlan();
     await openTierModal("bronze", "bronze scene via tier Required");
     await typeInto(sel.modalInput(freeRow.id), "3");
     await clickDone();
-    card = await readCard();
-    const tier9 = await readTier();
+    tierState = await readTier();
     const plan9 = { [String(freeRow.id)]: 3 };
-    assertPlan(card, plan9, "Done agreement — planner displays");
-    assertTierNeeds(tier9, plan9, "Done agreement — tier Required");
-    const stored9 = card.storage ? JSON.parse(card.storage) : {};
-    if ((stored9.requires || {})[String(freeRow.id)] !== 3)
-      errors.push(
-        `Done agreement: storage row ${freeRow.id} is ${JSON.stringify((stored9.requires || {})[String(freeRow.id)])}, want 3`,
-      );
-    const legacy9 = card.legacyStorage ? JSON.parse(card.legacyStorage) : null;
+    assertPlan(tierState, plan9, "Done agreement — tier Required + legacy state");
+    assertStorage(tierState.storage, plan9, "Done agreement — storage blob", { exact: true });
+    const legacy9 = tierState.legacyStorage ? JSON.parse(tierState.legacyStorage) : null;
     if (!legacy9 || legacy9.bronzeNeed !== 30)
       errors.push(
         `Done agreement: legacy fgo_calculator_data bronzeNeed is ${legacy9 && legacy9.bronzeNeed}, want the plan total 30`,
       );
     /* a second currency commit must not disturb the first (applyRequires is a merge) */
-    const goldFree = unlimitedRows.find((i) => String(i.cost.itemId) === String(yakiCurrency.id));
-    await openRowModal(String(clampRow.id), "open gold for merge check");
-    await typeInto(sel.modalInput(String(goldFree.id)), "250");
+    await openTierModal("gold", "open gold for merge check");
+    await typeInto(sel.modalInput(draftFree.id), "250");
     await clickDone();
-    card = await readCard();
-    const plan9b = { [String(freeRow.id)]: 3, [String(goldFree.id)]: 250 };
-    assertPlan(card, plan9b, "merge commit keeps the earlier currency");
-    /* the aria label on the edited row now reads the live number */
-    const labelRow = rowMap(card).get(String(freeRow.id));
-    if (labelRow && labelRow.ariaLabel !== `${freeRow.name}: require 3, edit`)
-      errors.push(
-        `live aria: row ${freeRow.id} label ${JSON.stringify(labelRow && labelRow.ariaLabel)}, want "require 3, edit"`,
-      );
+    tierState = await readTier();
+    const plan9b = { [String(freeRow.id)]: 3, [String(draftFree.id)]: 250 };
+    assertPlan(tierState, plan9b, "merge commit keeps the earlier currency");
+    assertStorage(tierState.storage, plan9b, "merge commit blob");
 
-    /* ================= 10. Select All = buy-all semantics; whole-plan truth ================= */
+    /* ================= 10. Select All = buy-all semantics; whole-plan truth =================== */
     await resetPlan();
     for (const currency of CURRENCIES) {
       const tier = tierOfCurrency(currency);
@@ -1257,31 +1280,28 @@ try {
         );
       await clickDone();
     }
-    card = await readCard();
+    tierState = await readTier();
     const buyAll = refClear(ITEMS);
-    const buyTotals = assertPlan(card, buyAll, "Select All ×3 (buy all)");
-    const tierBuy = await readTier();
-    assertTierNeeds(tierBuy, buyAll, "buy-all tier agreement");
-    const wantTruth = refTotals(buyAll);
+    const wantBuy = assertPlan(tierState, buyAll, "Select All ×3 (buy all)");
     for (const currency of CURRENCIES) {
-      const id = String(currency.id);
-      if (wantTruth[id] !== BUY_ALL_TRUTH[id]) {
+      const tier = tierOfCurrency(currency);
+      if (tierState.tiers[tier].needValue !== String(BUY_ALL_TRUTH[String(currency.id)]))
         errors.push(
-          `data truth: reference buy-all for ${currency.name} (${id}) is ${wantTruth[id]}, the pinned plan truth says ${BUY_ALL_TRUTH[id]} — the snapshot drifted, re-verify before pinning`,
+          `buy-out truth: ${tier} Required reads ${tierState.tiers[tier].needValue}, the pinned data truth is ${BUY_ALL_TRUTH[String(currency.id)]}`,
         );
-      }
-      if (currency.name !== BUY_ALL_NAMES[id])
+      if (wantBuy[String(currency.id)] !== BUY_ALL_TRUTH[String(currency.id)])
+        errors.push(`buy-out truth: reference totals disagree with the pinned truth for ${currency.id}`);
+    }
+    const storedBuy = JSON.parse(tierState.storage);
+    for (const item of ITEMS) {
+      const want = buyAll[String(item.id)];
+      if ((storedBuy.requires || {})[String(item.id)] !== want)
         errors.push(
-          `data truth: currency ${id} is named ${JSON.stringify(currency.name)}, want ${JSON.stringify(BUY_ALL_NAMES[id])}`,
-        );
-      const chip = chipMap(card).get(id);
-      if (chip && chip.total !== `\u00d7${fmtRef(BUY_ALL_TRUTH[id])}`)
-        errors.push(
-          `buy-all chip ${currency.name}: reads ${JSON.stringify(chip.total)}, want ×${fmtRef(BUY_ALL_TRUTH[id])}`,
+          `buy-all storage: row ${item.id} stored ${JSON.stringify((storedBuy.requires || {})[String(item.id)])}, want ${want}`,
         );
     }
     console.log(
-      `NOTE: buy-all via Select All → ${CURRENCIES.map((c) => `${c.name} ${wantTruth[String(c.id)]}`).join(", ")} (pinned truth ${JSON.stringify(BUY_ALL_TRUTH)})`,
+      `NOTE: buy-all via Select All → ${CURRENCIES.map((c) => `${c.name} ${wantBuy[String(c.id)]}`).join(", ")} (pinned truth ${JSON.stringify(BUY_ALL_TRUTH)})`,
     );
 
     /* Default on one currency must empty it and leave the others (partial commit) */
@@ -1289,86 +1309,23 @@ try {
     await safeClick("#eventShopModalDefaultBtn");
     await wait(SETTLE_MS);
     await clickDone();
-    card = await readCard();
+    tierState = await readTier();
     const partial = { ...buyAll };
-    for (const item of itemsOfCurrency(String(CURRENCIES.find((c) => c.background === "bronze").id)))
-      partial[String(item.id)] = 0;
-    assertPlan(card, partial, "Default+Done empties only its currency");
-    const tierP = await readTier();
-    assertTierNeeds(tierP, partial, "Default+Done tier agreement");
+    for (const item of bronzeItems) partial[String(item.id)] = 0;
+    assertPlan(tierState, partial, "Default+Done empties only its currency");
 
-    /* ================= 11. filter chips ================= */
-    const filtersNow = (await readCard()).filters;
-    const wantFilterKeys = ["all", ...CURRENCIES.map((c) => String(c.id))].join();
-    if (filtersNow.map((f) => f.key).join() !== wantFilterKeys)
-      errors.push(`filter chips: chips are ${JSON.stringify(filtersNow.map((f) => f.key))}, want ${wantFilterKeys}`);
-    for (const currency of CURRENCIES) {
-      await safeClick(sel.chip(String(currency.id)));
-      await wait(SETTLE_MS);
-      const st = await readCard();
-      if (st.groups.length !== 1) errors.push(`filter ${currency.id}: ${st.groups.length} group(s) visible, want 1`);
-      else if (st.groups[0].currency !== String(currency.id))
-        errors.push(`filter ${currency.id}: visible group is ${st.groups[0].currency}`);
-      if (st.rows.length !== itemsOfCurrency(String(currency.id)).length)
-        errors.push(
-          `filter ${currency.id}: ${st.rows.length} rows, want ${itemsOfCurrency(String(currency.id)).length}`,
-        );
-      const pressed = st.filters.filter((f) => f.pressed === "true").map((f) => f.key);
-      const active = st.filters.filter((f) => f.active).map((f) => f.key);
-      if (pressed.join() !== String(currency.id))
-        errors.push(`filter ${currency.id}: aria-pressed=true on ${JSON.stringify(pressed)}`);
-      if (active.join() !== String(currency.id))
-        errors.push(`filter ${currency.id}: --active class on ${JSON.stringify(active)}`);
-      if (st.chips.length !== CURRENCIES.length)
-        errors.push(`filter ${currency.id}: summary chips changed to ${st.chips.length}`);
-      /* the committed plan survives the rebuild — displays are state, not DOM memory; the chips
-         summarize the WHOLE plan regardless of which groups the filter shows */
-      assertPlan(st, partial, `filter ${currency.id} keeps the plan`);
-    }
-    await safeClick(sel.chip("all"));
-    await wait(SETTLE_MS);
-    const backToAll = await readCard();
-    if (backToAll.groups.length !== CURRENCIES.length || backToAll.rows.length !== ITEMS.length) {
-      errors.push(
-        `filter all: back to ${backToAll.groups.length} group(s) / ${backToAll.rows.length} rows, want ${CURRENCIES.length} / ${ITEMS.length}`,
-      );
-    }
-    const rebuild = await page.evaluate((id) => {
-      const chip = document.querySelector(`#eventPlannerControls .eshop-filter-chip[data-filter="${id}"]`);
-      const t = performance.now();
-      chip.click();
-      return new Promise((r) =>
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() =>
-            r({ ms: performance.now() - t, rows: document.querySelectorAll("#eventPlannerList .eshop-item").length }),
-          ),
-        ),
-      );
-    }, String(CURRENCIES[1].id));
-    if (rebuild.rows !== itemsOfCurrency(String(CURRENCIES[1].id)).length)
-      errors.push(
-        `filter rebuild: ${rebuild.rows} row(s) after rAF, want ${itemsOfCurrency(String(CURRENCIES[1].id)).length}`,
-      );
-    if (rebuild.ms > 1000)
-      errors.push(`filter rebuild: ${rebuild.ms.toFixed(1)}ms for ${rebuild.rows} rows, want under 1000ms`);
-    await safeClick(sel.chip("all"));
-    await wait(SETTLE_MS);
-    console.log(`NOTE: filter rebuild ${rebuild.ms.toFixed(1)}ms for ${rebuild.rows} rows`);
-
-    /* ================= 12. persistence across reload + legacy-need recompute ================= */
+    /* ================= 11. persistence across reload + legacy-need recompute ================== */
     const persistPlan = { [String(freeRow.id)]: 250 };
     await resetPlan();
-    await openRowModal(freeRow.id, "open for persistence scene");
+    await openTierModal("bronze", "open for persistence scene");
     await typeInto(sel.modalInput(freeRow.id), "250");
     await clickDone();
     await page.reload({ waitUntil: "networkidle0" });
     await ensureEventTab();
     await wait(SETTLE_MS);
-    let restored = await readCard();
+    let restored = await readTier();
     assertPlan(restored, persistPlan, "persistence after reload");
-    const restoredStored = restored.storage ? JSON.parse(restored.storage) : null;
-    if (!restoredStored || restoredStored.eventId !== EVENT_ID)
-      errors.push(`persistence: stored blob after reload is ${restored.storage}`);
+    assertStorage(restored.storage, persistPlan, "persistence blob after reload", { exact: true });
     /* tamper the legacy calculator need: the loaded plan must recompute it back on init */
     await page.evaluate(
       (lk, tier) => {
@@ -1382,43 +1339,28 @@ try {
     await page.reload({ waitUntil: "networkidle0" });
     await ensureEventTab();
     await wait(SETTLE_MS);
-    restored = await readCard();
-    const tierR = await readTier();
-    assertPlan(restored, { [String(freeRow.id)]: 250 }, "tampered legacy need — plan still drives the displays");
-    assertTierNeeds(tierR, { [String(freeRow.id)]: 250 }, "tampered legacy need is recomputed from the plan on load");
-    /* filters are not persisted */
-    await safeClick(sel.chip(String(CURRENCIES[2].id)));
-    await wait(SETTLE_MS);
-    await page.reload({ waitUntil: "networkidle0" });
-    await ensureEventTab();
-    await wait(SETTLE_MS);
-    const filteredReload = await readCard();
-    if (filteredReload.groups.length !== CURRENCIES.length)
-      errors.push(
-        `persistence: filter survived reload (${filteredReload.groups.length} group(s)), plan says filters reset`,
-      );
+    restored = await readTier();
+    assertPlan(restored, persistPlan, "tampered legacy need is recomputed from the plan on load");
 
-    /* ================= 13. event-id mismatch resets the plan ================= */
+    /* ================= 12. event-id mismatch resets the plan ================================== */
     const mismatchSeed = JSON.stringify({ eventId: EVENT_ID + 7, requires: { [String(freeRow.id)]: 5 } });
     await seedAndReload(mismatchSeed);
-    const mismatch = await readCard();
-    assertPlan(mismatch, {}, "event-id mismatch reset");
-    if (mismatch.storage !== mismatchSeed)
+    let mismatchTier = await readTier();
+    assertPlan(mismatchTier, {}, "event-id mismatch reset");
+    if (mismatchTier.storage !== mismatchSeed)
       errors.push(
-        `event-id mismatch: the app rewrote storage on load (${JSON.stringify(mismatch.storage)}) — it must leave the dead blob alone until a mutation`,
+        `event-id mismatch: the app rewrote storage on load (${JSON.stringify(mismatchTier.storage)}) — it must leave the dead blob alone until a mutation`,
       );
-    const tierM = await readTier();
-    assertTierNeeds(tierM, {}, "event-id mismatch zeroes the tier needs");
-    await openRowModal(freeRow.id, "open after mismatch");
+    await openTierModal("bronze", "open after mismatch");
     await clickDone();
-    const afterMismatch = await readCard();
-    const storedMismatch = afterMismatch.storage ? JSON.parse(afterMismatch.storage) : null;
+    mismatchTier = await readTier();
+    const storedMismatch = mismatchTier.storage ? JSON.parse(mismatchTier.storage) : null;
     if (!storedMismatch || storedMismatch.eventId !== EVENT_ID)
       errors.push(
         `event-id mismatch: first mutation stored eventId ${storedMismatch && storedMismatch.eventId}, want the current ${EVENT_ID}`,
       );
 
-    /* ================= 14. hostile localStorage blobs still sanitise ================= */
+    /* ================= 13. hostile localStorage blobs still sanitise ========================== */
     const junkIds = ITEMS.slice(0, 6).map((i) => String(i.id));
     const garbage = [
       ["corrupt text", "{{{ not json"],
@@ -1437,7 +1379,7 @@ try {
     ];
     for (const [label, raw] of garbage) {
       await seedAndReload(raw);
-      const st = await readCard();
+      const st = await readTier();
       if (st.polluted) errors.push(`garbage storage (${label}): Object.prototype was polluted`);
       const expect = {};
       try {
@@ -1460,13 +1402,14 @@ try {
       }
       if (expect.__unparseable__) assertPlan(st, {}, `garbage storage (${label})`);
       else assertPlan(st, expect, `garbage storage (${label})`);
-      const weird = st.rows.filter((r) => !/^(\d{1,3}(,\d{3})*|\d)$/.test(r.display || ""));
-      if (weird.length)
-        errors.push(
-          `garbage storage (${label}): ${weird.length} display(s) hold non-canonical text ${JSON.stringify(weird.slice(0, 2).map((r) => r.display))}`,
-        );
+      for (const t of TIERS) {
+        if (!/^\d+$/.test(st.tiers[t].needValue || ""))
+          errors.push(
+            `garbage storage (${label}): ${t} Required holds non-canonical text ${JSON.stringify(st.tiers[t].needValue)}`,
+          );
+      }
       /* still usable: the draft opens pre-filled from the sanitised plan, edits commit through Done */
-      await openRowModal(clampRow.id, `open draft after garbage (${label})`);
+      await openTierModal("gold", `open draft after garbage (${label})`);
       modal = await readModal();
       const draftRow = modal.rows.find((r) => r.id === String(clampRow.id));
       const wantDraft = expect[String(clampRow.id)] || 0;
@@ -1477,33 +1420,29 @@ try {
       await safeClick(sel.modalPlus(clampRow.id));
       await wait(SETTLE_MS);
       await clickDone();
-      const usable = await readCard();
+      const usable = await readTier();
       const usableExpect = { ...expect, [String(clampRow.id)]: Math.min(maxRequire(clampRow), wantDraft + 1) };
       assertPlan(usable, usableExpect, `garbage storage (${label}) then + & Done`);
       if (!usable.storage || usable.storage === raw)
         errors.push(
           `garbage storage (${label}): the commit did not rewrite storage ("${usable.storage && usable.storage.slice(0, 60)}")`,
         );
-      const tierG = await readTier();
-      assertTierNeeds(tierG, usableExpect, `garbage storage (${label}) tier agreement`);
     }
 
-    /* ================= 15. localStorage quota failure must not crash the Done path ====== */
+    /* ================= 14. localStorage quota failure must not crash the Done path ============ */
     await resetPlan();
     await installWriteSpy({ throw: true });
-    await openRowModal(freeRow.id, "open modal for quota scene");
+    await openTierModal("bronze", "open modal for quota scene");
     await typeInto(sel.modalInput(freeRow.id), "1");
     const beforeQuotaErrors = pageErrors.length;
     await safeClick("#eventShopModalDoneBtn");
     await modalGate(false, "Done closes even when the save throws");
     await wait(SETTLE_MS);
-    const quotaState = await readCard();
+    const quotaState = await readTier();
     assertPlan(quotaState, { [String(freeRow.id)]: 1 }, "quota failure keeps the plan live (state before persist)");
-    const tierQ = await readTier();
-    if (tierQ.tiers[tierOfCurrency(currencyOf(freeRow))].needValue !== String(freeRow.cost.amount))
-      errors.push(
-        `quota failure: tier Required did not follow the live plan (${tierQ.tiers[tierOfCurrency(currencyOf(freeRow))].needValue})`,
-      );
+    /* assertPlan would flag the tier; state truth pins the raw value too */
+    if (quotaState.tiers.bronze.needValue !== String(freeRow.cost.amount))
+      errors.push(`quota failure: tier Required did not follow the live plan (${quotaState.tiers.bronze.needValue})`);
     if (quotaState.storage)
       errors.push(`quota failure: storage holds "${quotaState.storage}", the write must have been refused`);
     if (pageErrors.length !== beforeQuotaErrors)
@@ -1516,7 +1455,7 @@ try {
         `quota failure: the failed save was swallowed with no console warning (console: ${JSON.stringify(consoleMessages.slice(-4))})`,
       );
     await uninstallWriteSpy();
-    await openRowModal(freeRow.id, "reopen after quota recovery");
+    await openTierModal("bronze", "reopen after quota recovery");
     modal = await readModal();
     const recoveryRow = modal.rows.find((r) => r.id === String(freeRow.id));
     if (recoveryRow && recoveryRow.value !== "1")
@@ -1525,85 +1464,129 @@ try {
       );
     await safeClick(sel.modalPlus(freeRow.id));
     await clickDone();
-    const afterQuota = await readCard();
+    const afterQuota = await readTier();
     assertPlan(afterQuota, { [String(freeRow.id)]: 2 }, "saving works again once setItem is restored");
 
-    /* ================= 16. backdrop mousedown = Cancel (discard) ================= */
+    /* ================= 15. backdrop mousedown = Cancel (discard) ============================== */
     await resetPlan();
-    await openRowModal(freeRow.id, "open for backdrop check");
+    await openTierModal("bronze", "open for backdrop check");
     await typeInto(sel.modalInput(freeRow.id), "12");
     await closeBy("backdrop", "backdrop click discards the draft");
-    const backdropState = await readCard();
+    const backdropState = await readTier();
     assertPlan(backdropState, {}, "backdrop-discard leaves the plan");
     if (backdropState.storage !== null)
       errors.push(
         `backdrop-discard: localStorage was written (${JSON.stringify(backdropState.storage)}) — backdrop is Cancel, not Done`,
       );
 
-    /* ================= 17. viewports: no sideways overflow, modal fits, no page errors */
+    /* ================= 16. modal icon fallback: transparent plate, dashed badge =============== */
+    /* Refuse ONE shop icon file over the wire (python http.server cannot 404 a real file; CDP
+       interception aborts the request exactly like a dead asset). The row must fall back to the
+       id badge WITHOUT a grey fill. Memory-cached images never reach the interceptor, so this
+       scene also flips the browser cache off for its duration. */
+    const fallbackItem = [...bronzeItems].reverse().find((i) => i.icon);
+    const blockedFile = fallbackItem ? fallbackItem.icon.split("/").pop() : "___none___.webp";
+    let abortedLoads = 0;
+    const onRequest = (req) => {
+      if (/event_shop/.test(req.url()) && req.url().includes(blockedFile)) {
+        abortedLoads++;
+        req.abort();
+      } else req.continue();
+    };
+    if (fallbackItem) {
+      const cdp = await page.createCDPSession();
+      await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
+      await page.setRequestInterception(true);
+      page.on("request", onRequest);
+      await openTierModal("bronze", "open modal with one refused icon");
+      /* the row sits below the modal's fold: a lazy img only requests once it scrolls in */
+      await page.evaluate((id) => {
+        const row = document.querySelector(`#eventShopModalList .eshop-item[data-item-id="${id}"]`);
+        if (row) row.scrollIntoView({ block: "center" });
+      }, String(fallbackItem.id));
+      let fallbackRow = null;
+      for (let i = 0; i < 40 && !fallbackRow; i++) {
+        await wait(100);
+        fallbackRow = (await readModal()).rows.find(
+          (r) => r.id === String(fallbackItem.id) && r.iconKind === "fallback",
+        );
+      }
+      if (!fallbackRow) {
+        errors.push(`modal fallback: row ${fallbackItem.id} never swapped the refused ${blockedFile} for the id badge`);
+      } else {
+        if (fallbackRow.iconText !== String(fallbackItem.id))
+          errors.push(`modal fallback: badge text ${JSON.stringify(fallbackRow.iconText)}, want the item id`);
+        const fbStyle = await page.evaluate((id) => {
+          const fb = document.querySelector(
+            `#eventShopModalList .eshop-item[data-item-id="${id}"] .eshop-item-icon-fallback`,
+          );
+          if (!fb) return null;
+          const cs = getComputedStyle(fb);
+          return { bg: cs.backgroundColor, borderStyle: cs.borderStyle, w: fb.offsetWidth, h: fb.offsetHeight };
+        }, String(fallbackItem.id));
+        if (!fbStyle) errors.push("modal fallback: .eshop-item-icon-fallback node vanished before the style read");
+        else {
+          if (fbStyle.bg !== "rgba(0, 0, 0, 0)")
+            errors.push(
+              `modal fallback: badge background ${JSON.stringify(fbStyle.bg)}, want transparent rgba(0,0,0,0)`,
+            );
+          if (fbStyle.borderStyle !== "dashed")
+            errors.push(`modal fallback: badge border-style ${JSON.stringify(fbStyle.borderStyle)}, want dashed`);
+          if (!(fbStyle.w >= 40 && fbStyle.h >= 40))
+            errors.push(`modal fallback: badge collapsed to ${fbStyle.w}×${fbStyle.h}px`);
+        }
+        /* the sibling rows still show real, decoded art */
+        let survivor = null;
+        for (let i = 0; i < 30 && !survivor; i++) {
+          survivor = (await readModal()).rows.find(
+            (r) => r.id !== String(fallbackItem.id) && r.iconKind === "img" && r.iconW > 0,
+          );
+          if (!survivor) await wait(100);
+        }
+        if (!survivor) errors.push("modal fallback: refusing one icon broke the sibling draft rows' art");
+      }
+      page.off("request", onRequest);
+      await page.setRequestInterception(false);
+      await cdp.send("Network.setCacheDisabled", { cacheDisabled: false }).catch(() => {});
+      await cdp.detach().catch(() => {});
+      await closeBy("Cancel", "close after fallback scene");
+      /* the aborted URL may now be poison in the memory cache — reload to a clean page state */
+      await page.reload({ waitUntil: "networkidle0" });
+      await ensureEventTab();
+      await wait(SETTLE_MS);
+    }
+
+    /* ================= 17. viewports: no sideways overflow, modal fits, no page errors ======== */
     for (const width of [360, 1120]) {
       await page.setViewport({ width, height: 800 });
-      await safeClick(sel.chip("all"));
-      await wait(SETTLE_MS);
       const layout = await page.evaluate(() => {
         const doc = document.documentElement;
-        const card = document.getElementById("eventPlannerCard");
+        const panel = document.getElementById("panel-event");
         const overflowing = [];
-        for (const el of card.querySelectorAll(
-          ".eshop-item, .eshop-summary-chip, .eshop-filter-chip, .eshop-group-header, .eshop-require-display, .eshop-item-total",
+        for (const el of panel.querySelectorAll(
+          "input, select, button, img, .material-icon, .mini-icon, .material-input-box",
         )) {
           const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) continue;
           if (r.right > window.innerWidth + 1 || r.left < -1)
-            overflowing.push({ cls: el.className, left: Math.round(r.left), right: Math.round(r.right) });
-        }
-        const overlaps = [];
-        for (const row of card.querySelectorAll(".eshop-item")) {
-          const display = row.querySelector(".eshop-require-display");
-          const total = row.querySelector(".eshop-item-total").getBoundingClientRect();
-          if (display) {
-            const d = display.getBoundingClientRect();
-            if (total.left < d.right - 1)
-              overlaps.push({
-                id: row.getAttribute("data-item-id"),
-                displayRight: Math.round(d.right),
-                totalLeft: Math.round(total.left),
-              });
-          }
-          const name = row.querySelector(".eshop-item-name");
-          if (
-            name.scrollHeight > name.clientHeight + 1 &&
-            getComputedStyle(name).overflow !== "hidden" &&
-            getComputedStyle(name).overflowWrap !== "anywhere"
-          ) {
-            overlaps.push({ id: row.getAttribute("data-item-id"), clippedName: true });
-          }
+            overflowing.push({ cls: el.className || el.tagName, left: Math.round(r.left), right: Math.round(r.right) });
         }
         return {
           docOverflow: doc.scrollWidth - doc.clientWidth,
           bodyOverflow: document.body.scrollWidth - document.body.clientWidth,
-          cardWidth: Math.round(card.getBoundingClientRect().width),
-          innerWidth: window.innerWidth,
           overflowing: overflowing.slice(0, 4),
-          overlaps: overlaps.slice(0, 4),
-          rows: card.querySelectorAll(".eshop-item").length,
         };
       });
       if (layout.docOverflow > 0)
         errors.push(`viewport ${width}px: the page scrolls sideways by ${layout.docOverflow}px`);
       if (layout.bodyOverflow > 0) errors.push(`viewport ${width}px: body overflows by ${layout.bodyOverflow}px`);
-      if (layout.cardWidth > layout.innerWidth)
-        errors.push(`viewport ${width}px: card is ${layout.cardWidth}px wide inside a ${layout.innerWidth}px viewport`);
       if (layout.overflowing.length)
         errors.push(
-          `viewport ${width}px: planner elements past the viewport edge — ${JSON.stringify(layout.overflowing)}`,
+          `viewport ${width}px: Event-tab elements past the viewport edge — ${JSON.stringify(layout.overflowing)}`,
         );
-      if (layout.overlaps.length)
-        errors.push(`viewport ${width}px: require display/subtotal collide — ${JSON.stringify(layout.overlaps)}`);
-      if (layout.rows !== ITEMS.length)
-        errors.push(`viewport ${width}px: ${layout.rows} rows rendered, want ${ITEMS.length}`);
 
       /* modal at this viewport: inside the frame, list scrolls, footer reachable, wheel over the
-         backdrop does not move the page (house scroll lock), backdrop gesture closes as a discard */
+         content does not move the page (house scroll lock), backdrop gesture closes as a discard */
       await openTierModal("bronze", `open modal at ${width}px`);
       const modalLayout = await page.evaluate(() => {
         const modal = document.getElementById("eventShopModal");
@@ -1645,21 +1628,18 @@ try {
       await page.mouse.wheel({ deltaY: 240 });
       await wait(120);
       const yAfter = await page.evaluate(() => window.scrollY);
-      if (yBefore === yAfter && yBefore > 0) {
-        /* page genuinely cannot scroll behind an open modal — good; equal-and-zero may just mean the page is short */
-      }
       if (yBefore !== yAfter)
         errors.push(
           `viewport ${width}px modal: wheel over the backdrop scrolled the page behind it ${yBefore} → ${yAfter}`,
         );
       await closeBy("Cancel", `close modal at ${width}px`);
       console.log(
-        `NOTE: viewport ${width}px — doc overflow ${layout.docOverflow}px, card ${layout.cardWidth}/${layout.innerWidth}px, ${layout.rows} rows; modal list rows ${modalLayout.rows}`,
+        `NOTE: viewport ${width}px — doc overflow ${layout.docOverflow}px; modal list rows ${modalLayout.rows}, content ${modalLayout.content.r - modalLayout.content.l}px wide inside ${modalLayout.innerW}px`,
       );
     }
     await page.setViewport({ width: 1120, height: 900 });
 
-    /* ================= 18. the untouched tier/run calculator must still be alive ====== */
+    /* ================= 18. the untouched tier/run calculator must still be alive ============== */
     const neighbours = await page.evaluate(() => ({
       calculateBtn: !!document.getElementById("calculateBtn"),
       questRows: document.querySelectorAll("#questGrid > *").length,
@@ -1668,7 +1648,7 @@ try {
       errors.push("regression: #calculateBtn (tier/run calculator) is gone from the Event tab");
     if (neighbours.questRows === 0)
       errors.push(
-        `regression: #questGrid has ${neighbours.questRows} children — the calculator broke next to the planner`,
+        `regression: #questGrid has ${neighbours.questRows} children — the calculator broke next to the modal`,
       );
     await page.focus("#silverBonus");
     await page.keyboard.down("Control");
@@ -1685,10 +1665,35 @@ try {
     await resetPlan();
     await page.evaluate((k) => localStorage.removeItem(k), KEY);
 
-    const consoleErrorsNow = consoleErrors();
-    if (consoleErrorsNow.length)
+    /* ================= 19. network hygiene ==================================================== */
+    const badResponses = shopResponses.filter((r) => r.status >= 400);
+    if (badResponses.length)
       errors.push(
-        `console: ${consoleErrorsNow.length} error message(s) — ${JSON.stringify(consoleErrorsNow.slice(0, 3))}`,
+        `shop icons: ${badResponses.length} /event_shop/ response(s) >= 400 — ${JSON.stringify(badResponses.slice(0, 3))}`,
+      );
+    const versioned = shopResponses.every((r) => /[?&]v=\d+/.test(r.url));
+    if (shopResponses.length && !versioned)
+      errors.push(`shop icons: ${shopResponses.length} request(s) fetched, some without the ?v= cache buster`);
+    if (externalHosts.size)
+      errors.push(
+        `planner security: runtime fetched ${JSON.stringify([...externalHosts])} — the site must ship zero external resources`,
+      );
+    console.log(
+      `NOTE: ${shopResponses.length} /event_shop/ response(s) seen, all 2xx=${badResponses.length === 0}, external origins ${JSON.stringify([...externalHosts])}`,
+    );
+
+    /* the fallback scene deliberately aborts icon loads: the browser logs one
+       "Failed to load resource" per abort — tolerate EXACTLY that many of that one message;
+       anything else stays red. */
+    const knownAbortNoise = "Failed to load resource: net::ERR_FAILED";
+    const realConsoleErrors = consoleErrors().filter((text, i, all) => {
+      const budget = abortedLoads;
+      const isNoise = text === knownAbortNoise && all.slice(0, i).filter((t) => t === knownAbortNoise).length < budget;
+      return !isNoise;
+    });
+    if (realConsoleErrors.length)
+      errors.push(
+        `console: ${realConsoleErrors.length} error message(s) — ${JSON.stringify(realConsoleErrors.slice(0, 3))}`,
       );
     if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
   }
@@ -1705,5 +1710,5 @@ if (errors.length) {
 }
 
 console.log(
-  `SUCCESS: event shop ${LEGACY ? "legacy stub fallback" : "Amendment A planner + modal"} verified against ${url}`,
+  `SUCCESS: event shop ${LEGACY ? "legacy stub fallback" : "Amendment B modal-only surface + tier parity"} verified against ${url}`,
 );

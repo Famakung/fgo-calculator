@@ -31,7 +31,7 @@ FGO Calculator — Astro static site on GitHub Pages. Three tools:
 - Base drops + primary/secondary drop multipliers config
 - Optimal quest runs from material deficits
 - LocalStorage persistence
-- **Event Shop planner** (first card, #eventPlannerCard): current JP event auto-picked at sync time (latest eventQuest by startedAt, --event-id override); tier cards + quest drops wear event currency images/names; Required is a read-only display opening the per-currency config modal #eventShopModal (draft rows with steppers; footer Default / Select All / Cancel / Done); planner rows are displays opening the same modal; totals = Σ require×cost.amount per currency; plans persist under EVENT_SHOP_STORAGE_KEY keyed by event id (rotation resets); EventShop (domain.js) sole math home, EventPlanner (event-planner.js) state + applyRequires sole commit, EventPlannerView (event-planner-view.js + event-planner-parts.js) DOM, EventShopModal (event-shop-modal.js) draft controller, event-shop-tier.js tier skin; stub data → legacy generic calculator
+- **Event Shop planner**: current JP event auto-picked at sync time (latest eventQuest by startedAt, --event-id override); tier cards + quest drops wear event currency images/names; Required is a read-only display (height-matched to Held/Bonus) opening the per-currency config modal #eventShopModal (draft rows with steppers; footer Default / Select All / Cancel / Done) — the modal is the sole configuration surface, no planner card; totals = Σ require×cost.amount per currency; plans persist under EVENT_SHOP_STORAGE_KEY keyed by event id (rotation resets); EventShop (domain.js) sole math home, EventPlanner (event-planner.js) state-only + applyRequires sole commit, event-planner-parts.js modal draft builders, EventShopModal (event-shop-modal.js) draft controller, event-shop-tier.js tier skin (material-icon--event transparent background); stub data → legacy generic calculator
 
 **Bond Calculator:**
 - ≤6 servant slots, drag-to-reorder, class icon multi-select filter (15 classes)
@@ -140,8 +140,8 @@ No npm script, no project dependency — run ad hoc against served build: `npx l
 - `src/scripts/event-shop.js` — Event Shop tier calculator controller
 - `src/scripts/event-shop-tier.js` — event-native tier skin (currency images, read-only Required)
 - `src/scripts/event-shop-modal.js` — EventShopModal per-currency draft config modal
-- `src/scripts/event-planner.js` — EventPlanner: shop plan state + persistence + applyRequires
-- `src/scripts/event-planner-view.js` — EventPlannerView planner card DOM (builders in event-planner-parts.js)
+- `src/scripts/event-planner.js` — EventPlanner: shop plan state + persistence + applyRequires (state-only, no DOM)
+- `src/scripts/event-planner-parts.js` — pure builders for the modal draft rows (buildDraftRow chain)
 
 ### Lazy Loading
 

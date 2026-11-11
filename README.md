@@ -8,10 +8,10 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 
 ### Event Shop Calculator
 - **Live event shop planner**: the current JP event's shop is auto-fetched from Atlas Academy at data-sync time (latest `eventQuest`, `--event-id` override) — every shop item with its icon, price, and purchase limit
-- Per-currency **config modal**: click a Required display (tier card or planner row) to open that currency's shop items; set how many of each you want with steppers, then **Default** (clear), **Select All** (buy out every limited item), **Cancel** (discard), or **Done** (apply)
+- Per-currency **config modal**: click a Required display on a tier card to open that currency's shop items; set how many of each you want with steppers, then **Default** (clear), **Select All** (buy out every limited item), **Cancel** (discard), or **Done** (apply)
 - Required fields are read-only displays showing the live per-currency total (Σ require × price); Held and Bonus stay directly editable
 - Tier cards and quest-drop icons wear the current event's currency images and names (falls back to generic Bronze/Silver/Gold between events)
-- Planner overview card: all items grouped by currency with filter chips and live totals; plans persist per event (`fgo_event_shop_data`) and reset when the event rotates
+- Plans persist per event (`fgo_event_shop_data`) and reset when the event rotates
 - Full-width border-labeled input boxes for Required, Held, and Bonus amounts per material tier (Bronze, Silver, Gold)
 - Configure bonus drop amounts per material type
 - Adjust base drops and primary/secondary multipliers
@@ -70,8 +70,8 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ## Usage
 
 ### Event Shop
-1. Open the Event Shop tab — the planner card lists the current event's shop items grouped by currency
-2. Click a currency's Required display (on a tier card or any planner row) to open its config modal
+1. Open the Event Shop tab — tier cards show the current event's currencies
+2. Click a currency's Required display to open its config modal
 3. Set how many of each item you want to buy (steppers clamp at the shop limit); **Select All** buys out every limited item, **Default** clears the draft
 4. **Done** applies the plan — Required displays and totals update; **Cancel** discards
 5. Enter current holdings (Held) and bonus amounts, set drop rate multipliers
@@ -137,8 +137,7 @@ fgo-calculator/
 │       ├── event-shop-tier.js  # Event-native tier skin (currency images, read-only Required)
 │       ├── event-shop-modal.js # EventShopModal (per-currency draft config modal)
 │       ├── event-planner.js    # EventPlanner (shop plan state + persistence)
-│       ├── event-planner-view.js # EventPlannerView (planner card DOM)
-│       ├── event-planner-parts.js # Pure row/chip builders (card displays + modal draft rows)
+│       ├── event-planner-parts.js # Pure builders for modal draft rows
 │       ├── tab-navigator.js    # TabNavigator (lazy init callbacks)
 │       └── data/
 │           ├── servants.js      # SERVANT_DATA
@@ -174,7 +173,7 @@ The application follows a 3-layer architecture using ES modules bundled by Astro
 |-------|---------|---------|
 | **Domain** | Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, ServantFilters, ServantSort, EventShop | Pure business logic, no DOM |
 | **Application** | StateManager, Persistence, App, BondApp, CEFilterApp, ServantSelect, CEFilterStore, EventPlanner | State management and coordination |
-| **Presentation** | DOMFactory, CollapsibleFactory, FilterSections, FilterModalController, ComboCardRenderer, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap, EventPlannerView, EventShopModal | DOM manipulation, modals, events |
+| **Presentation** | DOMFactory, CollapsibleFactory, FilterSections, FilterModalController, ComboCardRenderer, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap, EventShopModal | DOM manipulation, modals, events |
 
 ## Build & Data Commands
 
