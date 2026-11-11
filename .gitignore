@@ -14,6 +14,9 @@ dist/
 .ci-baselines/
 public/servants/
 public/craft_essences/
+# Directory kept via .gitkeep (a bare `public/event_shop/` exclusion would block the negation).
+public/event_shop/*
+!public/event_shop/.gitkeep
 src/scripts/data/*.js
 !src/scripts/data/.gitkeep
 __pycache__/

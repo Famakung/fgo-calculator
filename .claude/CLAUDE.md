@@ -17,7 +17,7 @@ On demand only (large):
 ## Project
 
 FGO Calculator — Astro static site on GitHub Pages. Three tools:
-- **Event Shop Calculator**: Optimal quest runs for event materials
+- **Event Shop Calculator**: Live event shop planner (per-item Require via config modal, per-currency totals, Atlas-synced) + optimal quest runs for event materials
 - **Bond Calculator**: Bond farming planner, servant slots wearing own CEs, quest presets
 - **Bond Gain CE**: Reverse lookup — pick CEs → see matching servants
 
@@ -31,6 +31,7 @@ FGO Calculator — Astro static site on GitHub Pages. Three tools:
 - Base drops + primary/secondary drop multipliers config
 - Optimal quest runs from material deficits
 - LocalStorage persistence
+- **Event Shop planner** (first card, #eventPlannerCard): current JP event auto-picked at sync time (latest eventQuest by startedAt, --event-id override); tier cards + quest drops wear event currency images/names; Required is a read-only display opening the per-currency config modal #eventShopModal (draft rows with steppers; footer Default / Select All / Cancel / Done); planner rows are displays opening the same modal; totals = Σ require×cost.amount per currency; plans persist under EVENT_SHOP_STORAGE_KEY keyed by event id (rotation resets); EventShop (domain.js) sole math home, EventPlanner (event-planner.js) state + applyRequires sole commit, EventPlannerView (event-planner-view.js + event-planner-parts.js) DOM, EventShopModal (event-shop-modal.js) draft controller, event-shop-tier.js tier skin; stub data → legacy generic calculator
 
 **Bond Calculator:**
 - ≤6 servant slots, drag-to-reorder, class icon multi-select filter (15 classes)
@@ -136,7 +137,11 @@ No npm script, no project dependency — run ad hoc against served build: `npx l
 - `src/scripts/bond-app.js` — Bond Calculator controller
 - `src/scripts/ce-filter-app.js` — Bond Gain CE controller (Web Worker for matching)
 - `src/scripts/ce-servant-select.js` — Servant Select sub-tab view (`ServantSelect`), only consumer of `ServantComboCalculator`, home of `CEFilterStore` (`read()`/`write(patch)`) — keeps it only Bond Gain CE module touching localStorage; `CEFilterApp` imports store instead of using `localStorage` itself
-- `src/scripts/event-shop.js` — Event Shop controller
+- `src/scripts/event-shop.js` — Event Shop tier calculator controller
+- `src/scripts/event-shop-tier.js` — event-native tier skin (currency images, read-only Required)
+- `src/scripts/event-shop-modal.js` — EventShopModal per-currency draft config modal
+- `src/scripts/event-planner.js` — EventPlanner: shop plan state + persistence + applyRequires
+- `src/scripts/event-planner-view.js` — EventPlannerView planner card DOM (builders in event-planner-parts.js)
 
 ### Lazy Loading
 

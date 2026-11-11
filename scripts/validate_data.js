@@ -20,6 +20,7 @@ const { SERVANT_DATA } = await import(path.join(ROOT_DIR, "src/scripts/data/serv
 const { CE_DATA } = await import(path.join(ROOT_DIR, "src/scripts/data/craft_essences.js"));
 const { TRAIT_DATA } = await import(path.join(ROOT_DIR, "src/scripts/data/traits.js"));
 const { BOND_TABLES, BOND_TABLE_BY_SVT } = await import(path.join(ROOT_DIR, "src/scripts/data/bond_growth.js"));
+const { EVENT_SHOP_DATA } = await import(path.join(ROOT_DIR, "src/scripts/data/event_shop.js"));
 
 let errors = [];
 let warnings = [];
@@ -181,6 +182,78 @@ for (const [id, ce] of Object.entries(CE_DATA)) {
       errors.push(`${ctx}: Image missing at public/craft_essences/${id}.webp`);
     }
   }
+}
+
+// 4. Validate EVENT_SHOP_DATA
+function checkShopIcon(entry, what) {
+  if (entry.icon === null || entry.icon === undefined) return;
+  const publicDir = path.join(ROOT_DIR, "public");
+  const iconPath = path.join(publicDir, entry.icon);
+  if (!iconPath.startsWith(publicDir + path.sep) || !fs.existsSync(iconPath)) {
+    errors.push(
+      `Event Shop ${what} ${entry.id}: icon must be null or an existing file under public/ (got "${entry.icon}")`,
+    );
+  }
+}
+
+function validateEventShop(shop) {
+  const { event } = shop;
+  let { currencies, items } = shop;
+  if (!Array.isArray(currencies)) {
+    errors.push(`Event Shop: currencies must be an array (got ${JSON.stringify(currencies)})`);
+    currencies = [];
+  }
+  if (!Array.isArray(items)) {
+    errors.push(`Event Shop: items must be an array (got ${JSON.stringify(items)})`);
+    items = [];
+  }
+  if (!Number.isInteger(event.id) || event.id <= 0) {
+    errors.push(`Event Shop: event.id must be a positive integer (got ${JSON.stringify(event.id)})`);
+  }
+
+  const currencyIds = new Set();
+  currencies.forEach((cur, i) => {
+    if (!Number.isInteger(cur.id) || cur.id <= 0) {
+      errors.push(`Event Shop currency ${cur.id}: id must be a positive integer`);
+    }
+    if (currencyIds.has(cur.id)) errors.push(`Event Shop currency ${cur.id}: duplicate id`);
+    currencyIds.add(cur.id);
+    if (i > 0 && currencies[i - 1].id > cur.id) {
+      errors.push(`Event Shop: currencies not sorted ascending at ${cur.id}`);
+    }
+    checkShopIcon(cur, "currency");
+  });
+
+  items.forEach((item, i) => {
+    const ctx = `Event Shop item ${item.id}`;
+    const amount = (item.cost || {}).amount;
+    if (!currencyIds.has(item.cost && item.cost.itemId)) {
+      errors.push(`${ctx}: cost.itemId ${JSON.stringify(item.cost && item.cost.itemId)} is not a known currency`);
+    }
+    if (!Number.isInteger(amount) || amount <= 0) {
+      errors.push(`${ctx}: cost.amount must be a positive integer`);
+    }
+    for (const field of ["limitNum", "setNum", "priority"]) {
+      if (!Number.isInteger(item[field]) || item[field] < 0) {
+        errors.push(`${ctx}: ${field} must be a non-negative integer`);
+      }
+    }
+    if (i > 0) {
+      const prev = items[i - 1];
+      if (prev.priority > item.priority || (prev.priority === item.priority && prev.id > item.id)) {
+        errors.push(`${ctx}: items not sorted by (priority, id)`);
+      }
+    }
+    checkShopIcon(item, "item");
+  });
+}
+
+console.log(`Validating EVENT_SHOP_DATA...`);
+const shop = EVENT_SHOP_DATA || {};
+if (!shop.event) {
+  console.log("  event: null — empty stub, shop checks skipped.");
+} else {
+  validateEventShop(shop);
 }
 
 // Summary

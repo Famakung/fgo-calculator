@@ -7,6 +7,11 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ## Features
 
 ### Event Shop Calculator
+- **Live event shop planner**: the current JP event's shop is auto-fetched from Atlas Academy at data-sync time (latest `eventQuest`, `--event-id` override) — every shop item with its icon, price, and purchase limit
+- Per-currency **config modal**: click a Required display (tier card or planner row) to open that currency's shop items; set how many of each you want with steppers, then **Default** (clear), **Select All** (buy out every limited item), **Cancel** (discard), or **Done** (apply)
+- Required fields are read-only displays showing the live per-currency total (Σ require × price); Held and Bonus stay directly editable
+- Tier cards and quest-drop icons wear the current event's currency images and names (falls back to generic Bronze/Silver/Gold between events)
+- Planner overview card: all items grouped by currency with filter chips and live totals; plans persist per event (`fgo_event_shop_data`) and reset when the event rotates
 - Full-width border-labeled input boxes for Required, Held, and Bonus amounts per material tier (Bronze, Silver, Gold)
 - Configure bonus drop amounts per material type
 - Adjust base drops and primary/secondary multipliers
@@ -65,9 +70,12 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ## Usage
 
 ### Event Shop
-1. Enter shop requirements (Required) and current holdings (Held)
-2. Set bonus amounts and drop rate multipliers
-3. Click "Calculate Quest Runs"
+1. Open the Event Shop tab — the planner card lists the current event's shop items grouped by currency
+2. Click a currency's Required display (on a tier card or any planner row) to open its config modal
+3. Set how many of each item you want to buy (steppers clamp at the shop limit); **Select All** buys out every limited item, **Default** clears the draft
+4. **Done** applies the plan — Required displays and totals update; **Cancel** discards
+5. Enter current holdings (Held) and bonus amounts, set drop rate multipliers
+6. Click "Calculate Quest Runs"
 
 ### Bond Calculator
 1. Add servants and select from the portrait modal
@@ -125,13 +133,19 @@ fgo-calculator/
 │       ├── presentation.js     # DOMFactory, CollapsibleFactory, ComboCardRenderer, debounce
 │       ├── selectors.js        # ServantSelector, AscensionSelector, CESelector, etc.
 │       ├── bond-app.js         # BondApp (configure() for refs, _initialized guard)
-│       ├── event-shop.js       # UIBuilder, ViewManager, EventHandler, App
+│       ├── event-shop.js       # UIBuilder, ViewManager, EventHandler, App (tier calculator)
+│       ├── event-shop-tier.js  # Event-native tier skin (currency images, read-only Required)
+│       ├── event-shop-modal.js # EventShopModal (per-currency draft config modal)
+│       ├── event-planner.js    # EventPlanner (shop plan state + persistence)
+│       ├── event-planner-view.js # EventPlannerView (planner card DOM)
+│       ├── event-planner-parts.js # Pure row/chip builders (card displays + modal draft rows)
 │       ├── tab-navigator.js    # TabNavigator (lazy init callbacks)
 │       └── data/
 │           ├── servants.js      # SERVANT_DATA
 │           ├── craft_essences.js # CE_DATA
 │           ├── traits.js        # TRAIT_DATA
-│           └── bond_growth.js   # BOND_TABLES + BOND_TABLE_BY_SVT (bond points per level step)
+│           ├── bond_growth.js   # BOND_TABLES + BOND_TABLE_BY_SVT (bond points per level step)
+│           └── event_shop.js    # EVENT_SHOP_DATA (current event shop, generated)
 │
 ├── public/                     # Static assets (served as-is by Astro)
 │   ├── manifest.json           # PWA manifest (start_url: ".", standalone)
@@ -140,6 +154,7 @@ fgo-calculator/
 │   ├── favicon.svg             # SVG favicon
 │   ├── servants/               # Servant portraits ({atlasId}/{stage}.webp) [build-cached]
 │   ├── craft_essences/         # CE images: {atlasId}.webp (unified 142×155 bordered WebP) [build-cached]
+│   ├── event_shop/             # Event shop icons: {kind}_{id}.webp (bordered-first) [build-cached]
 │   └── icons/                  # UI icons (classes, materials, PWA)
 │
 ├── scripts/                    # Build-time sync and validation engine
@@ -157,9 +172,9 @@ The application follows a 3-layer architecture using ES modules bundled by Astro
 
 | Layer | Modules | Purpose |
 |-------|---------|---------|
-| **Domain** | Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, ServantFilters, ServantSort | Pure business logic, no DOM |
-| **Application** | StateManager, Persistence, App, BondApp, CEFilterApp, ServantSelect, CEFilterStore | State management and coordination |
-| **Presentation** | DOMFactory, CollapsibleFactory, FilterSections, FilterModalController, ComboCardRenderer, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap | DOM manipulation, modals, events |
+| **Domain** | Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, ServantFilters, ServantSort, EventShop | Pure business logic, no DOM |
+| **Application** | StateManager, Persistence, App, BondApp, CEFilterApp, ServantSelect, CEFilterStore, EventPlanner | State management and coordination |
+| **Presentation** | DOMFactory, CollapsibleFactory, FilterSections, FilterModalController, ComboCardRenderer, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap, EventPlannerView, EventShopModal | DOM manipulation, modals, events |
 
 ## Build & Data Commands
 
@@ -169,7 +184,7 @@ npm run dev          # Astro dev server (localhost:3000)
 npm run build        # Build with Astro (output: dist/)
 npm run preview      # Local preview server
 npm run lint         # ESLint (src/scripts/)
-npm run data:sync    # Sync latest servant & CE data from Atlas Academy
+npm run data:sync    # Sync latest servant, CE & event shop data from Atlas Academy
 npm run data:validate # Validate data schema, traits format, and image existence
 ```
 
@@ -190,7 +205,7 @@ Astro produces optimized chunks via Vite:
 - Debounced input handlers (100ms)
 - Multi-ascension servant support with per-ascension traits, ascension stage face icons, and spiriton dress images
 - Automated build-time data sync pipeline (`scripts/sync_atlas_data.py`) with polite rate limiting (`0.1s`), automatic multi-ascension detection, full-auto Craft Essence data detection & series grouping, dynamic bordered icon synchronization, and bond point tables converted from Atlas' running totals into per-level-step costs (471 playable servants deduped into 76 shared tables)
-- Zero-commit binary assets architecture: servant and CE images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v6`), and synced at build time
+- Zero-commit binary assets architecture: servant, CE, and event shop images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v6`), and synced at build time
 - PWA manifest with standalone display mode
 - Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, critical CSS inlined, zero web-font network overhead, CLS prevention with `min-width` and `tabular-nums`
 

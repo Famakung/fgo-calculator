@@ -11,6 +11,9 @@ Fetches data from Atlas Academy API:
     downloads bordered face WebP icons to public/craft_essences/{id}.webp.
   - Writes src/scripts/data/bond_growth.js from the same cached servant export: the bond point cost of every
     bond level, deduped into shared tables.
+  - Snapshots the current JP event shop (latest eventQuest by startedAt, or --event-id) into
+    src/scripts/data/event_shop.js with item/currency/equip/costume icons as WebP under public/event_shop/.
+    An API outage keeps the previous file, or writes an empty stub so the build never dies.
 """
 
 import argparse
@@ -33,7 +36,9 @@ SERVANTS_JS = os.path.join(DATA_DIR, "servants.js")
 TRAITS_JS = os.path.join(DATA_DIR, "traits.js")
 CE_DATA_JS = os.path.join(DATA_DIR, "craft_essences.js")
 BOND_GROWTH_JS = os.path.join(DATA_DIR, "bond_growth.js")
+EVENT_SHOP_JS = os.path.join(DATA_DIR, "event_shop.js")
 PUBLIC_SERVANTS_DIR = os.path.join(BASE_DIR, "public", "servants")
+PUBLIC_EVENT_SHOP_DIR = os.path.join(BASE_DIR, "public", "event_shop")
 
 API_BASE = "https://api.atlasacademy.io"
 STATIC_BASE = "https://static.atlasacademy.io"
@@ -41,6 +46,12 @@ EQUIP_EXPORT_URL = f"{API_BASE}/export/JP/nice_equip_lang_en.json"
 NA_NICE_TRAIT_URL = f"{API_BASE}/export/NA/nice_trait.json"
 BASIC_SERVANT_URL = f"{API_BASE}/export/JP/basic_servant.json"
 NICE_SERVANT_URL = f"{API_BASE}/export/JP/nice_servant_lore_lang_en.json"
+BASIC_EVENT_URL = f"{API_BASE}/export/JP/basic_event.json"
+NICE_ITEM_EXPORT_URL = f"{API_BASE}/export/JP/nice_item.json"
+
+# Event shop icon sizing: faces render at the card frame, item icons stay native up to this cap
+EVENT_ICON_MAX_PX = 160
+FACE_ICON_SIZE = (142, 155)
 
 # Atlas bondGrowth is a 16-entry running total (levels 0..15); the app stores the step costs
 BOND_GROWTH_LEVELS = 16
@@ -1562,6 +1573,252 @@ def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas
         print(f"Warning: CE icon sync failed: {e}", file=sys.stderr)
 
 
+# ==============================================================================
+# Event Shop Synchronization Engine
+# ==============================================================================
+
+EVENT_SHOP_STUB = {"event": None, "currencies": [], "items": []}
+
+# Icon files already produced this run, keyed "kind_id" -> site-relative path (unique URLs fetched once)
+_event_icon_results: Dict[str, Optional[str]] = {}
+
+
+def pick_event(basic_events: List[dict], override_id: Optional[int] = None) -> Optional[dict]:
+    """Choose the event whose shop to snapshot: explicit id wins, else the latest-starting eventQuest."""
+    if override_id is not None:
+        return next((e for e in basic_events if e.get("id") == override_id), None)
+    quests = [e for e in basic_events if e.get("type") == "eventQuest"]
+    if not quests:
+        return None
+    return max(quests, key=lambda e: e.get("startedAt") or 0)
+
+
+def _atlas_asset_url(path: str) -> str:
+    """Absolute CDN URL for an Atlas asset path like 'JP/Items/1604.png' (leading slash tolerated)."""
+    clean = str(path).lstrip("/")
+    return clean if clean.startswith("http") else f"{STATIC_BASE}/{clean}"
+
+
+def load_nice_item_map(cache_dir: str, force: bool = False) -> Dict[int, dict]:
+    """Atlas JP item export keyed by id. Icon paths vary (coins live under JP/Coins/), so the map — not
+    a filename pattern — is the only reliable id -> icon source for purchaseType "item"."""
+    data = get_cached_json(cache_dir, "nice_item.json", NICE_ITEM_EXPORT_URL, force=force)
+    entries = data.values() if isinstance(data, dict) else data
+    return {it.get("id"): it for it in entries if it.get("id")}
+
+
+def _equip_face_asset_path(equip_id: int, cache_dir: str, force: bool = False) -> Optional[str]:
+    """Face path from the per-id equip detail (cached): equip faces first, then any other face group
+    (hero crystals and materials carry faces.ascension, CEs carry faces.equip). None when unfetchable.
+
+    shortcut: per-id fetch instead of the 22 MB equip export — an event shop sells at most a handful
+    of CEs, and get_cached_json revalidates each with an ETag."""
+    url = f"{API_BASE}/nice/JP/equip/{equip_id}?lang=en"
+    try:
+        equip = get_cached_json(cache_dir, f"nice_equip_{equip_id}.json", url, force=force)
+    except Exception as e:
+        print(f"  [WARN] Equip {equip_id} detail fetch failed: {e}", file=sys.stderr)
+        return None
+    faces = (equip.get("extraAssets") or {}).get("faces") or {}
+    ordered_groups = sorted(faces, key=lambda g: g != "equip")
+    for group in ordered_groups:
+        entries = faces[group] or {}
+        ordered = sorted(entries, key=lambda k: int(k) if str(k).isdigit() else 99)
+        if ordered:
+            return entries[ordered[0]]
+    return None
+
+
+def _resolve_entry_icon(entry: dict, item_map: Dict[int, dict], cache_dir: str, targets: Optional[list] = None, force: bool = False) -> Optional[Tuple[str, int, str]]:
+    """(kind, id, Atlas asset path) for a shop entry's reward icon, or None when unresolvable.
+
+    targets may be pre-extracted by the caller (_shop_item needs targetIds for the name
+    fallback anyway); None re-reads them from the entry for standalone callers."""
+    purchase_type = entry.get("purchaseType")
+    if targets is None:
+        targets = entry.get("targetIds") or []
+    target = targets[0] if targets else None
+    if target is None:
+        return None
+    if purchase_type == "item":
+        return ("item", target, (item_map.get(target) or {}).get("icon"))
+    if purchase_type in ("servant", "equip"):
+        return ("equip", target, _equip_face_asset_path(target, cache_dir, force=force))
+    if purchase_type == "costumeRelease":
+        # Costume endpoints 404/{}; the release unlocks the servant's base costume, so its face stands in.
+        return ("costume", target, f"JP/Faces/f_{target // 100}0.png")
+    return None
+
+
+def _make_event_icon(asset_path: str, dest: str, kind: str):
+    """Fetch one Atlas asset and encode it as lossless WebP (faces 142x155, item icons capped 160px).
+
+    Bordered variant first (user directive); the plain variant of the SAME asset is fetched only
+    when the bordered URL 404s (coins have no bordered art). Any other fetch error — 5xx, timeout —
+    re-raises instead of falling back: _event_icon_file never re-fetches an existing dest, so a
+    transient failure would otherwise permanently ship a borderless icon. The caller's WARN fires
+    and no file is written, so the next sync retries the bordered asset."""
+    bordered = re.sub(r"\.png$", "_bordered.png", asset_path)
+    try:
+        raw, _ = fetch_url(_atlas_asset_url(bordered), timeout=10, retries=2)
+    except Exception as e:
+        # Match the HTTPError phrase, not bare "404": the message embeds the URL, and asset ids
+        # like f_94045200 contain "404", which would misread a bordered 5xx/timeout as a 404.
+        if "HTTP Error 404" not in str(e):
+            raise
+        print(f"  [INFO] plain-variant fallback for {asset_path}")
+        raw, _ = fetch_url(_atlas_asset_url(asset_path), timeout=10, retries=2)
+    img = Image.open(io.BytesIO(raw)).convert("RGBA")
+    if kind == "item":
+        if max(img.size) > EVENT_ICON_MAX_PX:
+            img.thumbnail((EVENT_ICON_MAX_PX, EVENT_ICON_MAX_PX), Image.Resampling.LANCZOS)
+    else:
+        img = img.resize(FACE_ICON_SIZE, Image.Resampling.LANCZOS)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    img.save(dest, "WEBP", lossless=True, method=6)
+
+
+def _event_icon_file(kind: str, ident: int, asset_path: Optional[str], force: bool = False, dry_run: bool = False) -> Optional[str]:
+    """Ensure public/event_shop/{kind}_{id}.webp exists; return the site-relative path or None."""
+    if not asset_path:
+        return None
+    cache_key = f"{kind}_{ident}"
+    if cache_key in _event_icon_results:
+        return _event_icon_results[cache_key]
+    dest = os.path.join(PUBLIC_EVENT_SHOP_DIR, f"{cache_key}.webp")
+    if dry_run:
+        print(f"  [DRY-RUN] Would fetch {asset_path} -> event_shop/{cache_key}.webp")
+        return f"event_shop/{cache_key}.webp"
+    if not os.path.exists(dest) or force:
+        try:
+            _make_event_icon(asset_path, dest, kind)
+        except Exception as e:
+            print(f"  [WARN] Event icon fetch failed for {asset_path}: {e}", file=sys.stderr)
+    result = f"event_shop/{cache_key}.webp" if os.path.exists(dest) else None
+    _event_icon_results[cache_key] = result
+    return result
+
+
+def _shop_currency(entry: dict, currencies: Dict[int, dict], force: bool = False, dry_run: bool = False):
+    """Register one shop entry's payment currency (embedded in cost.item) if not seen yet."""
+    cost_item = (entry.get("cost") or {}).get("item") or {}
+    cid = cost_item.get("id")
+    if not cid or cid in currencies:
+        return
+    currencies[cid] = {
+        "id": cid,
+        "name": cost_item.get("name") or "",
+        "background": cost_item.get("background") or "silver",
+        "icon": _event_icon_file("item", cid, cost_item.get("icon"), force=force, dry_run=dry_run),
+    }
+
+
+def _shop_item(entry: dict, item_map: Dict[int, dict], cache_dir: str, force: bool = False, dry_run: bool = False) -> Optional[dict]:
+    """Map one Atlas shop entry to the slim EVENT_SHOP_DATA item shape; None when not purchasable."""
+    cost = entry.get("cost") or {}
+    cost_item = cost.get("item") or {}
+    amount = cost.get("amount") or 0
+    if not cost_item.get("id") or amount <= 0:
+        return None
+    targets = entry.get("targetIds") or []
+    icon = None
+    resolved = _resolve_entry_icon(entry, item_map, cache_dir, targets=targets, force=force)
+    if resolved:
+        kind, ident, asset_path = resolved
+        icon = _event_icon_file(kind, ident, asset_path, force=force, dry_run=dry_run)
+    target_item = item_map.get(targets[0]) if targets else None
+    name = entry.get("name") or (target_item or {}).get("name") or ""
+    return {
+        "id": entry.get("id"),
+        "name": name or "",
+        "purchaseType": entry.get("purchaseType") or "",
+        "cost": {"itemId": cost_item.get("id"), "amount": amount},
+        "limitNum": entry.get("limitNum") or 0,
+        "setNum": entry.get("setNum") or 1,
+        "priority": entry.get("priority") or 0,
+        "icon": icon,
+    }
+
+
+def _event_window(event: dict) -> dict:
+    return {
+        "id": event.get("id"),
+        "name": event.get("name") or "",
+        "shortName": event.get("shortName") or event.get("name") or "",
+        "startedAt": event.get("startedAt"),
+        "endedAt": event.get("endedAt"),
+    }
+
+
+def _collect_event_shop(cache_dir: str, event_id: Optional[int], force: bool = False, dry_run: bool = False) -> dict:
+    """Build the full EVENT_SHOP_DATA payload from the live API (all fetches ETag-cached)."""
+    _event_icon_results.clear()
+    basic = get_cached_json(cache_dir, "basic_event.json", BASIC_EVENT_URL, force=force)
+    event = pick_event(basic if isinstance(basic, list) else [], event_id)
+    if not event:
+        print("  [WARN] No eventQuest found in basic_event.json; writing empty event shop stub.", file=sys.stderr)
+        return json.loads(json.dumps(EVENT_SHOP_STUB))
+
+    detail = get_cached_json(
+        cache_dir, f"nice_event_{event['id']}.json", f"{API_BASE}/nice/JP/event/{event['id']}?lang=en", force=force
+    )
+    entries = [e for e in (detail.get("shop") or []) if isinstance(e, dict)]
+    item_map = load_nice_item_map(cache_dir, force=force)
+
+    currencies: Dict[int, dict] = {}
+    items = []
+    for entry in entries:
+        item = _shop_item(entry, item_map, cache_dir, force=force, dry_run=dry_run)
+        if item:
+            # Register the currency only for a kept row: one seen solely on amount<=0 (free)
+            # entries would otherwise yield a ghost chip with an empty group in the planner.
+            _shop_currency(entry, currencies, force=force, dry_run=dry_run)
+            items.append(item)
+
+    return {
+        "event": _event_window(event),
+        "currencies": [currencies[cid] for cid in sorted(currencies)],
+        "items": sorted(items, key=lambda it: (it["priority"], it["id"])),
+    }
+
+
+def _event_shop_js_text(data: dict) -> str:
+    """Serialize EVENT_SHOP_DATA as a valid-JS, JSON-parseable module body (quoted keys, indent 2)."""
+    body = json.dumps(data, ensure_ascii=False, indent=2)
+    return f"export const EVENT_SHOP_DATA = {body};\n"
+
+
+def _write_event_shop_js(data: dict, dry_run: bool = False):
+    if dry_run:
+        print(f"[DRY-RUN] Would write {len(data.get('items', []))} event shop items to {EVENT_SHOP_JS}")
+        return
+    os.makedirs(os.path.dirname(EVENT_SHOP_JS), exist_ok=True)
+    with open(EVENT_SHOP_JS, "w", encoding="utf-8") as f:
+        f.write(_event_shop_js_text(data))
+    event = data.get("event")
+    print(
+        f"Successfully synchronized event shop {'(stub)' if not event else event.get('id')}: "
+        f"{len(data.get('currencies', []))} currencies, {len(data.get('items', []))} items into {EVENT_SHOP_JS}"
+    )
+
+
+def sync_event_shop(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), event_id: Optional[int] = None, force: bool = False, dry_run: bool = False):
+    """Generate src/scripts/data/event_shop.js + public/event_shop/ icons for the current event shop.
+
+    Outage policy: a fetch failure keeps the previously generated file; with none, an empty stub is
+    written so `ensure_data.js` sees the file as present and the build never dies on an API hiccup."""
+    print("Checking Atlas Academy API for the current event shop...")
+    try:
+        data = _collect_event_shop(cache_dir, event_id, force=force, dry_run=dry_run)
+    except Exception as e:
+        print(f"  [WARN] Event shop sync failed: {e}", file=sys.stderr)
+        if os.path.exists(EVENT_SHOP_JS):
+            print("  [INFO] Keeping the existing event_shop.js.")
+            return
+        data = json.loads(json.dumps(EVENT_SHOP_STUB))
+    _write_event_shop_js(data, dry_run=dry_run)
+
+
 def cleanup_cache_dir(cache_dir: str):
     """Remove cache directory and any empty parent directory."""
     if os.path.exists(cache_dir):
@@ -1586,6 +1843,8 @@ def main():
     parser.add_argument("--skip-servants", action="store_true", help="Skip servant synchronization")
     parser.add_argument("--skip-ces", action="store_true", help="Skip Craft Essence synchronization")
     parser.add_argument("--skip-traits", action="store_true", help="Skip trait synchronization")
+    parser.add_argument("--skip-event-shop", action="store_true", help="Skip event shop synchronization")
+    parser.add_argument("--event-id", type=int, help="Force a specific event id for the shop snapshot (default: latest eventQuest)")
     args = parser.parse_args()
 
     # Configure global rate limiter delay
@@ -1603,6 +1862,10 @@ def main():
         sync_craft_essences(cache_dir=args.cache_dir, force=args.force, dry_run=args.dry_run)
     elif not args.skip_traits:
         sync_traits_js(cache_dir=args.cache_dir, force=args.force, dry_run=args.dry_run)
+
+    # 3. Sync Event Shop (current JP event + icons)
+    if not args.skip_event_shop:
+        sync_event_shop(cache_dir=args.cache_dir, event_id=args.event_id, force=args.force, dry_run=args.dry_run)
 
     if args.clean_cache:
         cleanup_cache_dir(args.cache_dir)

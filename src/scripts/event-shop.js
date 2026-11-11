@@ -2,6 +2,8 @@ import { TIERS, TIER_FIELDS, QUEST_DROPS, TIER_COLORS, DEBOUNCE_MS } from "./con
 import { Schema, Validator, Calculator } from "./domain.js";
 import { StateManager, Persistence } from "./state.js";
 import { DOMFactory, debounce } from "./presentation.js";
+import { EventPlanner } from "./event-planner.js";
+import { eventTierNeeds, hydrateTierCards, hydrateQuestIcons } from "./event-shop-tier.js";
 
 /* ============================================
    PRESENTATION LAYER - UI Builder
@@ -38,6 +40,9 @@ export const UIBuilder = {
         }
       }
     });
+
+    // Event mode (Amendment A): mapped tiers show the currency's art, name and plan total
+    hydrateTierCards(this.elements, container, eventTierNeeds(EventPlanner.state.requires));
   },
 
   loadQuestIcons() {
@@ -64,6 +69,9 @@ export const UIBuilder = {
         }
       });
     });
+
+    // Event mode (Amendment A): mapped quest icons show the currency's art, titles its name
+    hydrateQuestIcons();
   },
 };
 
@@ -115,14 +123,10 @@ export const ViewManager = {
     }, 100);
   },
 
-  syncInputsFromState(state) {
+  syncInputsFromState(state, eventNeeds = null) {
+    const view = { state, eventNeeds };
     TIERS.forEach((tier) => {
-      TIER_FIELDS.forEach((field) => {
-        const input = UIBuilder.elements[`${tier}${field}`];
-        if (input) {
-          input.value = state.tiers[tier][field.toLowerCase()];
-        }
-      });
+      TIER_FIELDS.forEach((field) => setTierFieldValue(view, tier, field));
     });
 
     document.getElementById("baseDrop").value = state.baseDrop;
@@ -130,6 +134,15 @@ export const ViewManager = {
     document.getElementById("secondaryMultiplier").value = state.secondaryMultiplier;
   },
 };
+
+/* Event mode (Amendment A): the read-only Required display shows the plan's per-currency spend
+   from the planner, never the stale saved tier.need. Legacy (eventNeeds null) is untouched. */
+function setTierFieldValue(view, tier, field) {
+  const input = UIBuilder.elements[`${tier}${field}`];
+  if (!input) return;
+  const display = field === "Need" && view.eventNeeds ? view.eventNeeds[tier] : undefined;
+  input.value = display === undefined ? view.state.tiers[tier][field.toLowerCase()] : display;
+}
 
 /* ============================================
    PRESENTATION LAYER - Event Handler
@@ -184,8 +197,8 @@ export const App = {
 
     // Build UI
     UIBuilder.buildMaterialsGrid(document.getElementById("materialsGrid"), this.state);
-    // Sync inputs
-    ViewManager.syncInputsFromState(this.state);
+    // Sync inputs (event mode: Required shows the plan total, not the raw saved need)
+    ViewManager.syncInputsFromState(this.state, this._eventNeeds());
 
     // Load icons
     UIBuilder.loadQuestIcons();
@@ -195,6 +208,26 @@ export const App = {
 
     // Bind events
     EventHandler.bind(this);
+
+    // Event mode: tier needs follow the loaded plan before anything reads them
+    this.refreshNeeds();
+  },
+
+  /* The planner's requires are the single source of truth while an event is mapped: recompute
+     every mapped tier's need from Σ require × cost, store it, and refresh the read-only displays.
+     Legacy mode returns from the first line — state and storage untouched. */
+  refreshNeeds() {
+    const needs = this._eventNeeds();
+    if (!needs) return;
+    for (const tier of Object.keys(needs)) {
+      this.state = StateManager.updateTier(this.state, tier, "need", needs[tier]);
+    }
+    Persistence.save(this.state);
+    ViewManager.syncInputsFromState(this.state, needs);
+  },
+
+  _eventNeeds() {
+    return eventTierNeeds(EventPlanner.state.requires);
   },
 
   calculate() {

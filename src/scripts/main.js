@@ -71,7 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (activeTab !== "cefilter") CEFilterApp.warmWorker();
   });
 
-  /* Background scroll lock. All eight modals share `.servant-modal` and toggle `.open`, and a closed
+  /* Background scroll lock. All nine modals share `.servant-modal` and toggle `.open`, and a closed
      overlay is `display: none`, so these non-passive listeners never see a gesture while normal pages
      scroll — no cost to compositor scrolling — and once one is up, every gesture that does not land
      inside that modal's own scrolling list is swallowed here instead of moving the page behind it.

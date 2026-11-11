@@ -800,3 +800,20 @@ Batch download + convert (all CEs) via dedicated script:
 ```bash
 python3 scripts/fetch_bordered_ces.py
 ```
+
+## Event Shop Sync (added 2026-11-12)
+
+`sync_event_shop()` (step 3 of `sync_atlas_data.py`; flags `--skip-event-shop`, `--event-id N`) generates `src/scripts/data/event_shop.js` + `public/event_shop/*.webp`.
+
+Endpoints (all ETag-cached via `get_cached_json`):
+- `GET /export/JP/basic_event.json` (~335 KB) — event auto-pick: type `eventQuest`, max `startedAt`. `--event-id` overrides (any event type).
+- `GET /nice/JP/event/{id}?lang=en` — the `shop` array. DB "shop-N" tabs = `slot` N; current events put everything in slot 1. `?lang=en` falls back to JP names when untranslated.
+- `GET /export/JP/nice_item.json` (~1.2 MB) — id→item map for `purchaseType: "item"` targets. ALWAYS use `item.icon`: paths vary (coins live under `JP/Coins/`, not `JP/Items/`).
+- `GET /nice/JP/equip/{id}?lang=en` — per-id, for `purchaseType: "servant"|"equip"` targets (event CEs). Face = `extraAssets.faces.equip` first value, fallback `faces.ascension` (hero crystals / wisdom materials). Per-id fetch chosen over the 22 MB `nice_equip_lang_en.json` export.
+- `costumeRelease`: costume endpoints 404/{} — use servant face `JP/Faces/f_{target//100}0.png` (target 20470011 → servant 204700). Display name = shop entry name.
+
+Icon rule (user directive): every download tries `{base}_bordered.png` FIRST; plain `{base}.png` ONLY on 404 (coins have no bordered asset). Non-404 failures re-raise, write nothing, next sync retries. Faces resized 142×155 LANCZOS; item icons native capped 160px; lossless WebP method=6.
+
+Entry fields that matter: `cost.item` (embedded currency: id/name/icon/background), `cost.amount` (price per purchase), `limitNum` (0 = unlimited), `setNum` (units per purchase, e.g. coins ×10), `priority` (display order), `targetIds`. Planner total = Σ require×cost.amount per currency; buy-out count = limitNum (unlimited contributes 0) — same semantics as the Atlas DB shop planner.
+
+Outage policy: fetch failure keeps the previous generated file; with none, writes stub `{ event: null, currencies: [], items: [] }` so `ensure_data.js`/build never die on an API hiccup. CI: `public/event_shop/` in the actions/cache path list, `event_shop.js` in the data-hash cat (both pinned by `scripts/test_deploy_workflow.py`), `test_sync_event_shop.py` in the self-test job.

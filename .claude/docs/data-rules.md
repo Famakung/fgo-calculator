@@ -1,7 +1,7 @@
 # Data Rules
 
 ## Exports
-`src/scripts/data/*.js` export `const` — `TRAIT_DATA`, `SERVANT_DATA`, `CE_DATA`, `BOND_TABLES` + `BOND_TABLE_BY_SVT`. Imported by `src/scripts/data.js`, bundled by Astro/Vite. No `<script>` tags.
+`src/scripts/data/*.js` export `const` — `TRAIT_DATA`, `SERVANT_DATA`, `CE_DATA`, `BOND_TABLES` + `BOND_TABLE_BY_SVT`, `EVENT_SHOP_DATA`. Imported by `src/scripts/data.js` (event shop: by the lazy event modules directly), bundled by Astro/Vite. No `<script>` tags.
 
 ## Bond point tables (`bond_growth.js`)
 - Atlas `bondGrowth` = **running total from bond 0**, not per-level cost: Altria's `[3000, 9125, 15250, …]` → Lv.0→1 costs 3,000, Lv.1→2 costs 9,125 − 3,000 = 6,125. `sync_bond_growth()` differences it, so shipped table is **per level step** — `table[i]` = cost standing at Lv.i needs to reach Lv.i+1. Never re-add totals.
@@ -50,6 +50,15 @@
   - `"folder": "XXXXXXX-YYYYYYY"`, `"groupImage": "XXXXXXX"`
   - `"options": { "id": { "name": "...", "collectionNo": N } }`
 
+## EVENT_SHOP_DATA (`event_shop.js`)
+- Generated whole-file by `sync_event_shop()` in `sync_atlas_data.py` (step 3, `--skip-event-shop` / `--event-id N` flags), gitignored, required by `ensure_data.js`, checked by `validate_data.js`
+- Event auto-pick: latest `eventQuest` by `startedAt` from `export/JP/basic_event.json`; `--event-id` overrides. Fetch: `nice/JP/event/{id}?lang=en` (EN names when translated, JP fallback)
+- Shape: `{ event: { id, name, shortName, startedAt, endedAt } | null, currencies: [{ id, name, background, icon }], items: [{ id, name, purchaseType, cost: { itemId, amount }, limitNum, setNum, priority, icon }] }`
+- `currencies` sorted id asc; `items` sorted (priority, id); `background` ∈ gold/silver/bronze maps a currency to a material tier (`EventShop.currencyForTier`); `icon` site-relative `event_shop/{kind}_{id}.webp` or null; `limitNum` 0 = unlimited; `setNum` = units per purchase
+- Icon resolution: `item` → `nice_item.json` map (icons vary: coins live under JP/Coins/); `servant`/`equip` → per-id cached `nice/JP/equip/{id}` face (faces.equip, fallback faces.ascension); `costumeRelease` → servant face `JP/Faces/f_{target//100}0.png` (costume endpoints 404). Every download tries `{base}_bordered.png` FIRST, plain only on 404 (coins have no bordered asset); non-404 failures re-raise and write nothing so the next sync retries
+- Outage policy: fetch failure keeps the previous file; with none, writes stub `{ event: null, currencies: [], items: [] }` — UI falls back to the legacy generic tier calculator, build never dies on an API hiccup
+- Plan state: `fgo_event_shop_data` = `{ eventId, requires: { [itemId]: count } }`; requires reset when the event rotates; the config modal is the sole mutation surface (`EventPlanner.applyRequires`)
+
 ## Adding Data
 - Trait IDs: sort ascending in arrays
 - Traits + display names auto-fetched and generated from Atlas Academy API (`export/NA/nice_trait.json` + NA CE skill brackets) via `npm run data:sync`
@@ -59,7 +68,7 @@
 - Images: `public/servants/{atlasId}/{stage}.webp`, `public/craft_essences/{atlasId}.webp`
 
 ## Zero-Commit Architecture
-- Game images (`public/servants/`, `public/craft_essences/`) + generated data (`src/scripts/data/*.js`) follow **Zero-Commit Architecture**:
+- Game images (`public/servants/`, `public/craft_essences/`, `public/event_shop/`) + generated data (`src/scripts/data/*.js`) follow **Zero-Commit Architecture**:
   - Ignored in `.gitignore`, dir structure kept via `.gitkeep`.
   - In CI (`.github/workflows/deploy.yml`): restored in seconds via `actions/cache@v4`.
   - Local dev: `scripts/ensure_data.js` (`predev` / `prebuild` npm hooks) auto-generates missing data files on fresh clone.
@@ -69,4 +78,5 @@
 - Servants: `public/servants/{atlasId}/{stage}.webp` (142×155 WebP, bordered in-game card frame, e.g. `public/servants/100100/000.webp`)
 - CEs: `public/craft_essences/{atlasId}.webp` (142×155 bordered WebP, same for all display sizes, e.g. `public/craft_essences/9400970.webp`)
 - Icons: `public/icons/*.webp`, `public/icons/{category}/*.webp`
+- Event shop: `public/event_shop/{kind}_{id}.webp` — kind `item` (shop items + currencies), `equip` (CE faces 142×155), `costume` (servant face 142×155); item icons native size capped 160px; lossless WebP
 - Astro copies `public/` to `dist/` keeping paths — servant + CE image refs use relative URLs with `IMAGE_VERSION` cache-bust query param (e.g. `servants/100100/000.webp?v=${IMAGE_VERSION}` — never literal number, `BaseLayout.astro`'s preload reads same constant)

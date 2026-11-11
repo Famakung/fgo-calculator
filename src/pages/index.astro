@@ -23,6 +23,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
       <main id="main-content">
         <section class="tab-panel" id="panel-event">
+          <div class="card" id="eventPlannerCard">
+            <div class="card-inner">
+              <div class="card-title">Event Shop</div>
+              <div class="eshop-event-name" id="eventPlannerEventName"></div>
+              <div class="eshop-window" id="eventPlannerWindow"></div>
+              <div class="eshop-summary" id="eventPlannerSummary" role="status"></div>
+              <div class="eshop-controls" id="eventPlannerControls"></div>
+              <div class="eshop-list" id="eventPlannerList"></div>
+            </div>
+          </div>
           <div class="card">
             <div class="card-inner">
               <div class="card-title">Shop Requirements</div>
@@ -1073,6 +1083,36 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="cefilter-modal-footer-right">
                 <button type="button" class="cefilter-footer-btn" id="ceOverlapFilterCancelBtn">Cancel</button>
                 <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="ceOverlapFilterOkBtn">OK</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Event Shop Currency Modal (per-currency shop editor). The row list keeps the house
+             .cefilter-modal-body class as well as .eshop-modal-list: main.js whitelists that
+             selector in the modal background-scroll lock, so a wheel or touch gesture inside the
+             draft rows scrolls the list instead of the page behind it. -->
+        <div class="servant-modal" id="eventShopModal" role="dialog" aria-modal="true" aria-labelledby="eventShopModalTitle">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <span class="ascension-modal-title" id="eventShopModalTitle"></span>
+              <button
+                class="servant-modal-close"
+                id="eventShopModalClose"
+                type="button"
+                aria-label="Close"
+              >
+                &#10005;
+              </button>
+            </div>
+            <div class="cefilter-modal-body eshop-modal-list" id="eventShopModalList"></div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="eventShopModalDefaultBtn">Default</button>
+                <button type="button" class="cefilter-footer-btn" id="eventShopModalSelectAllBtn">Select All</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="eventShopModalCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="eventShopModalDoneBtn">Done</button>
               </div>
             </div>
           </div>

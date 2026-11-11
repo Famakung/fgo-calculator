@@ -25,7 +25,7 @@ On demand, do **not** load them by default (they are big):
 - **All visual CSS is the single inline `<style>` in `src/layouts/BaseLayout.astro`** — that block is the only stylesheet the site has. There is no `src/styles/` directory: `global.css` and `critical.css` sat there unread by any build step and were deleted, after the duplicate had already drifted (a rule kept only there never shipped).
 - **JS style**: ES modules, 2-space indent, semicolons, **double quotes** (Prettier `printWidth: 120`, `trailingComma: "all"`). Files kebab-case.
 - **Trait IDs are 4-digit zero-padded strings** (`"0100"`, `"0002"`), sorted ascending in arrays.
-- **Generated data is gitignored**: `src/scripts/data/*.js`, `public/servants/`, `public/craft_essences/`. Fresh clone → `npm run data:sync` before anything builds (`predev`/`prebuild` call `scripts/ensure_data.js`).
+- **Generated data is gitignored**: `src/scripts/data/*.js`, `public/servants/`, `public/craft_essences/`, `public/event_shop/`. Fresh clone → `npm run data:sync` before anything builds (`predev`/`prebuild` call `scripts/ensure_data.js`).
 
 ## Build & verify
 
@@ -54,7 +54,7 @@ Unit tests (`npm run test`) run only in the `develop` clone: `tests/` is tracked
 | `src/pages/index.astro` | page structure, sub-tab markup, imports JS |
 | `src/scripts/main.js` | entry, `DOMContentLoaded` → lazy `import()` per tab |
 | `src/scripts/domain.js` | Domain layer: validators, calculators, trait matcher, `ServantComboCalculator` |
-| `src/scripts/bond-app.js`, `ce-filter-app.js`, `ce-servant-select.js`, `event-shop.js` | Application controllers per tab |
+| `src/scripts/bond-app.js`, `ce-filter-app.js`, `ce-servant-select.js`, `event-shop.js`, `event-planner.js` | Application controllers per tab |
 | `src/scripts/data.js` + `src/scripts/data/*.js` | data access and generated datasets |
 | `scripts/` | data sync (`sync_atlas_data.py`), build/render gates, tests |
 | `.github/workflows/` | Pages deploy, fixed-slot ETag-gated data schedule (4 polls/day at JP/NA maintenance ends) |

@@ -55,6 +55,7 @@ jobs:
             .cache/atlas/
             public/servants/
             public/craft_essences/
+            public/event_shop/
             src/scripts/data/
           # Primary key only (no restore-keys): when the sync script changes we
           # want a fully clean rebuild, not the previous script version's blob.
@@ -150,7 +151,7 @@ jobs:
         run: |
           mkdir -p .ci-baselines
           HASH_FILE=".ci-baselines/data_hash.txt"
-          NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js | sha256sum | cut -d' ' -f1)
+          NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js src/scripts/data/event_shop.js | sha256sum | cut -d' ' -f1)
           DIRTY=true
           if [ -f "$HASH_FILE" ] && [ "$(cat "$HASH_FILE")" = "$NEW_HASH" ]; then
             DIRTY=false
@@ -256,3 +257,4 @@ jobs:
           python3 scripts/test_check_data_version.py
           python3 scripts/test_deploy_workflow.py
           python3 scripts/test_drift.py
+          python3 scripts/test_sync_event_shop.py

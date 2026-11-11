@@ -21,6 +21,7 @@ export const Schema = {
   baseDrop: { min: 0, max: 100, default: 3 },
   primaryMultiplier: { min: 100, max: 100000, default: 1500 },
   secondaryMultiplier: { min: 100, max: 100000, default: 225 },
+  shopRequire: { min: 0, max: 999999, default: 0 },
 };
 
 export const Validator = {
@@ -881,5 +882,72 @@ export const ServantSort = {
       out[i] = decorated[i].row;
     }
     return out;
+  },
+};
+
+/* ===...=== Event Shop Planner (domain) ===...=== */
+/* Require counts for one event-shop snapshot. Keys are String(item.id); values are purchases the
+   player plans to make. Unlimited (limitNum 0) items cap at Schema.shopRequire.max, matching the
+   in-game shop's behavior of never gating a repeatable purchase. */
+export const EventShop = {
+  maxRequire(item) {
+    return item.limitNum > 0 ? item.limitNum : Schema.shopRequire.max;
+  },
+
+  clampRequire(item, value) {
+    return Math.floor(Validator.clamp(value, Schema.shopRequire.min, this.maxRequire(item)));
+  },
+
+  rowCost(item, require) {
+    return require * item.cost.amount;
+  },
+
+  /* Per-currency spend across the whole plan: { [String(currencyId)]: total }. Every currency that
+     appears in `items` gets a key even at 0, so the summary chips never vanish mid-typing. */
+  totals(items, requires) {
+    const totals = {};
+    for (const item of items) {
+      const key = String(item.cost.itemId);
+      const require = requires[String(item.id)] || 0;
+      totals[key] = (totals[key] || 0) + this.rowCost(item, require);
+    }
+    return totals;
+  },
+
+  /* The "clear" plan from the in-game shop: buy out every limited item, leave unlimited items at 0. */
+  clearRequires(items) {
+    const requires = {};
+    for (const item of items) {
+      requires[String(item.id)] = item.limitNum > 0 ? item.limitNum : 0;
+    }
+    return requires;
+  },
+
+  /* Tier ("gold"/"silver"/"bronze") → the shop currency whose background carries it, for the
+     event-native tier cards. First match wins; null means the shop has nothing for that tier and
+     the card keeps its legacy generic look. Pure: a non-array currencies argument is simply "none". */
+  currencyForTier(currencies, tier) {
+    if (!Array.isArray(currencies)) return null;
+    for (const currency of currencies) {
+      if (currency && currency.background === tier) return currency;
+    }
+    return null;
+  },
+
+  /* Storage blob { eventId, requires } → usable plan. A different event's saved counts are dead
+     data (item ids collide across events' number ranges), so any mismatch starts from empty. */
+  sanitizeRequires(saved, items, currentEventId) {
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return {};
+    if (saved.eventId !== currentEventId) return {};
+    const raw = saved.requires;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    const byId = new Map(items.map((item) => [String(item.id), item]));
+    const requires = {};
+    for (const [itemId, value] of Object.entries(raw)) {
+      const item = byId.get(itemId);
+      if (!item) continue;
+      requires[itemId] = this.clampRequire(item, value);
+    }
+    return requires;
   },
 };

@@ -159,18 +159,21 @@ def main():
     cache_key = cache_step["with"]["key"]
     sync_run = next(s for s in steps if s.get("name") == "Sync latest game data from Atlas Academy")["run"]
     assert "src/scripts/data/" in cache_path, "data dir not in cache path"
+    assert "public/event_shop/" in cache_path, "event shop icons not in cache path"
     assert "rm -f" not in sync_run, "sync still wipes generated data"
     assert "sync_atlas_data.py" in cache_key, "cache key must hash sync_atlas_data.py"
+    cat_run = next(s for s in steps if s.get("name") == "Check if generated data changed")["run"]
+    assert "event_shop.js" in cat_run, "event_shop.js missing from the data-hash cat"
     n += 1
 
-    # 8. self-test job runs all three suites on every code change (push/dispatch)
+    # 8. self-test job runs all suites on every code change (push/dispatch)
     #    but is skipped on the idle schedule, so polls stay near-free
     assert "self-test" in spec["jobs"], "self-test job missing from deploy.yml"
     st = spec["jobs"]["self-test"]
     st_if = st.get("if") or ""
     assert "schedule" in st_if, "self-test must be skipped on schedule"
     st_runs = " ".join(s["run"] for s in st["steps"] if s.get("run"))
-    for script in ("test_check_data_version.py", "test_deploy_workflow.py", "test_drift.py"):
+    for script in ("test_check_data_version.py", "test_deploy_workflow.py", "test_drift.py", "test_sync_event_shop.py"):
         assert script in st_runs, f"self-test job does not run {script}"
     n += 1
 
