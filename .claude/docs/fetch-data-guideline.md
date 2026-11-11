@@ -2,7 +2,7 @@
 
 ## Automated Build-Time Sync Pipeline (Recommended)
 
-Data synchronization runs automatically on GitHub Actions CI (hourly cron, and on `git push` to `main`). Cached JSON is revalidated with ETag conditional GETs (304 = ~0 bytes when unchanged), and the build is skipped on scheduled runs when the generated data hash is unchanged. Assets are cached ephemerally with `actions/cache@v4` without committing data or images into git history.
+Data synchronization runs automatically on GitHub Actions CI (four fixed daily cron slots at 09:10/11:10/15:10/19:10 UTC — JP/NA maintenance ends — and on `git push` to `main`). Cached JSON is revalidated with ETag conditional GETs (304 = ~0 bytes when unchanged), and the build is skipped on scheduled runs when the generated data hash is unchanged. Assets are cached ephemerally with `actions/cache@v4` without committing data or images into git history.
 
 - **Speed & Rate Limiting**: Defaults to `0.1s` (100ms) delay between requests (~8 req/s) via `PoliteRateLimiter`, completing cold-start syncs in **~1 minute** without triggering HTTP 429 rate limits on Cloudflare CDN.
 - **Multi-Ascension Icons**: Automatically downloads all ascension stages (`000`, `001`, `002`) and registered spiritron dress costumes (`300`, `400`, `500`) for multi-ascension servants.

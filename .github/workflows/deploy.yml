@@ -4,11 +4,19 @@ on:
   push:
     branches: [main]
   schedule:
-    # Poll every 10 min: a ~230-byte /info version check stops the run when
-    # both JP and NA hashes are unchanged; otherwise the Atlas API is
-    # ETag-revalidated (304 = ~0 bytes) and the build is skipped when no data
-    # changed, so idle runs are near-free.
-    - cron: '*/10 * * * *'
+    # Four fixed polls at JP/NA maintenance ends, not */10: GitHub throttled
+    # the 10-min cron to ~4 random fires/day (avg gap 5.8h, measured Nov 2026),
+    # so fixed slots cost the same and land when data actually changes.
+    # UTC -> ICT/JST: 09:10 = 16:10/18:10 (JP end 18:00 JST), 11:10 =
+    # 18:10/20:10 (JP extension; NA end 04:00 PT), 15:10 = 22:10/00:10 (late
+    # extensions), 19:10 = 02:10/04:10 (NA anniversary end 12:00 PT). PT is
+    # PDT Mar-Nov; in PST months NA ends +1h UTC later and the next slot
+    # catches it. :10 dodges top-of-hour load. A ~230-byte /info version
+    # check stops the run when both JP and NA hashes are unchanged; otherwise
+    # the Atlas API is ETag-revalidated (304 = ~0 bytes) and the build is
+    # skipped when no data changed, so idle runs are near-free. Best-effort:
+    # slots may be delayed or dropped under load.
+    - cron: '10 9,11,15,19 * * *'
   workflow_dispatch:
     inputs:
       force_sync:
@@ -180,7 +188,7 @@ jobs:
       # Chunk layout, <head> order and visible page text are asserted against
       # scripts/build_baseline.json. The browser verifier (scripts/verify_render.js)
       # is deliberately not here: it needs a Chromium download, and this workflow
-      # runs on a 10-minute schedule, so a flaky fetch would block deploys for a
+      # runs on the data-poll schedule, so a flaky fetch would block deploys for a
       # reason unrelated to the site. It is a local pre-merge gate instead.
       - name: Check build output
         if: steps.data_change.outputs.DEPLOY == 'true'
@@ -229,7 +237,7 @@ jobs:
 
   # Runs the self-check suites (data-version gate, workflow gate model, and
   # servant drift detection) so a broken config or logic lands red. Skipped on
-  # the idle 10-min schedule so polls stay near-free; push/dispatch are code
+  # idle schedule polls so they stay near-free; push/dispatch are code
   # changes, so they always run it. Independent of the build/deploy path — it
   # gates nothing via `needs` (that would break schedule deploys on a skipped
   # job); a red here flags the change while the build's validate_data.js still
