@@ -121,7 +121,7 @@ Expect: `10 tests passed` + trio exit 0.
 - Environmental note: subagent session continuation unavailable (sessionID truncated at "ses" by harness); fix pass + reviewer round 2 ran in fresh sessions with frozen plan context. No format failures — all verdict tokens emitted.
 - Final verification (lead, fresh): trio exit 0 (10/8/10 tests), npm run test 199 pass 0 fail exit 0
 - Reviewer-driven fix budget: 1/3
-- Status: converged; commit to develop; ship to main pending owner confirm (public deploy)
+- Status: SHIPPED — main ccac161 (merge_code_only, code only, zero develop-only leaks), push run 43004514062 build+deploy success (gh run watch --exit-status, exit 0). Next slot: 11:10 UTC / 18:10 ICT.
 
 ## Risks
 
