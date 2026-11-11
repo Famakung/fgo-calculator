@@ -1,7 +1,7 @@
 """Self-check for the /info gate wiring in .github/workflows/deploy.yml.
 
 Run: python3 scripts/test_deploy_workflow.py
-Pins nine scenarios of the build job (DO_WORK/DEPLOY gates):
+Pins ten scenarios of the build job (DO_WORK/DEPLOY gates):
   1. idle schedule (CHECK=UNCHANGED)        -> only the decide step may run after the version check
   2. schedule, CHECK=CHANGED, data dirty    -> sync through upload all run
   3. schedule, CHECK=CHANGED, data clean    -> sync + hash check run, build/upload skip
@@ -12,6 +12,10 @@ Pins nine scenarios of the build job (DO_WORK/DEPLOY gates):
   8. self-test job runs all suites except on schedule (structural)
   9. baselines persist across asset-cache hits via a run-scoped
      cache/restore + cache/save pair (structural)
+  10. schedule/trigger pin (structural): cron list is exactly the four fixed
+      UTC slots '10 9,11,15,19 * * *', push branches [main], force_sync
+      boolean-default-false intact, and the slot hours map to the JP/NA
+      maintenance-end ICT/JST pairs {16:18, 18:20, 22:0, 2:4}
 """
 
 import os
@@ -54,6 +58,33 @@ def scenario_values(G, C, F, D):
     W = "true" if (G == "push" or C != "UNCHANGED") else "false"
     P = "true" if (G == "push" or F == "true" or D == "true") else "false"
     return W, P
+
+
+def schedule_pin(spec):
+    """Scenario 10: pin the trigger set and cron mapping on a parsed workflow spec.
+
+    Takes the spec as an argument so a mutation harness can feed a doctored copy.
+    """
+    # PyYAML gotcha: bare `on:` parses as boolean key True, not the string "on".
+    on = spec.get("on", spec.get(True))
+    assert on is not None and set(on) == {"schedule", "push", "workflow_dispatch"}, (
+        f"trigger set drifted: {sorted(map(str, on or {}))}"
+    )
+    crons = [entry["cron"] for entry in on["schedule"]]
+    assert crons == ["10 9,11,15,19 * * *"], f"schedule cron drifted: {crons!r}"
+    assert on["push"]["branches"] == ["main"], f"push branches drifted: {on['push']['branches']!r}"
+    force = on["workflow_dispatch"].get("inputs", {}).get("force_sync")
+    assert force is not None, "force_sync input removed"
+    assert force.get("type") == "boolean", f"force_sync type drifted: {force!r}"
+    assert force.get("default") is False, f"force_sync default drifted: {force!r}"
+    minute, hours = crons[0].split()[:2]
+    assert int(minute) == 10, f"cron minute drifted: {minute!r}"
+    utc_hours = {int(h) for h in hours.split(",")}
+    assert utc_hours == {9, 11, 15, 19}, f"UTC hours drifted: {sorted(utc_hours)}"
+    assert {(h + 7) % 24 for h in utc_hours} == {16, 18, 22, 2}, "UTC->ICT mapping drifted"
+    assert {(h + 9) % 24 for h in utc_hours} == {18, 20, 0, 4}, "UTC->JST mapping drifted"
+    pairs = {((h + 7) % 24, (h + 9) % 24) for h in utc_hours}
+    assert pairs == {(16, 18), (18, 20), (22, 0), (2, 4)}, f"per-slot ICT/JST pairs drifted: {sorted(pairs)}"
 
 
 def main():
@@ -164,6 +195,11 @@ def main():
     names = [s.get("name") for s in steps]
     assert names.index("Restore version baselines") < names.index("Check Atlas data version"), "baselines must restore before the gate reads them"
     assert names.index("Check if generated data changed") < names.index("Save version baselines"), "save must run after both baseline writers"
+    n += 1
+
+    # 10. schedule/trigger pin: the four fixed UTC slots, push [main],
+    #     force_sync intact, and the JP/NA maintenance-end ICT/JST mapping
+    schedule_pin(spec)
     n += 1
 
     print(f"{n} tests passed")
