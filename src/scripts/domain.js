@@ -941,7 +941,7 @@ export const EventShop = {
     if (saved.eventId !== currentEventId) return {};
     const raw = saved.requires;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-    const byId = new Map(items.map((item) => [String(item.id), item]));
+    const byId = itemIndex(items);
     const requires = {};
     for (const [itemId, value] of Object.entries(raw)) {
       const item = byId.get(itemId);
@@ -950,4 +950,128 @@ export const EventShop = {
     }
     return requires;
   },
+
+  /* Draft merge for the modal's Done commit: only ids the shop actually sells survive, and every
+     surviving value goes through clampRequire. Current and partial are both { [String(item.id)]: n }. */
+  mergeRequires(current, partial, items) {
+    const merged = { ...current };
+    const byId = itemIndex(items);
+    for (const [itemId, value] of Object.entries(partial || {})) {
+      const item = byId.get(itemId);
+      if (item) merged[String(item.id)] = this.clampRequire(item, value);
+    }
+    return merged;
+  },
+
+  /* Items per run of ONE drop line: dropExpected (stacks/run) × (num + bonus), where the bonus is
+     that LINE's currency, not the card's. farmPlan and the farm cards share this one multiply, so a
+     card can never print a figure its own results row disagrees with. A null drop pays 0. */
+  dropPerRun(drop, bonus) {
+    if (!drop) return 0;
+    return count(drop.dropExpected) * (count(drop.num) + Validator.validate(bonus, Schema.tier.Bonus));
+  },
+
+  /* Best-quest farm plan (Amendment D). Keys are String(currencyId) on every input — totals come
+     from EventShop.totals, farm from the snapshot, and held/bonus are the plan's own per-currency
+     figures (Amendment H: keyed by currency id, so a second currency on the same tier prices with
+     its own numbers instead of borrowing the first one's).
+     Bonus is added INTO the drop's own stack size, never as a flat per-run total: a +3 bonus on a
+     quest paying 3 of an item per stack buys 6 per stack, so one run pays dropExpected × 6. */
+  farmPlan({ totals = {}, held = {}, bonus = {}, farm = {} } = {}) {
+    const plan = {};
+    const inputs = { totals, held, bonus, farm };
+    for (const currencyId of farmCurrencyKeys(totals, farm)) plan[currencyId] = farmRow(currencyId, inputs);
+    return plan;
+  },
+
+  /* Multi-event storage blob (Amendment G) → { selectedEventId, plans }. The old single-event
+     { eventId, requires } shape migrates into plans[eventId]; a plan whose event is not in the
+     snapshot list is dropped, and every surviving plan is sanitized against that event's own items. */
+  sanitizePlans(saved, events) {
+    const snapshots = Array.isArray(events) ? events.filter((snap) => snap && snap.event) : [];
+    const blob = migratePlanBlob(saved);
+    const plans = {};
+    for (const snap of snapshots) {
+      plans[String(snap.event.id)] = sanitizeEventPlan(blob.plans[String(snap.event.id)], snap);
+    }
+    return { selectedEventId: pickSelectedEventId(blob.selectedEventId, snapshots), plans };
+  },
 };
+
+/* ===...=== Event Shop farm plan helpers (domain-private) ===...=== */
+
+function itemIndex(items) {
+  return new Map((Array.isArray(items) ? items : []).map((item) => [String(item.id), item]));
+}
+
+function farmCurrencyKeys(totals, farm) {
+  const keys = new Set([...Object.keys(totals), ...Object.keys(farm)]);
+  return [...keys];
+}
+
+/* One currency's row. `inputs` is farmPlan's { totals, held, bonus, farm }, all keyed the same way. */
+function farmRow(currencyId, { totals, held, bonus, farm }) {
+  const quest = farm[currencyId] || null;
+  const deficit = Math.max(0, count(totals[currencyId]) - count(held[currencyId]));
+  const perRun = EventShop.dropPerRun(quest, bonus[currencyId]);
+  const runs = quest && perRun > 0 ? Math.ceil(deficit / perRun) : null;
+  return { deficit, perRun, runs, ap: runs === null ? null : runs * count(quest.ap) };
+}
+
+/* A stored figure that is not a usable number is 0 — the same reading Validator gives an empty box. */
+function count(value) {
+  const num = parseFloat(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function migratePlanBlob(saved) {
+  if (!saved || typeof saved !== "object" || Array.isArray(saved)) return { selectedEventId: null, plans: {} };
+  if (saved.plans || !saved.eventId)
+    return { selectedEventId: saved.selectedEventId ?? null, plans: saved.plans || {} };
+  return { selectedEventId: saved.eventId, plans: { [String(saved.eventId)]: { requires: saved.requires } } };
+}
+
+function sanitizeEventPlan(plan, snapshot) {
+  const items = Array.isArray(snapshot.items) ? snapshot.items : [];
+  const eventId = snapshot.event.id;
+  return {
+    requires: EventShop.sanitizeRequires({ eventId, requires: (plan || {}).requires }, items, eventId),
+    held: sanitizeCurrencyValues((plan || {}).held, snapshot.currencies, Schema.tier.Have),
+    bonus: sanitizeCurrencyValues((plan || {}).bonus, snapshot.currencies, Schema.tier.Bonus),
+  };
+}
+
+/* Held and Bonus are keyed by CURRENCY id (Amendment H), so an event with two golds gives each one
+   its own figures. A plan seeded before that amendment carries tier keys instead: those migrate
+   through the same first-match rule the tier card applies (EventShop.currencyForTier), so a stored
+   "gold" lands on the currency the tier card actually shows. Keys that are neither one of the
+   event's currencies nor a migrating tier are dropped. Bounds come from the schema the box uses. */
+function sanitizeCurrencyValues(value, currencies, schema) {
+  const list = Array.isArray(currencies) ? currencies : [];
+  const values = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const clean = {};
+  for (const currency of list) {
+    if (!currency) continue;
+    const key = String(currency.id);
+    clean[key] = Math.floor(Validator.validate(storedFigure(values, currency, list), schema));
+  }
+  return clean;
+}
+
+/* The currency's own key wins over a tier key that would migrate onto it, and a tier key only
+   counts when currencyForTier resolves that tier to exactly this currency — a background that is
+   not a tier ("zero" is QP) never had a stored figure, so only TIERS keys migrate. */
+function storedFigure(values, currency, list) {
+  const direct = values[String(currency.id)];
+  if (direct !== undefined) return direct;
+  if (!TIERS.includes(currency.background)) return undefined;
+  const tierFigure = values[currency.background];
+  if (tierFigure === undefined) return undefined;
+  return EventShop.currencyForTier(list, currency.background) === currency ? tierFigure : undefined;
+}
+
+function pickSelectedEventId(savedId, snapshots) {
+  const known = snapshots.some((snap) => snap.event.id === savedId);
+  if (known) return savedId;
+  return snapshots.length > 0 ? snapshots[0].event.id : null;
+}

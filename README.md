@@ -7,15 +7,13 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ## Features
 
 ### Event Shop Calculator
-- **Live event shop planner**: the current JP event's shop is auto-fetched from Atlas Academy at data-sync time (latest `eventQuest`, `--event-id` override) — every shop item with its icon, price, and purchase limit
-- Per-currency **config modal**: click a Required display on a tier card to open that currency's shop items; set how many of each you want with steppers, then **Default** (clear), **Select All** (buy out every limited item), **Cancel** (discard), or **Done** (apply)
+- **Select Event** card (same pattern as Bond's Select Quest): every active event shop is auto-fetched from Atlas Academy at data-sync time; switch between concurrent events, latest pre-selected, no blank option
+- **Per-event plans**: each event keeps its own Required/Held/Bonus save (`fgo_event_shop_data`); switching swaps plans, old saves migrate automatically
+- Per-currency **config modal**: click a Required display on a tier card to open that currency's shop items; steppers per item, then **Default** (clear), **Select All** (buy out every limited item), **Cancel** (discard), or **Done** (apply)
 - Required fields are read-only displays showing the live per-currency total (Σ require × price); Held and Bonus stay directly editable
-- Tier cards and quest-drop icons wear the current event's currency images and names (falls back to generic Bronze/Silver/Gold between events)
-- Plans persist per event (`fgo_event_shop_data`) and reset when the event rotates
-- Full-width border-labeled input boxes for Required, Held, and Bonus amounts per material tier (Bronze, Silver, Gold)
-- Configure bonus drop amounts per material type
-- Adjust base drops and primary/secondary multipliers
-- Automatically calculates optimal quest runs
+- **Drop Rates per Run**: each currency's card names the quest that drops it most (community drop data via Atlas) — quest name, REC Lv., that currency's read-only Required display, and two real-data drop lines `stack(+bonus)  amount / run` (amount = dropExpected × stack size): the card's own currency, then the quest's second-best shop-currency drop, `—` when it has none, event points and QP never offered. Editing that currency's Bonus moves its lines live. AP and the reported-run count stay in the data but off the card; results still show runs · AP per currency
+- Item names in English where available (NA server → Atlas EN translation → JP fallback); costume items show the actual costume face
+- Tier cards wear event currency images and names; between events the tab falls back to the legacy generic calculator (badges, editable Required, base/primary/secondary drop config)
 - Saves inputs to localStorage
 
 ### Bond Calculator
@@ -70,12 +68,12 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ## Usage
 
 ### Event Shop
-1. Open the Event Shop tab — tier cards show the current event's currencies
+1. Open the Event Shop tab — pick an event in **Select Event** (latest is pre-selected)
 2. Click a currency's Required display to open its config modal
 3. Set how many of each item you want to buy (steppers clamp at the shop limit); **Select All** buys out every limited item, **Default** clears the draft
 4. **Done** applies the plan — Required displays and totals update; **Cancel** discards
-5. Enter current holdings (Held) and bonus amounts, set drop rate multipliers
-6. Click "Calculate Quest Runs"
+5. Enter current holdings (Held) and drop Bonus (plussed into each drop's base amount)
+6. Click "Calculate Quest Runs" — runs and AP per currency, based on the best-drop quest
 
 ### Bond Calculator
 1. Add servants and select from the portrait modal
@@ -135,6 +133,9 @@ fgo-calculator/
 │       ├── bond-app.js         # BondApp (configure() for refs, _initialized guard)
 │       ├── event-shop.js       # UIBuilder, ViewManager, EventHandler, App (tier calculator)
 │       ├── event-shop-tier.js  # Event-native tier skin (currency images, read-only Required)
+│       ├── event-shop-farm.js  # Drop Rates per Run cards + event-mode results
+│       ├── event-shop-farm-lines.js # A card's two per-run drop lines, repainted on Bonus edits
+│       ├── event-shop-farm-controls.js # Farm-card Required display + the Held/Bonus pair a tier card lacks
 │       ├── event-shop-modal.js # EventShopModal (per-currency draft config modal)
 │       ├── event-planner.js    # EventPlanner (shop plan state + persistence)
 │       ├── event-planner-parts.js # Pure builders for modal draft rows
@@ -183,7 +184,7 @@ npm run dev          # Astro dev server (localhost:3000)
 npm run build        # Build with Astro (output: dist/)
 npm run preview      # Local preview server
 npm run lint         # ESLint (src/scripts/)
-npm run data:sync    # Sync latest servant, CE & event shop data from Atlas Academy
+npm run data:sync    # Sync latest servant, CE & active event shop data from Atlas Academy
 npm run data:validate # Validate data schema, traits format, and image existence
 ```
 

@@ -147,28 +147,60 @@ test("totals ignores polluted and unknown require keys and reports exactly the c
 });
 
 test("the shipped snapshot keeps the planner's own arithmetic honest", () => {
-  const items = EVENT_SHOP_DATA.items;
-  const currencies = EVENT_SHOP_DATA.currencies;
-  const buyAll = EventShop.clearRequires(items);
-  const totals = EventShop.totals(items, buyAll);
+  for (const snapshot of EVENT_SHOP_DATA.events || []) {
+    const items = snapshot.items;
+    const currencies = snapshot.currencies;
+    const buyAll = EventShop.clearRequires(items);
+    const totals = EventShop.totals(items, buyAll);
 
-  assert.deepEqual(
-    Object.keys(totals).sort(),
-    currencies.map((c) => String(c.id)).sort(),
-    "totals must cover exactly the declared currencies",
-  );
-  for (const currency of currencies) {
-    const exact = items
-      .filter((item) => String(item.cost.itemId) === String(currency.id))
-      .reduce((sum, item) => sum + (item.limitNum > 0 ? item.limitNum * item.cost.amount : 0), 0);
-    assert.equal(totals[String(currency.id)], exact, `${currency.name} buy-all total`);
-    assert.ok(Number.isSafeInteger(exact));
-  }
-  for (const item of items) {
-    assert.ok(
-      currencies.some((c) => String(c.id) === String(item.cost.itemId)),
-      `item ${item.id} costs an undeclared currency ${item.cost.itemId}`,
+    assert.deepEqual(
+      Object.keys(totals).sort(),
+      currencies.map((c) => String(c.id)).sort(),
+      `event ${snapshot.event.id}: totals must cover exactly the declared currencies`,
     );
-    assert.equal(buyAll[String(item.id)], item.limitNum > 0 ? item.limitNum : 0);
+    for (const currency of currencies) {
+      const exact = items
+        .filter((item) => String(item.cost.itemId) === String(currency.id))
+        .reduce((sum, item) => sum + (item.limitNum > 0 ? item.limitNum * item.cost.amount : 0), 0);
+      assert.equal(totals[String(currency.id)], exact, `${currency.name} buy-all total`);
+      assert.ok(Number.isSafeInteger(exact));
+    }
+    for (const item of items) {
+      assert.ok(
+        currencies.some((c) => String(c.id) === String(item.cost.itemId)),
+        `item ${item.id} costs an undeclared currency ${item.cost.itemId}`,
+      );
+      assert.equal(buyAll[String(item.id)], item.limitNum > 0 ? item.limitNum : 0);
+    }
+  }
+});
+
+test("the shipped farm map covers exactly the shop currencies of every event", () => {
+  for (const snapshot of EVENT_SHOP_DATA.events || []) {
+    assert.deepEqual(
+      Object.keys(snapshot.farm || {}).sort(),
+      snapshot.currencies.map((c) => String(c.id)).sort(),
+      `event ${snapshot.event.id}: farm keys must equal the currency ids`,
+    );
+    for (const entry of Object.values(snapshot.farm || {})) {
+      if (entry === null) continue;
+      assert.ok(Number.isInteger(entry.questId) && entry.questId > 0);
+      assert.ok(entry.dropExpected > 0, "a reported quest must drop something");
+      assert.ok(Number.isInteger(entry.num) && entry.num > 0);
+      assert.ok(Number.isInteger(entry.ap) && entry.ap >= 0);
+      assert.equal(typeof entry.recommendLv === "string" || typeof entry.recommendLv === "number", true);
+    }
+  }
+});
+
+test("farmPlan over a shipped snapshot stays finite and never under-coverage the deficit", () => {
+  for (const snapshot of EVENT_SHOP_DATA.events || []) {
+    const totals = EventShop.totals(snapshot.items, EventShop.clearRequires(snapshot.items));
+    const plan = EventShop.farmPlan({ totals, held: {}, bonus: {}, farm: snapshot.farm || {} });
+    for (const [currencyId, row] of Object.entries(plan)) {
+      assert.equal(row.deficit, Math.max(0, totals[currencyId] || 0));
+      if (row.runs === null) continue;
+      assert.ok(row.runs * (row.perRun || 1) >= row.deficit, `${currencyId}: the runs must cover the deficit`);
+    }
   }
 });

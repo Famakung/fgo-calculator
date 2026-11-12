@@ -2,14 +2,18 @@
 import { App } from "./event-shop.js";
 import { EventPlanner } from "./event-planner.js";
 import { EventShopModal } from "./event-shop-modal.js";
+import { DOMFactory } from "./presentation.js";
+
+const NO_EVENT_OPTION = "No active event";
 
 export function initEvent() {
-  /* The modal edits a draft of the planner's plan and commits it whole: applyRequires persists,
-     refreshNeeds folds the new totals into the tier cards (event mode only). Planner is inited
-     before App so App.init's refreshNeeds already reads the loaded requires. */
+  /* The modal edits a draft of the selected event's plan and commits it whole: applyRequires
+     persists, refreshNeeds folds the new totals into the tier cards (event mode only). Planner is
+     inited before App so App.init already reads the loaded plan. */
   EventShopModal.configure({
     itemsOf: (currencyId) => EventPlanner.itemsFor(currencyId),
-    requiresOf: () => EventPlanner.state.requires,
+    requiresOf: () => EventPlanner.activePlan().requires,
+    currenciesOf: () => EventPlanner.currenciesForActive(),
     onCommit: (draft) => {
       EventPlanner.applyRequires(draft);
       App.refreshNeeds();
@@ -17,4 +21,48 @@ export function initEvent() {
   });
   EventPlanner.init();
   App.init();
+  bindEventSelect();
+}
+
+/* Event Select card (Amendment G): the options are the snapshot list, and the change handler runs a
+   full re-hydration because the tier cards, farm cards and plan all belong to the chosen event.
+   One event still shows the card — the user asked for the picker to be there either way. */
+function bindEventSelect() {
+  const select = document.getElementById("eventSelect");
+  if (!select) return;
+  populateEventOptions(select, EventPlanner.events(), EventPlanner.state.selectedEventId);
+  select.addEventListener("change", () => {
+    /* Flush first, while the old event is still active and the boxes hold the typed figures. */
+    App.flushPlanBoxes();
+    EventPlanner.select(Number(select.value));
+    App.rehydrate();
+  });
+}
+
+function populateEventOptions(select, events, selectedEventId) {
+  if (events.length === 0) {
+    select.replaceChildren(buildDisabledOption());
+    select.disabled = true;
+    return;
+  }
+  select.disabled = false;
+  select.replaceChildren(...events.map(buildOption));
+  select.value = String(selectedEventId);
+}
+
+function buildOption(snapshot) {
+  const option = DOMFactory.el("option", null, { value: String(snapshot.event.id) });
+  option.textContent = eventLabel(snapshot.event);
+  return option;
+}
+
+function buildDisabledOption() {
+  const option = DOMFactory.el("option", null, { value: "", disabled: "disabled" });
+  option.textContent = NO_EVENT_OPTION;
+  return option;
+}
+
+/* Event names carry the line break the JP banner art uses; a <select> option is one line. */
+function eventLabel(event) {
+  return (event.shortName || event.name || String(event.id)).replace(/[\r\n]+/g, " ").trim();
 }

@@ -29,6 +29,9 @@ src/
     bond-app.js                — BondApp (configure() for refs, _initialized guard)
     event-shop.js              — UIBuilder, ViewManager, EventHandler, App (tier calculator)
     event-shop-tier.js         — event-native tier skin: currency images/names, read-only Required displays
+    event-shop-farm.js         — Drop Rates per Run real-data cards, event-mode results + plan box sync
+    event-shop-farm-lines.js   — farm-card primary/secondary drop lines from community data (live bonus)
+    event-shop-farm-controls.js— farm-card Held/Bonus plan boxes + tier-mapped currency id set
     event-shop-modal.js        — EventShopModal: per-currency draft config modal (Default/Select All/Cancel/Done)
     event-planner.js           — EventPlanner: shop plan state, applyRequires, persistence (state-only)
     event-planner-parts.js     — pure builders for the modal draft rows (buildDraftRow chain)
@@ -86,7 +89,7 @@ dist/                         — Static site output for GitHub Pages
 - `ce-filter-chunk`: Bond Gain CE logic
 - `tab-navigator-chunk`: tab switch
 - `selectors-chunk`: modal/picker components
-- Lazy: `bond-lazy` (Bond tab), `event-lazy` (Event tab: tier calculator + EventPlanner + EventShopModal + EVENT_SHOP_DATA) — via `import()` on first visit
+- Lazy: `bond-lazy` (Bond tab), `event-lazy` (Event tab: tier calculator + EventPlanner + EventShopModal + EVENT_SHOP_DATA + Select Event wiring + farm hydration) — via `import()` on first visit
 - Worker: `ce-match-worker` — own chunk for Web Worker
 
 ## Architecture (3 layers)

@@ -31,7 +31,7 @@ FGO Calculator — Astro static site on GitHub Pages. Three tools:
 - Base drops + primary/secondary drop multipliers config
 - Optimal quest runs from material deficits
 - LocalStorage persistence
-- **Event Shop planner**: current JP event auto-picked at sync time (latest eventQuest by startedAt, --event-id override); tier cards + quest drops wear event currency images/names; Required is a read-only display (height-matched to Held/Bonus) opening the per-currency config modal #eventShopModal (draft rows with steppers; footer Default / Select All / Cancel / Done) — the modal is the sole configuration surface, no planner card; totals = Σ require×cost.amount per currency; plans persist under EVENT_SHOP_STORAGE_KEY keyed by event id (rotation resets); EventShop (domain.js) sole math home, EventPlanner (event-planner.js) state-only + applyRequires sole commit, event-planner-parts.js modal draft builders, EventShopModal (event-shop-modal.js) draft controller, event-shop-tier.js tier skin (material-icon--event transparent background); stub data → legacy generic calculator
+- **Event Shop planner**: Select Event card (#eventSelectCard, Bond Select Quest pattern, no blank option, force-latest default) switches between ALL active event shops (EVENT_SHOP_DATA.events[], synced per event); per-event plans {requires, held, bonus} under EVENT_SHOP_STORAGE_KEY with migration + isolation; tier cards wear event currency art, Required read-only opens per-currency config modal #eventShopModal (Default/Select All/Cancel/Done, sole mutation surface via EventPlanner.applyRequires); event mode hides base/primary/secondary config, shows the Drop Rates per Run cards (best-drop quest per currency from nice quest .drops community data: quest name, REC Lv., Required display, and two drop lines — the card's currency plus that quest's second-best shop-currency drop, `—` when none — each stack(+bonus) × dropExpected per run, repainted live when that currency's Bonus is edited; AP and sampleRuns stay in the data, undisplayed; perRun = dropExpected×(num+bonus), runs = ceil(deficit/perRun) still priced per currency, secondary is display-only); names NA→EN→JP; costume items show the real costume face; stub → legacy calculator byte-identical; EventShop (domain.js) math, EventPlanner state-only, event-shop-farm.js farm cards + event-shop-farm-lines.js drop lines, event-shop-tier.js tier skin + result labels, EventShopModal draft controller
 
 **Bond Calculator:**
 - ≤6 servant slots, drag-to-reorder, class icon multi-select filter (15 classes)
@@ -140,7 +140,8 @@ No npm script, no project dependency — run ad hoc against served build: `npx l
 - `src/scripts/event-shop.js` — Event Shop tier calculator controller
 - `src/scripts/event-shop-tier.js` — event-native tier skin (currency images, read-only Required)
 - `src/scripts/event-shop-modal.js` — EventShopModal per-currency draft config modal
-- `src/scripts/event-planner.js` — EventPlanner: shop plan state + persistence + applyRequires (state-only, no DOM)
+- `src/scripts/event-shop-farm.js` — Drop Rates per Run real-data cards + event-mode results/plan box sync
+- `src/scripts/event-planner.js` — EventPlanner: multi-event state (selectedEventId + plans), persistence + migration, applyRequires (state-only, no DOM)
 - `src/scripts/event-planner-parts.js` — pure builders for the modal draft rows (buildDraftRow chain)
 
 ### Lazy Loading

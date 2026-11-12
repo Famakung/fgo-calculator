@@ -2,83 +2,104 @@
 /**
  * scripts/test_event_shop.js
  *
- * Browser gate for the Event Shop surfaces under Amendment C (planner card REMOVED — the
- * per-currency modal is the sole configuration surface; tier Required boxes are read-only
- * modal openers with Held/Bonus box parity; event icons render standalone, no grey plate;
- * the generic bronze/silver/gold material mockup art is DELETED — nothing may request it).
+ * Browser gate for the Event Shop surfaces under Amendments D+E+F+G+H+I(final)+J. Amendment J pruned
+ * every non-farm event from the shipped snapshot: EVENT_SHOP_DATA.events == [80639] ONLY (3 tier-mapped
+ * currencies, all with community drop data + a secondary drop). The gate therefore runs in THREE modes
+ * against THREE served copies of the same fresh dist — one command per mode, every mode must exit 0:
+ *   MAIN   (default)  — the shipped single-event snapshot: farm card shape + opener + drop lines,
+ *                        results math, modal/clamp/commit/hostile/quota/viewport, select single option;
+ *   MULTI  (--multi)  — a patched copy whose events[] also carries the three pruned events (80630
+ *                        single-gold null-farm, 80379 two golds / first-match, 80292 QP "zero" + two
+ *                        silvers) plus a synthetic 80555 dash fixture (the live farm rows with every
+ *                        secondary deleted). Per-event isolation, migration, N-currency collision,
+ *                        zero-background, null-farm and secondary-null CANNOT be tested against the
+ *                        shipped single-event snapshot — they live here, whole, never weakened;
+ *   LEGACY (--legacy) — a patched stub copy (events emptied) re-pinning the untouched calculator.
+ * The oracle for every expected number is the mode's own event data (the data module for MAIN/LEGACY,
+ * the fixture JSON for MULTI) — never the app's own EventShop.
  *
- * Pins, against the PRODUCTION build:
- *  - ABSENCE of every planner-card surface: #eventPlannerCard, #eventPlannerSummary/Controls/
- *    List/EventName/Window/BuyAll/Clear and the .eshop-summary/.eshop-filter-chip/.eshop-group/
- *    .eshop-list/.eshop-controls/.eshop-empty classes must NOT exist anywhere; the first card
- *    of #panel-event is "Shop Requirements";
- *  - geometry parity: per tier, Required offsetHeight === Held === Bonus offsetHeight AND
- *    offsetWidth parity (> 0, and not the old 44px override); Required carries both
- *    .material-input-box-field and .eshop-require-display; its computed border-style is dashed
- *    and its cursor pointer, while Held/Bonus stay solid-bordered editable fields;
- *  - editability cues: the hover accent rule exists in the stylesheet inside
- *    @media (hover: hover) with border-color/background on the accent tokens, and the :focus
- *    rule flips the border to solid — pinned live, because this headless Chrome reports
- *    (hover: hover) = false and CDP cannot flip it, so :hover is CSSOM-pinned, never
- *    reported as a failure for not applying;
- *  - standalone icons: every mapped tier's .material-icon carries .material-icon--event with a
- *    computed transparent background while the base .material-icon grey rule still exists for
- *    the stub (badge) look; the event art decodes (naturalWidth > 0), all 9 boxes carry exactly
- *    one img and NO .icon-fallback badge — the badge is built then replaced in the same tick;
- *  - the currency modal #eventShopModal opens from a tier Required (click, Enter, Space) and
- *    Escape / ✕ / Cancel / backdrop mousedown close it as a discard;
- *  - ALL clamping lives in the modal draft rows (limit clamp, focus-preserving typing, schema
- *    max 999999, negative input, rapid stepper race) — moved, never weakened;
- *  - Select All = clearRequires semantics, Default = zero the draft; only Done commits;
- *  - Done agreement: localStorage fgo_event_shop_data, the tier Required values and the legacy
- *    calculator state all show the same numbers, cross-checked against this file's independent
- *    reference math over src/scripts/data/event_shop.js — never through the app's EventShop;
- *    buy-out data truth MISO 5740 / SHIMONITA 5390 / YAKI 6610;
- *  - modal draft-row icon fallback: when an icon request is refused (request interception
- *    aborts one /event_shop/ file), the .eshop-item-icon-fallback badge is transparent with a
- *    dashed border — no grey plate behind or in place of the art;
- *  - persistence across reload, event-id mismatch reset, hostile storage sanitisation, storage
- *    write discipline (draft typing writes nothing; Done writes once), quota-failure path,
- *    keyboard operation, zero sideways overflow / zero page errors at 360px and 1120px, and
- *    zero runtime external fetches.
+ * Contracts pinned (Amendment I final = I7 refinement included, Amendment J = pruning + fallback):
+ *  - Select Event card FIRST in #panel-event, title "Select Event", Bond-consistent
+ *    .input-row > label.input-label + select.select-field; NO blank option; fresh storage
+ *    FORCE-SELECTS the latest event (max startedAt == list head, both pinned); with one event the
+ *    list is exactly that one option; a saved selection wins (MULTI); zero events (stub copy) →
+ *    one disabled "No active event" option + the legacy calculator;
+ *  - per-event saves (MULTI): set a plan on A, switch to B, switch back to A → A restored
+ *    byte-equal, B's edit never leaked into A; plans survive reload; the pre-G { eventId, requires }
+ *    blob migrates (live and dead ids) and the disk blob stays untouched until the first mutation;
+ *  - farm cards (Amendment I, "Drop Rates per Run"): title, one card per shop currency, card =
+ *    [currency header: role=button tabindex=0 aria-haspopup=dialog, icon + currency name] +
+ *    quest-name line + "REC Lv. {recommendLv}" (skipped when falsy) + primary drop line +
+ *    secondary drop line (or a bare "—" when the quest has no second shop-currency drop). Each line
+ *    is "[icon] {num}(+{bonus}) {dropExpected×(num+bonus)} / run" at 2dp, keyed to ITS OWN currency,
+ *    repainted live when that currency's Bonus changes — on EVERY line carrying it (a currency can
+ *    ride its own card's primary and another card's secondary at once). NO Required box, NO AP, NO
+ *    "runs reported", NO Base/Primary/Secondary labels anywhere inside #farmGrid (absence regex over
+ *    the cards' visible text + zero require-display inputs + zero farmRequired* ids); a null farm
+ *    entry → the single "No drop data yet" line. Held/Bonus inputs appear on a farm card ONLY for a
+ *    currency no tier card owns; the base-row and #questDropsGrid stay hidden, #farmGrid visible
+ *    (the reverse in stub mode);
+ *  - modal access for every currency: the farm card's CURRENCY HEADER opens THAT currency's modal
+ *    (click, Enter and Space; inputs inside the card never trigger it), the tier cards' Required
+ *    display opens the same modal for the mapped currency;
+ *  - results math vs an INDEPENDENT reference farmPlan recomputed here from the mode's data: the
+ *    gold buy-out (truth 6610) at held 1000 + bonus 2 reads deficit 5610 and
+ *    runs = ceil(5610/(dropExpected×(num+2))) — the shipped snapshot's dropExpected says 104, a flat
+ *    "per-run add" bug says 163, and the gate pins that the two disagree before trusting either;
+ *    a null-farm currency says "—" + "No drop data yet"; result labels carry the CURRENCY names and
+ *    restore to the tier words when a switch leaves a tier unmapped (and on the stub);
+ *  - ABSENCE of every planner-card surface (#eventPlannerCard/.eshop-summary/.eshop-filter-chip/
+ *    .eshop-group/...), zero requests for the deleted icons/materials mockup, zero HTTP >= 400;
+ *  - geometry parity Required===Held===Bonus offsetHeight/Width per tier, dashed/pointer/focus
+ *    cues, hover rule pinned through the CSSOM (headless reports (hover: hover)=false);
+ *  - standalone event icons (.material-icon--event transparent, one decoded fg img, no badge) in
+ *    the tier cards and farm cards; the hidden #questDropsGrid spans stay hydrated (1 img, right
+ *    file, no badge) but decode is not demanded of nodes the user cannot see;
+ *  - the currency modal contract: opens from a tier Required (click/Enter/Space), Escape/✕/Cancel/
+ *    backdrop discard, ALL clamping in the draft rows (limit clamp, focus-preserving typing,
+ *    schema max, negative, rapid stepper race), Default/Select All semantics, only Done commits;
+ *  - Done agreement through storage (new {selectedEventId, plans} shape) + tier Required + the
+ *    legacy fgo_calculator_data mirror; write discipline (draft writes 0, Done writes 1);
+ *  - hostile storage sanitisation (both blob shapes), quota-failure path with the console warning,
+ *    modal icon fallback badge (transparent, dashed), keyboard operation, zero sideways overflow at
+ *    360px/1120px, zero runtime external fetches, the zero-background event (MULTI 80292, QP "zero")
+ *    renders without crash and its farm card still gets a tier border via the :where() fallback.
  *
- * Legacy fallback (stub snapshot: event null) is pinned with --legacy against a patched bundle
- * copy served on a spare port — the production snapshot always has an event, so the stub branch
- * cannot be reached through the unpatched site. In stub mode the Required fields must be plain
- * editable inputs (no display class, no popup, solid border) on grey icon plates that are filled
- * with the tier-colour LETTER BADGES the legacy builder makes (3 tier + 6 quest = 9 boxes, each
- * one .icon-fallback div, background TIER_COLORS[tier], text = tier initial, zero imgs), and
- * clicking one must NOT open the modal.
+ * Legacy fallback (--legacy against a patched stub copy: events emptied) re-pins the untouched
+ * calculator: grey plates with 9 tier-colour letter badges, editable Required, no modal, base-row +
+ * quest grid visible, farmGrid hidden and empty, old persistence blob { bronzeNeed, ... } only.
  *
- * Amendment C absence pins, both modes: zero network requests whose URL contains
- * icons/materials, and zero HTTP responses >= 400. The assets are deleted and the markup ships
- * empty boxes, so any such request means dead art came back, and any 4xx means it was asked for
- * and 404'd.
- *
- * Run it against the static dist on the spare port (3000 is the owner's server — never gate
- * there, never stop daemons that are not yours):
+ * Run it against the static dist on the spare ports (3000 is the owner's server — never gate there,
+ * never stop daemons that are not yours). QA builds the patched copies outside the repo:
  *   npm run build
- *   node scripts/test_event_shop.js http://localhost:4173/fgo-calculator/
- *   node scripts/test_event_shop.js http://localhost:4199/fgo-calculator/ --legacy   (stub copy)
+ *   node /tmp/opencode/qa/build_sites.mjs && bash /tmp/opencode/qa/serve.sh
+ *   node scripts/test_event_shop.js http://127.0.0.1:4173/fgo-calculator/              (MAIN)
+ *   node scripts/test_event_shop.js http://127.0.0.1:4174/fgo-calculator/ --multi      (MULTI)
+ *   node scripts/test_event_shop.js http://127.0.0.1:4175/fgo-calculator/ --legacy     (stub copy)
  *
- * Patched-copy recipe (mutants + stub, outside the repo, served from throwaway dirs):
- *   stub:   in dist/_astro/event-lazy.*.js replace `event:{id:<live id>` with
- *           `event:null&&{id:<live id>` — `null && {…}` is null, braces stay balanced, and
- *           eventShopSnapshot() then returns null (must reach the badge pins, not the event pins);
- *   badge:  in the same chunk replace the fallback builder `function z(e,t){e&&e.replaceChildren(j(t))}`
- *           with `function z(e,t){}` (must redden the stub badge pins only);
- *   mockup: in index.html put `<img class="bg-layer" alt="" src="icons/materials/bronze_bg.webp">`
- *           inside `<div class="material-icon" id="bronzeIcon">` (must redden the icons/materials
- *           absence + zero-4xx pins);
- *   hydrate: in the chunk replace `a.classList.add(\`material-icon--event\`),a.replaceChildren(M(t,e))`
- *           with `a.classList.add(\`material-icon--event\`)` (must redden the event art / no-badge
- *           pins and the 9/9 decoded pin);
- *   parity: append `min-height: 44px;` to the `input.eshop-require-display` rule in index.html
- *           (must redden the offsetHeight parity pin);
- *   grey:   set `.material-icon--event { background: transparent }` to `#e5e7eb` in index.html
- *           (must redden the standalone-icon pin);
- *   commit: in the event-lazy chunk replace `onCommit:e=>{<planner>.applyRequires(e),` with
- *           `onCommit:e=>{void 0,` (must redden the Done-agreement / write-discipline pins).
+ * Patched-copy recipe (mutants + stub, OUTSIDE the repo, served from throwaway dirs — symlink the
+ * dist, replace only the patched chunk with a real file, kill every server by PID when done):
+ *   stub:       in _astro/event-lazy.*.js replace `events:[{event:{id:` with `events:0&&[{event:{id:`
+ *               — `0 && [...]` is 0, brackets stay balanced, snapshotEvents() sees no array and the
+ *               page falls back to the legacy calculator (must reach the legacy pins, not the event pins);
+ *   multi:      in the event-lazy chunk, brace-match the first events[] element and insert the fixture
+ *               events after it (80639 stays the list head, so force-latest stays meaningful);
+ *   force-latest: in _astro/selectors-chunk.*.js replace `t.length>0?t[0].event.id:null` with
+ *               `t.length>0?t[t.length-1].event.id:null` (must redden the fresh-load force-select pins —
+ *               only a MULTI list with >1 event can discriminate);
+ *   shared-plans: in the event-lazy chunk replace `t[String(this.state.selectedEventId)]`
+ *               with `t["80639"]` (must redden the per-event isolation pins: B's edit lands on A);
+ *   flat-bonus: in the selectors chunk replace `I(e.dropExpected)*(I(e.num)+x.validate(t,` with
+ *               `I(e.dropExpected)*I(e.num)+x.validate(t,`
+ *               (bonus leaves the stack — must redden the farm results pin 104→163);
+ *   header-opener no-op: in the event-lazy chunk replace `,A(t),t}` (the end of the farm card's
+ *               header builder) with `,t}` — the header never binds click/Enter/Space, so the
+ *               modal-access pins go red while the tier Required keeps working;
+ *   secondary-wrong-currency: in the event-lazy chunk replace `I(n,e.secondary.currencyId)` with
+ *               `I(n,t.id)` — the secondary line resolves to the CARD's currency, so the drop-line
+ *               pins (secondary id + art + amount) go red;
+ *   costume:    in the event-lazy chunk replace `costume_20470011.webp` with `costume_20479999.webp`
+ *               (must redden the costume-face src/decode pin and the zero-4xx absence pin).
  *
  * WARNING: the HMR dev server is not a valid target (see scripts/verify_render.js): it creates
  * duplicate module instances, so what it renders is not what ships.
@@ -87,23 +108,58 @@
  */
 
 import puppeteer from "puppeteer";
+import fs from "node:fs";
 import { EVENT_SHOP_DATA } from "../src/scripts/data/event_shop.js";
-import { EVENT_SHOP_STORAGE_KEY, STORAGE_KEY, QUEST_DROPS, TIER_COLORS } from "../src/scripts/constants.js";
+import {
+  EVENT_SHOP_STORAGE_KEY,
+  STORAGE_KEY,
+  QUEST_DROPS,
+  TIER_COLORS,
+  IMAGE_VERSION,
+  DEBOUNCE_MS,
+} from "../src/scripts/constants.js";
 
 const argv = process.argv.slice(2);
 const LEGACY = argv.includes("--legacy");
+const MULTI = argv.includes("--multi");
+const MODE = LEGACY ? "legacy" : MULTI ? "multi" : "main";
 const url = argv.find((a) => !a.startsWith("--")) || "http://localhost:4173/fgo-calculator/";
 const errors = [];
 const KEY = EVENT_SHOP_STORAGE_KEY;
 const SETTLE_MS = 350; // DEBOUNCE_MS is 100; 350 leaves the commit room on a loaded machine.
 const TIERS = ["bronze", "silver", "gold"];
 
-const DATA = EVENT_SHOP_DATA;
-const ITEMS = DATA.items || [];
-const CURRENCIES = DATA.currencies || [];
-const EVENT_ID = DATA.event ? DATA.event.id : null;
+/* --- the events[] contract. Frozen ids are looked up BY ID; a missing id is snapshot drift and is
+   reported as such, never silently skipped. MULTI reads the fixture the patched copy was built from —
+   the same JSON literal injected into the chunk, so DOM and oracle share one source of truth. --- */
+const FIXTURE_PATH = process.env.QA_MULTI_FIXTURE || "/tmp/opencode/qa/fixtures/multi_events.json";
+const DATA = MULTI ? JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8")) : EVENT_SHOP_DATA;
+const EVENTS = Array.isArray(DATA.events) ? DATA.events : [];
+const PIN_LATEST = 80639; // the planner scene event (buy-out truth, farm data, costume row)
+const PIN_OTHER = 80630; // MULTI: single gold currency, farm null, EN currency name
+const PIN_MULTI = 80379; // MULTI: two gold currencies (first-match), no bronze/silver
+const PIN_ZERO = 80292; // MULTI: QP ships background "zero"
+const PIN_DASH = 80555; // MULTI: synthetic — the live farm rows with every secondary deleted
+const findEvent = (id, label) => {
+  const snap = EVENTS.find((e) => e.event.id === id);
+  if (!snap) {
+    console.error(`[ERROR] planner: no event ${id} (${label}) in EVENT_SHOP_DATA.events — snapshot drifted`);
+    process.exit(1);
+  }
+  return snap;
+};
+const EACTIVE = LEGACY ? null : findEvent(PIN_LATEST, "planner scenes");
+const EOTHER = LEGACY || !MULTI ? null : findEvent(PIN_OTHER, "null-farm scenes");
+const EMULTI = LEGACY || !MULTI ? null : findEvent(PIN_MULTI, "first-match / label-restore scenes");
+const EZERO = LEGACY || !MULTI ? null : findEvent(PIN_ZERO, "zero-background scenes");
+const EDASH = LEGACY || !MULTI ? null : findEvent(PIN_DASH, "secondary-null dash scenes");
+const ACTIVE_ID = EACTIVE ? EACTIVE.event.id : null;
+const CURRENCIES = EACTIVE ? EACTIVE.currencies : [];
+const ITEMS = EACTIVE ? EACTIVE.items : [];
+const FARM = EACTIVE ? EACTIVE.farm : {};
 const byId = new Map(ITEMS.map((item) => [String(item.id), item]));
 const SHOP_MAX = 999999;
+const LATEST = EVENTS.length ? EVENTS.reduce((a, b) => (b.event.startedAt > a.event.startedAt ? b : a)) : null;
 
 /* --- reference math, deliberately a second implementation of the contract --- */
 const maxRequire = (item) => (item.limitNum > 0 ? item.limitNum : SHOP_MAX);
@@ -112,10 +168,10 @@ const refClamp = (item, value) => {
   const clamped = Number.isNaN(num) ? 0 : Math.min(maxRequire(item), Math.max(0, num));
   return Math.floor(clamped);
 };
-const refTotals = (requires) => {
+const refTotals = (items, currencies, requires) => {
   const totals = {};
-  for (const currency of CURRENCIES) totals[String(currency.id)] = 0;
-  for (const item of ITEMS) {
+  for (const currency of currencies) totals[String(currency.id)] = 0;
+  for (const item of items) {
     const count = requires[String(item.id)] || 0;
     totals[String(item.cost.itemId)] += count * item.cost.amount;
   }
@@ -127,10 +183,26 @@ const refClear = (items) => {
   return requires;
 };
 const fmtRef = (value) => Number(value).toLocaleString("en-US");
-const currencyOf = (item) => CURRENCIES.find((c) => String(c.id) === String(item.cost.itemId));
 const tierOfCurrency = (currency) => currency.background;
-const itemsOfCurrency = (currencyId) => ITEMS.filter((item) => String(item.cost.itemId) === String(currencyId));
+const currencyOfItem = (item) => CURRENCIES.find((c) => String(c.id) === String(item.cost.itemId));
+const itemsOfCurrency = (currencyId, items = ITEMS) =>
+  items.filter((i) => String(i.cost.itemId) === String(currencyId));
+const currencyForTierRef = (currencies, tier) => currencies.find((c) => c.background === tier) || null;
 const num = (text) => Number(String(text).replace(/[^0-9.-]/g, ""));
+
+/* Independent farmPlan — never EventShop's own. Keys: String(currencyId). */
+const refFarmRow = (entry, total, held, bonus) => {
+  const deficit = Math.max(0, (total || 0) - (held || 0));
+  const perRun = entry ? entry.dropExpected * (entry.num + bonus) : 0;
+  const runs = entry && perRun > 0 ? Math.ceil(deficit / perRun) : null;
+  return { deficit, perRun, runs, ap: runs === null ? null : runs * entry.ap };
+};
+/* Amendment I drop line: "[icon] {num}(+{bonus}) {dropExpected×(num+bonus)} / run", 2dp, the same
+   multiply farmPlan prices with — formatted exactly the way toLocaleString("en-US", 2..2) does. */
+const dropStackRef = (num_, bonus) => `${num_}(+${bonus})`;
+const dropValueRef = (dropExpected, num_, bonus) =>
+  (dropExpected * (num_ + bonus)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+  " / run";
 
 /* Amendment C: the stub badge's background is TIER_COLORS[tier] applied through style.background,
    which the CSSOM normalises to rgb(...) — compare against the same normalisation here. */
@@ -157,28 +229,85 @@ for (const [quest, drops] of Object.entries(QUEST_DROPS)) {
   CONTAINER_TIER[`${quest}Quest_${drops.secondary}_icon`] = drops.secondary;
 }
 
-/* Amendment B data truth (plan round tracker, id asc): never trust the UI against itself. */
 const BUY_ALL_TRUTH = { 94164000: 5740, 94164001: 5390, 94164002: 6610 };
 const BUY_ALL_NAMES = { 94164000: "MISOおでん", 94164001: "SHIMONITAネギ", 94164002: "YAKIまんじゅう" };
+/* Data truth for the pinned planner event (plan tracker, id asc): never trust the UI against
+   itself, and never trust the pinned truth against a drifted snapshot either. ap/sampleRuns stay in
+   the schema (Amendment I3 removed them from the DISPLAY only), so they are pinned as live figures,
+   not as rendered text. */
+const FARM_TRUTH = {
+  94164000: {
+    questName: "【GUNMA巡り】だるまを買いにいこう",
+    recommendLv: "70",
+    ap: 40,
+    dropExpected: 10.8539,
+    num: 3,
+    secondary: { currencyId: 94164001, dropExpected: 2.1124, num: 3 },
+  },
+  94164001: {
+    questName: "【GUNMA巡り】こんにゃくとネギ",
+    recommendLv: "70",
+    ap: 40,
+    dropExpected: 11.2125,
+    num: 3,
+    secondary: { currencyId: 94164002, dropExpected: 2.125, num: 3 },
+  },
+  94164002: {
+    questName: "【GUNMA巡り】槍をスキーに連れていけ",
+    recommendLv: "70",
+    ap: 40,
+    dropExpected: 10.8095,
+    num: 3,
+    secondary: { currencyId: 94164000, dropExpected: 2.3537, num: 3 },
+  },
+};
 
-/* Scene rows: the gold draft carries the clamp suite, the bronze draft the commit scenes. */
-const goldCurrency = CURRENCIES.find((c) => c.background === "gold");
-const silverCurrency = CURRENCIES.find((c) => c.background === "silver");
-const bronzeCurrency = CURRENCIES.find((c) => c.background === "bronze");
+/* Scene rows on the pinned event: the gold draft carries the clamp suite, the bronze draft the
+   commit scenes. The gold limited-1 row is the costume row itself (Amendment F pins its art). */
+const goldCurrency = currencyForTierRef(CURRENCIES, "gold");
+const silverCurrency = currencyForTierRef(CURRENCIES, "silver");
+const bronzeCurrency = currencyForTierRef(CURRENCIES, "bronze");
 const goldItems = goldCurrency ? itemsOfCurrency(String(goldCurrency.id)) : [];
 const bronzeItems = bronzeCurrency ? itemsOfCurrency(String(bronzeCurrency.id)) : [];
-const clampRow = goldItems.find((i) => i.limitNum === 1); // + twice must stop at 1
+const clampRow = goldItems.find((i) => i.limitNum === 1); // + twice must stop at 1 — the costume
 const draftFree = goldItems.find((i) => i.limitNum === 0); // unlimited row in the gold draft
-const costumeRow = goldItems.find((i) => i.purchaseType === "costumeRelease");
 const equipRow = goldItems.find((i) => i.purchaseType === "servant" && /equip_/.test(i.icon || ""));
 const multiSetRow = goldItems.find((i) => i.setNum > 1);
 const freeRow = bronzeItems.find((i) => i.limitNum === 0); // unlimited row in the bronze draft
 const bronzeSteppable = bronzeItems.find((i) => maxRequire(i) >= 2); // write-discipline stepper row
 const silverFree = silverCurrency ? itemsOfCurrency(String(silverCurrency.id)).find((i) => maxRequire(i) > 3) : null;
 
-if (!LEGACY && (!clampRow || !draftFree || !freeRow || !bronzeSteppable || CURRENCIES.length < 3)) {
-  console.error("[ERROR] planner: the data snapshot has no limited/unlimited rows to pin — gate is blind");
-  process.exit(1);
+if (!LEGACY) {
+  const blind = [];
+  if (!clampRow) blind.push("no gold limit-1 (costume) row");
+  if (!draftFree) blind.push("no gold unlimited row");
+  if (!freeRow) blind.push("no bronze unlimited row");
+  if (!bronzeSteppable) blind.push("no steppable bronze row");
+  if (CURRENCIES.length < 3) blind.push("fewer than 3 currencies on the pinned event");
+  /* Amendment J shipped: the live snapshot carries ONLY the farm event. The pruned events exist in
+     this gate only inside the MULTI patched copy — the isolation/collision/zero-bg/null-farm scenes
+     run there, never silently skipped. */
+  const wantIds = MULTI ? [80639, 80630, 80379, 80292, 80555] : [80639];
+  if (EVENTS.length !== wantIds.length)
+    blind.push(`${EVENTS.length} events in ${MODE} mode, want ${wantIds.length} (${wantIds.join(",")})`);
+  else if (EVENTS.map((e) => e.event.id).join() !== wantIds.join())
+    blind.push(`events[] are ${EVENTS.map((e) => e.event.id).join(",")}, want ${wantIds.join(",")} in order`);
+  if (LATEST.event.id !== EVENTS[0].event.id) blind.push("events[] is not sorted newest-first");
+  if (blind.length) {
+    console.error(`[ERROR] planner: the snapshot has no rows to pin — gate is blind: ${blind.join("; ")}`);
+    process.exit(1);
+  }
+  for (const [id, truth] of Object.entries(BUY_ALL_TRUTH)) {
+    const currency = CURRENCIES.find((c) => String(c.id) === id);
+    if (!currency || currency.name !== BUY_ALL_NAMES[id]) {
+      console.error(`[ERROR] planner: pinned currency ${id} drifted — re-verify before pinning`);
+      process.exit(1);
+    }
+    if (refTotals(ITEMS, CURRENCIES, refClear(ITEMS))[id] !== truth) {
+      console.error(`[ERROR] planner: reference buy-all for ${id} drifted from ${truth}`);
+      process.exit(1);
+    }
+  }
 }
 
 const sel = {
@@ -306,8 +435,8 @@ try {
     errors.push(`harness click: ${target} never became a stable on-screen target — ${JSON.stringify(detail)}`);
   };
 
-  /* The whole Amendment B read surface: tier boxes (values, geometry, computed cues, icon plates),
-     quest drops, planner storage, legacy calculator storage, tab state. */
+  /* The whole read surface: tier boxes (values, geometry, computed cues, icon plates), quest drops,
+     farm grid, results, the event select, planner storage, legacy calculator storage, tab state. */
   const readTier = () =>
     page.evaluate(() => {
       const box = (el) =>
@@ -345,6 +474,8 @@ try {
         tiers[t] = {
           name: card ? (card.querySelector(".material-name") || {}).textContent : null,
           needValue: need ? need.value : null,
+          heldValue: held ? held.value : null,
+          bonusValue: bonus ? bonus.value : null,
           needReadOnly: need ? need.readOnly : null,
           needDisplayClass: need ? need.classList.contains("eshop-require-display") : null,
           needFieldClass: need ? need.classList.contains("material-input-box-field") : null,
@@ -376,9 +507,98 @@ try {
         }
         quests[t] = { title: titleEl ? titleEl.textContent : null, icons };
       }
+      const results = {};
+      for (const t of ["bronze", "silver", "gold"]) {
+        results[t] = {
+          deficit: (document.getElementById(`${t}Deficit`) || {}).textContent,
+          play: (document.getElementById(`${t}Play`) || {}).textContent,
+          label: (document.getElementById(`${t}Label`) || {}).textContent,
+          deficitLabel: (document.querySelector(`#deficitGrid [data-tier="${t}"] .deficit-label`) || {}).textContent,
+          questName: (document.querySelector(`#questGrid [data-tier="${t}"] .quest-name`) || {}).textContent,
+        };
+      }
+      const selectEl = document.getElementById("eventSelect");
+      const select = selectEl
+        ? {
+            value: selectEl.value,
+            disabled: selectEl.disabled,
+            options: [...selectEl.querySelectorAll("option")].map((o) => ({
+              value: o.value,
+              text: o.textContent,
+              disabled: o.disabled,
+            })),
+            selectClass: selectEl.className,
+            rowClass: !!selectEl.closest(".input-row"),
+            labelFor: !!document.querySelector('label.input-label[for="eventSelect"]'),
+          }
+        : null;
+      const farmGrid = document.getElementById("farmGrid");
+      const farmCard = farmGrid ? farmGrid.closest(".card") : null;
+      const farm = farmCard
+        ? {
+            gridDisplay: getComputedStyle(farmGrid).display,
+            baseDisplay: getComputedStyle(farmCard.querySelector(".base-row")).display,
+            questDisplay: getComputedStyle(document.getElementById("questDropsGrid")).display,
+            title: (farmCard.querySelector(".card-title") || {}).textContent?.trim() || null,
+            cards: [...farmGrid.querySelectorAll(".farm-card")].map((c) => {
+              const header = c.querySelector(".farm-card-title");
+              const hImg = header ? header.querySelector("img") : null;
+              return {
+                tier: c.dataset.tier,
+                name: (c.querySelector(".farm-card-name") || {}).textContent || null,
+                lines: [...c.querySelectorAll(".farm-stat")].map((s) => s.textContent),
+                header: header
+                  ? {
+                      role: header.getAttribute("role"),
+                      tabindex: header.getAttribute("tabindex"),
+                      haspopup: header.getAttribute("aria-haspopup"),
+                      ariaLabel: header.getAttribute("aria-label"),
+                      currencyId: header.dataset.currencyId || null,
+                      cursor: getComputedStyle(header).cursor,
+                      imgSrc: hImg ? hImg.getAttribute("src") : null,
+                      imgW: hImg ? hImg.naturalWidth : 0,
+                      text: header.textContent,
+                    }
+                  : null,
+                drops: [...c.querySelectorAll(".drop-line")].map((d) => {
+                  const img = d.querySelector("img");
+                  return {
+                    kind: d.dataset.dropLine,
+                    currencyId: d.dataset.currencyId || null,
+                    dropExpected: d.dataset.dropExpected || null,
+                    num: d.dataset.num || null,
+                    material: (d.querySelector(".drop-material") || {}).textContent || null,
+                    value: (d.querySelector(".drop-value") || {}).textContent || null,
+                    imgSrc: img ? img.getAttribute("src") : null,
+                    imgW: img ? img.naturalWidth : 0,
+                  };
+                }),
+                inputs: [...c.querySelectorAll("input")].map((i) => ({
+                  id: i.id,
+                  type: i.type,
+                  readOnly: i.readOnly,
+                  displayClass: i.classList.contains("eshop-require-display"),
+                  label: (() => {
+                    const box = i.closest(".material-input-box");
+                    const l = box ? box.querySelector(".material-input-box-label") : null;
+                    return l ? l.textContent : null;
+                  })(),
+                })),
+                text: c.textContent,
+                imgSrc: hImg ? hImg.getAttribute("src") : null,
+                imgW: hImg ? hImg.naturalWidth : 0,
+                borderColor: getComputedStyle(c).borderTopColor,
+                badgeCount: c.querySelectorAll(".icon-fallback").length,
+              };
+            }),
+          }
+        : null;
       return {
         tiers,
         quests,
+        results,
+        select,
+        farm,
         storage: localStorage.getItem("fgo_event_shop_data"),
         legacyStorage: localStorage.getItem("fgo_calculator_data"),
         activeTab: (document.querySelector(".tab-btn.active") || {}).dataset?.tab || null,
@@ -450,8 +670,6 @@ try {
         errors.push(
           `${label}: #${id} badge collapsed to ${box.badgeW}×${box.badgeH}px — the .icon-fallback CSS is gone`,
         );
-      /* and it must FILL the container: .icon-fallback is absolutely inset 0, width/height 100%
-         (2px rounding slack). A badge that survives as a strip means that rule went with .bg-layer. */
       if (box.badgeCount === 1 && (Math.abs(box.badgeW - box.boxW) > 2 || Math.abs(box.badgeH - box.boxH) > 2))
         errors.push(
           `${label}: #${id} badge is ${box.badgeW}×${box.badgeH}px in a ${box.boxW}×${box.boxH}px box, want it to fill the box`,
@@ -459,18 +677,16 @@ try {
     }
   };
 
-  /* Event mode contract: the badge is replaced by decoded currency art in the same tick, so no
-     container may still hold one, and each must hold exactly one img that decoded. Decode is
-     optional for late re-reads, where a lazy img below the fold has not been fetched yet. */
-  const assertEventBoxes = (boxes, label, checkDecode = true) => {
+  /* Event mode contract: the badge is replaced by currency art in the same tick, so no container
+     may still hold one, and each must hold exactly one img of the mapped currency's file. Decode is
+     demanded only where the user can see the art — Amendment D hides #questDropsGrid, and Chrome
+     never fetches a display:none lazy img, so the hidden spans pin hydration, not pixels. */
+  const assertEventBoxes = (boxes, label, wantCurrencies) => {
     for (const id of ICON_CONTAINERS) {
       const box = boxes[id];
       const tier = CONTAINER_TIER[id];
-      const currency = CURRENCIES.find((c) => c.background === tier);
-      if (!currency) {
-        errors.push(`${label}: no currency maps to tier ${tier} — the event-art pin is blind, snapshot drifted`);
-        continue;
-      }
+      const currency = wantCurrencies.find((c) => c.background === tier);
+      if (!currency) continue; // unmapped tier: the badge contract (stub assert) owns it
       if (!box) {
         errors.push(`${label}: #${id} is missing from the document`);
         continue;
@@ -483,8 +699,6 @@ try {
         errors.push(
           `${label}: #${id} holds ${box.imgCount} img(s) ${JSON.stringify(box.imgSrcs)}, want the single event currency art`,
         );
-      if (checkDecode && box.imgW.some((w) => !(w > 0)))
-        errors.push(`${label}: #${id} event img did not decode (naturalWidth ${JSON.stringify(box.imgW)})`);
       const wantFile = `event_shop/${currency.icon.split("/").pop()}`;
       if (!box.imgSrcs.some((s) => (s || "").includes(wantFile)))
         errors.push(`${label}: #${id} img srcs ${JSON.stringify(box.imgSrcs)}, want ${wantFile}`);
@@ -504,16 +718,30 @@ try {
   };
 
   /* The static skeleton: dead card surfaces must not exist, the modal chrome must, and the first
-     card of the Event panel is the requirements calculator the planner used to sit above. */
+     card of #panel-event is now the Event Select card (Amendment G) with the calculator second. */
   const readPage = () =>
     page.evaluate(
       (deadIds, deadSel) => {
         const ids = {};
         for (const id of deadIds) ids[id] = !!document.getElementById(id);
+        const panel = document.getElementById("panel-event");
+        const cards = [...panel.querySelectorAll(":scope > .card")];
+        const titles = cards.map(
+          (c) =>
+            (
+              c.querySelector(":scope > .card-inner > .card-title") ||
+              c.querySelector(".card-title") ||
+              {}
+            ).textContent?.trim() || null,
+        );
         return {
           deadIds: ids,
           deadClassCount: document.querySelectorAll(deadSel).length,
-          firstCardTitle: (document.querySelector("#panel-event .card .card-title") || {}).textContent?.trim() || null,
+          firstCardId: cards[0] ? cards[0].id : null,
+          firstCardTitle: titles[0] || null,
+          secondCardTitle: titles[1] || null,
+          cardTitles: titles,
+          selectCardHasSelect: !!(cards[0] && cards[0].querySelector("#eventSelect")),
           modalPresent: !!document.getElementById("eventShopModal"),
           modalList: !!document.getElementById("eventShopModalList"),
           footerBtns: ["Default", "SelectAll", "Cancel", "Done"].map(
@@ -571,7 +799,7 @@ try {
         for (const p of props) out[p] = rule.style.getPropertyValue(p);
         return out;
       };
-      const out = { hover: null, focus: null, requireBase: null, iconBase: null, iconEvent: null };
+      const out = { hover: null, focus: null, requireBase: null, iconBase: null, iconEvent: null, farmFallback: null };
       const walk = (rules, mediaText) => {
         for (const r of rules) {
           if (r.media) {
@@ -606,6 +834,7 @@ try {
             };
           if (s === ".material-icon") out.iconBase = { decl: decl(r, ["background", "background-color"]) };
           if (s === ".material-icon--event") out.iconEvent = { decl: decl(r, ["background", "background-color"]) };
+          if (s === ":where(.farm-card)") out.farmFallback = { decl: decl(r, ["--tier-color", "--tier-text"]) };
         }
       };
       for (const sheet of document.styleSheets) {
@@ -618,18 +847,19 @@ try {
       return out;
     });
 
-  /* Asserts the committed plan against the reference plan through the Amendment B surfaces only:
-     the tier Required values, the planner storage blob and the legacy calculator state. */
-  const assertPlan = (tierState, expected, label) => {
-    const want = refTotals(expected);
+  /* Asserts the committed plan against the reference plan through the tier boxes, the planner
+     storage blob (Amendment G shape) and the legacy calculator mirror. */
+  const assertPlan = (tierState, expected, label, snapshot = EACTIVE) => {
+    const want = refTotals(snapshot.items, snapshot.currencies, expected);
     if (tierState.activeTab && tierState.activeTab !== "event") {
       errors.push(
         `${label}: the active tab is ${JSON.stringify(tierState.activeTab)} — a modal gesture moved the user off the Event tab`,
       );
     }
-    for (const currency of CURRENCIES) {
+    for (const currency of snapshot.currencies) {
       const tier = tierOfCurrency(currency);
       const t = tierState.tiers[tier];
+      if (!t) continue; // a tier the boxes do not own (no card) is asserted nowhere else
       if (t.needValue !== String(want[String(currency.id)])) {
         errors.push(
           `${label}: ${tier} Required reads ${JSON.stringify(t.needValue)}, want ${want[String(currency.id)]}`,
@@ -642,7 +872,7 @@ try {
     if (tierState.legacyStorage) {
       try {
         const saved = JSON.parse(tierState.legacyStorage);
-        for (const currency of CURRENCIES) {
+        for (const currency of snapshot.currencies) {
           const tier = tierOfCurrency(currency);
           if (saved[`${tier}Need`] !== want[String(currency.id)]) {
             errors.push(
@@ -657,15 +887,29 @@ try {
     return want;
   };
 
-  const assertStorage = (raw, expected, label, { exact = false } = {}) => {
+  /* Amendment G storage: { selectedEventId, plans: { [eventId]: { requires, held, bonus } } }. */
+  const assertStorage = (raw, expected, label, { eventId = ACTIVE_ID, exact = false } = {}) => {
     const stored = raw ? JSON.parse(raw) : null;
     if (!stored) {
       errors.push(`${label}: storage blob missing`);
       return null;
     }
-    if (stored.eventId !== EVENT_ID)
-      errors.push(`${label}: stored eventId ${JSON.stringify(stored.eventId)}, want ${EVENT_ID}`);
-    const req = stored.requires || {};
+    if (stored.selectedEventId !== eventId)
+      errors.push(`${label}: stored selectedEventId ${JSON.stringify(stored.selectedEventId)}, want ${eventId}`);
+    if (!stored.plans || typeof stored.plans !== "object" || Array.isArray(stored.plans)) {
+      errors.push(`${label}: storage plans map missing — ${JSON.stringify(stored.plans)}`);
+      return stored;
+    }
+    for (const key of Object.keys(stored.plans)) {
+      if (!EVENTS.some((e) => String(e.event.id) === key))
+        errors.push(`${label}: storage holds plan for unknown event ${key}`);
+    }
+    const plan = stored.plans[String(eventId)] || {};
+    for (const field of ["requires", "held", "bonus"]) {
+      if (plan[field] !== undefined && (typeof plan[field] !== "object" || plan[field] === null))
+        errors.push(`${label}: plans[${eventId}].${field} is not an object — ${JSON.stringify(plan[field])}`);
+    }
+    const req = plan.requires || {};
     for (const [id, value] of Object.entries(expected)) {
       if ((req[id] ?? 0) !== value)
         errors.push(`${label}: storage row ${id} is ${JSON.stringify(req[id])}, want ${value}`);
@@ -673,7 +917,7 @@ try {
     for (const [id, value] of Object.entries(req)) {
       if (value !== 0 && !(id in expected))
         errors.push(`${label}: storage holds unplanned row ${id} = ${JSON.stringify(value)}`);
-      if (!byId.has(id)) errors.push(`${label}: storage holds unknown item id ${id}`);
+      if (!byId.has(id)) errors.push(`${label}: storage holds item id ${id} the selected event never sold`);
     }
     if (exact) {
       const wantKeys = Object.keys(expected)
@@ -758,6 +1002,18 @@ try {
     await wait(SETTLE_MS);
   };
 
+  /* Amendment G: switch the working event through the real select control (fires change). */
+  const switchEvent = async (eventId, label) => {
+    await page.select("#eventSelect", String(eventId));
+    await wait(SETTLE_MS);
+    const st = await page.evaluate(() => {
+      const s = document.getElementById("eventSelect");
+      return { value: s ? s.value : null, disabled: s ? s.disabled : null };
+    });
+    if (st.value !== String(eventId))
+      errors.push(`${label}: #eventSelect value is ${JSON.stringify(st.value)} after selecting ${eventId}`);
+  };
+
   const seedStorage = async (raw) => {
     await page.evaluate(
       (k, value) => {
@@ -796,6 +1052,7 @@ try {
           displayClass: need ? need.classList.contains("eshop-require-display") : null,
           activeTab: (document.querySelector(".tab-btn.active") || {}).dataset?.tab || null,
           panelShown: getComputedStyle(document.getElementById("panel-event")).display !== "none",
+          selectReady: !!document.querySelector("#eventSelect option"),
         };
       });
     let st = await visible();
@@ -805,6 +1062,7 @@ try {
       s.hasNeed &&
       s.activeTab === "event" &&
       s.panelShown &&
+      s.selectReady &&
       (LEGACY ? s.displayClass === false : s.displayClass === true);
     if (!ready(st)) {
       await safeClick('.tab-btn[data-tab="event"]');
@@ -817,6 +1075,7 @@ try {
             return (
               document.querySelector(".tab-btn.active")?.dataset.tab === "event" &&
               getComputedStyle(document.getElementById("panel-event")).display !== "none" &&
+              !!document.querySelector("#eventSelect option") &&
               (legacy ? !hasClass : hasClass)
             );
           },
@@ -873,7 +1132,7 @@ try {
   await page.reload({ waitUntil: "networkidle0" });
 
   if (LEGACY) {
-    /* ================= LEGACY FALLBACK (stub snapshot, patched bundle) ================= */
+    /* ================= LEGACY FALLBACK (stub snapshot: events emptied, patched bundle) ========= */
     const t0 = Date.now();
     await ensureEventTab();
     console.log(`NOTE: legacy mode — tab ready in ${Date.now() - t0}ms`);
@@ -881,14 +1140,46 @@ try {
     const survivors = DEAD_IDS.filter((id) => pg.deadIds[id]);
     if (survivors.length) errors.push(`legacy: planner card ids still present ${JSON.stringify(survivors)}`);
     if (pg.deadClassCount) errors.push(`legacy: ${pg.deadClassCount} dead card-class node(s) in the document`);
-    if (pg.firstCardTitle !== "Shop Requirements")
-      errors.push(`legacy: first card title is ${JSON.stringify(pg.firstCardTitle)}, want "Shop Requirements"`);
+    if (pg.firstCardId !== "eventSelectCard" || pg.firstCardTitle !== "Select Event")
+      errors.push(
+        `legacy: first card is ${JSON.stringify([pg.firstCardId, pg.firstCardTitle])}, want ["eventSelectCard","Select Event"] — the card ships regardless of events`,
+      );
+    if (pg.secondCardTitle !== "Shop Requirements")
+      errors.push(`legacy: second card title is ${JSON.stringify(pg.secondCardTitle)}, want "Shop Requirements"`);
     if (!pg.modalPresent || !pg.modalList)
       errors.push("legacy: #eventShopModal markup is static and must ship regardless of data");
 
-    const tier = await readTier();
+    /* zero events → the select is a single DISABLED "No active event" option, nothing else */
+    const tier0 = await readTier();
+    const st = tier0.select;
+    if (!st) errors.push("legacy: #eventSelect is missing — the Event Select card must always render");
+    else {
+      if (!st.disabled) errors.push("legacy: #eventSelect is enabled with zero events — nothing is selectable");
+      if (st.options.length !== 1 || st.options[0].text !== "No active event" || !st.options[0].disabled)
+        errors.push(`legacy: select options are ${JSON.stringify(st.options)}, want one disabled "No active event"`);
+    }
+
+    /* Amendment D stub chrome: the legacy card is the page as it was — base-row + quest grid
+       visible, #farmGrid hidden and EMPTY (hydrateFarmGrid is event-mode only), title untouched. */
+    const farm0 = tier0.farm;
+    if (!farm0) errors.push("legacy: #farmGrid or its card vanished from the static markup");
+    else {
+      if (farm0.gridDisplay !== "none")
+        errors.push(
+          `legacy: #farmGrid display is ${farm0.gridDisplay}, want none — the farm cards are event-mode only`,
+        );
+      if (farm0.cards.length !== 0)
+        errors.push(`legacy: #farmGrid holds ${farm0.cards.length} farm card(s) under a stub, want 0`);
+      if (farm0.baseDisplay === "none")
+        errors.push("legacy: the base/primary/secondary row is hidden — the stub must show the legacy calculator");
+      if (farm0.questDisplay === "none")
+        errors.push("legacy: #questDropsGrid is hidden — the stub must show the legacy drop grid");
+      if (farm0.title !== "Drop Rates per Run")
+        errors.push(`legacy: drop-rate card title is ${JSON.stringify(farm0.title)}, want "Drop Rates per Run"`);
+    }
+
     for (const t of TIERS) {
-      const td = tier.tiers[t];
+      const td = tier0.tiers[t];
       if (td.needValue !== "0")
         errors.push(`legacy: ${t} Required reads ${JSON.stringify(td.needValue)} at cold start, want "0"`);
       if (td.needReadOnly !== false)
@@ -905,14 +1196,12 @@ try {
         errors.push(`legacy: ${t} generic icon plate is ${td.iconBoxBg}, want the grey #e5e7eb`);
       if (td.name !== t.charAt(0).toUpperCase() + t.slice(1))
         errors.push(`legacy: ${t} card name is ${JSON.stringify(td.name)}`);
-      /* Amendment C: the generic bg/fg pair is deleted — the stub box holds a badge, nothing else */
       if (td.imgs.length)
         errors.push(
           `legacy: ${t} icon box shows ${td.imgs.length} img(s) ${JSON.stringify(td.imgs.map((i) => i.src || ""))}, want 0 — the material mockup must not come back`,
         );
       if (!td.badge)
         errors.push(`legacy: ${t} icon box has no .icon-fallback badge — buildTierFallback never ran on it`);
-      /* parity by construction holds in legacy too: one shared field class */
       if (!(td.needBox.h > 0) || td.needBox.h !== td.heldBox.h || td.needBox.h !== td.bonusBox.h)
         errors.push(
           `legacy: ${t} box heights differ — need ${td.needBox.h} held ${td.heldBox.h} bonus ${td.bonusBox.h}`,
@@ -933,20 +1222,18 @@ try {
     /* a stub snapshot maps no currency: clicking a Required must NOT open the modal */
     await safeClick("#bronzeNeed");
     await wait(SETTLE_MS);
-    const modalAfterTierClick = await readModal();
-    if (modalAfterTierClick.open)
+    if ((await readModal()).open)
       errors.push("legacy: clicking a tier Required opened the currency modal — no currency is mapped under a stub");
     await page.focus("#goldNeed");
     await page.keyboard.press("Enter");
     await wait(SETTLE_MS);
     if ((await readModal()).open) errors.push("legacy: Enter on a stub Required opened the modal");
-    /* Amendment C stub pins: 9 tier-colour letter badges, zero imgs, and no request for the
-       deleted mockup anywhere in the run. */
+
     const boxes = await readIconBoxes();
     assertStubBadges(boxes, "legacy");
     assertMaterialAbsence("legacy");
     for (const [quest, drops] of Object.entries(QUEST_DROPS)) {
-      const qd = tier.quests[quest];
+      const qd = tier0.quests[quest];
       const wantTitle = `${quest.charAt(0).toUpperCase() + quest.slice(1)} Quest`;
       if (qd.title !== wantTitle)
         errors.push(`legacy: ${quest} quest title is ${JSON.stringify(qd.title)}, want ${JSON.stringify(wantTitle)}`);
@@ -969,11 +1256,59 @@ try {
     );
     if (!pg.calculatorBtn || !pg.questRows)
       errors.push("legacy: the tier/run calculator is broken next to the stub planner");
+
+    /* OLD math + OLD persistence: needs typed above (7×3 editable pins), reset then run the legacy
+       model through the boxes it owns. The farm plan ("—" / "· AP" labels) must never appear. */
+    await page.evaluate(
+      (k, lk) => {
+        localStorage.removeItem(k);
+        localStorage.removeItem(lk);
+      },
+      KEY,
+      STORAGE_KEY,
+    );
+    await page.reload({ waitUntil: "networkidle0" });
+    await ensureEventTab();
+    await typeInto("#bronzeNeed", "100");
+    await safeClick("#calculateBtn");
+    await wait(SETTLE_MS);
+    const legacyRun = await readTier();
+    if (legacyRun.results.bronze.deficit !== "100")
+      errors.push(`legacy math: bronze deficit reads ${JSON.stringify(legacyRun.results.bronze.deficit)}, want "100"`);
+    if (!/^\d+$/.test(legacyRun.results.bronze.play || ""))
+      errors.push(
+        `legacy math: bronze runs is ${JSON.stringify(legacyRun.results.bronze.play)} — the legacy calcOptimalRuns path (an integer per tier) must answer, not the farm "—"`,
+      );
+    for (const t of TIERS) {
+      const label = legacyRun.results[t].label || "";
+      if (/AP|—|No drop data yet/.test(label))
+        errors.push(
+          `legacy math: ${t} label is ${JSON.stringify(label)} — stub mode must keep the plain run/runs wording`,
+        );
+      if (legacyRun.results[t].deficitLabel !== t.charAt(0).toUpperCase() + t.slice(1))
+        errors.push(
+          `legacy math: ${t} deficit label is ${JSON.stringify(legacyRun.results[t].deficitLabel)}, want the tier word under a stub`,
+        );
+      if (legacyRun.results[t].questName !== `${t.charAt(0).toUpperCase() + t.slice(1)} Quest`)
+        errors.push(
+          `legacy math: ${t} quest-name is ${JSON.stringify(legacyRun.results[t].questName)}, want the legacy quest wording`,
+        );
+    }
+    if (legacyRun.storage !== null)
+      errors.push(
+        `legacy math: the planner key was written under a stub (${JSON.stringify(legacyRun.storage && legacyRun.storage.slice(0, 60))}) — legacy mode must use the OLD blob only`,
+      );
+    const legacyBlob = legacyRun.legacyStorage ? JSON.parse(legacyRun.legacyStorage) : null;
+    if (!legacyBlob || legacyBlob.bronzeNeed !== 100 || typeof legacyBlob.baseDrop !== "number")
+      errors.push(
+        `legacy math: fgo_calculator_data is ${JSON.stringify(legacyRun.legacyStorage)} — want the old Persistence blob with bronzeNeed 100`,
+      );
+
     if (pageErrors.length) for (const e of pageErrors) errors.push(`legacy pageerror: ${e}`);
     if (consoleErrors().length) errors.push(`legacy console errors: ${JSON.stringify(consoleErrors().slice(0, 3))}`);
     if (externalHosts.size) errors.push(`legacy: external origins ${JSON.stringify([...externalHosts])}`);
   } else {
-    /* ================= 1. Amendment B structure: card is GONE, modal chrome is static ========== */
+    /* ================= 1. Amendment G structure: Select Event first, modal chrome static ======== */
     await ensureEventTab();
 
     const pg = await readPage();
@@ -982,9 +1317,13 @@ try {
       errors.push(`card absence: these planner-card ids still exist in the document ${JSON.stringify(survivors)}`);
     if (pg.deadClassCount)
       errors.push(`card absence: ${pg.deadClassCount} node(s) still carry dead card classes (${DEAD_CLASS_SELECTOR})`);
-    if (pg.firstCardTitle !== "Shop Requirements")
+    if (pg.firstCardId !== "eventSelectCard" || pg.firstCardTitle !== "Select Event" || !pg.selectCardHasSelect)
       errors.push(
-        `card absence: first card of #panel-event is ${JSON.stringify(pg.firstCardTitle)}, want "Shop Requirements"`,
+        `select card: first card of #panel-event is ${JSON.stringify([pg.firstCardId, pg.firstCardTitle, pg.selectCardHasSelect])}, want ["eventSelectCard","Select Event",true]`,
+      );
+    if (pg.secondCardTitle !== "Shop Requirements")
+      errors.push(
+        `select card: the calculator card must follow the select — second title ${JSON.stringify(pg.secondCardTitle)}`,
       );
     if (!pg.modalPresent || !pg.modalList)
       errors.push("modal chrome: #eventShopModal / #eventShopModalList missing from static markup");
@@ -998,7 +1337,97 @@ try {
         `card absence: ${pg.anyRequireInputsOnPage} .eshop-require-input/.eshop-step-btn node(s) sit on the closed page — steppers may exist only inside an open modal draft`,
       );
 
-    /* ================= 2. Required box parity + editability cues (all tiers) ================== */
+    /* ================= 2. Select Event card: options, force-latest, saved selection ============ */
+    {
+      const base0 = await readTier();
+      const s = base0.select;
+      if (!s) {
+        errors.push("select card: #eventSelect missing from the live document");
+      } else {
+        if (!/select-field/.test(s.selectClass) || !s.rowClass || !s.labelFor)
+          errors.push(
+            `select card: Bond-consistency — class ${JSON.stringify(s.selectClass)}, .input-row ${s.rowClass}, label.input-label[for] ${s.labelFor}, want all true and select-field`,
+          );
+        if (s.disabled) errors.push("select card: #eventSelect is disabled while the snapshot has events");
+        if (s.options.length !== EVENTS.length)
+          errors.push(`select card: ${s.options.length} options, want ${EVENTS.length} active events`);
+        if (s.options.some((o) => o.value === ""))
+          errors.push(
+            "select card: a blank/placeholder option exists — Amendment G forbids it (the select must always show a real event)",
+          );
+        EVENTS.forEach((snap, i) => {
+          const want = (snap.event.shortName || snap.event.name || String(snap.event.id))
+            .replace(/[\r\n]+/g, " ")
+            .trim();
+          const got = s.options[i];
+          if (!got || got.value !== String(snap.event.id))
+            errors.push(
+              `select card: option ${i} is ${JSON.stringify(got && got.value)}, want ${snap.event.id} (list order)`,
+            );
+          if (got && got.text !== want)
+            errors.push(
+              `select card: option ${i} label ${JSON.stringify(got.text)}, want newlines folded — ${JSON.stringify(want)}`,
+            );
+          if (got && /\n/.test(got.text)) errors.push(`select card: option ${i} label contains a raw newline`);
+        });
+        /* fresh storage (this run cleared it) → force-select the LATEST event, never blank */
+        if (s.value !== String(LATEST.event.id))
+          errors.push(
+            `select card: fresh storage shows ${JSON.stringify(s.value)}, want the latest ${LATEST.event.id} (${JSON.stringify(LATEST.event.shortName.split("\n")[0])}) — no blank, no stale default`,
+          );
+        if (String(ACTIVE_ID) !== String(LATEST.event.id))
+          errors.push(
+            `data truth: the pinned scene event ${ACTIVE_ID} is not the latest (${LATEST.event.id}) — the scenes below test the wrong event`,
+          );
+        /* the selection is live: the tier cards show the pinned event's currencies */
+        for (const currency of CURRENCIES) {
+          const td = base0.tiers[tierOfCurrency(currency)];
+          if (td && td.name !== currency.name)
+            errors.push(
+              `select card: tier ${tierOfCurrency(currency)} reads ${JSON.stringify(td.name)} on fresh load, want ${currency.name}`,
+            );
+        }
+      }
+
+      /* Amendment J: with every non-farm event pruned, the SHIPPED list is exactly one option —
+         80639, selected, enabled, no blank. (The >1-event list shapes are pinned in MULTI mode.) */
+      if (!MULTI && s) {
+        if (s.options.length !== 1 || s.options[0].value !== String(PIN_LATEST))
+          errors.push(
+            `select card(J): the shipped select holds ${JSON.stringify(s.options)}, want exactly one option ${PIN_LATEST}`,
+          );
+        if (s.options.some((o) => o.disabled))
+          errors.push("select card(J): the one real option is disabled — a farm event must be selectable");
+      }
+
+      /* a saved selection WINS over the latest-event default — needs a second event to mean
+         anything, so it runs against the MULTI patched copy (never deleted from MAIN's ledger). */
+      if (MULTI) {
+        const savedSeed = JSON.stringify({ selectedEventId: PIN_MULTI, plans: {} });
+        await seedAndReload(savedSeed);
+        const savedState = await readTier();
+        if (savedState.select.value !== String(PIN_MULTI))
+          errors.push(
+            `select card: saved selection ignored — value ${JSON.stringify(savedState.select.value)}, want ${PIN_MULTI}`,
+          );
+        const multiGold = currencyForTierRef(EMULTI.currencies, "gold");
+        if (savedState.tiers.gold.name !== multiGold.name)
+          errors.push(
+            `select card: gold card after a saved 80379 selection is ${JSON.stringify(savedState.tiers.gold.name)}, want ${JSON.stringify(multiGold.name)} — first-match gold`,
+          );
+      }
+      /* unknown saved id → fall back to the latest, blob left alone until a mutation */
+      await seedAndReload(JSON.stringify({ selectedEventId: 99999, plans: {} }));
+      const fallbackState = await readTier();
+      if (fallbackState.select.value !== String(LATEST.event.id))
+        errors.push(
+          `select card: unknown savedEventId did not fall back to latest — value ${JSON.stringify(fallbackState.select.value)}`,
+        );
+      /* an old-shape blob's eventId migrates into selectedEventId — pinned in section 14 */
+      await resetPlan();
+    }
+
+    /* ================= 3. Required box parity + editability cues (all tiers) ================== */
     const base = await readTier();
     for (const t of TIERS) {
       const td = base.tiers[t];
@@ -1081,6 +1510,10 @@ try {
       !/transparent/.test((css.iconEvent.decl.background || "") + (css.iconEvent.decl["background-color"] || ""))
     )
       errors.push(`icons CSSOM: .material-icon--event transparent rule missing — ${JSON.stringify(css.iconEvent)}`);
+    if (!css.farmFallback || !/var\(--silver\)/.test(css.farmFallback.decl["--tier-color"] || ""))
+      errors.push(
+        `farm CSSOM: :where(.farm-card) silver --tier-color fallback missing — ${JSON.stringify(css.farmFallback)} — an unknown tier background (QP "zero") would lose its border colour`,
+      );
     /* live :focus flip */
     await page.focus("#goldNeed");
     const focusBorder = await page.evaluate(() => getComputedStyle(document.getElementById("goldNeed")).borderStyle);
@@ -1091,7 +1524,7 @@ try {
     if (blurBorder !== "dashed")
       errors.push(`cues live: blurred gold Required border-style is ${blurBorder}, want dashed`);
 
-    /* ================= 3. event-native tier cards: standalone icons, names, art ================ */
+    /* ================= 4. event-native tier cards: standalone icons, names, EN names ========== */
     for (const currency of CURRENCIES) {
       const tier = tierOfCurrency(currency);
       const td = base.tiers[tier];
@@ -1111,7 +1544,6 @@ try {
         errors.push(
           `icons: ${tier} icon box has ${fg.length} fg + ${bg.length} bg img(s), want a single event fg-layer`,
         );
-      /* Amendment C: the badge the legacy builder put there must be replaced, not left behind */
       if (td.badge)
         errors.push(
           `icons: ${tier} icon box still shows the ${JSON.stringify(td.badge.text)} fallback badge in event mode — hydration did not replace it`,
@@ -1125,25 +1557,54 @@ try {
           `tier card: ${tier} Held/Bonus must stay editable (held readOnly=${td.heldBox.readOnly}, bonus readOnly=${td.bonusBox.readOnly})`,
         );
     }
+    /* Amendment E data truth: currencies keep the JP names, NA-translated permanent materials are
+       EN, the shop coin resolved through the JP-EN layer — pinned against the data module. */
+    {
+      for (const currency of CURRENCIES) {
+        if (currency.name !== BUY_ALL_NAMES[String(currency.id)])
+          errors.push(
+            `names(E): currency ${currency.id} is ${JSON.stringify(currency.name)}, want the JP ${JSON.stringify(BUY_ALL_NAMES[String(currency.id)])}`,
+          );
+      }
+      const allItems = EVENTS.flatMap((e) => e.items);
+      if (!allItems.some((i) => i.name === "Servant Coin"))
+        errors.push('names(E): no item resolves to the JP-EN name "Servant Coin" — the NA→JP-EN→JP chain never ran');
+      if (!allItems.some((i) => i.name === "Crystallized Lore"))
+        errors.push('names(E): no NA EN permanent-material name ("Crystallized Lore") — the NA layer never won');
+      const coin = ITEMS.find((i) => i.name === "Servant Coin");
+      if (!coin) errors.push('names(E): the pinned event has no "Servant Coin" row to label the stepper with');
+    }
+    /* currency-name result labels ride the hydration (deficit-label + quest-name) */
+    for (const currency of CURRENCIES) {
+      const tier = tierOfCurrency(currency);
+      const r = base.results[tier];
+      if (r.deficitLabel !== currency.name)
+        errors.push(
+          `labels(D): ${tier} deficit-label is ${JSON.stringify(r.deficitLabel)}, want ${JSON.stringify(currency.name)}`,
+        );
+      if (r.questName !== `${currency.name} Quest`)
+        errors.push(
+          `labels(D): ${tier} quest-name is ${JSON.stringify(r.questName)}, want ${JSON.stringify(`${currency.name} Quest`)}`,
+        );
+    }
+    /* hidden #questDropsGrid keeps its Amendment A hydration: currency titles + art, no badges */
     for (const [quest, drops] of Object.entries(QUEST_DROPS)) {
       const qd = base.quests[quest];
-      const cur = CURRENCIES.find((c) => c.background === quest);
+      const cur = currencyForTierRef(CURRENCIES, quest);
       const wantTitle = `${cur.name} Quest`;
       if (qd.title !== wantTitle)
         errors.push(`quest drops: ${quest} title is ${JSON.stringify(qd.title)}, want ${JSON.stringify(wantTitle)}`);
       for (const m of [drops.primary, drops.secondary]) {
         const icon = qd.icons[m];
-        const wantCur = CURRENCIES.find((c) => c.background === m);
+        const wantCur = currencyForTierRef(CURRENCIES, m);
         const wantFile = `event_shop/${wantCur.icon.split("/").pop()}`;
         if (!icon || !icon.img || !(icon.img.src || "").includes(wantFile)) {
           errors.push(`quest drops: ${quest}Quest_${m}_icon is ${JSON.stringify(icon)}, want ${wantFile}`);
         }
-        /* Amendment C: the badge must be gone here — hydration replaces it in the same tick */
         if (icon && (icon.badge || icon.imgCount !== 1))
           errors.push(
             `quest drops: ${quest}Quest_${m}_icon holds ${icon ? icon.imgCount : "?"} img(s) + ${icon ? (icon.badge ? 1 : 0) : "?"} badge(s), want 1 event img and no fallback`,
           );
-        /* Amendment B §5 audit: the drop span must not keep a grey plate either */
         if (qd.icons[`${m}_spanBg`] && qd.icons[`${m}_spanBg`] !== "rgba(0, 0, 0, 0)")
           errors.push(
             `quest drops: ${quest}Quest_${m}_icon span background is ${qd.icons[`${m}_spanBg`]}, want transparent`,
@@ -1151,60 +1612,314 @@ try {
       }
     }
 
-    /* data truth: never trust the UI against itself */
+    /* ============ 5. farm chrome + Amendment I card shape (drop lines, opener, absences) ====== */
     {
-      const wantTruth = refTotals(refClear(ITEMS));
-      for (const currency of CURRENCIES) {
-        const id = String(currency.id);
-        if (wantTruth[id] !== BUY_ALL_TRUTH[id])
+      const f = base.farm;
+      if (!f) {
+        errors.push("farm: #farmGrid or its card is missing from the static markup");
+      } else {
+        if (f.gridDisplay === "none")
+          errors.push(`farm: #farmGrid is hidden in event mode — showFarmCard never ran (display ${f.gridDisplay})`);
+        if (f.baseDisplay !== "none")
           errors.push(
-            `data truth: reference buy-all for ${currency.name} (${id}) is ${wantTruth[id]}, the pinned plan truth says ${BUY_ALL_TRUTH[id]} — the snapshot drifted, re-verify before pinning`,
+            `farm: the base/primary/secondary row is still visible (${f.baseDisplay}) — Amendment D hides it in event mode`,
           );
-        if (currency.name !== BUY_ALL_NAMES[id])
+        if (f.questDisplay !== "none")
           errors.push(
-            `data truth: currency ${id} is named ${JSON.stringify(currency.name)}, want ${JSON.stringify(BUY_ALL_NAMES[id])}`,
+            `farm: #questDropsGrid is still visible (${f.questDisplay}) — Amendment D hides it in event mode`,
+          );
+        if (f.title !== "Drop Rates per Run")
+          errors.push(`farm: card title is ${JSON.stringify(f.title)}, want "Drop Rates per Run" (Amendment I1)`);
+        if (f.cards.length !== CURRENCIES.length)
+          errors.push(`farm: ${f.cards.length} cards for ${CURRENCIES.length} currencies — one card per shop currency`);
+
+        /* Amendment I7 absences, over the grid's VISIBLE text and its controls: no Required box, no
+           AP, no runs-reported, no Base/Primary/Secondary label words, no require-display input and
+           no farmRequired* id anywhere inside #farmGrid. (data-drop-line="primary|secondary" is an
+           attribute, not text — the visible surface is what a user reads.) */
+        const gridText = f.cards.map((c) => c.text || "").join(" ");
+        const absent = [
+          [/Required/, "Required box"],
+          [/\bAP\b/, "AP line"],
+          [/runs reported/i, "runs-reported line"],
+          [/\bBase\b/, "Base label"],
+          [/\bPrimary\b/, "Primary label"],
+          [/\bSecondary\b/, "Secondary label"],
+        ];
+        for (const [re, what] of absent)
+          if (re.test(gridText))
+            errors.push(`farm absence(I7): #farmGrid visible text still carries the ${what} — ${JSON.stringify(gridText.slice(0, 160))}`);
+        const strayInputs = f.cards.flatMap((c) => c.inputs.filter((i) => i.displayClass || /^farmRequired/.test(i.id)));
+        if (strayInputs.length)
+          errors.push(
+            `farm absence(I7): ${strayInputs.length} require-display/farmRequired input(s) inside #farmGrid — ${JSON.stringify(strayInputs.map((i) => i.id))}`,
+          );
+        const roleCount = f.cards.filter((c) => c.header && c.header.role === "button").length;
+        if (roleCount !== f.cards.length)
+          errors.push(`farm(I7): ${roleCount}/${f.cards.length} cards have a role=button header — the header is the modal opener`);
+
+        const mapped = new Set(TIERS.map((t) => currencyForTierRef(CURRENCIES, t)).filter(Boolean).map((c) => String(c.id)));
+        for (const currency of CURRENCIES) {
+          const id = String(currency.id);
+          const card = f.cards.find((c) => c.header && c.header.currencyId === id);
+          if (!card) {
+            errors.push(
+              `farm: no card for ${currency.name} (${id}, tier ${currency.background}) — ${JSON.stringify(f.cards.map((c) => [c.tier, c.name, c.header && c.header.currencyId]))}`,
+            );
+            continue;
+          }
+          if (card.tier !== currency.background || card.name !== currency.name)
+            errors.push(
+              `farm(${currency.name}): card is tier ${JSON.stringify(card.tier)} name ${JSON.stringify(card.name)}, want ${currency.background} / ${currency.name}`,
+            );
+          /* the header IS the opener: role/tabindex/aria-haspopup/aria-label/own currency id + art */
+          const h = card.header;
+          if (!h) errors.push(`farm(${currency.name}): no .farm-card-title header`);
+          else {
+            if (h.currencyId !== id)
+              errors.push(`farm(${currency.name}): header carries currency ${JSON.stringify(h.currencyId)}, want ${id}`);
+            if (h.role !== "button" || h.tabindex !== "0" || h.haspopup !== "dialog")
+              errors.push(
+                `farm(${currency.name}): header is not an opener (role ${JSON.stringify(h.role)}, tabindex ${JSON.stringify(h.tabindex)}, aria-haspopup ${JSON.stringify(h.haspopup)})`,
+              );
+            if (h.ariaLabel !== `${currency.name}: open shop items`)
+              errors.push(`farm(${currency.name}): header aria-label ${JSON.stringify(h.ariaLabel)}`);
+            const wantFile = `event_shop/${currency.icon.split("/").pop()}`;
+            if (!(h.imgSrc || "").includes(wantFile) || !(h.imgSrc || "").includes(`?v=${IMAGE_VERSION}`))
+              errors.push(
+                `farm(${currency.name}): header icon ${JSON.stringify(h.imgSrc)}, want ${wantFile}?v=${IMAGE_VERSION}`,
+              );
+            if (!(h.imgW > 0)) errors.push(`farm(${currency.name}): header icon never decoded (naturalWidth ${h.imgW})`);
+            if (h.text.replace(/\s+/g, " ").trim() !== currency.name)
+              errors.push(`farm(${currency.name}): header text ${JSON.stringify(h.text)}, want the currency name alone`);
+          }
+          /* exactly one Held/Bonus pair per currency, and never on a tier-mapped card (Amendment H+I7) */
+          const gotLabels = card.inputs.map((i) => i.label).sort().join(",");
+          const wantLabels = mapped.has(id) ? "" : "Bonus,Held";
+          if (gotLabels !== wantLabels)
+            errors.push(
+              `farm(${currency.name}): card holds inputs [${gotLabels}], want [${wantLabels}] — mapped currencies own their tier-card pair, unmapped ones the farm pair`,
+            );
+          for (const i of card.inputs)
+            if (i.id !== `farm${i.label}${id}` || i.readOnly)
+              errors.push(
+                `farm(${currency.name}): farm box id/readOnly wrong — ${JSON.stringify([i.id, i.readOnly])}, want ["farm${i.label}${id}",false]`,
+              );
+
+          const entry = FARM[id] || null;
+          if (!entry) {
+            if (card.lines.length !== 1 || card.lines[0] !== "No drop data yet" || card.drops.length)
+              errors.push(
+                `farm(${currency.name}): null-farm card lines ${JSON.stringify(card.lines)} + ${card.drops.length} drop line(s), want ["No drop data yet"] and no drop lines`,
+              );
+            continue;
+          }
+          /* stats: quest name, REC only when recommendLv is truthy; then the two drop lines (or the
+             bare em dash when the quest pays no second shop currency). Zero plan at this point. */
+          const wantStats = [entry.questName];
+          if (entry.recommendLv) wantStats.push(`REC Lv. ${entry.recommendLv}`);
+          const statsNoDash = card.lines.filter((l) => l !== "\u2014");
+          if (JSON.stringify(statsNoDash) !== JSON.stringify(wantStats))
+            errors.push(`farm(${currency.name}): stat lines ${JSON.stringify(statsNoDash)}, want ${JSON.stringify(wantStats)}`);
+          const dashCount = card.lines.filter((l) => l === "\u2014").length;
+          const wantDash = entry.secondary ? 0 : 1;
+          if (dashCount !== wantDash)
+            errors.push(
+              `farm(${currency.name}): ${dashCount} dash line(s), want ${wantDash} — ${JSON.stringify(card.lines)}`,
+            );
+          if (card.drops.length !== (entry.secondary ? 2 : 1))
+            errors.push(
+              `farm(${currency.name}): ${card.drops.length} drop line(s), want ${entry.secondary ? 2 : 1} (primary${entry.secondary ? " + secondary" : ""})`,
+            );
+          const wantDrops = [
+            { kind: "primary", id, de: entry.dropExpected, num: entry.num, icon: currency.icon },
+          ];
+          if (entry.secondary) {
+            const sec = CURRENCIES.find((c) => String(c.id) === String(entry.secondary.currencyId));
+            if (!sec)
+              errors.push(
+                `farm(${currency.name}): the snapshot's secondary currency ${entry.secondary.currencyId} is not sold by this event — a dash must show`,
+              );
+            else
+              wantDrops.push({
+                kind: "secondary",
+                id: String(sec.id),
+                de: entry.secondary.dropExpected,
+                num: entry.secondary.num,
+                icon: sec.icon,
+              });
+          }
+          for (const want of wantDrops) {
+            const d = card.drops.find((x) => x.kind === want.kind);
+            if (!d) {
+              errors.push(`farm(${currency.name}): no ${want.kind} drop line — ${JSON.stringify(card.drops.map((x) => x.kind))}`);
+              continue;
+            }
+            if (d.currencyId !== want.id)
+              errors.push(
+                `farm(${currency.name}): ${want.kind} line carries currency ${JSON.stringify(d.currencyId)}, want ${want.id} (the card's own currency is ${id})`,
+              );
+            if (d.dropExpected !== String(want.de) || d.num !== String(want.num))
+              errors.push(
+                `farm(${currency.name}): ${want.kind} line data ${JSON.stringify([d.dropExpected, d.num])}, want [${want.de},${want.num}]`,
+              );
+            if (d.material !== dropStackRef(want.num, 0))
+              errors.push(`farm(${currency.name}): ${want.kind} stack reads ${JSON.stringify(d.material)}, want "${dropStackRef(want.num, 0)}"`);
+            const wantValue = dropValueRef(want.de, want.num, 0);
+            if (d.value !== wantValue)
+              errors.push(`farm(${currency.name}): ${want.kind} amount reads ${JSON.stringify(d.value)}, want "${wantValue}"`);
+            const wantFile = `event_shop/${want.icon.split("/").pop()}`;
+            if (!(d.imgSrc || "").includes(wantFile) || !(d.imgSrc || "").includes(`?v=${IMAGE_VERSION}`))
+              errors.push(
+                `farm(${currency.name}): ${want.kind} line icon ${JSON.stringify(d.imgSrc)}, want ${wantFile}?v=${IMAGE_VERSION}`,
+              );
+            if (!(d.imgW > 0)) errors.push(`farm(${currency.name}): ${want.kind} line icon never decoded (${d.imgW})`);
+          }
+        }
+        /* non-vacuity: with the shipped snapshot every card must be on the FULL-data path, and the
+           dash path only ever shows in MULTI (80630/80379/80292 null-farm, 80555 secondary-null) */
+        const fullCards = f.cards.filter((c) => c.drops.length >= 1).length;
+        const wantFull = CURRENCIES.filter((c) => FARM[String(c.id)]).length;
+        if (fullCards !== wantFull)
+          errors.push(`farm: ${fullCards} cards render drop lines, want ${wantFull} — the full-data path never ran`);
+        const wantDash = CURRENCIES.filter((c) => FARM[String(c.id)] && !FARM[String(c.id)].secondary).length;
+        const gotDash = f.cards.filter((c) => c.lines.includes("\u2014")).length;
+        if (gotDash !== wantDash)
+          errors.push(`farm: ${gotDash} dash card(s), want ${wantDash} (secondary-null) — ${JSON.stringify(f.cards.map((c) => c.lines))}`);
+        /* the pinned farm truth (plan tracker verified against the live API): the snapshot must
+           still carry it — if this drifts, the reference math below pins the app to stale numbers */
+        for (const [id, truth] of Object.entries(FARM_TRUTH)) {
+          const entry = FARM[id];
+          const drift = Object.keys(truth).filter((k) => JSON.stringify(entry && entry[k]) !== JSON.stringify(truth[k]));
+          if (!entry || drift.length)
+            errors.push(
+              `farm truth: FARM[${id}] ${JSON.stringify(entry)} drifted from the pinned snapshot ${JSON.stringify(truth)} on [${drift.join(",")}]`,
+            );
+          if (entry && !(entry.sampleRuns > 0))
+            errors.push(`farm truth: FARM[${id}].sampleRuns is ${JSON.stringify(entry.sampleRuns)} — the data field stays in the schema (I3 removed the DISPLAY only)`);
+        }
+        if (IMAGE_VERSION !== "4")
+          errors.push(
+            `costume(F): IMAGE_VERSION is ${JSON.stringify(IMAGE_VERSION)}, want "4" — the bump for the costume face must ship`,
           );
       }
     }
 
-    /* ================= 4. event images actually decode ======================================== */
+    /* ============ 5b. live Bonus repaints EVERY drop line carrying that currency ============== */
+    /* A currency rides its own card's primary line and, when its best quest pays a second shop
+       currency, another card's secondary line. The plan is empty here, so every line starts at +0. */
+    if (base.farm) {
+      for (const currency of CURRENCIES) {
+        const id = String(currency.id);
+        const tier = tierOfCurrency(currency);
+        /* every line in the grid that carries THIS currency: its own card's primary plus any other
+           quest's secondary when that quest pays it as the second-best shop drop */
+        const carriersNow = [];
+        for (const c of CURRENCIES) {
+          const entry = FARM[String(c.id)];
+          if (!entry) continue;
+          if (String(c.id) === id) carriersNow.push({ card: String(c.id), kind: "primary", de: entry.dropExpected, num: entry.num });
+          if (entry.secondary && String(entry.secondary.currencyId) === id)
+            carriersNow.push({ card: String(c.id), kind: "secondary", de: entry.secondary.dropExpected, num: entry.secondary.num });
+        }
+        const readLine = (cards, cardId, kind) =>
+          (((cards.find((c) => c.header && c.header.currencyId === cardId) || {}).drops) || []).find(
+            (d) => d.kind === kind && d.currencyId === id,
+          );
+        const cardCountBefore = (await readTier()).farm.cards.length;
+        if (!carriersNow.length)
+          errors.push(`bonus repaint: no drop line carries currency ${id} — the scene has nothing to pin`);
+        if (carriersNow.length < 2 && FARM[id] && FARM[id].secondary)
+          errors.push(
+            `bonus repaint: currency ${id} rides only ${carriersNow.length} line(s) — the two-line repaint is unpinned for it`,
+          );
+        for (const want of [2, 0]) {
+          await typeInto(sel.tierBonus(tier), String(want));
+          await wait(SETTLE_MS);
+          const cards = (await readTier()).farm.cards;
+          for (const c of carriersNow) {
+            const d = readLine(cards, c.card, c.kind);
+            if (!d) {
+              errors.push(`bonus repaint(${currency.name}): ${c.card}/${c.kind} line vanished at bonus ${want}`);
+              continue;
+            }
+            if (d.material !== dropStackRef(c.num, want))
+              errors.push(
+                `bonus repaint(${currency.name}): ${c.card} ${c.kind} stack reads ${JSON.stringify(d.material)}, want "${dropStackRef(c.num, want)}"`,
+              );
+            const wantValue = dropValueRef(c.de, c.num, want);
+            if (d.value !== wantValue)
+              errors.push(
+                `bonus repaint(${currency.name}): ${c.card} ${c.kind} amount reads ${JSON.stringify(d.value)}, want "${wantValue}" (dropExpected ${c.de} × (${c.num}+${want}))`,
+              );
+          }
+          /* lines carrying OTHER currencies must not move */
+          for (const card of cards) {
+            for (const d of card.drops) {
+              if (d.currencyId === id) continue;
+              if (d.material !== dropStackRef(Number(d.num), 0))
+                errors.push(
+                  `bonus repaint(${currency.name}): editing its bonus moved ${card.name}'s ${d.kind} line for currency ${d.currencyId} — ${JSON.stringify(d.material)}`,
+                );
+            }
+          }
+        }
+        if ((await readTier()).farm.cards.length !== cardCountBefore)
+          errors.push(`bonus repaint: card count changed across the repaint (${cardCountBefore} → ${(await readTier()).farm.cards.length})`);
+      }
+      const planAfter = (await readTier()).storage ? JSON.parse((await readTier()).storage).plans[String(ACTIVE_ID)] : null;
+      const bonusKeys = Object.keys((planAfter && planAfter.bonus) || {});
+      if (bonusKeys.some((k) => TIERS.includes(k)))
+        errors.push(`bonus repaint: plan.bonus holds TIER keys ${JSON.stringify(bonusKeys)} — Amendment H keys by currency id`);
+      await resetPlan();
+    }
+
+    /* ================= 6. event + farm images actually decode ================================== */
     await page.evaluate(() => {
       for (const t of ["bronze", "silver", "gold"]) {
         const card = document.querySelector(`#materialsGrid [data-tier="${t}"]`);
         if (card) card.scrollIntoView({ block: "center" });
       }
+      const farm = document.getElementById("farmGrid");
+      if (farm) farm.scrollIntoView({ block: "center" });
     });
     await wait(400);
     const tierDecoded = await page.evaluate(() => {
       const out = [];
       for (const t of ["bronze", "silver", "gold"]) {
-        const imgs = [
-          ...document.querySelectorAll(`#materialsGrid [data-tier="${t}"] img, #questDropsGrid [data-tier="${t}"] img`),
-        ];
-        for (const img of imgs) out.push({ t, src: img.getAttribute("src"), w: img.naturalWidth });
+        for (const img of document.querySelectorAll(`#materialsGrid [data-tier="${t}"] img`))
+          out.push({ zone: `tier:${t}`, src: img.getAttribute("src"), w: img.naturalWidth });
       }
+      for (const img of document.querySelectorAll("#farmGrid .farm-card img"))
+        out.push({ zone: "farm", src: img.getAttribute("src"), w: img.naturalWidth });
       return out;
     });
     const deadTier = tierDecoded.filter((i) => !(i.w > 0));
     if (deadTier.length)
       errors.push(
-        `tier icons: ${deadTier.length}/${tierDecoded.length} event image(s) never decoded — ${JSON.stringify(deadTier.slice(0, 3))}`,
+        `visible art: ${deadTier.length}/${tierDecoded.length} event image(s) never decoded — ${JSON.stringify(deadTier.slice(0, 3))}`,
       );
-    /* non-vacuity: the sweep must actually see all 9 event boxes (3 tier + 6 quest) */
-    if (tierDecoded.length !== 9)
+    /* non-vacuity: 3 tier imgs + per farm card its header art and one img per real drop line
+       (the dash line has no art, a null-farm card has only its header) */
+    const wantFarmImgs = CURRENCIES.reduce((n, c) => {
+      const entry = FARM[String(c.id)];
+      return n + 1 + (entry ? (entry.secondary ? 2 : 1) : 0);
+    }, 0);
+    const wantVisible = 3 + wantFarmImgs;
+    if (tierDecoded.length !== wantVisible)
       errors.push(
-        `tier icons: the event-art sweep found ${tierDecoded.length} img(s) in the tier + quest boxes, want 9 — the boxes are empty or the art never rendered`,
+        `visible art: the sweep found ${tierDecoded.length} img(s) in the visible tier + farm boxes, want ${wantVisible} — the boxes are empty or the art never rendered`,
       );
     const evBoxes = await readIconBoxes();
-    assertEventBoxes(evBoxes, "event art");
+    assertEventBoxes(evBoxes, "event art", CURRENCIES);
     assertMaterialAbsence("event art");
     console.log(
-      `NOTE: tier + quest event images decoded ${tierDecoded.length - deadTier.length}/${tierDecoded.length}, fallback badges left in event boxes ${ICON_CONTAINERS.reduce((n, id) => n + (evBoxes[id] ? evBoxes[id].badgeCount : 0), 0)}, icons/materials requests ${materialRequests.length}, >=400 responses ${httpFailures.length}`,
+      `NOTE: visible tier+farm images decoded ${tierDecoded.length - deadTier.length}/${tierDecoded.length}, hidden-grid spans hydrated 1-img ${ICON_CONTAINERS.filter((id) => evBoxes[id] && evBoxes[id].imgCount === 1).length}/${ICON_CONTAINERS.length}, fallback badges left in event boxes ${ICON_CONTAINERS.reduce((n, id) => n + (evBoxes[id] ? evBoxes[id].badgeCount : 0), 0)}, icons/materials requests ${materialRequests.length}, >=400 responses ${httpFailures.length}`,
     );
 
-    /* ================= 5. modal opens from bronze Required; Escape discards =================== */
-    if (tierOfCurrency(currencyOf(freeRow)) !== "bronze")
-      errors.push(`data sanity: the bronze scene row maps to ${tierOfCurrency(currencyOf(freeRow))}, want bronze`);
+    /* ================= 7. modal opens from bronze Required; Escape discards =================== */
+    if (currencyOfItem(freeRow) !== bronzeCurrency)
+      errors.push(`data sanity: the bronze scene row maps to ${JSON.stringify(currencyOfItem(freeRow))}, want bronze`);
     await openTierModal("bronze", "open modal from bronze Required click");
     let modal = await readModal();
     const wantBronzeRows = itemsOfCurrency(String(bronzeCurrency.id));
@@ -1250,20 +1965,19 @@ try {
     await closeBy("Escape", "Escape closes the modal");
     assertPlan(await readTier(), {}, "Escape-discard");
 
-    /* ================= 6. keyboard: Enter and Space open from a focused Required ============== */
+    /* ================= 8. keyboard: Enter and Space open; the costume face (Amendment F) ====== */
     await page.focus(sel.tierNeed("gold"));
     await page.keyboard.press("Enter");
     await modalGate(true, "Enter opens the gold modal from the focused Required");
     modal = await readModal();
     if (!modal.title.startsWith(goldCurrency.name))
       errors.push(`keyboard: Enter on goldNeed opened ${JSON.stringify(modal.title)}, want ${goldCurrency.name}`);
-    /* gold draft carries the interesting art: costume + equip + multi-set rows are all gold */
-    const artSamples = [costumeRow, equipRow, multiSetRow].filter(Boolean).map((i) => String(i.id));
+    /* gold draft carries the interesting art: costume (= clampRow) + equip + multi-set rows */
+    const artSamples = [clampRow, equipRow, multiSetRow].filter(Boolean).map((i) => String(i.id));
     if (artSamples.length < 3)
       errors.push(
         `data sanity: costume/equip/multi-set sample rows ${JSON.stringify(artSamples)} — re-verify the art pins against the snapshot`,
       );
-    /* the draft list was just built; lazy art decodes as it is painted — wait for it */
     for (let i = 0; i < 60; i++) {
       const artNow = modal.rows.filter((r) => artSamples.includes(r.id));
       if (artNow.length === artSamples.length && artNow.every((r) => r.iconKind === "img" && r.iconW > 0)) break;
@@ -1280,6 +1994,31 @@ try {
       errors.push(
         `modal icons: costume/equip/multi-set draft icon(s) not decoded — ${JSON.stringify(deadArt.map((r) => [r.id, r.iconKind, r.iconW]))}`,
       );
+    /* Amendment F: the costume row shows the COSTUME face (detail 204730), not the base servant —
+       the shipped file is costume_20470011.webp and every shop icon carries the ?v=4 cache buster. */
+    const costumeRow = clampRow;
+    if (costumeRow && costumeRow.purchaseType === "costumeRelease") {
+      const cRow = modal.rows.find((r) => r.id === String(costumeRow.id));
+      const file = "costume_20470011.webp";
+      if (!cRow) errors.push(`costume(F): the ${costumeRow.name} draft row is missing from the gold list`);
+      else {
+        const cSrc = cRow.iconSrc || "";
+        if (!cSrc.includes(file))
+          errors.push(
+            `costume(F): the ${costumeRow.name} draft row icon is ${JSON.stringify(cRow.iconSrc)}, want the ${file} costume face`,
+          );
+        if (!cSrc.includes(`?v=${IMAGE_VERSION}`))
+          errors.push(
+            `costume(F): costume icon src ${JSON.stringify(cRow.iconSrc)} lacks the ?v=${IMAGE_VERSION} cache buster`,
+          );
+        if (!(cRow.iconW > 0)) errors.push(`costume(F): the costume face never decoded (naturalWidth ${cRow.iconW})`);
+      }
+      const coinRow = modal.rows.find((r) => r.id === String(multiSetRow ? multiSetRow.id : -1));
+      if (coinRow && coinRow.name !== "Servant Coin")
+        errors.push(`names(E): the gold multi-set row is ${JSON.stringify(coinRow.name)}, want the EN "Servant Coin"`);
+    } else {
+      errors.push("costume(F): the pinned gold limit-1 row is not the costumeRelease row — snapshot drifted");
+    }
     await closeBy("Escape", "Escape after Enter-open");
     await page.focus(sel.tierNeed("silver"));
     await page.keyboard.press("Space");
@@ -1289,7 +2028,79 @@ try {
       errors.push(`keyboard: Space on silverNeed opened ${JSON.stringify(modal.title)}, want ${silverCurrency.name}`);
     await closeBy("Escape", "Escape after Space-open");
 
-    /* ================= 7. clamp suite lives INSIDE the modal draft rows ======================= */
+    /* ==== 8b. the farm card's CURRENCY HEADER is the modal opener (Amendment I7, every mode) === */
+    /* Click, Enter and Space on the header all open THAT currency's modal, and the tier card's
+       Required display opens the SAME modal for a mapped currency. Inputs inside a card (the
+       farm Held/Bonus pair of an unmapped currency) must never trigger it. */
+    {
+      await resetPlan();
+      const headerSel = (id) => `#farmGrid .farm-card-title[data-currency-id="${id}"]`;
+      const expectedRows = (snapshot, currencyId) =>
+        snapshot.items
+          .filter((i) => String(i.cost.itemId) === String(currencyId))
+          .map((i) => String(i.id))
+          .sort()
+          .join();
+      for (const currency of CURRENCIES) {
+        const id = String(currency.id);
+        for (const via of ["click", "Enter", "Space"]) {
+          if (via === "click") await safeClick(headerSel(id));
+          else {
+            await page.focus(headerSel(id));
+            await page.keyboard.press(via);
+          }
+          const opened = await modalGate(true, `header ${via}: ${currency.name} modal opens`);
+          if (!opened) continue;
+          const m = await readModal();
+          if (m.title !== `${currency.name} \u2014 Shop Items`)
+            errors.push(
+              `header ${via}: opened ${JSON.stringify(m.title)}, want "${currency.name} \u2014 Shop Items" — the opener must carry the CARD's currency, not first-match's`,
+            );
+          const gotIds = m.rows.map((r) => r.id).sort().join();
+          if (gotIds !== expectedRows(EACTIVE, id))
+            errors.push(`header ${via}: ${currency.name} modal rows ${JSON.stringify(gotIds)}, want ${JSON.stringify(expectedRows(EACTIVE, id))}`);
+          await closeBy("Escape", `header ${via} then Escape`);
+        }
+        /* the tier Required opens the same thing for a tier-mapped currency */
+        if (currencyForTierRef(CURRENCIES, currency.background) && String(currencyForTierRef(CURRENCIES, currency.background).id) === id) {
+          await safeClick(sel.tierNeed(currency.background));
+          if (await modalGate(true, `tier Required: ${currency.name} modal`)) {
+            const mt = await readModal();
+            if (mt.title !== `${currency.name} \u2014 Shop Items`)
+              errors.push(`tier Required: ${currency.background} opened ${JSON.stringify(mt.title)}, want the mapped currency's modal`);
+            if (mt.rows.map((r) => r.id).sort().join() !== expectedRows(EACTIVE, id))
+              errors.push(`tier Required: ${currency.background} modal rows differ from the header opener's for the same currency`);
+            await closeBy("Escape", "tier Required then Escape");
+          }
+        }
+      }
+      /* a farm input click never bubbles into the opener (MULTI is where such inputs exist) */
+      if (MULTI) {
+        await switchEvent(PIN_ZERO, '8b: switch → 80292 (unmapped QP + second silver)');
+        const unmapped = EZERO.currencies.filter((c) => !currencyForTierRef(EZERO.currencies, c.background) || String(currencyForTierRef(EZERO.currencies, c.background).id) !== String(c.id));
+        for (const currency of unmapped) {
+          const id = String(currency.id);
+          const held = `#farmHeld${id}`;
+          if (!(await page.$(held))) {
+            errors.push(`8b: ${currency.name} (${id}) has no farm Held box — an unmapped currency must own its pair`);
+            continue;
+          }
+          await safeClick(held);
+          await wait(SETTLE_MS);
+          if ((await readModal()).open)
+            errors.push(`8b: clicking ${currency.name}'s farm Held input opened the modal — inputs must never trigger the header opener`);
+        }
+        await switchEvent(ACTIVE_ID, "8b: back to the pinned event");
+      }
+    }
+
+    /* ================= 9. clamp suite lives INSIDE the modal draft rows ======================= */
+    /* Baseline before any draft editing: in MAIN storage is still null here; in MULTI an earlier
+       scene switched events, so the blob may already exist. The contract pinned is "a draft writes
+       nothing" — measured as zero setItem calls on the planner key AND the blob staying byte-equal,
+       which is the same claim whether the starting blob was null or not. */
+    const storageBeforeDraft = (await readTier()).storage;
+    await installWriteSpy();
     await openTierModal("gold", "open modal for clamp scene");
     await safeClick(sel.modalPlus(clampRow.id));
     await safeClick(sel.modalPlus(clampRow.id));
@@ -1303,7 +2114,6 @@ try {
       );
     if (dr && num(dr.total) !== clampRow.cost.amount * clampMax)
       errors.push(`draft clamp: row total ${dr && dr.total}, want ${clampRow.cost.amount * clampMax}`);
-    /* typing 999 on the same row: box keeps the keystrokes (no rewrite = no caret loss), subtotal clamps */
     await typeInto(sel.modalInput(clampRow.id), "999");
     await wait(SETTLE_MS);
     modal = await readModal();
@@ -1321,7 +2131,6 @@ try {
         `draft typing: 999 on a limit-${clampRow.limitNum} row subtotals ${dr && dr.total}, want ${clampRow.cost.amount}`,
       );
     if (!stillFocused) errors.push("draft typing: the focused input lost focus while its subtotal refreshed");
-    /* stepping the same row writes the clamped draft back into the box */
     await safeClick(sel.modalPlus(clampRow.id));
     await wait(SETTLE_MS);
     modal = await readModal();
@@ -1330,16 +2139,14 @@ try {
       errors.push(
         `draft stepper sync: + after typing 999 left ${JSON.stringify(dr && dr.value)}, want the committed "${clampMax}"`,
       );
-    await safeClick(sel.modalMinus(clampRow.id)); // back to a known low value path (clamped at 0)
+    await safeClick(sel.modalMinus(clampRow.id));
     await wait(SETTLE_MS);
-    /* Default zeroes the whole draft (write-back through the sync path) */
     await safeClick("#eventShopModalDefaultBtn");
     await wait(SETTLE_MS);
     modal = await readModal();
     const notZero = modal.rows.filter((r) => r.value !== "0" || num(r.total) !== 0);
     if (notZero.length)
       errors.push(`modal Default: ${notZero.length} row(s) survived the zero — ${JSON.stringify(notZero.slice(0, 2))}`);
-    /* unlimited rows accept 5000 and cap the subtotal at the schema max */
     await typeInto(sel.modalInput(draftFree.id), "5000");
     await wait(SETTLE_MS);
     modal = await readModal();
@@ -1359,13 +2166,11 @@ try {
       errors.push(
         `draft unlimited: focused input rewritten mid-typing to ${JSON.stringify(dr && dr.value)}, want "10000000" kept`,
       );
-    /* a negative can never buy in the negative */
     await typeInto(sel.modalInput(draftFree.id), "-5");
     await wait(SETTLE_MS);
     modal = await readModal();
     dr = modal.rows.find((r) => r.id === String(draftFree.id));
     if (dr && num(dr.total) !== 0) errors.push(`draft negative: "-5" subtotals ${dr && dr.total}, want 0`);
-    /* rapid synchronous + clicks: no lost or double-counted step */
     await page.evaluate((id) => {
       const btn = document.querySelector(
         `#eventShopModalList .eshop-item[data-item-id="${id}"] .eshop-step-btn[data-step="1"]`,
@@ -1378,13 +2183,18 @@ try {
     const wantRace = Math.min(8, maxRequire(draftFree));
     if (dr && dr.value !== String(wantRace))
       errors.push(`draft race: 8 synchronous + clicks left ${JSON.stringify(dr && dr.value)}, want "${wantRace}"`);
-    /* Cancel discards: storage untouched, tier reads stay 0, reopen re-clones from state */
     await closeBy("Cancel", "Cancel discards the draft");
     let tierState = await readTier();
     assertPlan(tierState, {}, "Cancel-discard leaves the plan");
-    if (tierState.storage !== null)
+    const clampCancelWrites = await writeCount();
+    await uninstallWriteSpy();
+    if (clampCancelWrites !== 0)
       errors.push(
-        `Cancel-discard: localStorage was written by draft editing (${JSON.stringify(tierState.storage)}) — nothing publishes before Done`,
+        `Cancel-discard: draft typing/stepping wrote the planner key ${clampCancelWrites} time(s) before Done — nothing publishes before Done`,
+      );
+    if (tierState.storage !== storageBeforeDraft)
+      errors.push(
+        `Cancel-discard: localStorage changed from ${JSON.stringify(storageBeforeDraft)} to ${JSON.stringify(tierState.storage && tierState.storage.slice(0, 120))} — nothing publishes before Done`,
       );
     await openTierModal("gold", "reopen after Cancel");
     modal = await readModal();
@@ -1395,7 +2205,7 @@ try {
       );
     await closeBy("Cancel", "close reopen check");
 
-    /* ================= 8. write discipline: drafts never touch storage, Done writes once ====== */
+    /* ================= 10. write discipline: drafts never touch storage, Done writes once ====== */
     await installWriteSpy();
     await openTierModal("bronze", "open modal for write-count scene");
     await typeInto(sel.modalInput(freeRow.id), "12345");
@@ -1413,24 +2223,22 @@ try {
       errors.push(`write discipline: Done wrote localStorage ${doneWrites} time(s), want exactly 1 whole-plan commit`);
     await uninstallWriteSpy();
     tierState = await readTier();
-    const plan8 = {
+    const plan10 = {
       [String(freeRow.id)]: 12345,
       [String(bronzeSteppable.id)]: Math.min(2, maxRequire(bronzeSteppable)),
     };
-    assertPlan(tierState, plan8, "Done commits typed + stepped values");
-    assertStorage(tierState.storage, plan8, "Done commit", { exact: true });
-    /* committed rows reopen pre-filled with live values and active tint */
+    assertPlan(tierState, plan10, "Done commits typed + stepped values");
+    assertStorage(tierState.storage, plan10, "Done commit", { exact: true });
     await openTierModal("bronze", "reopen with the committed plan");
     modal = await readModal();
-    const cr8 = modal.rows.find((r) => r.id === String(freeRow.id));
-    if (!cr8 || cr8.value !== "12345" || !cr8.active)
+    const cr10 = modal.rows.find((r) => r.id === String(freeRow.id));
+    if (!cr10 || cr10.value !== "12345" || !cr10.active)
       errors.push(
-        `draft prefill: committed row reads ${JSON.stringify(cr8 && [cr8.value, cr8.active])}, want "12345" + active`,
+        `draft prefill: committed row reads ${JSON.stringify(cr10 && [cr10.value, cr10.active])}, want "12345" + active`,
       );
     await closeBy("Cancel", "close prefill check");
 
-    /* draft isolation ACROSS currencies: another currency's rows are not in this draft */
-    await openTierModal("silver", "open SHIMONITA modal for isolation");
+    await openTierModal("silver", "open silver modal for isolation");
     modal = await readModal();
     const silverItems = itemsOfCurrency(String(silverCurrency.id));
     const foreign = modal.rows.filter((r) => !silverItems.some((i) => String(i.id) === r.id));
@@ -1441,7 +2249,7 @@ try {
     await typeInto(sel.modalInput(String(silverFree.id)), "9");
     await closeBy("Cancel", "cancel silver edit");
     tierState = await readTier();
-    assertPlan(tierState, plan8, "silver Cancel leaves the committed plan");
+    assertPlan(tierState, plan10, "silver Cancel leaves the committed plan");
     await openTierModal("silver", "reopen silver after Cancel");
     modal = await readModal();
     const kept9 = modal.rows.filter((r) => r.value === "9");
@@ -1451,30 +2259,33 @@ try {
       );
     await closeBy("Cancel", "close silver");
 
-    /* ================= 9. Done agreement: storage + tier + legacy all match ================== */
+    /* ================= 11. Done agreement: storage + tier + legacy all match ================== */
     await resetPlan();
     await openTierModal("bronze", "bronze scene via tier Required");
     await typeInto(sel.modalInput(freeRow.id), "3");
     await clickDone();
     tierState = await readTier();
-    const plan9 = { [String(freeRow.id)]: 3 };
-    assertPlan(tierState, plan9, "Done agreement — tier Required + legacy state");
-    assertStorage(tierState.storage, plan9, "Done agreement — storage blob", { exact: true });
-    const legacy9 = tierState.legacyStorage ? JSON.parse(tierState.legacyStorage) : null;
-    if (!legacy9 || legacy9.bronzeNeed !== 30)
+    const plan11 = { [String(freeRow.id)]: 3 };
+    assertPlan(tierState, plan11, "Done agreement — tier Required + legacy state");
+    assertStorage(tierState.storage, plan11, "Done agreement — storage blob (G shape)", { exact: true });
+    if (freeRow.cost.amount !== 10)
       errors.push(
-        `Done agreement: legacy fgo_calculator_data bronzeNeed is ${legacy9 && legacy9.bronzeNeed}, want the plan total 30`,
+        `data truth: the bronze scene row costs ${freeRow.cost.amount}, the legacy mirror pin below assumes 10`,
       );
-    /* a second currency commit must not disturb the first (applyRequires is a merge) */
+    const legacy11 = tierState.legacyStorage ? JSON.parse(tierState.legacyStorage) : null;
+    if (!legacy11 || legacy11.bronzeNeed !== 3 * freeRow.cost.amount)
+      errors.push(
+        `Done agreement: legacy fgo_calculator_data bronzeNeed is ${legacy11 && legacy11.bronzeNeed}, want the plan total ${3 * freeRow.cost.amount}`,
+      );
     await openTierModal("gold", "open gold for merge check");
     await typeInto(sel.modalInput(draftFree.id), "250");
     await clickDone();
     tierState = await readTier();
-    const plan9b = { [String(freeRow.id)]: 3, [String(draftFree.id)]: 250 };
-    assertPlan(tierState, plan9b, "merge commit keeps the earlier currency");
-    assertStorage(tierState.storage, plan9b, "merge commit blob");
+    const plan11b = { [String(freeRow.id)]: 3, [String(draftFree.id)]: 250 };
+    assertPlan(tierState, plan11b, "merge commit keeps the earlier currency");
+    assertStorage(tierState.storage, plan11b, "merge commit blob");
 
-    /* ================= 10. Select All = buy-all semantics; whole-plan truth =================== */
+    /* ================= 12. Select All = buy-all semantics; whole-plan truth =================== */
     await resetPlan();
     for (const currency of CURRENCIES) {
       const tier = tierOfCurrency(currency);
@@ -1511,18 +2322,18 @@ try {
         errors.push(`buy-out truth: reference totals disagree with the pinned truth for ${currency.id}`);
     }
     const storedBuy = JSON.parse(tierState.storage);
+    const storedBuyReq = (storedBuy.plans || {})[String(ACTIVE_ID)] || {};
     for (const item of ITEMS) {
       const want = buyAll[String(item.id)];
-      if ((storedBuy.requires || {})[String(item.id)] !== want)
+      if ((storedBuyReq.requires || {})[String(item.id)] !== want)
         errors.push(
-          `buy-all storage: row ${item.id} stored ${JSON.stringify((storedBuy.requires || {})[String(item.id)])}, want ${want}`,
+          `buy-all storage: row ${item.id} stored ${JSON.stringify((storedBuyReq.requires || {})[String(item.id)])}, want ${want}`,
         );
     }
     console.log(
       `NOTE: buy-all via Select All → ${CURRENCIES.map((c) => `${c.name} ${wantBuy[String(c.id)]}`).join(", ")} (pinned truth ${JSON.stringify(BUY_ALL_TRUTH)})`,
     );
 
-    /* Default on one currency must empty it and leave the others (partial commit) */
     await openTierModal("bronze", "open bronze for Default+Done");
     await safeClick("#eventShopModalDefaultBtn");
     await wait(SETTLE_MS);
@@ -1532,7 +2343,7 @@ try {
     for (const item of bronzeItems) partial[String(item.id)] = 0;
     assertPlan(tierState, partial, "Default+Done empties only its currency");
 
-    /* ================= 11. persistence across reload + legacy-need recompute ================== */
+    /* ================= 13. persistence across reload + legacy-need recompute ================== */
     const persistPlan = { [String(freeRow.id)]: 250 };
     await resetPlan();
     await openTierModal("bronze", "open for persistence scene");
@@ -1544,7 +2355,8 @@ try {
     let restored = await readTier();
     assertPlan(restored, persistPlan, "persistence after reload");
     assertStorage(restored.storage, persistPlan, "persistence blob after reload", { exact: true });
-    /* tamper the legacy calculator need: the loaded plan must recompute it back on init */
+    if (restored.select.value !== String(ACTIVE_ID))
+      errors.push(`persistence after reload: select shows ${JSON.stringify(restored.select.value)}, want ${ACTIVE_ID}`);
     await page.evaluate(
       (lk, tier) => {
         const saved = JSON.parse(localStorage.getItem(lk));
@@ -1560,73 +2372,1026 @@ try {
     restored = await readTier();
     assertPlan(restored, persistPlan, "tampered legacy need is recomputed from the plan on load");
 
-    /* ================= 12. event-id mismatch resets the plan ================================== */
-    const mismatchSeed = JSON.stringify({ eventId: EVENT_ID + 7, requires: { [String(freeRow.id)]: 5 } });
-    await seedAndReload(mismatchSeed);
-    let mismatchTier = await readTier();
-    assertPlan(mismatchTier, {}, "event-id mismatch reset");
-    if (mismatchTier.storage !== mismatchSeed)
-      errors.push(
-        `event-id mismatch: the app rewrote storage on load (${JSON.stringify(mismatchTier.storage)}) — it must leave the dead blob alone until a mutation`,
+    /* ================= 14. farm results vs an INDEPENDENT reference (bonus into stack) ======== */
+    {
+      await resetPlan();
+      await openTierModal("gold", "open gold for the buy-all farm scene");
+      await safeClick(sel.footer("SelectAll"));
+      await clickDone();
+      await typeInto("#goldHave", "1000");
+      await typeInto("#goldBonus", "2");
+      /* the tier-box writers are debounced (Amendment H): let the flush land before pricing */
+      await wait(SETTLE_MS);
+      await safeClick("#calculateBtn");
+      await wait(SETTLE_MS);
+      const res = await readTier();
+      /* the committed plan is the GOLD buy-out only — reference totals must match that plan */
+      const goldOnlyPlan = refClear(goldItems);
+      const totals = refTotals(ITEMS, CURRENCIES, goldOnlyPlan);
+      const held = { bronze: 0, silver: 0, gold: 1000 };
+      const bonus = { bronze: 0, silver: 0, gold: 2 };
+      if (totals[String(goldCurrency.id)] !== BUY_ALL_TRUTH[String(goldCurrency.id)])
+        errors.push(
+          `farm math: the gold buy-out reference reads ${totals[String(goldCurrency.id)]}, pinned truth ${BUY_ALL_TRUTH[String(goldCurrency.id)]}`,
+        );
+      let firstBad = null;
+      for (const currency of CURRENCIES) {
+        const tier = tierOfCurrency(currency);
+        const id = String(currency.id);
+        const ref = refFarmRow(FARM[id], totals[id], held[tier], bonus[tier]);
+        const got = res.results[tier];
+        const wantLabel = `${ref.runs === 1 ? "run" : "runs"} \u00b7 ${fmtRef(ref.ap)} AP`;
+        if (got.deficit !== String(ref.deficit) || got.play !== String(ref.runs) || got.label !== wantLabel) {
+          if (!firstBad)
+            firstBad = { tier, got, want: { deficit: String(ref.deficit), play: String(ref.runs), label: wantLabel } };
+          errors.push(
+            `farm math(${currency.name}): results read deficit ${JSON.stringify(got.deficit)} play ${JSON.stringify(got.play)} label ${JSON.stringify(got.label)}, reference farmPlan says ${ref.deficit} / ${ref.runs} / ${JSON.stringify(wantLabel)} (perRun ${ref.perRun} = dropExpected ${FARM[id].dropExpected} × (num ${FARM[id].num} + bonus ${bonus[tier]}))`,
+          );
+        }
+      }
+      /* the headline discriminator: gold buy-out 6610 − 1000 held over dropExpected × (num+2).
+         The two bug-shaped answers differ from the right one, so the scene proves it can see the
+         difference before it claims the app is right. */
+      const goldRef = refFarmRow(FARM[String(goldCurrency.id)], 6610, 1000, 2);
+      const flatRuns = Math.ceil(5610 / (FARM[String(goldCurrency.id)].dropExpected * FARM[String(goldCurrency.id)].num + 2));
+      const noBonusRuns = Math.ceil(5610 / (FARM[String(goldCurrency.id)].dropExpected * FARM[String(goldCurrency.id)].num));
+      if (goldRef.deficit !== 5610)
+        errors.push(`farm math: the reference deficit moved off 5610 (${JSON.stringify(goldRef)}) — re-verify BUY_ALL_TRUTH before blaming the app`);
+      if (goldRef.runs === flatRuns || goldRef.runs === noBonusRuns)
+        errors.push(
+          `farm math: the reference is blind — bonus-in-stack ${goldRef.runs} equals flat-bonus ${flatRuns} / no-bonus ${noBonusRuns} at this drop rate, re-pick the scene numbers`,
+        );
+      console.log(
+        `NOTE: farm results gold = ${res.results.gold.deficit} deficit, ${res.results.gold.play} runs, "${res.results.gold.label}" (bonus-in-stack ref ${goldRef.runs}; the flat-bonus bug would say ${flatRuns}, dropping the bonus entirely ${noBonusRuns})`,
       );
-    await openTierModal("bronze", "open after mismatch");
-    await clickDone();
-    mismatchTier = await readTier();
-    const storedMismatch = mismatchTier.storage ? JSON.parse(mismatchTier.storage) : null;
-    if (!storedMismatch || storedMismatch.eventId !== EVENT_ID)
-      errors.push(
-        `event-id mismatch: first mutation stored eventId ${storedMismatch && storedMismatch.eventId}, want the current ${EVENT_ID}`,
-      );
+      if (firstBad)
+        errors.push(
+          `farm math: observed ${JSON.stringify(firstBad.got)} vs want ${JSON.stringify(firstBad.want)} on tier ${firstBad.tier}`,
+        );
+      if (res.results.gold.play !== String(goldRef.runs))
+        errors.push(`farm math: gold play cell is ${JSON.stringify(res.results.gold.play)}, want ${goldRef.runs}`);
+      const wantGoldLabel = `${goldRef.runs === 1 ? "run" : "runs"} \u00b7 ${fmtRef(goldRef.ap)} AP`;
+      if (res.results.gold.label !== wantGoldLabel)
+        errors.push(
+          `farm math: gold label is ${JSON.stringify(res.results.gold.label)}, want ${JSON.stringify(wantGoldLabel)} (the runs count lives in the play cell, the label carries the wording + AP)`,
+        );
+    }
 
-    /* ================= 13. hostile localStorage blobs still sanitise ========================== */
+    /* ================= 15. per-event saves: isolation, swap-on-switch, reload (MULTI) ========= */
+    if (MULTI) {
+      await resetPlan();
+      /* plan A: bronze row 3 + gold held/bonus figures */
+      await openTierModal("bronze", "A: commit a bronze requires plan");
+      await typeInto(sel.modalInput(freeRow.id), "3");
+      await clickDone();
+      await typeInto("#goldHave", "1000");
+      await typeInto("#goldBonus", "2");
+      /* the tier-box writers are debounced (Amendment H): the figures reach the plan after
+         DEBOUNCE_MS — snapshot only once the flush has landed (a human always types slower). */
+      await wait(SETTLE_MS);
+      const planABefore = JSON.parse((await readTier()).storage).plans[String(ACTIVE_ID)];
+      const snapshotA = JSON.stringify({
+        requires: planABefore.requires,
+        held: planABefore.held,
+        bonus: planABefore.bonus,
+      });
+
+      /* switch to B: everything the event owns must swap */
+      await switchEvent(PIN_OTHER, "switch 80639 → 80630");
+      const stateB = await readTier();
+      if (stateB.tiers.bronze.name !== "Bronze")
+        errors.push(
+          `switch: 80630 has no bronze currency — the card must revert to ${JSON.stringify("Bronze")}, reads ${JSON.stringify(stateB.tiers.bronze.name)}`,
+        );
+      if (stateB.tiers.bronze.badge === null)
+        errors.push("switch: the reverted bronze card lost its fallback badge — stale event art survived the switch");
+      if (stateB.tiers.bronze.needValue !== "0")
+        errors.push(
+          `switch: bronze Required reads ${JSON.stringify(stateB.tiers.bronze.needValue)} on the empty 80630 plan, want "0"`,
+        );
+      if (stateB.tiers.gold.name !== EOTHER.currencies[0].name)
+        errors.push(
+          `switch: gold card is ${JSON.stringify(stateB.tiers.gold.name)}, want ${JSON.stringify(EOTHER.currencies[0].name)}`,
+        );
+      if (
+        stateB.tiers.gold.needValue !== "0" ||
+        stateB.tiers.gold.heldValue !== "0" ||
+        stateB.tiers.gold.bonusValue !== "0"
+      )
+        errors.push(
+          `switch: gold boxes leaked A's plan into B — ${JSON.stringify([stateB.tiers.gold.needValue, stateB.tiers.gold.heldValue, stateB.tiers.gold.bonusValue])}`,
+        );
+      if (stateB.farm.cards.length !== 1 || stateB.farm.cards[0].lines[0] !== "No drop data yet")
+        errors.push(
+          `switch: 80630 farm cards are ${JSON.stringify(stateB.farm.cards)} — want one "No drop data yet" card (null farm)`,
+        );
+      if (
+        stateB.results.gold.deficitLabel !== EOTHER.currencies[0].name ||
+        stateB.results.bronze.deficitLabel !== "Bronze"
+      )
+        errors.push(
+          `switch: result labels after moving to 80630 — gold ${JSON.stringify(stateB.results.gold.deficitLabel)} bronze ${JSON.stringify(stateB.results.bronze.deficitLabel)}`,
+        );
+      /* a null-farm currency prices to "—" + "No drop data yet" */
+      await safeClick("#calculateBtn");
+      await wait(SETTLE_MS);
+      const resB = (await readTier()).results;
+      if (resB.gold.play !== "\u2014" || resB.gold.label !== "No drop data yet")
+        errors.push(
+          `farm null: 80630 gold results read ${JSON.stringify([resB.gold.play, resB.gold.label])}, want ["\u2014","No drop data yet"]`,
+        );
+
+      /* edit B, prove A is byte-identical, switch back, prove B kept its own edit */
+      await openTierModal("gold", "B: commit an 80630 plan");
+      const bItem = itemsOfCurrency(String(EOTHER.currencies[0].id), EOTHER.items).find((i) => i.limitNum >= 1);
+      if (!bItem) errors.push("switch: 80630 has no limited gold row to edit — snapshot drifted");
+      else {
+        await typeInto(sel.modalInput(String(bItem.id)), "1");
+        await clickDone();
+        const afterB = JSON.parse((await readTier()).storage);
+        const aJson = JSON.stringify({
+          requires: afterB.plans[String(ACTIVE_ID)].requires,
+          held: afterB.plans[String(ACTIVE_ID)].held,
+          bonus: afterB.plans[String(ACTIVE_ID)].bonus,
+        });
+        if (aJson !== snapshotA) errors.push(`isolation(G): editing 80630 mutated 80639 — ${aJson} vs ${snapshotA}`);
+        const bReq = afterB.plans[String(PIN_OTHER)].requires || {};
+        if (bReq[String(bItem.id)] !== 1)
+          errors.push(`isolation(G): 80630's own edit did not persist — ${JSON.stringify(bReq)}`);
+        if (afterB.selectedEventId !== PIN_OTHER)
+          errors.push(`isolation(G): selectedEventId is ${JSON.stringify(afterB.selectedEventId)} after editing B`);
+
+        await switchEvent(ACTIVE_ID, "switch back → 80639");
+        const backA = await readTier();
+        if (backA.tiers.bronze.needValue !== String(3 * freeRow.cost.amount))
+          errors.push(
+            `isolation(G): A's bronze Required after the round trip reads ${JSON.stringify(backA.tiers.bronze.needValue)}, want ${3 * freeRow.cost.amount}`,
+          );
+        if (backA.tiers.gold.heldValue !== "1000" || backA.tiers.gold.bonusValue !== "2")
+          errors.push(
+            `isolation(G): A's held/bonus after the round trip reads ${JSON.stringify([backA.tiers.gold.heldValue, backA.tiers.gold.bonusValue])}, want ["1000","2"]`,
+          );
+        const fullShape = (c) => {
+          const entry = FARM[c.header && c.header.currencyId];
+          if (!entry) return c.lines.length === 1 && c.lines[0] === "No drop data yet" && c.drops.length === 0;
+          const stats = entry.recommendLv ? 2 : 1;
+          const drops = entry.secondary ? 2 : 1;
+          const dash = entry.secondary ? 0 : 1;
+          return (
+            c.lines.filter((l) => l !== "\u2014").length === stats && c.drops.length === drops && c.lines.filter((l) => l === "\u2014").length === dash
+          );
+        };
+        if (backA.farm.cards.length !== 3 || !backA.farm.cards.every(fullShape))
+          errors.push(
+            `switch back: A's farm grid is ${JSON.stringify(backA.farm.cards.map((c) => [c.lines, c.drops.length]))} — want 3 full-shape cards (quest + REC + primary + secondary)`,
+          );
+        /* and B's edit survived untouched in storage */
+        const stillB = JSON.parse(backA.storage).plans[String(PIN_OTHER)];
+        if (!stillB || (stillB.requires || {})[String(bItem.id)] !== 1)
+          errors.push(`isolation(G): B's plan lost its edit while A was being worked — ${JSON.stringify(stillB)}`);
+        /* both plans survive a reload, with the selection */
+        await page.reload({ waitUntil: "networkidle0" });
+        await ensureEventTab();
+        await wait(SETTLE_MS);
+        const reloaded = await readTier();
+        if (reloaded.select.value !== String(ACTIVE_ID))
+          errors.push(
+            `persistence(G): after reload the select shows ${JSON.stringify(reloaded.select.value)}, want ${ACTIVE_ID}`,
+          );
+        if (reloaded.tiers.bronze.needValue !== String(3 * freeRow.cost.amount))
+          errors.push(
+            `persistence(G): after reload A's bronze Required reads ${JSON.stringify(reloaded.tiers.bronze.needValue)}`,
+          );
+        const reloadB = JSON.parse(reloaded.storage).plans[String(PIN_OTHER)];
+        if (!reloadB || (reloadB.requires || {})[String(bItem.id)] !== 1)
+          errors.push(`persistence(G): after reload B's plan is ${JSON.stringify(reloadB)}`);
+      }
+      await switchEvent(ACTIVE_ID, "reselect after reload");
+    }
+
+    /* ================= 16. first-match + label restore on an unmapped event (MULTI 80379) ===== */
+    if (MULTI) {
+      await switchEvent(PIN_MULTI, "switch → 80379");
+      const s79 = await readTier();
+      const golds = EMULTI.currencies.filter((c) => c.background === "gold");
+      if (golds.length < 2) errors.push(`data truth: 80379 expected 2 gold currencies, has ${golds.length}`);
+      else if (s79.tiers.gold.name !== golds[0].name)
+        errors.push(
+          `first-match: gold card is ${JSON.stringify(s79.tiers.gold.name)}, want the FIRST gold currency ${JSON.stringify(golds[0].name)}`,
+        );
+      if (s79.results.bronze.deficitLabel !== "Bronze" || s79.results.silver.deficitLabel !== "Silver")
+        errors.push(
+          `label restore: unmapped tiers must show the tier words — bronze ${JSON.stringify(s79.results.bronze.deficitLabel)} silver ${JSON.stringify(s79.results.silver.deficitLabel)}`,
+        );
+      if (s79.farm.cards.length !== EMULTI.currencies.length)
+        errors.push(`farm: 80379 shows ${s79.farm.cards.length} cards, want ${EMULTI.currencies.length}`);
+      if (s79.farm.cards.some((c) => !c.lines.includes("No drop data yet") || c.drops.length))
+        errors.push(
+          `farm: an 80379 card invented drop data where the snapshot has null — ${JSON.stringify(s79.farm.cards.map((c) => [c.lines, c.drops.length]))}`,
+        );
+      for (const c of s79.farm.cards) {
+        const cur = EMULTI.currencies.find((x) => String(x.id) === (c.header || {}).currencyId);
+        if (!cur)
+          errors.push(`farm: 80379 card header carries ${JSON.stringify((c.header || {}).currencyId)}, want one of the event's own currency ids`);
+      }
+      await switchEvent(ACTIVE_ID, "switch back → 80639");
+      const back = await readTier();
+      if (back.results.gold.deficitLabel !== BUY_ALL_NAMES[String(goldCurrency.id)])
+        errors.push(
+          `label restore: gold label after returning is ${JSON.stringify(back.results.gold.deficitLabel)}, want the currency name again`,
+        );
+    }
+
+    /* ================= 17. zero-background event renders without crash (MULTI 80292) ========== */
+    if (MULTI) {
+      const errorsBefore = pageErrors.length;
+      await switchEvent(PIN_ZERO, 'switch → 80292 (QP background "zero")');
+      const s92 = await readTier();
+      if (s92.farm.cards.length !== EZERO.currencies.length)
+        errors.push(
+          `zero tier: ${s92.farm.cards.length} farm cards, want ${EZERO.currencies.length} (one per currency)`,
+        );
+      const qpCard = s92.farm.cards.find((c) => c.tier === "zero");
+      if (!qpCard)
+        errors.push(`zero tier: no data-tier="zero" farm card — ${JSON.stringify(s92.farm.cards.map((c) => c.tier))}`);
+      else {
+        if (!qpCard.lines.includes("No drop data yet"))
+          errors.push(`zero tier: QP card lines ${JSON.stringify(qpCard.lines)}, want the null-farm message`);
+        const silverCard = s92.farm.cards.find((c) => c.tier === "silver");
+        if (silverCard && qpCard.borderColor !== silverCard.borderColor)
+          errors.push(
+            `zero tier: the QP card border ${qpCard.borderColor} lost the :where() silver fallback (silver sibling ${silverCard.borderColor})`,
+          );
+        if (!/rgba\(|rgb\(/.test(qpCard.borderColor) || qpCard.borderColor === "rgba(0, 0, 0, 0)")
+          errors.push(
+            `zero tier: QP border is ${JSON.stringify(qpCard.borderColor)}, want a real colour, not transparent`,
+          );
+      }
+      const silverCur = currencyForTierRef(EZERO.currencies, "silver");
+      if (s92.tiers.silver.name !== silverCur.name)
+        errors.push(
+          `zero tier: silver card is ${JSON.stringify(s92.tiers.silver.name)}, want ${JSON.stringify(silverCur.name)}`,
+        );
+      if (s92.tiers.bronze.name !== "Bronze" || !s92.tiers.bronze.badge)
+        errors.push("zero tier: the unmapped bronze card must keep the generic badge look");
+      if (pageErrors.length !== errorsBefore)
+        errors.push(
+          `zero tier: switching to 80292 raised page errors — ${JSON.stringify(pageErrors.slice(errorsBefore))}`,
+        );
+      await switchEvent(ACTIVE_ID, "leave 80292");
+    }
+
+    /* ============ 17D. secondary-null drop line + falsy REC (MULTI 80555 dash fixture) ======== */
+    /* No shipped or pruned event has drop data WITHOUT a secondary (the pruned ones have no farm
+       data at all), so the patched MULTI copy carries one synthetic event: the live farm rows with
+       every secondary deleted and one recommendLv blanked. It pins the two branches Amendment I
+       added that real data cannot reach: the "—" secondary line and the skipped REC line. */
+    if (MULTI) {
+      const before17 = pageErrors.length;
+      await switchEvent(PIN_DASH, "17D: switch → 80555 (secondary-null fixture)");
+      const sd = await readTier();
+      const currencies = EDASH.currencies;
+      if (sd.farm.cards.length !== currencies.length)
+        errors.push(`dash: ${sd.farm.cards.length} cards, want ${currencies.length}`);
+      for (const currency of currencies) {
+        const id = String(currency.id);
+        const entry = EDASH.farm[id];
+        const card = sd.farm.cards.find((c) => c.header && c.header.currencyId === id);
+        if (!card || !entry) {
+          errors.push(`dash(${currency.name}): no card for the fixture currency — ${JSON.stringify(sd.farm.cards.map((c) => (c.header || {}).currencyId))}`);
+          continue;
+        }
+        const wantStats = [entry.questName];
+        if (entry.recommendLv) wantStats.push(`REC Lv. ${entry.recommendLv}`);
+        const stats = card.lines.filter((l) => l !== "\u2014");
+        if (JSON.stringify(stats) !== JSON.stringify(wantStats))
+          errors.push(`dash(${currency.name}): stats ${JSON.stringify(stats)}, want ${JSON.stringify(wantStats)} (REC is skipped when falsy)`);
+        if (card.lines.filter((l) => l === "\u2014").length !== 1)
+          errors.push(`dash(${currency.name}): expected exactly one "\u2014" secondary line, got ${JSON.stringify(card.lines)}`);
+        if (card.drops.length !== 1 || card.drops[0].kind !== "primary")
+          errors.push(`dash(${currency.name}): ${card.drops.length} drop line(s) ${JSON.stringify(card.drops.map((d) => d.kind))}, want the primary line alone`);
+        if (card.drops[0] && (card.drops[0].currencyId !== id || card.drops[0].num !== String(entry.num)))
+          errors.push(`dash(${currency.name}): primary line data wrong — ${JSON.stringify([card.drops[0].currencyId, card.drops[0].num])}`);
+        /* the header opener still works on a secondary-less card */
+        await safeClick(`#farmGrid .farm-card-title[data-currency-id="${id}"]`);
+        if (await modalGate(true, `17D: ${currency.name} header opens its modal`)) {
+          const m = await readModal();
+          if (m.title !== `${currency.name} \u2014 Shop Items`)
+            errors.push(`dash(${currency.name}): header opened ${JSON.stringify(m.title)}`);
+          await closeBy("Escape", "17D: close after header open");
+        }
+      }
+      /* results math is untouched by the missing secondary: the primary line still prices alone */
+      const dashGold = currencyForTierRef(currencies, "gold");
+      const goldItemsD = EDASH.items.filter((i) => String(i.cost.itemId) === String(dashGold.id));
+      await openTierModal("gold", "17D: buy the fixture's gold");
+      await safeClick(sel.footer("SelectAll"));
+      await clickDone();
+      await safeClick("#calculateBtn");
+      await wait(SETTLE_MS);
+      const resD = (await readTier()).results;
+      const totalsD = refTotals(EDASH.items, currencies, refClear(goldItemsD));
+      const refD = refFarmRow(EDASH.farm[String(dashGold.id)], totalsD[String(dashGold.id)], 0, 0);
+      if (refD.runs === null)
+        errors.push("dash: the fixture's gold farm row priced to nothing — the scene is blind, re-check the fixture data");
+      if (resD.gold.play !== String(refD.runs))
+        errors.push(`dash: gold runs is ${JSON.stringify(resD.gold.play)}, want ${refD.runs} — a missing secondary must not change farmPlan`);
+      if (pageErrors.length !== before17)
+        errors.push(`dash: the secondary-null fixture raised page errors — ${JSON.stringify(pageErrors.slice(before17))}`);
+      await resetPlan();
+      await switchEvent(ACTIVE_ID, "17D: leave the fixture");
+    }
+
+    /* ==== 17H. Amendment H+I7: currency-keyed farm controls + header opener (MULTI) ==== */
+    if (MULTI) {
+      /* Amendment I7 moved the farm card's modal door from a Required box to the currency HEADER and
+         deleted the box entirely. The collision contract still holds, re-pinned: (1) every farm card's
+         header opens THAT currency's modal — by click and by Enter — so a currency no tier card owns
+         stays reachable; (2) exactly one Held/Bonus pair per currency — tier-mapped currencies keep
+         the tier-card pair and get no farm pair, every other currency owns a farm pair writing the
+         same currency-keyed plan; (3) farm figures persist by CURRENCY id, migrate from stored TIER
+         ids through first-match, price per currency, and are committed synchronously at Calculate;
+         (4) a pending debounce may never write into the event the user switched TO; (5) the farm
+         label chip masks its own card surface; (6) NO Required surface of any kind lives in #farmGrid. */
+      const readFarmCtl = (eventId) =>
+        page.evaluate(
+          (key, id) => {
+            const stored = JSON.parse(localStorage.getItem(key) || "null");
+            const plan = (stored && stored.plans && stored.plans[String(id)]) || { requires: {} };
+            const labelOf = (input) => {
+              const box = input.closest(".material-input-box");
+              const l = box ? box.querySelector(".material-input-box-label") : null;
+              return l ? l.textContent : null;
+            };
+            const cards = [...document.querySelectorAll("#farmGrid .farm-card")].map((c) => {
+              const header = c.querySelector(".farm-card-title");
+              const inputs = [...c.querySelectorAll("input")];
+              return {
+                tier: c.dataset.tier,
+                currencyId: header ? header.dataset.currencyId : null,
+                headerRole: header ? header.getAttribute("role") : null,
+                headerTabindex: header ? header.getAttribute("tabindex") : null,
+                headerHaspopup: header ? header.getAttribute("aria-haspopup") : null,
+                headerAria: header ? header.getAttribute("aria-label") : null,
+                headerText: header ? header.textContent.replace(/\s+/g, " ").trim() : null,
+                requireDisplays: c.querySelectorAll("input.eshop-require-display").length,
+                requiredIds: inputs.filter((i) => /^farmRequired/.test(i.id)).map((i) => i.id),
+                cardBg: getComputedStyle(c).backgroundColor,
+                boxes: inputs.map((i) => ({
+                  id: i.id,
+                  label: labelOf(i),
+                  value: i.value,
+                  readOnly: i.readOnly,
+                  aria: i.getAttribute("aria-label"),
+                  labelBg: (() => {
+                    const box = i.closest(".material-input-box");
+                    const l = box ? box.querySelector(".material-input-box-label") : null;
+                    return l ? getComputedStyle(l).backgroundColor : null;
+                  })(),
+                })),
+              };
+            });
+            return { cards, plan };
+          },
+          KEY,
+          eventId,
+        );
+
+      const mappedIdsOf = (currencies) =>
+        new Set(TIERS.map((t) => currencyForTierRef(currencies, t)).filter(Boolean).map((c) => String(c.id)));
+      const itemsOf = (snap, currencyId) =>
+        snap.items.filter((i) => String(i.cost.itemId) === String(currencyId));
+
+      /* The shared ensureEventTab readiness test keys on #goldNeed carrying the display class, which
+         an event with NO gold currency never does (its tier card reverts to the legacy editable
+         box). Same route for those events — tab, then a readiness test the event can satisfy. */
+      const seedAndReloadGoldless = async (raw, eventId) => {
+        await seedStorage(raw);
+        await page.reload({ waitUntil: "networkidle0" });
+        await page.evaluate(() => {
+          const active = document.querySelector(".tab-btn.active");
+          if (!active || active.dataset.tab !== "event")
+            document.querySelector('.tab-btn[data-tab="event"]').click();
+        });
+        try {
+          await page.waitForFunction(
+            (id) => {
+              const s = document.getElementById("eventSelect");
+              return !!s && s.value === String(id) && document.querySelectorAll("#farmGrid .farm-card").length > 0;
+            },
+            { timeout: 15000 },
+            eventId,
+          );
+        } catch {
+          errors.push(`H5: reloading onto goldless event ${eventId} never hydrated the select + farm grid`);
+        }
+        await wait(SETTLE_MS);
+      };
+
+      /* --- H1. reachability + one pair per currency, on all three multi-currency shapes --- */
+      await resetPlan();
+      for (const snap of [EACTIVE, EMULTI, EZERO]) {
+        await switchEvent(snap.event.id, `H1: switch → ${snap.event.id}`);
+        const ctl = await readFarmCtl(snap.event.id);
+        const mapped = mappedIdsOf(snap.currencies);
+        const totals = refTotals(snap.items, snap.currencies, (ctl.plan && ctl.plan.requires) || {});
+        if (ctl.cards.length !== snap.currencies.length)
+          errors.push(
+            `H1(${snap.event.id}): ${ctl.cards.length} farm card(s), want ${snap.currencies.length} — one per shop currency`,
+          );
+        const ids = ctl.cards.map((c) => c.currencyId);
+        if (new Set(ids).size !== ids.length)
+          errors.push(`H1(${snap.event.id}): two farm cards claim the same currency — ${JSON.stringify(ids)}`);
+        const foreign = ids.filter((id) => id !== null && !snap.currencies.some((c) => String(c.id) === id));
+        if (foreign.length)
+          errors.push(
+            `H1(${snap.event.id}): farm card(s) for currencies the event never sold — ${JSON.stringify(foreign)}`,
+          );
+        const tierState = await readTier();
+        for (const currency of snap.currencies) {
+          const id = String(currency.id);
+          const card = ctl.cards.find((c) => c.currencyId === id);
+          if (!card) {
+            errors.push(
+              `H1(${snap.event.id}): no farm card header for currency ${id} (${currency.name}, background ${currency.background}) — ${
+                mapped.has(id) ? "its tier card is the only door" : "unreachable: the header is the modal opener and it is gone"
+              }`,
+            );
+            continue;
+          }
+          /* the header is the opener (Amendment I7): role/tabindex/aria + its OWN currency id */
+          if (card.headerRole !== "button" || card.headerTabindex !== "0" || card.headerHaspopup !== "dialog")
+            errors.push(
+              `H1(${snap.event.id}): ${currency.name} header is not an opener (role ${JSON.stringify(card.headerRole)}, tabindex ${JSON.stringify(card.headerTabindex)}, aria-haspopup ${JSON.stringify(card.headerHaspopup)})`,
+            );
+          if (card.headerAria !== `${currency.name}: open shop items`)
+            errors.push(`H1(${snap.event.id}): ${currency.name} header aria-label is ${JSON.stringify(card.headerAria)}`);
+          if (card.headerText !== currency.name)
+            errors.push(`H1(${snap.event.id}): ${currency.name} header text reads ${JSON.stringify(card.headerText)}`);
+          /* I7: no Required surface may live in a farm card */
+          if (card.requireDisplays || card.requiredIds.length)
+            errors.push(
+              `H1(${snap.event.id}): ${currency.name} farm card still carries a Required display (${card.requireDisplays} eshop-require-display, ids ${JSON.stringify(card.requiredIds)}) — Amendment I7 deleted it, the tier cards are its only home`,
+            );
+          /* the spend this card used to show now lives on the tier card — and only for a mapped
+             currency; an unmapped one has no Required anywhere by design (H2/H3 pin its modal).
+             A background outside TIERS (QP's "zero") maps to no card at all. */
+          const mappedHere = TIERS.includes(currency.background)
+            ? currencyForTierRef(snap.currencies, currency.background)
+            : null;
+          if (mappedHere && String(mappedHere.id) === id) {
+            const td = tierState.tiers[currency.background];
+            if (!td || td.needValue !== String(totals[id]))
+              errors.push(
+                `H1(${snap.event.id}): ${currency.name} tier Required reads ${JSON.stringify(td && td.needValue)}, want ITS currency's spend ${totals[id]}`,
+              );
+          } else if (totals[id] !== 0 && mapped.has(id))
+            errors.push(`H1(${snap.event.id}): ${currency.name} is first-match mapped but its tier box is missing`);
+          const wantLabels = mapped.has(id) ? "" : "Bonus,Held";
+          const gotLabels = card.boxes.map((b) => b.label).sort().join(",");
+          if (gotLabels !== wantLabels)
+            errors.push(
+              `H1(${snap.event.id}): ${currency.name} (${id}) farm card holds [${gotLabels}], want [${wantLabels}] — ${
+                mapped.has(id)
+                  ? "a tier-mapped currency already has the tier-card pair; a second pair makes two writers for one figure"
+                  : "a currency with no tier card must own its Held/Bonus pair on the farm card"
+              }`,
+            );
+          for (const b of card.boxes) {
+            if (b.id !== `farm${b.label}${id}`)
+              errors.push(
+                `H1(${snap.event.id}): ${currency.name} ${b.label} box id ${JSON.stringify(b.id)}, want "farm${b.label}${id}"`,
+              );
+            if (b.aria !== `${currency.name} ${b.label.toLowerCase()}`)
+              errors.push(
+                `H1(${snap.event.id}): ${currency.name} ${b.label} aria-label is ${JSON.stringify(b.aria)}, want "${currency.name} ${b.label.toLowerCase()}"`,
+              );
+            if (b.readOnly)
+              errors.push(`H1(${snap.event.id}): ${currency.name} ${b.label} farm box is readOnly — it is an input`);
+            if (b.labelBg !== card.cardBg)
+              errors.push(
+                `H7: ${snap.event.id} ${currency.name} ${b.label} chip is ${b.labelBg} on a ${card.cardBg} card — the pill paints a tint patch (mask rule missing)`,
+              );
+          }
+        }
+      }
+
+      /* --- H2. 80379 second gold: modal by title, per-currency totals, keyboard path --- */
+      const golds = EMULTI.currencies.filter((c) => c.background === "gold");
+      const [firstGold, secondGold] = golds;
+      const hHeader = (id) => `#farmGrid .farm-card-title[data-currency-id="${id}"]`;
+      await resetPlan();
+      await switchEvent(PIN_MULTI, "H2: switch → 80379 (two golds)");
+      await safeClick(hHeader(secondGold.id));
+      const h2open = await modalGate(true, "H2: the second gold's farm header opens its modal");
+      const m2 = await readModal();
+      const secondItem = itemsOf(EMULTI, secondGold.id)[0];
+      if (h2open) {
+        if (m2.title !== `${secondGold.name} \u2014 Shop Items`)
+          errors.push(
+            `H2: the ${secondGold.name} Required display opened ${JSON.stringify(m2.title)}, want "${secondGold.name} \u2014 Shop Items" — currencyForTier first-match hijacked the modal`,
+          );
+        const wantIds = itemsOf(EMULTI, secondGold.id)
+          .map((i) => String(i.id))
+          .sort()
+          .join();
+        const gotIds = m2.rows.map((r) => r.id).sort().join();
+        if (gotIds !== wantIds)
+          errors.push(`H2: that modal lists rows ${JSON.stringify(gotIds)}, want the second gold's own items ${JSON.stringify(wantIds)}`);
+        await typeInto(sel.modalInput(String(secondItem.id)), "5");
+        await clickDone();
+      }
+      const h2ctl = await readFarmCtl(PIN_MULTI);
+      const h2tier = await readTier();
+      const want2 = refTotals(EMULTI.items, EMULTI.currencies, (h2ctl.plan && h2ctl.plan.requires) || {});
+      if (want2[String(secondGold.id)] !== 5 * secondItem.cost.amount)
+        errors.push(
+          `H2: the reference says ${secondGold.name} spend is ${want2[String(secondGold.id)]}, expected 5 × ${secondItem.cost.amount} — the plan did not key by currency`,
+        );
+      /* I7: no Required display shows an unmapped currency's spend — the header modal is its door,
+         and reopening it must come back with the committed figure, subtotal and title */
+      const hHeaderOpen = async (currencyId, label) => {
+        await safeClick(hHeader(currencyId));
+        if (!(await modalGate(true, label))) return null;
+        return readModal();
+      };
+      const m2q = await hHeaderOpen(String(secondGold.id), "H2: reopen the second gold via its header");
+      if (m2q) {
+        if (m2q.title !== `${secondGold.name} \u2014 Shop Items`)
+          errors.push(`H2: the reopened modal is ${JSON.stringify(m2q.title)}, want the second gold's own`);
+        const row = m2q.rows.find((r) => r.id === String(secondItem.id));
+        if (!row || row.value !== "5")
+          errors.push(`H2: the second gold's modal reopens at ${JSON.stringify(row && row.value)}, want "5" — its spend must be reachable`);
+        if (row && num(row.total) !== 5 * secondItem.cost.amount)
+          errors.push(`H2: the second gold's row subtotal is ${JSON.stringify(row.total)}, want ${5 * secondItem.cost.amount}`);
+        const zeroRows = m2q.rows.filter((r) => r.id !== String(secondItem.id) && r.value !== "0");
+        if (zeroRows.length)
+          errors.push(`H2: ${zeroRows.length} other ${secondGold.name} row(s) carry spend — per-currency totals crossed rows`);
+        await closeBy("Escape", "H2: close the second gold's modal");
+      }
+      if ((h2ctl.plan.requires || {})[String(secondItem.id)] !== 5)
+        errors.push(`H2: the plan did not commit the second gold's row — ${JSON.stringify(h2ctl.plan.requires)}`);
+      if (h2tier.tiers.gold.needValue !== "0")
+        errors.push(
+          `H2: the gold TIER Required reads ${JSON.stringify(h2tier.tiers.gold.needValue)} — the tier maps to ${firstGold.name}, whose plan is empty`,
+        );
+      await page.focus(hHeader(firstGold.id));
+      await page.keyboard.press("Enter");
+      const h2kb = await modalGate(true, "H2: Enter on the first gold's farm header opens ITS modal");
+      if (h2kb) {
+        const m2f = await readModal();
+        if (m2f.title !== `${firstGold.name} \u2014 Shop Items`)
+          errors.push(`H2: Enter opened ${JSON.stringify(m2f.title)}, want the first gold's own modal`);
+      }
+      await closeBy("Escape", "H2: Escape discards the draft");
+
+      /* --- H3. 80292 QP + second silver: three independent currency totals on one event --- */
+      const silvers = EZERO.currencies.filter((c) => c.background === "silver");
+      const [firstSilver, secondSilver] = silvers;
+      const qp = EZERO.currencies.find((c) => String(c.id) === "1");
+      await resetPlan();
+      await switchEvent(PIN_ZERO, 'H3: switch → 80292 (QP "zero" + two silvers)');
+      await safeClick(hHeader(qp.id));
+      const h3open = await modalGate(true, "H3: the QP farm header opens the QP modal");
+      const mq = await readModal();
+      const qpItems = itemsOf(EZERO, qp.id);
+      if (h3open) {
+        if (mq.title !== `${qp.name} \u2014 Shop Items`)
+          errors.push(`H3: the QP header opened ${JSON.stringify(mq.title)}, want "${qp.name} \u2014 Shop Items"`);
+        const wantQp = qpItems
+          .map((i) => String(i.id))
+          .sort()
+          .join();
+        const gotQp = mq.rows.map((r) => r.id).sort().join();
+        if (gotQp !== wantQp)
+          errors.push(
+            `H3: the QP modal lists ${JSON.stringify(gotQp)}, want ${JSON.stringify(wantQp)} — "zero" maps to no tier card, so the farm card is its only door`,
+          );
+        const qpBig = qpItems.find((i) => i.limitNum > 1);
+        const qpSmall = qpItems.find((i) => i.limitNum === 1);
+        await typeInto(sel.modalInput(String(qpBig.id)), String(qpBig.limitNum));
+        await typeInto(sel.modalInput(String(qpSmall.id)), "1");
+        await clickDone();
+      }
+      await safeClick(hHeader(secondSilver.id));
+      const h3k = await modalGate(true, "H3: the second silver's farm header opens ITS modal");
+      if (h3k) {
+        const mk = await readModal();
+        if (mk.title !== `${secondSilver.name} \u2014 Shop Items`)
+          errors.push(
+            `H3: the ${secondSilver.name} header opened ${JSON.stringify(mk.title)} — first-match gave the modal to ${firstSilver.name}`,
+          );
+        const kpItem = itemsOf(EZERO, secondSilver.id).find((i) => i.limitNum === 1);
+        await typeInto(sel.modalInput(String(kpItem.id)), "1");
+        await clickDone();
+      }
+      const h3ctl = await readFarmCtl(PIN_ZERO);
+      const h3tier = await readTier();
+      const want3 = refTotals(EZERO.items, EZERO.currencies, (h3ctl.plan && h3ctl.plan.requires) || {});
+      const qpBigTruth = qpItems.find((i) => i.limitNum > 1);
+      const qpSmallTruth = qpItems.find((i) => i.limitNum === 1);
+      const wantQpTruth = qpBigTruth.limitNum * qpBigTruth.cost.amount + qpSmallTruth.cost.amount;
+      if (want3[String(qp.id)] !== wantQpTruth)
+        errors.push(
+          `H3: the reference QP spend is ${want3[String(qp.id)]}, pinned data truth ${wantQpTruth} — re-verify before blaming the app`,
+        );
+      /* three currencies, three independent plans — each unmapped currency's spend is reachable
+         through its own header modal (I7 deleted the card-side Required display) */
+      const mq2 = await hHeaderOpen(String(qp.id), "H3: the QP header reopens the QP modal");
+      if (mq2) {
+        const big = mq2.rows.find((r) => r.id === String(qpBigTruth.id));
+        const small = mq2.rows.find((r) => r.id === String(qpSmallTruth.id));
+        if (!big || big.value !== String(qpBigTruth.limitNum))
+          errors.push(`H3: the QP modal reopens ${qpBigTruth.id} at ${JSON.stringify(big && big.value)}, want ${qpBigTruth.limitNum}`);
+        if (!small || small.value !== "1")
+          errors.push(`H3: the QP modal reopens ${qpSmallTruth.id} at ${JSON.stringify(small && small.value)}, want 1`);
+        const wantSum = wantQpTruth;
+        const gotSum = mq2.rows.reduce((n, r) => n + num(r.total), 0);
+        if (gotSum !== wantSum)
+          errors.push(`H3: the QP modal's row subtotals sum to ${gotSum}, want ${wantSum} — QP spend leaked across currencies`);
+        await closeBy("Escape", "H3: close the QP modal");
+      }
+      const kpItemTruth = itemsOf(EZERO, secondSilver.id).find((i) => i.limitNum === 1);
+      const mk2 = await hHeaderOpen(String(secondSilver.id), "H3: the second silver's header reopens ITS modal");
+      if (mk2) {
+        const row = mk2.rows.find((r) => r.id === String(kpItemTruth.id));
+        if (!row || row.value !== "1")
+          errors.push(`H3: ${secondSilver.name}'s modal reopens at ${JSON.stringify(row && row.value)}, want "1"`);
+        const other = mk2.rows.filter((r) => r.id !== String(kpItemTruth.id) && r.value !== "0");
+        if (other.length)
+          errors.push(`H3: ${secondSilver.name}'s modal shows ${other.length} other row(s) with spend — three currencies must keep three totals`);
+        await closeBy("Escape", "H3: close the second silver's modal");
+      }
+      for (const currency of EZERO.currencies) {
+        const mappedHere = TIERS.includes(currency.background) ? currencyForTierRef(EZERO.currencies, currency.background) : null;
+        if (!mappedHere || String(mappedHere.id) !== String(currency.id)) continue;
+        const td = h3tier.tiers[currency.background];
+        if (td && td.needValue !== String(want3[String(currency.id)]))
+          errors.push(
+            `H3: ${currency.name} tier Required reads ${JSON.stringify(td.needValue)}, want ${want3[String(currency.id)]} — three currencies must keep three totals`,
+          );
+      }
+      if (h3tier.tiers.silver.needValue !== "0")
+        errors.push(
+          `H3: the silver TIER Required reads ${JSON.stringify(h3tier.tiers.silver.needValue)} after spending QP and ${secondSilver.name} — the mapped ${firstSilver.name} plan is empty`,
+        );
+      if (h3tier.tiers.gold.needValue !== "0")
+        errors.push(`H3: 80292 has no gold currency but the gold Required reads ${JSON.stringify(h3tier.tiers.gold.needValue)}`);
+
+      /* --- H4. Calculate inside the debounce window prices the FARM box's fresh figure --- */
+      await resetPlan();
+      await switchEvent(PIN_MULTI, "H4: switch → 80379");
+      await safeClick(sel.tierNeed("gold"));
+      await modalGate(true, "H4: open the mapped gold modal");
+      const firstItem = itemsOf(EMULTI, firstGold.id)[0];
+      await typeInto(sel.modalInput(String(firstItem.id)), "10");
+      await clickDone();
+      await typeInto(sel.tierHeld("gold"), "4");
+      await wait(SETTLE_MS);
+      /* One JS task: type the farm box, press Calculate, read localStorage. The trailing debounce
+         cannot have run between them, so a fresh figure in the plan is proof of a synchronous commit. */
+      const h4 = await page.evaluate(
+        (args) => {
+          const box = document.getElementById(`farmHeld${args.second}`);
+          box.value = "500";
+          const t0 = performance.now();
+          box.dispatchEvent(new Event("input", { bubbles: true }));
+          document.getElementById("calculateBtn").click();
+          const stored = JSON.parse(localStorage.getItem(args.key));
+          return {
+            ms: performance.now() - t0,
+            held: stored.plans[String(args.event)].held,
+            deficit: (document.getElementById("goldDeficit") || {}).textContent || null,
+          };
+        },
+        { second: String(secondGold.id), key: KEY, event: PIN_MULTI },
+      );
+      if (h4.ms >= DEBOUNCE_MS)
+        errors.push(`H4: input→Calculate took ${h4.ms}ms, outside DEBOUNCE_MS ${DEBOUNCE_MS} — the scene did not test the window`);
+      if (h4.held[String(secondGold.id)] !== 500)
+        errors.push(
+          `H4: Calculate ${h4.ms}ms after typing 500 into the farm Held box priced ${JSON.stringify(h4.held[String(secondGold.id)])} — the synchronous farm commit did not run, so a fast Calculate prices a stale figure`,
+        );
+      if (h4.held[String(firstGold.id)] !== 4)
+        errors.push(
+          `H4: the farm box write moved the MAPPED currency's held (${JSON.stringify(h4.held[String(firstGold.id)])}, want 4) — writes must key on the card's own currency`,
+        );
+      const wantDeficit = 10 * firstItem.cost.amount - 4;
+      if (h4.deficit !== String(wantDeficit))
+        errors.push(
+          `H4: gold Deficit reads ${JSON.stringify(h4.deficit)}, want ${wantDeficit} — the second gold's 500 must not pay for the first gold's row (farmPlan prices per currency)`,
+        );
+      await wait(SETTLE_MS);
+      const h4ctl = await readFarmCtl(PIN_MULTI);
+      const h4Held = (h4ctl.cards.find((c) => c.currencyId === String(secondGold.id)) || { boxes: [] }).boxes.find(
+        (b) => b.label === "Held",
+      );
+      if (!h4Held || h4Held.value !== "500")
+        errors.push(
+          `H4: after the trailing debounce the farm Held box reads ${JSON.stringify(h4Held && h4Held.value)}, want "500" kept`,
+        );
+      await page.reload({ waitUntil: "networkidle0" });
+      await ensureEventTab();
+      await wait(SETTLE_MS);
+      const h4r = await readFarmCtl(PIN_MULTI);
+      if (h4r.plan.held[String(secondGold.id)] !== 500)
+        errors.push(`H4: the farm figure did not survive a reload — plan.held is ${JSON.stringify(h4r.plan.held)}`);
+
+      /* --- H5. stored TIER keys migrate to CURRENCY keys through first-match --- */
+      const migH = JSON.stringify({
+        selectedEventId: PIN_MULTI,
+        plans: { [String(PIN_MULTI)]: { held: { gold: 1234 }, bonus: { gold: 7 } } },
+      });
+      await seedAndReload(migH);
+      const h5 = await readTier();
+      const h5ctl = await readFarmCtl(PIN_MULTI);
+      if (h5.tiers.gold.heldValue !== "1234" || h5.tiers.gold.bonusValue !== "7")
+        errors.push(
+          `H5: the gold tier boxes did not receive the stored tier keys — ${JSON.stringify([h5.tiers.gold.heldValue, h5.tiers.gold.bonusValue])}, want ["1234","7"]`,
+        );
+      const secondBoxes = (h5ctl.cards.find((c) => c.currencyId === String(secondGold.id)) || { boxes: [] }).boxes;
+      if (secondBoxes.some((b) => b.value !== "0"))
+        errors.push(
+          `H5: the stored "gold" figure landed on ${secondGold.name} too — ${JSON.stringify(secondBoxes)}; first-match says it belongs to ${firstGold.name} alone`,
+        );
+      if (h5.storage !== migH)
+        errors.push(
+          `H5: load rewrote the tier-keyed blob (${JSON.stringify(h5.storage && h5.storage.slice(0, 90))}) — migration stays in memory until a mutation`,
+        );
+      await typeInto(`#farmHeld${secondGold.id}`, "3");
+      await wait(SETTLE_MS);
+      const h5w = (await readFarmCtl(PIN_MULTI)).plan;
+      if (JSON.stringify(Object.keys(h5w.held).sort()) !== JSON.stringify([firstGold.id, secondGold.id].map(String).sort()))
+        errors.push(`H5: after the rewrite held keys are ${JSON.stringify(Object.keys(h5w.held))}, want the two currency ids only`);
+      if (h5w.held[String(firstGold.id)] !== 1234 || h5w.held[String(secondGold.id)] !== 3)
+        errors.push(`H5: the migrated figures did not survive the rewrite — held is ${JSON.stringify(h5w.held)}`);
+      if (h5w.bonus[String(firstGold.id)] !== 7 || Object.keys(h5w.bonus).some((k) => k === "gold"))
+        errors.push(`H5: bonus after rewrite is ${JSON.stringify(h5w.bonus)} — the tier key must be gone, 7 on ${firstGold.name}`);
+      const migZ = JSON.stringify({
+        selectedEventId: PIN_ZERO,
+        plans: { [String(PIN_ZERO)]: { held: { silver: 50, zero: 99, bronze: 7 }, bonus: { silver: 2 } } },
+      });
+      await seedAndReloadGoldless(migZ, PIN_ZERO);
+      const h5z = await readTier();
+      const h5zctl = await readFarmCtl(PIN_ZERO);
+      if (h5z.tiers.silver.heldValue !== "50")
+        errors.push(
+          `H5: 80292 stored "silver" did not migrate onto the mapped ${firstSilver.name} — the box reads ${JSON.stringify(h5z.tiers.silver.heldValue)}, want "50"`,
+        );
+      if (h5z.tiers.bronze.heldValue !== "0")
+        errors.push(
+          `H5: a stored "bronze" figure survived on an event with no bronze currency — ${JSON.stringify(h5z.tiers.bronze.heldValue)}`,
+        );
+      for (const id of [String(qp.id), String(secondSilver.id)]) {
+        const boxes = (h5zctl.cards.find((c) => c.currencyId === id) || { boxes: [] }).boxes;
+        if (boxes.some((b) => b.value !== "0"))
+          errors.push(
+            `H5: currency ${id} received a tier key it does not map to (${JSON.stringify(boxes)}) — "zero" is not a tier and ${secondSilver.name} is not first-match`,
+          );
+      }
+      await typeInto(`#farmHeld${secondSilver.id}`, "1");
+      await wait(SETTLE_MS);
+      const h5zw = (await readFarmCtl(PIN_ZERO)).plan;
+      const wantZKeys = EZERO.currencies.map((c) => String(c.id)).sort().join();
+      if (Object.keys(h5zw.held).sort().join() !== wantZKeys)
+        errors.push(`H5: 80292 held keys after rewrite are ${JSON.stringify(Object.keys(h5zw.held))}, want ${wantZKeys}`);
+      if (h5zw.held[String(secondSilver.id)] !== 1 || h5zw.held[String(firstSilver.id)] !== 50 || h5zw.held[String(qp.id)] !== 0)
+        errors.push(`H5: 80292 held after rewrite is ${JSON.stringify(h5zw.held)} — want 50 on ${firstSilver.name}, 1 on ${secondSilver.name}, 0 on QP`);
+
+      /* --- H6. a debounce pending across an Event Select switch must not reach the new plan --- */
+      await resetPlan();
+      await switchEvent(PIN_ZERO, "H6: switch → 80292 (same-task race)");
+      const h6 = await page.evaluate(
+        (args) => {
+          const box = document.getElementById(`farmHeld${args.qp}`);
+          box.value = "424242";
+          const t0 = performance.now();
+          box.dispatchEvent(new Event("input", { bubbles: true }));
+          const select = document.getElementById("eventSelect");
+          select.value = String(args.other);
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          const blob = JSON.parse(localStorage.getItem(args.key)).plans;
+          return {
+            ms: performance.now() - t0,
+            detached: box.isConnected === false,
+            oldHeld: (blob[String(args.event)].held || {})[args.qp],
+            newStillThere: !!document.getElementById(`farmHeld${args.qp}`),
+          };
+        },
+        { qp: String(qp.id), other: PIN_OTHER, event: PIN_ZERO, key: KEY },
+      );
+      if (h6.ms >= DEBOUNCE_MS)
+        errors.push(`H6: input→switch took ${h6.ms}ms, outside DEBOUNCE_MS ${DEBOUNCE_MS} — the scene did not test the window`);
+      if (!h6.detached)
+        errors.push(
+          "H6: the farm box was still connected after the switch — replaceChildren did not detach it, so the stale-timer guard never ran",
+        );
+      if (h6.newStillThere)
+        errors.push("H6: the new event's grid still holds 80292's QP Held box — the farm grid did not repaint on switch");
+      if (h6.oldHeld !== 424242)
+        errors.push(
+          `H6: switching mid-debounce lost a typed farm figure — plans["${PIN_ZERO}"].held["${qp.id}"] is ${JSON.stringify(h6.oldHeld)}, want 424242 (flushPlanBoxes must commit to the event that was active while typing)`,
+        );
+      await wait(SETTLE_MS); // the pending timer fires well after the new grid is live
+      const h6b = JSON.parse((await readTier()).storage).plans;
+      const heldOther = h6b[String(PIN_OTHER)].held || {};
+      if (Object.prototype.hasOwnProperty.call(heldOther, String(qp.id)))
+        errors.push(
+          `H6: the stale farm timer wrote QP's 424242 into event ${PIN_OTHER}'s plan under key "${qp.id}" (${JSON.stringify(heldOther)}) — a detached input must never write the new event's plan`,
+        );
+      if (Object.values(heldOther).some((v) => v !== 0))
+        errors.push(`H6: event ${PIN_OTHER} carries held ${JSON.stringify(heldOther)} it never had`);
+      await resetPlan();
+      await switchEvent(PIN_ZERO, "H6c: switch → 80292 (real keystrokes)");
+      await typeInto(`#farmHeld${qp.id}`, "777");
+      await page.select("#eventSelect", String(PIN_OTHER));
+      await wait(SETTLE_MS * 2);
+      const h6c = JSON.parse((await readTier()).storage).plans;
+      if ((h6c[String(PIN_ZERO)].held || {})[String(qp.id)] !== 777)
+        errors.push(
+          `H6c: a real-typed farm figure was lost on switch — plans["${PIN_ZERO}"].held["${qp.id}"] reads ${JSON.stringify((h6c[String(PIN_ZERO)].held || {})[String(qp.id)])}, want 777`,
+        );
+      if (Object.prototype.hasOwnProperty.call(h6c[String(PIN_OTHER)].held || {}, String(qp.id)))
+        errors.push(
+          `H6c: event ${PIN_OTHER} inherited QP's figure — ${JSON.stringify(h6c[String(PIN_OTHER)].held)}`,
+        );
+
+      /* --- H7. the shipped mask rule, and the tier-card chip it must not touch --- */
+      const mask = await page.evaluate(() => {
+        let rule = null;
+        for (const sheet of document.styleSheets) {
+          try {
+            for (const r of sheet.cssRules) {
+              if (r.selectorText && r.selectorText.replace(/\s+/g, "") === ".farm-card.material-input-box-label")
+                rule = { background: r.style.getPropertyValue("background"), bg: r.style.getPropertyValue("background-color") };
+            }
+          } catch {
+            /* cross-origin sheets are unreadable; the shipped CSS is inline, so this never fires */
+          }
+        }
+        const farm = [...document.querySelectorAll("#farmGrid .farm-card")].map((c) => ({
+          tier: c.dataset.tier,
+          cardBg: getComputedStyle(c).backgroundColor,
+          chips: [...c.querySelectorAll(".material-input-box-label")].map((l) => getComputedStyle(l).backgroundColor),
+        }));
+        return { rule, farm };
+      });
+      if (!mask.rule || !/var\(--bg\)/.test(`${mask.rule.background} ${mask.rule.bg}`))
+        errors.push(
+          `H7: the shipped CSSOM has no .farm-card .material-input-box-label { background: var(--bg) } rule — ${JSON.stringify(mask.rule)}`,
+        );
+      for (const c of mask.farm)
+        for (const chip of c.chips)
+          if (chip !== c.cardBg)
+            errors.push(
+              `H7: the ${c.tier} farm card's label chip is ${chip} on a ${c.cardBg} surface — the tint patch the mask rule exists to remove is back`,
+            );
+      await resetPlan();
+    }
+
+    /* ================= 18. pre-G blob migration (live id and dead id) ========================== */
+    {
+      const migrateSeed = JSON.stringify({ eventId: ACTIVE_ID, requires: { [String(freeRow.id)]: 3 } });
+      await seedAndReload(migrateSeed);
+      const mig = await readTier();
+      assertPlan(mig, { [String(freeRow.id)]: 3 }, "migration: old {eventId, requires} plan is live");
+      if (mig.select.value !== String(ACTIVE_ID))
+        errors.push(
+          `migration: the old blob's eventId did not become the selection — select reads ${JSON.stringify(mig.select.value)}`,
+        );
+      if (mig.storage !== migrateSeed)
+        errors.push(
+          `migration: load rewrote the blob (${JSON.stringify(mig.storage && mig.storage.slice(0, 60))}) — the disk must stay untouched until a mutation`,
+        );
+      /* first mutation rewrites into the G shape and must keep the migrated requires */
+      await typeInto("#goldHave", "5");
+      await wait(SETTLE_MS); // debounced writer: let the first mutation flush
+      const written = JSON.parse((await readTier()).storage);
+      if (!written.plans || !written.plans[String(ACTIVE_ID)])
+        errors.push(
+          `migration: after a mutation storage is not the G shape — ${JSON.stringify(written).slice(0, 120)}`,
+        );
+      else if ((written.plans[String(ACTIVE_ID)].requires || {})[String(freeRow.id)] !== 3)
+        errors.push(
+          `migration: the rewrite lost the migrated requires — ${JSON.stringify(written.plans[String(ACTIVE_ID)])}`,
+        );
+      if (written.selectedEventId !== ACTIVE_ID)
+        errors.push(`migration: rewritten selectedEventId is ${JSON.stringify(written.selectedEventId)}`);
+      /* a dead event's old-shape plan is dropped and the selection falls back to the latest */
+      const mismatchSeed = JSON.stringify({ eventId: ACTIVE_ID + 7, requires: { [String(freeRow.id)]: 5 } });
+      await seedAndReload(mismatchSeed);
+      let mismatchTier = await readTier();
+      assertPlan(mismatchTier, {}, "dead-event blob: plan dropped");
+      if (mismatchTier.select.value !== String(LATEST.event.id))
+        errors.push(
+          `dead-event blob: selection ${JSON.stringify(mismatchTier.select.value)}, want the latest ${LATEST.event.id}`,
+        );
+      if (mismatchTier.storage !== mismatchSeed)
+        errors.push(
+          `dead-event blob: the app rewrote storage on load (${JSON.stringify(mismatchTier.storage && mismatchTier.storage.slice(0, 60))}) — it must leave the dead blob alone until a mutation`,
+        );
+      await openTierModal("bronze", "open after dead-event seed");
+      await clickDone();
+      mismatchTier = await readTier();
+      const storedMismatch = mismatchTier.storage ? JSON.parse(mismatchTier.storage) : null;
+      if (!storedMismatch || storedMismatch.selectedEventId !== ACTIVE_ID)
+        errors.push(
+          `dead-event blob: first mutation stored selectedEventId ${storedMismatch && storedMismatch.selectedEventId}, want the current ${ACTIVE_ID}`,
+        );
+      await resetPlan();
+    }
+
+    /* ================= 19. hostile localStorage blobs still sanitise ========================== */
     const junkIds = ITEMS.slice(0, 6).map((i) => String(i.id));
     const garbage = [
       ["corrupt text", "{{{ not json"],
       ["null", "null"],
       ["bare string", '"a shop plan"'],
       ["array", "[1,2,3]"],
-      ["no eventId", JSON.stringify({ requires: { [junkIds[0]]: 9 } })],
-      ["requires string", JSON.stringify({ eventId: EVENT_ID, requires: "99" })],
-      ["requires array", JSON.stringify({ eventId: EVENT_ID, requires: [7, 8, 9] })],
+      ["no ids", JSON.stringify({ plans: { [String(ACTIVE_ID)]: { requires: { [junkIds[0]]: 9 } } } })],
+      ["plans string", JSON.stringify({ selectedEventId: ACTIVE_ID, plans: "99" })],
+      ["plans array", JSON.stringify({ selectedEventId: ACTIVE_ID, plans: [7, 8, 9] })],
       [
-        "prototype pollution + garbage values",
-        `{"eventId":${EVENT_ID},"requires":{"__proto__":999,"constructor":{"prototype":{"polluted":true}},` +
+        "old shape + prototype pollution + garbage values",
+        `{"eventId":${ACTIVE_ID},"requires":{"__proto__":999,"constructor":{"prototype":{"polluted":true}},` +
           `"${junkIds[0]}":-0,"${junkIds[1]}":"1e3","${junkIds[2]}":1e999,` +
           `"${junkIds[3]}":[5],"${junkIds[4]}":true,"${junkIds[5]}":null,"70000000":99999,"${junkIds[0]}_x":1}}`,
+      ],
+      [
+        "G shape pollution + dead-event plan + tier values out of range",
+        `{"selectedEventId":${ACTIVE_ID},"plans":{"${ACTIVE_ID}":{"requires":{"__proto__":7,"polluted":` +
+          `{"x":1},"${junkIds[0]}":-0,"${junkIds[1]}":"1e3","${junkIds[2]}":1e999,"${junkIds[3]}":[5],` +
+          `"${junkIds[4]}":true,"${junkIds[5]}":null,"70000000":99999},"held":{"bronze":"1e9","silver":-4,` +
+          `"constructor":2},"bonus":{"gold":1e999,"bronze":"x","silver":null}},"99999":{"requires":{"${junkIds[0]}":4}},` +
+          `"__proto__":{"polluted":true}}}`,
       ],
     ];
     for (const [label, raw] of garbage) {
       await seedAndReload(raw);
-      const st = await readTier();
-      if (st.polluted) errors.push(`garbage storage (${label}): Object.prototype was polluted`);
+      const stt = await readTier();
+      if (stt.polluted) errors.push(`garbage storage (${label}): Object.prototype was polluted`);
+      /* independent reference sanitiser: what may survive, per blob shape */
       const expect = {};
+      let expectSelected = LATEST.event.id;
       try {
         const parsed = JSON.parse(raw);
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          parsed.eventId === EVENT_ID &&
-          parsed.requires &&
-          typeof parsed.requires === "object" &&
-          !Array.isArray(parsed.requires)
-        ) {
-          for (const [id, value] of Object.entries(parsed.requires)) {
-            const item = byId.get(id);
-            if (item) expect[id] = refClamp(item, value);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const blobPlans =
+            parsed.plans || (parsed.eventId ? { [String(parsed.eventId)]: { requires: parsed.requires } } : null);
+          if (parsed.eventId && !parsed.plans)
+            expectSelected = parsed.eventId === ACTIVE_ID ? ACTIVE_ID : LATEST.event.id;
+          if (parsed.selectedEventId && typeof parsed.selectedEventId === "object") expectSelected = LATEST.event.id;
+          else if (parsed.selectedEventId !== undefined)
+            expectSelected = EVENTS.some(
+              (e) => e.event.id === parsed.selectedEventId && typeof parsed.selectedEventId === "number",
+            )
+              ? parsed.selectedEventId
+              : LATEST.event.id;
+          const plan = blobPlans && blobPlans[String(expectSelected)];
+          const req =
+            plan && plan.requires && typeof plan.requires === "object" && !Array.isArray(plan.requires)
+              ? plan.requires
+              : {};
+          if (expectSelected === ACTIVE_ID) {
+            for (const [id, value] of Object.entries(req)) {
+              const item = byId.get(id);
+              if (item) expect[id] = refClamp(item, value);
+            }
           }
         }
       } catch {
         expect["__unparseable__"] = null;
       }
-      if (expect.__unparseable__) assertPlan(st, {}, `garbage storage (${label})`);
-      else assertPlan(st, expect, `garbage storage (${label})`);
+      if (expect.__unparseable__) assertPlan(stt, {}, `garbage storage (${label})`);
+      else assertPlan(stt, expect, `garbage storage (${label})`);
       for (const t of TIERS) {
-        if (!/^\d+$/.test(st.tiers[t].needValue || ""))
+        if (!/^\d+$/.test(stt.tiers[t].needValue || ""))
           errors.push(
-            `garbage storage (${label}): ${t} Required holds non-canonical text ${JSON.stringify(st.tiers[t].needValue)}`,
+            `garbage storage (${label}): ${t} Required holds non-canonical text ${JSON.stringify(stt.tiers[t].needValue)}`,
           );
       }
-      /* still usable: the draft opens pre-filled from the sanitised plan, edits commit through Done */
+      /* held/bonus figures for the G-shape case: Have 0..999999, Bonus 0..1000, floor */
+      if (label.startsWith("G shape")) {
+        const clampVal = (v, max) => {
+          const n = parseFloat(v);
+          /* mirrors Validator.clamp exactly: NaN → min, Infinity → max (NOT zero) */
+          return Math.floor(Number.isNaN(n) ? 0 : Math.min(max, Math.max(0, n)));
+        };
+        const wantHave = { bronze: clampVal("1e9", 999999), silver: clampVal(-4, 999999), gold: 0 };
+        const wantBonus = { bronze: clampVal("x", 1000), silver: 0, gold: clampVal(1e999, 1000) };
+        for (const t of TIERS) {
+          const gotHave = stt.tiers[t].heldValue;
+          const gotBonus = stt.tiers[t].bonusValue;
+          if (gotHave !== String(wantHave[t]))
+            errors.push(
+              `garbage storage (${label}): ${t} Held reads ${JSON.stringify(gotHave)}, want the clamped ${wantHave[t]}`,
+            );
+          if (gotBonus !== String(wantBonus[t]))
+            errors.push(
+              `garbage storage (${label}): ${t} Bonus reads ${JSON.stringify(gotBonus)}, want the clamped ${wantBonus[t]}`,
+            );
+        }
+      }
       await openTierModal("gold", `open draft after garbage (${label})`);
       modal = await readModal();
       const draftRow = modal.rows.find((r) => r.id === String(clampRow.id));
@@ -1647,7 +3412,7 @@ try {
         );
     }
 
-    /* ================= 14. localStorage quota failure must not crash the Done path ============ */
+    /* ================= 20. localStorage quota failure must not crash the Done path ============ */
     await resetPlan();
     await installWriteSpy({ throw: true });
     await openTierModal("bronze", "open modal for quota scene");
@@ -1658,7 +3423,6 @@ try {
     await wait(SETTLE_MS);
     const quotaState = await readTier();
     assertPlan(quotaState, { [String(freeRow.id)]: 1 }, "quota failure keeps the plan live (state before persist)");
-    /* assertPlan would flag the tier; state truth pins the raw value too */
     if (quotaState.tiers.bronze.needValue !== String(freeRow.cost.amount))
       errors.push(`quota failure: tier Required did not follow the live plan (${quotaState.tiers.bronze.needValue})`);
     if (quotaState.storage)
@@ -1685,7 +3449,7 @@ try {
     const afterQuota = await readTier();
     assertPlan(afterQuota, { [String(freeRow.id)]: 2 }, "saving works again once setItem is restored");
 
-    /* ================= 15. backdrop mousedown = Cancel (discard) ============================== */
+    /* ================= 21. backdrop mousedown = Cancel (discard) ============================== */
     await resetPlan();
     await openTierModal("bronze", "open for backdrop check");
     await typeInto(sel.modalInput(freeRow.id), "12");
@@ -1697,11 +3461,10 @@ try {
         `backdrop-discard: localStorage was written (${JSON.stringify(backdropState.storage)}) — backdrop is Cancel, not Done`,
       );
 
-    /* ================= 16. modal icon fallback: transparent plate, dashed badge =============== */
-    /* Refuse ONE shop icon file over the wire (python http.server cannot 404 a real file; CDP
-       interception aborts the request exactly like a dead asset). The row must fall back to the
-       id badge WITHOUT a grey fill. Memory-cached images never reach the interceptor, so this
-       scene also flips the browser cache off for its duration. */
+    /* ================= 22. modal icon fallback: transparent plate, dashed badge =============== */
+    /* Refuse ONE shop icon file over the wire. The row must fall back to the id badge WITHOUT a
+       grey fill. Memory-cached images never reach the interceptor, so this scene also flips the
+       browser cache off for its duration. */
     const fallbackItem = [...bronzeItems].reverse().find((i) => i.icon);
     const blockedFile = fallbackItem ? fallbackItem.icon.split("/").pop() : "___none___.webp";
     let abortedLoads = 0;
@@ -1717,7 +3480,6 @@ try {
       await page.setRequestInterception(true);
       page.on("request", onRequest);
       await openTierModal("bronze", "open modal with one refused icon");
-      /* the row sits below the modal's fold: a lazy img only requests once it scrolls in */
       await page.evaluate((id) => {
         const row = document.querySelector(`#eventShopModalList .eshop-item[data-item-id="${id}"]`);
         if (row) row.scrollIntoView({ block: "center" });
@@ -1753,7 +3515,6 @@ try {
           if (!(fbStyle.w >= 40 && fbStyle.h >= 40))
             errors.push(`modal fallback: badge collapsed to ${fbStyle.w}×${fbStyle.h}px`);
         }
-        /* the sibling rows still show real, decoded art */
         let survivor = null;
         for (let i = 0; i < 30 && !survivor; i++) {
           survivor = (await readModal()).rows.find(
@@ -1768,13 +3529,12 @@ try {
       await cdp.send("Network.setCacheDisabled", { cacheDisabled: false }).catch(() => {});
       await cdp.detach().catch(() => {});
       await closeBy("Cancel", "close after fallback scene");
-      /* the aborted URL may now be poison in the memory cache — reload to a clean page state */
       await page.reload({ waitUntil: "networkidle0" });
       await ensureEventTab();
       await wait(SETTLE_MS);
     }
 
-    /* ================= 17. viewports: no sideways overflow, modal fits, no page errors ======== */
+    /* ================= 23. viewports: no sideways overflow, modal fits, no page errors ======== */
     for (const width of [360, 1120]) {
       await page.setViewport({ width, height: 800 });
       const layout = await page.evaluate(() => {
@@ -1782,7 +3542,7 @@ try {
         const panel = document.getElementById("panel-event");
         const overflowing = [];
         for (const el of panel.querySelectorAll(
-          "input, select, button, img, .material-icon, .mini-icon, .material-input-box",
+          "input, select, button, img, .material-icon, .mini-icon, .material-input-box, .farm-card, .select-field",
         )) {
           const r = el.getBoundingClientRect();
           if (r.width === 0 && r.height === 0) continue;
@@ -1803,8 +3563,6 @@ try {
           `viewport ${width}px: Event-tab elements past the viewport edge — ${JSON.stringify(layout.overflowing)}`,
         );
 
-      /* modal at this viewport: inside the frame, list scrolls, footer reachable, wheel over the
-         content does not move the page (house scroll lock), backdrop gesture closes as a discard */
       await openTierModal("bronze", `open modal at ${width}px`);
       const modalLayout = await page.evaluate(() => {
         const modal = document.getElementById("eventShopModal");
@@ -1857,7 +3615,7 @@ try {
     }
     await page.setViewport({ width: 1120, height: 900 });
 
-    /* ================= 18. the untouched tier/run calculator must still be alive ============== */
+    /* ================= 24. the untouched tier/run calculator must still be alive ============== */
     const neighbours = await page.evaluate(() => ({
       calculateBtn: !!document.getElementById("calculateBtn"),
       questRows: document.querySelectorAll("#questGrid > *").length,
@@ -1883,7 +3641,7 @@ try {
     await resetPlan();
     await page.evaluate((k) => localStorage.removeItem(k), KEY);
 
-    /* ================= 19. network hygiene ==================================================== */
+    /* ================= 25. network hygiene ==================================================== */
     const badResponses = shopResponses.filter((r) => r.status >= 400);
     if (badResponses.length)
       errors.push(
@@ -1896,13 +3654,11 @@ try {
       errors.push(
         `planner security: runtime fetched ${JSON.stringify([...externalHosts])} — the site must ship zero external resources`,
       );
-    /* Amendment C, end-of-run: across every reload and viewport the mockup was never asked for and
-       no response in the whole session was an error. */
     assertMaterialAbsence("network hygiene");
     const stillEmpty = await readIconBoxes();
     if (ICON_CONTAINERS.some((id) => !stillEmpty[id]))
       errors.push("network hygiene: an icon container id vanished after the modal scenes");
-    assertEventBoxes(stillEmpty, "network hygiene", false);
+    assertEventBoxes(stillEmpty, "network hygiene", CURRENCIES);
     console.log(
       `NOTE: ${shopResponses.length} /event_shop/ response(s) seen, all 2xx=${badResponses.length === 0}, external origins ${JSON.stringify([...externalHosts])}`,
     );
@@ -1935,5 +3691,5 @@ if (errors.length) {
 }
 
 console.log(
-  `SUCCESS: event shop ${LEGACY ? "legacy stub fallback (tier-colour badges, zero mockup requests)" : "Amendment C modal-only surface + tier parity + event art"} verified against ${url}`,
+  `SUCCESS: event shop [${MODE}] ${LEGACY ? "legacy stub fallback (Select Event disabled, tier-colour badges, old math, old blob, zero mockup requests)" : MULTI ? "multi-event patched copy (isolation + migration + N-currency collision + zero-bg + null-farm + secondary-null + force-latest)" : "shipped single-event snapshot (Drop Rates per Run cards, header opener, live bonus repaint, results math, modal contract)"} verified against ${url}`,
 );

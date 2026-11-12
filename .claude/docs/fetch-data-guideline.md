@@ -803,17 +803,18 @@ python3 scripts/fetch_bordered_ces.py
 
 ## Event Shop Sync (added 2026-11-12)
 
-`sync_event_shop()` (step 3 of `sync_atlas_data.py`; flags `--skip-event-shop`, `--event-id N`) generates `src/scripts/data/event_shop.js` + `public/event_shop/*.webp`.
+`sync_event_shop()` (step 3 of `sync_atlas_data.py`; flags `--skip-event-shop`, `--event-id N`) generates `src/scripts/data/event_shop.js` + `public/event_shop/*.webp` for ALL active event shops (eventQuest, startedAt ≤ now < finishedAt, shop non-empty, startedAt desc).
 
 Endpoints (all ETag-cached via `get_cached_json`):
-- `GET /export/JP/basic_event.json` (~335 KB) — event auto-pick: type `eventQuest`, max `startedAt`. `--event-id` overrides (any event type).
-- `GET /nice/JP/event/{id}?lang=en` — the `shop` array. DB "shop-N" tabs = `slot` N; current events put everything in slot 1. `?lang=en` falls back to JP names when untranslated.
-- `GET /export/JP/nice_item.json` (~1.2 MB) — id→item map for `purchaseType: "item"` targets. ALWAYS use `item.icon`: paths vary (coins live under `JP/Coins/`, not `JP/Items/`).
-- `GET /nice/JP/equip/{id}?lang=en` — per-id, for `purchaseType: "servant"|"equip"` targets (event CEs). Face = `extraAssets.faces.equip` first value, fallback `faces.ascension` (hero crystals / wisdom materials). Per-id fetch chosen over the 22 MB `nice_equip_lang_en.json` export.
-- `costumeRelease`: costume endpoints 404/{} — use servant face `JP/Faces/f_{target//100}0.png` (target 20470011 → servant 204700). Display name = shop entry name.
+- `GET /export/JP/basic_event.json` — active-window selection; `--event-id` overrides.
+- `GET /nice/JP/event/{id}?lang=en` — the `shop` array (DB "shop-N" tabs = slot N; current events use slot 1).
+- `GET /export/JP/nice_item.json` + `nice_item_lang_en.json` + `NA/nice_item.json` — item map + EN name chain (NA → JP-EN → JP). ALWAYS use `item.icon` (coins live under JP/Coins/).
+- `GET /nice/JP/equip/{id}?lang=en` — per-id CE faces (faces.equip, fallback faces.ascension); NA basic_equip names reused from CE sync.
+- `GET /nice/JP/war/{warId}?lang=en` — event war → spots[].quests[]; repeatable = afterClear repeatLast|repeat; carries consume (AP), recommendLv.
+- `GET /nice/JP/quest/{id}/{phase}?lang=en` — **`drops` field = community drop submissions** (dropCount, runs, dropExpected stacks/run, dropVariance, num stack size). This CORRECTS the earlier "no drop data in the API" note: drops are not in bulk exports but ARE on the nice quest detail. Farm pick = max dropExpected×num per currency; amount/run = dropExpected × (num + bonus). The card's second line is the SAME quest's next-best drop among that event's shop currencies, its own currency excluded — event points and QP drop out because they are not in `shop`, no id list needed — best dropExpected×num wins, tie → lower currencyId, recorded as `secondary: { currencyId, dropExpected, num }` or null; display-only, it never credits another currency's deficit.
+- costumeRelease: no costume endpoint (404). servantId = target//100 → nice servant costumeMaterials keys → detailId (multiple keys → lore export profile.costume, id == target%100; lore = nice_servant_lore_lang_en.json, 195 MB, fetched only when absent AND needed) → face `JP/Faces/f_{detailId}0.png`.
+- Selection (Amendment J): an event is FARMABLE when ≥1 repeatable quest (afterClear repeatLast|repeat) in its wars reports community drops for ≥1 of its `shop` currencies. The active pass keeps ALL open farmable events; with none, a fallback scan reads eventQuest entries newest-startedAt-first (cap 30) and the first farmable one ships alone — ended events qualify, Atlas keeps their historical drop data; nothing passes → `{events:[]}`. `--event-id` skips every filter including the farm test. The test reuses the event/war/quest reads the farm collection performs (memoized once per run — no duplicated network, even under `--force`).
 
-Icon rule (user directive): every download tries `{base}_bordered.png` FIRST; plain `{base}.png` ONLY on 404 (coins have no bordered asset). Non-404 failures re-raise, write nothing, next sync retries. Faces resized 142×155 LANCZOS; item icons native capped 160px; lossless WebP method=6.
+Icon rule (user directive): bordered-first, plain only on genuine 404 (`"HTTP Error 404"` phrase gate — bare "404" matches ids like f_9404xxx); non-404 re-raises, writes nothing, next sync retries. Faces 142×155 LANCZOS; item icons native capped 160px; lossless WebP method=6.
 
-Entry fields that matter: `cost.item` (embedded currency: id/name/icon/background), `cost.amount` (price per purchase), `limitNum` (0 = unlimited), `setNum` (units per purchase, e.g. coins ×10), `priority` (display order), `targetIds`. Planner total = Σ require×cost.amount per currency; buy-out count = limitNum (unlimited contributes 0) — same semantics as the Atlas DB shop planner.
-
-Outage policy: fetch failure keeps the previous generated file; with none, writes stub `{ event: null, currencies: [], items: [] }` so `ensure_data.js`/build never die on an API hiccup. CI: `public/event_shop/` in the actions/cache path list, `event_shop.js` in the data-hash cat (both pinned by `scripts/test_deploy_workflow.py`), `test_sync_event_shop.py` in the self-test job.
+Outage policy: per-event failure skips that event; all-failed keeps the previous file; none → stub `{events:[]}`. CI: `public/event_shop/` in the cache path list, `event_shop.js` in the data-hash cat (pinned by `scripts/test_deploy_workflow.py`), `test_sync_event_shop.py` in self-test. Known limit: community drop numbers can drift between game-version bumps; idle version-gated polls skip them until the next push/force_sync.

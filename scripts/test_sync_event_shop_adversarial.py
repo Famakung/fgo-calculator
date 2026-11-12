@@ -23,10 +23,13 @@ if "PIL" not in sys.modules:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sync_atlas_data as m  # noqa: E402
 
-QUEST_A = {"id": 1, "type": "eventQuest", "startedAt": 1794394800}
-QUEST_B = {"id": 2, "type": "eventQuest", "startedAt": 1794394800}
-QUEST_C = {"id": 3, "type": "eventQuest"}
-STORY = {"id": 4, "type": "storyQuest", "startedAt": 1900000000}
+NOW = 1794500000
+FAR = 1893423600
+QUEST_A = {"id": 1, "type": "eventQuest", "startedAt": 1794394800, "finishedAt": FAR}
+QUEST_B = {"id": 2, "type": "eventQuest", "startedAt": 1794394800, "finishedAt": FAR}
+QUEST_C = {"id": 3, "type": "eventQuest", "finishedAt": FAR}
+OLD_QUEST = {"id": 70000, "type": "eventQuest", "startedAt": 1700000000, "finishedAt": 1700999999}
+STORY = {"id": 4, "type": "storyQuest", "startedAt": 1900000000, "finishedAt": FAR}
 GOLD = {"id": 94164002, "name": "YAKI bun", "icon": "JP/Items/94164002.png", "background": "gold"}
 
 
@@ -37,24 +40,31 @@ def no_icon_fetch(*args, **kwargs):
 def main():
     n = 0
 
-    # --- pick_event: a tie is broken by list order, and that order must be the API's, not a sort ---
-    assert m.pick_event([QUEST_A, QUEST_B])["id"] == 1, "startedAt tie takes the first listed event"
-    assert m.pick_event([QUEST_B, QUEST_A])["id"] == 2, "the tie follows list order, not id order"
+    def picked(events, override_id=None):
+        return [e["id"] for e in m.select_events(events, override_id, now=NOW)]
+
+    # --- select_events: a tie is broken by list order, and that order must be the API's, not a sort ---
+    assert picked([QUEST_A, QUEST_B]) == [1, 2], "startedAt tie keeps the first listed event first"
+    assert picked([QUEST_B, QUEST_A]) == [2, 1], "the tie follows list order, not id order"
     n += 1
 
-    # --- pick_event: an event without startedAt is never "now", it is the oldest possible ---
-    assert m.pick_event([QUEST_C, QUEST_A])["id"] == 1, "missing startedAt cannot outrank a real one"
-    assert m.pick_event([QUEST_C, dict(QUEST_C, startedAt=None)])["id"] == 3, "all-undated list returns the first"
-    assert m.pick_event([dict(QUEST_A, startedAt=None), QUEST_B])["id"] == 2, "explicit None behaves like absent"
+    # --- select_events: an undated event starts at the epoch, and a closed window is never live ---
+    assert picked([QUEST_C, QUEST_A]) == [1, 3], "missing startedAt cannot outrank a real one"
+    assert picked([QUEST_C, dict(QUEST_C, id=9, startedAt=None)]) == [3, 9], "absent and explicit None both read as epoch"
+    assert picked([dict(QUEST_A, finishedAt=None)]) == [], "an event with no finishedAt has no window"
+    assert picked([dict(QUEST_A, finishedAt=NOW)]) == [], "now is not yet inside a window ending now"
+    assert picked([dict(QUEST_A, finishedAt=NOW + 1)]) == [1], "the window is half-open: < finishedAt"
+    assert picked([dict(QUEST_A, startedAt=NOW + 1)]) == [], "a future start is not live yet"
     n += 1
 
-    # --- pick_event: the override is an id lookup, not a type filter ---
-    assert m.pick_event([QUEST_A, STORY], 4)["id"] == 4, "--event-id may point at a non-eventQuest"
-    assert m.pick_event([QUEST_A], None)["id"] == 1, "None means auto-pick"
-    assert m.pick_event([QUEST_A, dict(QUEST_A, id=0)], 0)["id"] == 0, "override 0 is a lookup, not 'no override'"
-    assert m.pick_event([], 80639) is None, "empty list with an override finds nothing"
-    assert m.pick_event([]) is None, "empty list auto-picks nothing"
-    assert m.pick_event([STORY]) is None, "stories alone never become the shop snapshot"
+    # --- select_events: the override is an id lookup, not a type filter or a window check ---
+    assert picked([QUEST_A, STORY], 4) == [4], "--event-id may point at a non-eventQuest"
+    assert picked([QUEST_A, OLD_QUEST], 70000) == [70000], "--event-id ignores a closed window"
+    assert picked([QUEST_A]) == [1], "no override means the live list"
+    assert picked([QUEST_A, dict(QUEST_A, id=0)], 0) == [0], "override 0 is a lookup, not 'no override'"
+    assert m.select_events([], 80639) == [], "empty list with an override finds nothing"
+    assert m.select_events([]) == [], "empty list auto-picks nothing"
+    assert picked([STORY]) == [], "stories alone never become the shop snapshot"
     n += 1
 
     # --- _shop_item: half-filled Atlas entries must drop or default, never crash the sync ---
@@ -84,7 +94,28 @@ def main():
         assert orphan["icon"] is None, "an item id the export does not know keeps a null icon, never a guessed URL"
     n += 1
 
-    # --- _collect_event_shop: a currency only seen on free (amount<=0) entries must not register ---
+    # --- _shop_currency: background is Atlas' own vocabulary, copied verbatim; falsy defaults to silver ---
+    # Event 80292 ships "zero" (QP) live. The site's tier map ignores strings it cannot name and the
+    # CSS :where() fallback absorbs them, so the sync never rewrites or rejects a non-empty value;
+    # missing/empty/null fall to "silver" (the `or "silver"` default). validate_data.js then errors
+    # on empty/non-string backgrounds only — a closed tier set there would reject the next Atlas word.
+    with patch.object(m, "_make_event_icon", no_icon_fetch):
+        currencies = {}
+        zero = {"id": 94164003, "name": "QP", "icon": "JP/Items/94164003.png", "background": "zero"}
+        m._shop_currency({"id": 1, "cost": {"item": zero, "amount": 1}}, currencies, {}, dry_run=True)
+        assert currencies[94164003]["background"] == "zero", "an unknown tier string survives the sync untouched"
+        no_bg = {"id": 94164004, "name": "No bg", "icon": "JP/Items/94164004.png"}
+        m._shop_currency({"id": 2, "cost": {"item": no_bg, "amount": 1}}, currencies, {}, dry_run=True)
+        assert currencies[94164004]["background"] == "silver", "missing background defaults to silver"
+        blank = {"id": 94164005, "name": "Blank bg", "icon": "JP/Items/94164005.png", "background": ""}
+        m._shop_currency({"id": 3, "cost": {"item": blank, "amount": 1}}, currencies, {}, dry_run=True)
+        assert currencies[94164005]["background"] == "silver", "empty string background defaults to silver"
+        null_bg = {"id": 94164006, "name": "Null bg", "icon": "JP/Items/94164006.png", "background": None}
+        m._shop_currency({"id": 4, "cost": {"item": null_bg, "amount": 1}}, currencies, {}, dry_run=True)
+        assert currencies[94164006]["background"] == "silver", "explicit null background defaults to silver"
+    n += 1
+
+    # --- _collect_event_shops: a currency only seen on free (amount<=0) entries must not register ---
     # Otherwise the planner renders a ghost chip + empty group for a currency nothing can buy.
     BRONZE = {"id": 94164000, "name": "MISO oden", "icon": "JP/Items/94164000.png", "background": "bronze"}
     free_only = {"id": 1, "name": "Free loginreward", "purchaseType": "item", "targetIds": [705500], "cost": {"item": BRONZE, "amount": 0}}
@@ -92,17 +123,48 @@ def main():
 
     def collect_json(cache_dir, filename, url, force=False):
         if filename == "basic_event.json":
-            return [{"id": 1, "type": "eventQuest", "startedAt": 1}]
+            return [{"id": 1, "type": "eventQuest", "startedAt": 1, "finishedAt": FAR}]
         if filename == "nice_event_1.json":
             return {"id": 1, "shop": [free_only, paid_row]}
         if filename == "nice_item.json":
             return item_map
-        raise AssertionError(f"unexpected cache filename {filename!r} (url {url})")
+        return []  # the optional name-chain exports: an empty map simply keeps the entry's own name
 
+    # Amendment J makes a no-war shop fail the farm-event test, so this mapping probe ships it the
+    # way the site still can: --event-id, which skips every selection filter. The "no warIds means
+    # every currency gets a null farm entry, not a missing key" pin moves to the override path here.
     with patch.object(m, "get_cached_json", collect_json), patch.object(m, "_make_event_icon", no_icon_fetch):
-        payload = m._collect_event_shop("/tmp", None, dry_run=True)
-    assert [c["id"] for c in payload["currencies"]] == [94164002], "a free-entry-only currency stays out of the registry"
-    assert [i["id"] for i in payload["items"]] == [2], "the free entry itself is still dropped from items"
+        payload = m._collect_event_shops("/tmp", 1, dry_run=True)
+    snapshot = payload["events"][0]
+    assert [c["id"] for c in snapshot["currencies"]] == [94164002], "a free-entry-only currency stays out of the registry"
+    assert [i["id"] for i in snapshot["items"]] == [2], "the free entry itself is still dropped from items"
+    assert snapshot["farm"] == {"94164002": None}, "no warIds means every currency gets a null farm entry, not a missing key"
+    n += 1
+
+    # --- an open eventQuest whose shop is empty is not an event shop: it drops out of the list ---
+    # Event 6 needs a farmable war (Amendment J prunes no-drop shops); event 5 has no shop at all.
+    farm_war = {"id": 77, "spots": [{"id": 770, "quests": [{"id": 771, "name": "farm quest", "afterClear": "repeatLast", "phases": [1]}]}]}
+    farm_quest = {"id": 771, "name": "farm quest", "recommendLv": "50", "consume": 20,
+                  "drops": [{"type": "item", "objectId": 94164002, "num": 1, "dropExpected": 1.0, "runs": 10}]}
+
+    def empty_shop_json(cache_dir, filename, url, force=False):
+        if filename == "basic_event.json":
+            return [{"id": 5, "type": "eventQuest", "startedAt": 1, "finishedAt": FAR}, {"id": 6, "type": "eventQuest", "startedAt": 2, "finishedAt": FAR}]
+        if filename == "nice_event_5.json":
+            return {"id": 5, "shop": []}
+        if filename == "nice_event_6.json":
+            return {"id": 6, "shop": [paid_row], "warIds": [77]}
+        if filename == "nice_war_77.json":
+            return farm_war
+        if filename == "nice_quest_771_1.json":
+            return farm_quest
+        if filename == "nice_item.json":
+            return item_map
+        return []
+
+    with patch.object(m, "get_cached_json", empty_shop_json), patch.object(m, "_make_event_icon", no_icon_fetch):
+        payload = m._collect_event_shops("/tmp", None, dry_run=True)
+    assert [snap["event"]["id"] for snap in payload["events"]] == [6], "the shopless event is skipped, the one with rows ships"
     n += 1
 
     print(f"{n} tests passed")

@@ -184,7 +184,7 @@ for (const [id, ce] of Object.entries(CE_DATA)) {
   }
 }
 
-// 4. Validate EVENT_SHOP_DATA
+// 4. Validate EVENT_SHOP_DATA — { events: [ { event, currencies, items, farm } ] } (Amendment G)
 function checkShopIcon(entry, what) {
   if (entry.icon === null || entry.icon === undefined) return;
   const publicDir = path.join(ROOT_DIR, "public");
@@ -196,21 +196,19 @@ function checkShopIcon(entry, what) {
   }
 }
 
-function validateEventShop(shop) {
-  const { event } = shop;
-  let { currencies, items } = shop;
-  if (!Array.isArray(currencies)) {
-    errors.push(`Event Shop: currencies must be an array (got ${JSON.stringify(currencies)})`);
-    currencies = [];
+function checkShopName(entry, what) {
+  if (typeof entry.name !== "string") {
+    errors.push(`Event Shop ${what} ${entry.id}: name must be a string (got ${JSON.stringify(entry.name)})`);
+  } else if (!entry.name) {
+    warnings.push(`Event Shop ${what} ${entry.id}: name is empty`);
   }
-  if (!Array.isArray(items)) {
-    errors.push(`Event Shop: items must be an array (got ${JSON.stringify(items)})`);
-    items = [];
-  }
-  if (!Number.isInteger(event.id) || event.id <= 0) {
-    errors.push(`Event Shop: event.id must be a positive integer (got ${JSON.stringify(event.id)})`);
-  }
+}
 
+function validateEventShopCurrencies(currencies, ctx) {
+  if (!Array.isArray(currencies)) {
+    errors.push(`${ctx}: currencies must be an array (got ${JSON.stringify(currencies)})`);
+    return [];
+  }
   const currencyIds = new Set();
   currencies.forEach((cur, i) => {
     if (!Number.isInteger(cur.id) || cur.id <= 0) {
@@ -219,39 +217,151 @@ function validateEventShop(shop) {
     if (currencyIds.has(cur.id)) errors.push(`Event Shop currency ${cur.id}: duplicate id`);
     currencyIds.add(cur.id);
     if (i > 0 && currencies[i - 1].id > cur.id) {
-      errors.push(`Event Shop: currencies not sorted ascending at ${cur.id}`);
+      errors.push(`${ctx}: currencies not sorted ascending at ${cur.id}`);
     }
+    /* background carries Atlas' own vocabulary — event 80292 ships "zero" (QP) live — so only
+       emptiness is an error here: the tier map ignores strings it cannot name and the CSS
+       :where() fallback absorbs them. A closed set would reject the next value Atlas invents. */
+    if (typeof cur.background !== "string" || !cur.background) {
+      errors.push(
+        `Event Shop currency ${cur.id}: background must be a non-empty string (got ${JSON.stringify(cur.background)})`,
+      );
+    }
+    checkShopName(cur, "currency");
     checkShopIcon(cur, "currency");
   });
+  return currencyIds;
+}
 
+function validateEventShopItems(items, currencyIds, ctx) {
+  if (!Array.isArray(items)) {
+    errors.push(`${ctx}: items must be an array (got ${JSON.stringify(items)})`);
+    return;
+  }
   items.forEach((item, i) => {
-    const ctx = `Event Shop item ${item.id}`;
+    const itemCtx = `Event Shop item ${item.id}`;
     const amount = (item.cost || {}).amount;
     if (!currencyIds.has(item.cost && item.cost.itemId)) {
-      errors.push(`${ctx}: cost.itemId ${JSON.stringify(item.cost && item.cost.itemId)} is not a known currency`);
+      errors.push(`${itemCtx}: cost.itemId ${JSON.stringify(item.cost && item.cost.itemId)} is not a known currency`);
     }
     if (!Number.isInteger(amount) || amount <= 0) {
-      errors.push(`${ctx}: cost.amount must be a positive integer`);
+      errors.push(`${itemCtx}: cost.amount must be a positive integer`);
     }
     for (const field of ["limitNum", "setNum", "priority"]) {
       if (!Number.isInteger(item[field]) || item[field] < 0) {
-        errors.push(`${ctx}: ${field} must be a non-negative integer`);
+        errors.push(`${itemCtx}: ${field} must be a non-negative integer`);
       }
     }
     if (i > 0) {
       const prev = items[i - 1];
       if (prev.priority > item.priority || (prev.priority === item.priority && prev.id > item.id)) {
-        errors.push(`${ctx}: items not sorted by (priority, id)`);
+        errors.push(`${itemCtx}: items not sorted by (priority, id)`);
       }
     }
+    checkShopName(item, "item");
     checkShopIcon(item, "item");
   });
 }
 
+/* farm = { [currencyId]: bestQuest | null } (Amendment D1/D6). Keys may only be shop currencies; a
+   value is null (no community drop data) or one drop figure for the quest the site tells the player
+   to run, plus that quest's secondary shop-currency drop (Amendment I). recommendLv stays the string
+   Atlas gives ("70"), but a number is equally readable. */
+function validateEventShopFarm(farm, currencyIds, ctx) {
+  if (!farm || typeof farm !== "object" || Array.isArray(farm)) {
+    errors.push(`${ctx}: farm must be an object of currency id to quest or null (got ${JSON.stringify(farm)})`);
+    return;
+  }
+  for (const [key, entry] of Object.entries(farm)) {
+    if (!currencyIds.has(Number(key))) {
+      errors.push(`${ctx}: farm key ${key} is not a shop currency`);
+    }
+    if (entry === null) continue;
+    checkFarmEntry(ctx, key, entry, currencyIds);
+  }
+}
+
+/* The card's second drop line: null when the quest has no other shop-currency drop, otherwise the
+   currency it falls back to and that line's own figures. It must name a DIFFERENT currency than the
+   entry's own (currencyKey): the sync's _secondary_drop excludes the primary, so a secondary equal
+   to its own key is a hand-edited or stale snapshot printing the same line twice on one card. */
+function checkFarmSecondary(what, currencyKey, secondary, currencyIds) {
+  if (secondary === null) return;
+  if (!secondary || typeof secondary !== "object" || Array.isArray(secondary)) {
+    errors.push(`${what}.secondary: must be null or an object (got ${JSON.stringify(secondary)})`);
+    return;
+  }
+  if (!currencyIds.has(Number(secondary.currencyId))) {
+    errors.push(`${what}.secondary: currencyId ${JSON.stringify(secondary.currencyId)} is not a shop currency`);
+  }
+  if (Number(secondary.currencyId) === Number(currencyKey)) {
+    errors.push(`${what}.secondary: currencyId ${secondary.currencyId} is this entry's own currency, not a second one`);
+  }
+  if (typeof secondary.dropExpected !== "number" || !(secondary.dropExpected > 0)) {
+    errors.push(`${what}.secondary: dropExpected must be a number above 0`);
+  }
+  if (!Number.isInteger(secondary.num) || secondary.num <= 0) {
+    errors.push(`${what}.secondary: num must be a positive integer`);
+  }
+}
+
+function checkFarmEntry(ctx, currencyKey, entry, currencyIds) {
+  const what = `${ctx} farm entry ${currencyKey}`;
+  if (!Number.isInteger(entry.questId) || entry.questId <= 0)
+    errors.push(`${what}: questId must be a positive integer`);
+  if (typeof entry.questName !== "string") errors.push(`${what}: questName must be a string`);
+  if (typeof entry.recommendLv !== "string" && typeof entry.recommendLv !== "number") {
+    errors.push(`${what}: recommendLv must be a string or number (got ${JSON.stringify(entry.recommendLv)})`);
+  }
+  for (const field of ["ap", "num", "sampleRuns"]) {
+    if (!Number.isInteger(entry[field]) || entry[field] < 0)
+      errors.push(`${what}: ${field} must be a non-negative integer`);
+  }
+  if (typeof entry.num !== "number" || entry.num <= 0) errors.push(`${what}: num must be a positive integer`);
+  if (typeof entry.dropExpected !== "number" || !(entry.dropExpected > 0)) {
+    errors.push(`${what}: dropExpected must be a number above 0`);
+  }
+  if (!Object.prototype.hasOwnProperty.call(entry, "secondary")) {
+    errors.push(`${what}: secondary is required (null when the quest has no other shop-currency drop)`);
+  } else {
+    checkFarmSecondary(what, currencyKey, entry.secondary, currencyIds);
+  }
+}
+
+function validateEventShopSnapshot(snapshot, index, total) {
+  if (!snapshot || typeof snapshot.event !== "object" || snapshot.event === null) {
+    errors.push(`Event Shop: events[${index}].event must be an object (got ${JSON.stringify(snapshot)})`);
+    return;
+  }
+  const event = snapshot.event;
+  const ctx = `Event Shop event ${event.id}`;
+  if (!Number.isInteger(event.id) || event.id <= 0) {
+    errors.push(`Event Shop: events[${index}].event.id must be a positive integer (got ${JSON.stringify(event.id)})`);
+  }
+  checkShopName(event, "event");
+  const currencyIds = validateEventShopCurrencies(snapshot.currencies, ctx);
+  validateEventShopItems(snapshot.items, currencyIds, ctx);
+  validateEventShopFarm(snapshot.farm, currencyIds, ctx);
+  if (index > 0) {
+    const prev = total[index - 1];
+    if ((prev.event.startedAt || 0) < (event.startedAt || 0)) {
+      errors.push(`${ctx}: events not sorted by startedAt descending`);
+    }
+  }
+}
+
+function validateEventShop(data) {
+  if (!Array.isArray(data.events)) {
+    errors.push(`Event Shop: events must be an array (got ${JSON.stringify(data.events)})`);
+    return;
+  }
+  data.events.forEach((snapshot, index) => validateEventShopSnapshot(snapshot, index, data.events));
+}
+
 console.log(`Validating EVENT_SHOP_DATA...`);
 const shop = EVENT_SHOP_DATA || {};
-if (!shop.event) {
-  console.log("  event: null — empty stub, shop checks skipped.");
+if (!Array.isArray(shop.events) || shop.events.length === 0) {
+  console.log("  events: [] — empty stub, shop checks skipped.");
 } else {
   validateEventShop(shop);
 }

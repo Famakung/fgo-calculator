@@ -1,4 +1,3 @@
-import { EVENT_SHOP_DATA } from "./data/event_shop.js";
 import { EventShop } from "./domain.js";
 import { buildDraftRow, fmt } from "./event-planner-parts.js";
 
@@ -8,7 +7,9 @@ import { buildDraftRow, fmt } from "./event-planner-parts.js";
    through configure() callbacks so this module never imports an app — planner and tier code import
    it, never the other way. Draft edits patch the touched row in place (stepper value + subtotal);
    rows are never rebuilt mid-typing, so focus survives every keystroke. buildDraftRow is the
-   parts-module row builder for draft state, ctx = { state: { requires }, handlers }. */
+   parts-module row builder for draft state, ctx = { state: { requires }, handlers }.
+   Amendment G made the snapshot a list, so the currency is resolved through the wiring too: the
+   modal edits the event the Event Select is on, not a module-level single event. */
 
 const MODAL_ELEMENT_ID = "eventShopModal";
 const LIST_ELEMENT_ID = "eventShopModalList";
@@ -47,7 +48,7 @@ export const EventShopModal = {
   },
 
   _findCurrency(currencyId) {
-    const currencies = (EVENT_SHOP_DATA && EVENT_SHOP_DATA.currencies) || [];
+    const currencies = this._config.currenciesOf() || [];
     return currencies.find((currency) => String(currency.id) === String(currencyId)) || null;
   },
 

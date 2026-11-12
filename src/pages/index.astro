@@ -23,6 +23,15 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
       <main id="main-content">
         <section class="tab-panel" id="panel-event">
+          <div class="card" id="eventSelectCard">
+            <div class="card-inner">
+              <div class="card-title">Select Event</div>
+              <div class="input-row">
+                <label class="input-label" for="eventSelect">Event</label>
+                <select class="select-field" id="eventSelect"></select>
+              </div>
+            </div>
+          </div>
           <div class="card">
             <div class="card-inner">
               <div class="card-title">Shop Requirements</div>
@@ -243,6 +252,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 </div>
               </div>
             </div>
+            <div class="farm-grid grid" id="farmGrid" style="display: none"></div>
             </div>
           </div>
 
