@@ -148,122 +148,656 @@ test("event tier need with an empty plan is 0 for every mapped currency", () => 
   assert.equal(totals[String(gold.id)] || 0, 0);
 });
 
-/* --- Amendment D: EventShop.farmPlan, the best-quest farm model --- */
-
-/* Live community figures for the ぐだぐだぷにぷにウォーズ！ quests (Atlas drops, 2026-11-12):
-   MISO 94164100 at 10.7117 stacks/run × 3, SHIMONITA 94164101 at 11.2105 × 3, YAKI 94164102 at
-   10.8315 × 3, every quest 40 AP. */
-const farm = {
-  94164000: {
-    questId: 94164100,
-    questName: "だるまを買いにいこう",
-    recommendLv: "70",
-    ap: 40,
-    dropExpected: 10.7117,
-    num: 3,
-    sampleRuns: 111,
-  },
-  94164001: {
-    questId: 94164101,
-    questName: "こんにゃくとネギ",
-    recommendLv: "70",
-    ap: 40,
-    dropExpected: 11.2105,
-    num: 3,
-    sampleRuns: 57,
-  },
-  94164002: null,
-};
-
-test("farmPlan prices one run as dropExpected × (num + bonus) — bonus joins the stack, not the total", () => {
-  const plan = EventShop.farmPlan({ totals: { 94164000: 0 }, held: {}, bonus: { 94164000: 3 }, farm });
-  const row = plan["94164000"];
-  // The user-corrected example from the plan: 10.8315 × (3 + 3) = 64.9890, so here 10.7117 × 6.
-  assert.equal(row.perRun, 10.7117 * 6);
-  assert.ok(row.perRun > 10.7117 * 3 * 1.9, "a flat bonus would pay far less than doubling the stack");
-});
-
-test("farmPlan divides the deficit by perRun and rounds the runs up", () => {
-  const plan = EventShop.farmPlan({ totals: { 94164001: 100 }, held: { 94164001: 5 }, bonus: {}, farm });
-  const row = plan["94164001"];
-  assert.equal(row.deficit, 95);
-  assert.equal(row.perRun, 11.2105 * 3);
-  assert.equal(row.runs, Math.ceil(95 / (11.2105 * 3)));
-  assert.equal(row.ap, row.runs * 40);
-});
-
-test("farmPlan holds more than the plan needs, so nothing has to be farmed", () => {
-  const plan = EventShop.farmPlan({ totals: { 94164000: 10 }, held: { 94164000: 40 }, bonus: {}, farm });
-  assert.equal(plan["94164000"].deficit, 0);
-  assert.equal(plan["94164000"].runs, 0);
-  assert.equal(plan["94164000"].ap, 0);
-});
-
-test("farmPlan gives a currency with no drop data a null plan, never a divide by zero", () => {
-  const plan = EventShop.farmPlan({ totals: { 94164002: 500 }, held: {}, bonus: { 94164002: 5 }, farm });
-  assert.equal(plan["94164002"].deficit, 500);
-  assert.equal(plan["94164002"].perRun, 0);
-  assert.equal(plan["94164002"].runs, null);
-  assert.equal(plan["94164002"].ap, null);
-});
-
-test("farmPlan covers every currency in totals and every key of farm", () => {
-  const plan = EventShop.farmPlan({ totals: { 94164000: 1 }, held: {}, bonus: {}, farm: { 94164002: null } });
-  assert.deepEqual(Object.keys(plan).sort(), ["94164000", "94164002"]);
-});
-
-/* --- Amendment I: EventShop.dropPerRun, the one multiply behind a card's drop lines --- */
+/* --- Amendment L: EventShop.dropPerRun, the one multiply behind a card's drop line --- */
 
 test("dropPerRun pays dropExpected × (num + bonus), the figure the card prints", () => {
-  assert.equal(EventShop.dropPerRun(farm["94164000"]), 10.7117 * 3, "no bonus is the plain stack");
-  assert.equal(EventShop.dropPerRun(farm["94164000"], 3), 10.7117 * 6, "bonus joins the stack, not the total");
+  assert.equal(EventShop.dropPerRun({ dropExpected: 10.7117, num: 3 }), 10.7117 * 3, "no bonus is the plain stack");
+  assert.equal(
+    EventShop.dropPerRun({ dropExpected: 10.7117, num: 3 }, 3),
+    10.7117 * 6,
+    "bonus joins the stack, not the total",
+  );
   assert.equal(
     EventShop.dropPerRun({ dropExpected: 1.8829, num: 3 }, 1),
     1.8829 * 4,
-    "a secondary line pays with its own currency's bonus",
+    "each line pays with its own currency's bonus",
   );
-});
-
-test("dropPerRun reads the same figures farmPlan prices with, per currency", () => {
-  const plan = EventShop.farmPlan({ totals: { 94164000: 0 }, held: {}, bonus: { 94164000: 2 }, farm });
-  assert.equal(plan["94164000"].perRun, EventShop.dropPerRun(farm["94164000"], 2));
-  const planWithBonus2 = EventShop.farmPlan({ totals: {}, held: {}, bonus: { 94164001: 2 }, farm });
-  assert.equal(planWithBonus2["94164001"].perRun, EventShop.dropPerRun(farm["94164001"], 2));
 });
 
 test("dropPerRun is 0 without a drop line and clamps a junk or negative bonus", () => {
   assert.equal(EventShop.dropPerRun(null, 3), 0, "a card with no quest has nothing to print");
-  assert.equal(EventShop.dropPerRun(farm["94164000"], -50), 10.7117 * 3, "a negative bonus reads as no bonus");
-  assert.equal(EventShop.dropPerRun(farm["94164000"], "abc"), 10.7117 * 3, "an empty box reads as no bonus");
+  assert.equal(
+    EventShop.dropPerRun({ dropExpected: 10.7117, num: 3 }, -50),
+    10.7117 * 3,
+    "a negative bonus reads as no bonus",
+  );
+  assert.equal(
+    EventShop.dropPerRun({ dropExpected: 10.7117, num: 3 }, "abc"),
+    10.7117 * 3,
+    "an empty box reads as no bonus",
+  );
   assert.equal(EventShop.dropPerRun({ dropExpected: "junk", num: 3 }, 1), 0, "junk figures pay nothing");
 });
 
-test("farmPlan survives an absent snapshot, junk figures and a negative or oversized bonus", () => {
-  const empty = EventShop.farmPlan({ totals: { 1: 10 }, held: {}, bonus: {}, farm: {} });
-  assert.equal(empty["1"].runs, null);
+/* --- Amendment L5: the trade-aware minimum-play optimizer, pinned by the lead's fixtures.
 
-  const junk = EventShop.farmPlan({ totals: { 94164000: "many" }, held: { 94164000: "some" }, bonus: {}, farm });
-  assert.equal(junk["94164000"].deficit, 0);
+   80627 (くたばれ！パンプキンファーム・スローター) community figures as the sync emits them
+   (dropExpected 4dp, best line per quest and currency). Currencies: 94160901 けもみみクッキー
+   (bronze "cookie"), 94160902 首輪ドーナッツ (silver "donut"), 94160903 三日月パイ (gold "pie").
+   Quests: 誓い 94161108 (90++ drops everything ~33.4/run), 牛追い 94161105 (best pie), ここ掘れ
+   94161103 (best cookie), 妙案奇案 94161104 (best donut), plus the dominated mid-quests.
+   Trades: 10 cookie → 1 donut, 10 donut → 1 pie. --- */
 
-  const negative = EventShop.farmPlan({ totals: { 94164000: 30 }, held: {}, bonus: { 94164000: -50 }, farm });
-  assert.equal(negative["94164000"].perRun, 10.7117 * 3);
+const B_QUESTS = [
+  {
+    questId: 94161100,
+    questName: "パンプキン収穫 目で愛でファーム",
+    recommendLv: "70",
+    ap: 40,
+    sampleRuns: 435,
+    drops: { 94160901: { dropExpected: 10.9149, num: 3 }, 94160902: { dropExpected: 2.1379, num: 3 } },
+  },
+  {
+    questId: 94161101,
+    questName: "パンプキン収穫 ぷちぷちファーム",
+    recommendLv: "70",
+    ap: 40,
+    sampleRuns: 317,
+    drops: { 94160902: { dropExpected: 11.0189, num: 3 }, 94160903: { dropExpected: 2.205, num: 3 } },
+  },
+  {
+    questId: 94161102,
+    questName: "パンプキン収穫 分け合いファーム",
+    recommendLv: "70",
+    ap: 40,
+    sampleRuns: 591,
+    drops: { 94160901: { dropExpected: 2.2081, num: 3 }, 94160903: { dropExpected: 11.1421, num: 3 } },
+  },
+  {
+    questId: 94161103,
+    questName: "パンプキン収穫 ここ掘れファーム",
+    recommendLv: "75",
+    ap: 40,
+    sampleRuns: 742,
+    drops: { 94160901: { dropExpected: 14.4205, num: 3 }, 94160902: { dropExpected: 2.9394, num: 3 } },
+  },
+  {
+    questId: 94161104,
+    questName: "パンプキン収穫 妙案奇案ファーム",
+    recommendLv: "80",
+    ap: 40,
+    sampleRuns: 973,
+    drops: { 94160902: { dropExpected: 14.555, num: 3 }, 94160903: { dropExpected: 2.8828, num: 3 } },
+  },
+  {
+    questId: 94161105,
+    questName: "パンプキン収穫 牛追いファーム",
+    recommendLv: "85",
+    ap: 40,
+    sampleRuns: 981,
+    drops: { 94160901: { dropExpected: 2.8685, num: 3 }, 94160903: { dropExpected: 14.4954, num: 3 } },
+  },
+  {
+    questId: 94161107,
+    questName: "パンプキン収穫 父と子のファーム",
+    recommendLv: "90+",
+    ap: 40,
+    sampleRuns: 1736,
+    drops: {
+      94160901: { dropExpected: 9.254, num: 3 },
+      94160902: { dropExpected: 9.3001, num: 3 },
+      94160903: { dropExpected: 9.2068, num: 3 },
+    },
+  },
+  {
+    questId: 94161108,
+    questName: "パンプキン収穫 誓いのファーム",
+    recommendLv: "90++",
+    ap: 40,
+    sampleRuns: 13472,
+    drops: {
+      94160901: { dropExpected: 11.1328, num: 3 },
+      94160902: { dropExpected: 11.1377, num: 3 },
+      94160903: { dropExpected: 11.0917, num: 3 },
+    },
+  },
+];
+const B_FARM = { quests: B_QUESTS, best: { 94160901: 94161103, 94160902: 94161104, 94160903: 94161105 } };
+const B_TRADES = [
+  { fromId: 94160901, toId: 94160902, costAmount: 10, getNum: 1 },
+  { fromId: 94160902, toId: 94160903, costAmount: 10, getNum: 1 },
+];
+const B_NEEDS = { 94160901: 4000, 94160902: 3000, 94160903: 5000 };
 
-  const oversized = EventShop.farmPlan({ totals: { 94164000: 30 }, held: {}, bonus: { 94164000: 1e9 }, farm });
-  assert.equal(oversized["94164000"].perRun, 10.7117 * (3 + Schema.tier.Bonus.max));
+function runsOf(plan) {
+  const map = {};
+  for (const play of plan.plays) map[play.questId] = play.runs;
+  return map;
+}
 
-  assert.deepEqual(EventShop.farmPlan(), {});
+/* Fixture A (Amendment L5): priority 誓い, no bonus, no trades → the minimum is 142 plays =
+   113×誓い + 29×牛追い, and the tie-break least-surplus picks it over the equal-total 114+28
+   and 115+27 neighbours. */
+test("farmPlan fixture A: 誓い-priority, no bonus no trades → 142 plays = 113誓い + 29牛追い", () => {
+  const plan = EventShop.farmPlan({
+    totals: B_NEEDS,
+    held: {},
+    bonus: {},
+    farm: B_FARM,
+    trades: [],
+    priorityQuestId: 94161108,
+  });
+  assert.equal(plan.totalPlays, 142);
+  assert.deepEqual(runsOf(plan), { 94161108: 113, 94161105: 29 });
+  assert.deepEqual(plan.trades, [], "no trades in this fixture");
+  assert.ok(Math.abs(plan.yields["94160901"] - 4023.5787) < 1e-3, `cookie ${plan.yields["94160901"]}`);
+  assert.ok(Math.abs(plan.yields["94160902"] - 3775.6803) < 1e-3, `donut ${plan.yields["94160902"]}`);
+  assert.ok(Math.abs(plan.yields["94160903"] - 5021.1861) < 1e-3, `pie ${plan.yields["94160903"]}`);
+  for (const key of Object.keys(B_NEEDS))
+    assert.equal(plan.surplus[key], Math.round((plan.yields[key] - B_NEEDS[key]) * 1e6) / 1e6);
+  assert.equal(plan.plays[0].questId, 94161108, "most-ridden first");
+  assert.equal(plan.plays[0].questName, "パンプキン収穫 誓いのファーム");
+  assert.equal(plan.plays[0].recommendLv, "90++");
+  assert.equal(plan.plays[0].isAllDrop, true, "誓い drops every shop currency");
+  assert.equal(plan.plays[0].mainDropId, 94160902, "誓い's biggest line is the donut");
+  assert.equal(plan.plays[1].isAllDrop, false, "牛追い drops no donut");
+  assert.equal(plan.plays[1].mainDropId, 94160903);
+});
+
+/* Fixture B (Amendment L5/L8): the same needs with bonuses cookie+1 / donut+2 / pie+1 and the
+   10:1 upgrade trades. The trade-aware minimum is 104 plays = 90×誓い + 14×牛追い, whose surplus
+   cascades into 16 cookie→donut + 202 donut→pie trades; finals donut 3007.9 / cookie 4008.4 /
+   pie 5006.8 (total surplus ~23). A greedy that farmed every deficit without trades is worse. */
+test("farmPlan fixture B: trade-aware bonus plan → 104 plays, cascade 16 cookie→donut + 202 donut→pie", () => {
+  const plan = EventShop.farmPlan({
+    totals: B_NEEDS,
+    held: {},
+    bonus: { 94160901: 1, 94160902: 2, 94160903: 1 },
+    farm: B_FARM,
+    trades: B_TRADES,
+    priorityQuestId: 94161108,
+  });
+  assert.equal(plan.totalPlays, 104);
+  assert.deepEqual(runsOf(plan), { 94161108: 90, 94161105: 14 });
+  assert.deepEqual(plan.trades, [
+    { fromId: 94160901, toId: 94160902, count: 16 },
+    { fromId: 94160902, toId: 94160903, count: 202 },
+  ]);
+  assert.ok(Math.abs(plan.yields["94160902"] - 3007.965) < 0.01, `donut ${plan.yields["94160902"]}`);
+  assert.ok(Math.abs(plan.yields["94160901"] - 4008.444) < 0.01, `cookie ${plan.yields["94160901"]}`);
+  assert.ok(Math.abs(plan.yields["94160903"] - 5006.7544) < 0.01, `pie ${plan.yields["94160903"]}`);
+  const totalSurplus = Object.values(plan.surplus).reduce((sum, value) => sum + value, 0);
+  assert.ok(Math.abs(totalSurplus - 23.1634) < 0.01, `surplus ${totalSurplus}`);
+});
+
+/* Fixture B's floor (Amendment L5): 103 plays cannot cover the plan. The four Pareto quests
+   (誓い/牛追い/ここ掘れ/妙案奇案 dominate every other quest currency-for-currency), so every
+   103-play vector reduces to their split — and none of them covers even with the full cascade.
+   This brute force is written independently of the optimizer, and the best 103-play mix leaves
+   pie short ~19.7 (the lead's 19.66, before the sync's 4-decimal rounding). */
+test("farmPlan fixture B floor: no 103-play mix covers the needs even with the full trade cascade", () => {
+  const rate = {
+    94161108: { c: 11.1328 * 4, d: 11.1377 * 5, p: 11.0917 * 4 },
+    94161105: { c: 2.8685 * 4, d: 0, p: 14.4954 * 4 },
+    94161103: { c: 14.4205 * 4, d: 2.9394 * 5, p: 0 },
+    94161104: { c: 0, d: 14.555 * 5, p: 2.8828 * 4 },
+  };
+  let minPieShort = Infinity;
+  for (let a = 0; a <= 103; a++) {
+    for (let b = 0; b <= 103 - a; b++) {
+      for (let e = 0; e <= 103 - a - b; e++) {
+        const f = 103 - a - b - e;
+        const y = cover103(a, b, e, f, rate);
+        if (y.feasible) assert.fail(`Σ=103 was feasible at ${a},${b},${e},${f}`);
+        if (y.cookieCovered) minPieShort = Math.min(minPieShort, y.pieShort);
+      }
+    }
+  }
+  assert.ok(minPieShort > 19 && minPieShort < 20.5, `best 103-mix pie short ${minPieShort}`);
+});
+
+function cover103(a, b, e, f, rate) {
+  const cookie = a * rate[94161108].c + b * rate[94161105].c + e * rate[94161103].c;
+  const donut = a * rate[94161108].d + e * rate[94161103].d + f * rate[94161104].d;
+  const pie = a * rate[94161108].p + b * rate[94161105].p + f * rate[94161104].p;
+  const cookieTrades = Math.floor(Math.max(0, cookie - 4000) / 10);
+  const donutPool = donut + cookieTrades - 3000;
+  const pieTrades = Math.floor(Math.max(0, donutPool) / 10);
+  return {
+    cookieCovered: cookie >= 4000 - 1e-9,
+    pieShort: Math.max(0, 5000 - pie - pieTrades),
+    feasible: cookie >= 4000 - 1e-9 && donutPool - pieTrades * 10 >= -1e-9 && pie + pieTrades >= 5000 - 1e-9,
+  };
+}
+
+/* Fixture C (Amendment L5, re-pinned by Amendment Q2): 80639 has no all-covering quest, so the
+   exact no-priority search prices the plan over the shipped snapshot's own three quests (rates and
+   10:1 trade chain refreshed to the data module — the old fixture carried a stale 94164101 line and
+   no trades). needs bronze 3000 / silver 4000 / gold 5000 → the oracle's brute-forced minimum is
+   306 plays = 64×だるま + 108×こんにゃく + 134×槍 + 3 bronze→silver trades. The old greedy walked
+   334 plays and left ~800 gold of surplus (the buy-all spend, pinned in the hostile suite, was even
+   worse: 498 plays with a +1084 gold surplus — the owner-reported "+1093 YAKI"). */
+const C_FARM = {
+  quests: [
+    {
+      questId: 94164100,
+      questName: "【GUNMA巡り】だるまを買いにいこう",
+      recommendLv: "70",
+      ap: 40,
+      sampleRuns: 224,
+      drops: { 94164000: { dropExpected: 10.8214, num: 3 }, 94164001: { dropExpected: 2.058, num: 3 } },
+    },
+    {
+      questId: 94164101,
+      questName: "【GUNMA巡り】こんにゃくとネギ",
+      recommendLv: "70",
+      ap: 40,
+      sampleRuns: 103,
+      drops: { 94164001: { dropExpected: 11.1442, num: 3 }, 94164002: { dropExpected: 2.0481, num: 3 } },
+    },
+    {
+      questId: 94164102,
+      questName: "【GUNMA巡り】槍をスキーに連れていけ",
+      recommendLv: "70",
+      ap: 40,
+      sampleRuns: 178,
+      drops: { 94164000: { dropExpected: 2.382, num: 3 }, 94164002: { dropExpected: 10.809, num: 3 } },
+    },
+  ],
+  best: { 94164000: 94164100, 94164001: 94164101, 94164002: 94164102 },
+};
+const C_TRADES = [
+  { fromId: 94164000, toId: 94164001, costAmount: 10, getNum: 1 },
+  { fromId: 94164001, toId: 94164002, costAmount: 10, getNum: 1 },
+];
+
+test("farmPlan fixture C: no all-covering quest → exact minimum 306 plays = 64だるま + 108こんにゃく + 134槍", () => {
+  const plan = EventShop.farmPlan({
+    totals: { 94164000: 3000, 94164001: 4000, 94164002: 5000 },
+    held: {},
+    bonus: {},
+    farm: C_FARM,
+    trades: C_TRADES,
+    priorityQuestId: null,
+  });
+  assert.equal(plan.totalPlays, 306, "the oracle brute-forces 306 as the minimum (was: greedy 334)");
+  assert.deepEqual(runsOf(plan), { 94164102: 134, 94164101: 108, 94164100: 64 });
+  assert.deepEqual(plan.trades, [{ fromId: 94164000, toId: 94164001, count: 3 }]);
+  assert.ok(Math.abs(plan.yields["94164002"] - 5008.8024) < 0.01, `gold ${plan.yields["94164002"]}`);
+  assert.ok(Math.abs(plan.yields["94164000"] - 3005.2728) < 0.01, `bronze ${plan.yields["94164000"]}`);
+  assert.ok(Math.abs(plan.yields["94164001"] - 4008.8568) < 0.01, `silver ${plan.yields["94164001"]}`);
+  assert.ok(
+    plan.plays.every((play) => play.isAllDrop === false),
+    "80639 ships no all-drop quest",
+  );
+  assert.equal(plan.plays[0].mainDropId, 94164002, "槍's main drop is the gold");
+});
+
+/* Amendment Q correctness fix (oracle fuzz case 64): quest 1000 drops all three currencies but is
+   fully replayed by 1001 (same AP, higher on every line), so the integer-replay audit — and any
+   honest minimum — excludes it. The old priority scan seeded the user's pick without that check
+   and shipped a {1000:5} plan whose farming the replay could not see, reading as every currency
+   short. The plan must now replay as exact integer stacks (dropExpected snapped to the 1e-4 grid
+   × (num + bonus), like the oracle) and cover every deficit with zero trades. */
+const Q64_NEEDS = { 10: 96, 20: 221, 30: 127 };
+const Q64_BONUS = { 10: 2, 20: 2, 30: 0 };
+const Q64_QUESTS = [
+  {
+    questId: 1000,
+    questName: "q0",
+    recommendLv: "70",
+    ap: 40,
+    drops: {
+      10: { dropExpected: 6.9042, num: 3 },
+      20: { dropExpected: 9.1202, num: 3 },
+      30: { dropExpected: 10.7336, num: 3 },
+    },
+  },
+  {
+    questId: 1001,
+    questName: "q1",
+    recommendLv: "70",
+    ap: 40,
+    drops: {
+      10: { dropExpected: 9.1836, num: 3 },
+      20: { dropExpected: 14.1605, num: 3 },
+      30: { dropExpected: 14.3909, num: 3 },
+    },
+  },
+  {
+    questId: 1002,
+    questName: "q2",
+    recommendLv: "70",
+    ap: 40,
+    drops: { 20: { dropExpected: 11.0602, num: 3 }, 30: { dropExpected: 12.4878, num: 3 } },
+  },
+  { questId: 1003, questName: "q3", recommendLv: "70", ap: 40, drops: { 30: { dropExpected: 4.3916, num: 3 } } },
+];
+const Q64_FARM = { quests: Q64_QUESTS, best: { 10: 1001, 20: 1001, 30: 1001 } };
+
+/* Σ runs × integer micro rate per currency, plus the integer trade cascade (floor(max(0, free) /
+   cost), bottom-up ids ascending) — the oracle's replay arithmetic, restated here independently.
+   Returns null when a play names a quest the farm data does not carry. */
+function integerReplayFinals(plan, farm, bonus, trades, needs) {
+  const micro = {};
+  for (const play of plan.plays) {
+    const quest = farm.quests.find((q) => q.questId === play.questId);
+    if (!quest) return null;
+    for (const [key, drop] of Object.entries(quest.drops)) {
+      const perRun = Math.round(drop.dropExpected * 10000) * (drop.num + (bonus[key] || 0));
+      micro[key] = (micro[key] || 0) + play.runs * perRun;
+    }
+  }
+  const keys = Object.keys(needs).sort((a, b) => Number(a) - Number(b));
+  const inflow = {};
+  const final = {};
+  for (const key of keys) {
+    const deficit = Math.round(needs[key] * 10000);
+    const avail = (micro[key] || 0) + (inflow[key] || 0);
+    let free = avail - deficit;
+    let spent = 0;
+    for (const trade of trades.filter((t) => String(t.fromId) === key).sort((a, b) => a.toId - b.toId)) {
+      const times = Math.floor(Math.max(0, free) / (trade.costAmount * 10000));
+      if (times <= 0) continue;
+      free -= times * trade.costAmount * 10000;
+      spent += times * trade.costAmount * 10000;
+      inflow[String(trade.toId)] = (inflow[String(trade.toId)] || 0) + times * trade.getNum * 10000;
+    }
+    final[key] = avail - spent;
+  }
+  return final;
+}
+
+test("farmPlan replays integer-safe on the fuzz case-64 shape: dominated priority pick never ships, 4 plays cover exactly", () => {
+  const plan = EventShop.farmPlan({
+    totals: Q64_NEEDS,
+    held: {},
+    bonus: Q64_BONUS,
+    farm: Q64_FARM,
+    trades: [],
+    priorityQuestId: 1000,
+  });
+  assert.equal(plan.totalPlays, 4, "the exact integer minimum is 4×q1; a dominated priority quest cannot lower it");
+  assert.deepEqual(
+    runsOf(plan),
+    { 1001: 4 },
+    "quest 1000 is replayed for free by 1001 — it never enters an auditable plan",
+  );
+  const finals = integerReplayFinals(plan, Q64_FARM, Q64_BONUS, [], Q64_NEEDS);
+  assert.notEqual(finals, null, "every played quest must be farm data the replay can see");
+  for (const key of Object.keys(Q64_NEEDS)) {
+    assert.ok(
+      finals[key] >= Q64_NEEDS[key] * 10000,
+      `${key} integer final ${finals[key]} micro below need ${Q64_NEEDS[key] * 10000} micro`,
+    );
+    assert.ok(plan.surplus[key] >= 0, `${key} reported surplus ${plan.surplus[key]} negative`);
+    assert.equal(
+      Math.round(plan.yields[key] * 10000),
+      finals[key],
+      `${key} reported yield disagrees with the integer replay`,
+    );
+  }
+});
+
+/* --- Amendment L optimizer contract: determinism, guards and trade behaviour --- */
+
+test("farmPlan with zero deficits plays nothing and covers every currency with a 0 row", () => {
+  const plan = EventShop.farmPlan({ totals: { 1: 5 }, held: { 1: 9 }, bonus: {}, farm: C_FARM, trades: [] });
+  assert.equal(plan.totalPlays, 0);
+  assert.deepEqual(plan.plays, []);
+  assert.deepEqual(plan.trades, []);
+  assert.equal(plan.yields["1"], 0);
+  assert.equal(plan.surplus["1"], 0);
+});
+
+test("farmPlan prices held over the deficit as covered — runs nothing it does not need", () => {
+  const plan = EventShop.farmPlan({
+    totals: { 94164000: 3000, 94164001: 0, 94164002: 0 },
+    held: { 94164000: 3000 },
+    bonus: {},
+    farm: C_FARM,
+    trades: [],
+    priorityQuestId: null,
+  });
+  assert.equal(plan.totalPlays, 0);
+});
+
+test("farmPlan with no farm quests or a currency nobody drops reports an infeasible plan, never a partial one", () => {
+  const noQuests = EventShop.farmPlan({
+    totals: { 1: 10 },
+    held: {},
+    bonus: {},
+    farm: { quests: [], best: {} },
+    trades: [],
+  });
+  assert.equal(noQuests.totalPlays, null);
+  assert.deepEqual(noQuests.plays, []);
+
+  const silverless = { quests: [C_FARM.quests[2]], best: { 94164000: 94164102, 94164002: 94164102 } };
+  const noSilver = EventShop.farmPlan({
+    totals: { 94164000: 100, 94164001: 100, 94164002: 100 },
+    held: {},
+    bonus: {},
+    farm: silverless,
+    trades: [],
+  });
+  assert.equal(noSilver.totalPlays, null, "an unfarmable currency is no plan at all");
+});
+
+test("farmPlan survives a missing snapshot, junk figures and hostile bonuses without crashing", () => {
+  assert.equal(EventShop.farmPlan().totalPlays, 0);
+  assert.deepEqual(EventShop.farmPlan().plays, []);
+
+  const junk = EventShop.farmPlan({ totals: { 1: "many" }, held: { 1: "some" }, bonus: {}, farm: {}, trades: [] });
+  assert.equal(junk.totalPlays, 0, "junk figures read as 0 need, which needs no farming");
+
+  const hugeBonus = EventShop.farmPlan({
+    totals: { 94164000: 100 },
+    held: {},
+    bonus: { 94164000: 1e9 },
+    farm: C_FARM,
+    trades: null,
+  });
+  assert.ok(hugeBonus.totalPlays >= 1, "a clamped giant bonus still covers 100 inside a few runs");
+  assert.ok(hugeBonus.yields["94164000"] >= 100);
+
+  const negativeHeld = EventShop.farmPlan({
+    totals: { 94164000: 100 },
+    held: { 94164000: -5 },
+    bonus: {},
+    farm: C_FARM,
+  });
+  assert.ok(negativeHeld.yields["94164000"] >= 105, "a negative held only makes the deficit bigger");
+});
+
+test("farmPlan trades are integer and cascade the full chain — surplus never strands upward", () => {
+  /* Needs pie 500, farms none directly: 誓い alone pays donut past 3000 and cookie past 4000,
+     and the cascade must move cookie→donut→pie in whole 10:1 trades. */
+  const plan = EventShop.farmPlan({
+    totals: { 94160901: 4000, 94160902: 3000, 94160903: 5000 },
+    held: {},
+    bonus: {},
+    farm: B_FARM,
+    trades: B_TRADES,
+    priorityQuestId: 94161108,
+  });
+  for (const trade of plan.trades) {
+    assert.ok(Number.isInteger(trade.count) && trade.count > 0, `trade ${JSON.stringify(trade)}`);
+  }
+  assert.ok(plan.totalPlays < 155, `trades must save plays: ${plan.totalPlays}`);
+  for (const key of Object.keys(B_NEEDS)) {
+    assert.ok(plan.yields[key] >= B_NEEDS[key] - 1e-6, `${key} covered: ${plan.yields[key]}`);
+  }
+});
+
+test("farmPlan is deterministic: the same inputs print the same plan twice", () => {
+  const args = {
+    totals: B_NEEDS,
+    held: {},
+    bonus: { 94160903: 1 },
+    farm: B_FARM,
+    trades: B_TRADES,
+    priorityQuestId: 94161108,
+  };
+  assert.deepEqual(EventShop.farmPlan(args), EventShop.farmPlan(args));
+});
+
+/* --- Amendment M6: the top-up quest of a currency is the card's SELECTION, default the best.
+   With the default picks (each currency's farm.best quest) every Amendment L fixture must still
+   hold; a deliberate pick moves the top-up onto that quest; a pick equal to the priority quest
+   falls back so the pinned optimum survives. --- */
+
+const B_DEFAULT_PICKS = { 94160901: 94161103, 94160902: 94161104, 94160903: 94161105 };
+const C_DEFAULT_PICKS = { 94164000: 94164100, 94164001: 94164101, 94164002: 94164102 };
+
+test("farmPlan with default currencyQuest picks holds every pinned fixture (142 / 104 / 306)", () => {
+  const a = EventShop.farmPlan({
+    totals: B_NEEDS,
+    held: {},
+    bonus: {},
+    farm: B_FARM,
+    trades: [],
+    priorityQuestId: 94161108,
+    currencyQuest: B_DEFAULT_PICKS,
+  });
+  assert.equal(a.totalPlays, 142);
+  assert.deepEqual(runsOf(a), { 94161108: 113, 94161105: 29 });
+  const b = EventShop.farmPlan({
+    totals: B_NEEDS,
+    held: {},
+    bonus: { 94160901: 1, 94160902: 2, 94160903: 1 },
+    farm: B_FARM,
+    trades: B_TRADES,
+    priorityQuestId: 94161108,
+    currencyQuest: B_DEFAULT_PICKS,
+  });
+  assert.equal(b.totalPlays, 104);
+  assert.deepEqual(runsOf(b), { 94161108: 90, 94161105: 14 });
+  const c = EventShop.farmPlan({
+    totals: { 94164000: 3000, 94164001: 4000, 94164002: 5000 },
+    held: {},
+    bonus: {},
+    farm: C_FARM,
+    trades: C_TRADES,
+    priorityQuestId: null,
+    currencyQuest: C_DEFAULT_PICKS,
+  });
+  assert.equal(
+    c.totalPlays,
+    306,
+    "default picks name the same farmers the unselected search would, so the exact minimum holds",
+  );
+  assert.deepEqual(runsOf(c), { 94164102: 134, 94164101: 108, 94164100: 64 });
+});
+
+test("farmPlan farms a currency's shortfall with the SELECTED quest, not the auto-best", () => {
+  const plan = EventShop.farmPlan({
+    totals: { 94164000: 3000, 94164001: 4000, 94164002: 5000 },
+    held: {},
+    bonus: {},
+    farm: C_FARM,
+    trades: C_TRADES,
+    priorityQuestId: null,
+    currencyQuest: { 94164000: 94164102 },
+  });
+  assert.equal(
+    plan.totalPlays,
+    540,
+    "bronze picked onto the 槍 quest (7.146/run over its own gold) instead of the だるま best: bronze 420×7.146, silver 120×33.4326 (shipped rate) — the exact minimum under that pick",
+  );
+  assert.deepEqual(runsOf(plan), { 94164102: 420, 94164101: 120 });
+  assert.ok(plan.yields["94164000"] >= 3000 && plan.yields["94164001"] >= 4000 && plan.yields["94164002"] >= 5000);
+});
+
+test("farmPlan survives a currency selected onto the priority quest — the scan already prices it", () => {
+  const plan = EventShop.farmPlan({
+    totals: B_NEEDS,
+    held: {},
+    bonus: {},
+    farm: B_FARM,
+    trades: [],
+    priorityQuestId: 94161108,
+    currencyQuest: { 94160903: 94161108 },
+  });
+  assert.equal(plan.totalPlays, 142, "the top-up falls back to the best usable rate, fixture stays");
+  assert.deepEqual(runsOf(plan), { 94161108: 113, 94161105: 29 });
+});
+
+/* --- Amendment L3/L4: all-covering detection and the farmQuest default --- */
+
+test("allCoveringQuests lists only quests dropping every shop currency, in snapshot order", () => {
+  const ids = [94160901, 94160902, 94160903];
+  assert.deepEqual(
+    EventShop.allCoveringQuests(B_FARM, ids).map((quest) => quest.questId),
+    [94161107, 94161108],
+  );
+  assert.deepEqual(EventShop.allCoveringQuests(C_FARM, [94164000, 94164001, 94164002]), [], "80639 has none");
+  assert.deepEqual(EventShop.allCoveringQuests(null, [1]), []);
+  assert.deepEqual(EventShop.allCoveringQuests(B_FARM, []), [], "no currencies, no coverage");
+});
+
+test("defaultFarmQuest picks the all-covering quest with the highest total dropExpected×num", () => {
+  const ids = [94160901, 94160902, 94160903];
+  assert.equal(EventShop.defaultFarmQuest(B_FARM, ids), 94161108, "誓い out-pays 父と子の every line");
+  assert.equal(
+    EventShop.defaultFarmQuest(C_FARM, [94164000, 94164001, 94164002]),
+    null,
+    "no all-covering quest, no default",
+  );
+  const tieFarm = {
+    quests: [
+      {
+        questId: 7,
+        questName: "b",
+        recommendLv: "1",
+        ap: 1,
+        sampleRuns: 1,
+        drops: { 1: { dropExpected: 1, num: 3 }, 2: { dropExpected: 1, num: 3 } },
+      },
+      {
+        questId: 6,
+        questName: "a",
+        recommendLv: "1",
+        ap: 1,
+        sampleRuns: 1,
+        drops: { 1: { dropExpected: 1, num: 3 }, 2: { dropExpected: 1, num: 3 } },
+      },
+    ],
+    best: {},
+  };
+  assert.equal(EventShop.defaultFarmQuest(tieFarm, [1, 2]), 6, "a total tie goes to the lower quest id");
 });
 
 /* --- Amendment G: multi-event snapshots, per-event plans, storage migration --- */
 
 const goldItem = { id: 101, cost: { itemId: 94164002, amount: 10 }, limitNum: 2, setNum: 1, priority: 1 };
 const silverItem = { id: 201, cost: { itemId: 94164001, amount: 5 }, limitNum: 0, setNum: 1, priority: 1 };
-const EVENT_A = { event: { id: 80639, name: "A", shortName: "A" }, currencies, items: [goldItem, silverItem], farm };
+const FARM_GOLD = {
+  quests: [
+    {
+      questId: 501,
+      questName: "qa",
+      recommendLv: "70",
+      ap: 40,
+      sampleRuns: 9,
+      drops: { 94164002: { dropExpected: 10, num: 3 } },
+    },
+  ],
+  best: { 94164002: 501 },
+};
+const EVENT_A = {
+  event: { id: 80639, name: "A", shortName: "A" },
+  currencies,
+  items: [goldItem, silverItem],
+  farm: FARM_GOLD,
+  trades: [],
+};
 const EVENT_B = {
   event: { id: 80630, name: "B", shortName: "B" },
   currencies: [{ id: 94162101, name: "Ticket", background: "gold" }],
   items: [{ id: 101, cost: { itemId: 94162101, amount: 1 }, limitNum: 5, setNum: 1, priority: 1 }],
-  farm: { 94162101: null },
+  farm: { quests: [], best: {} },
+  trades: [],
 };
 const EVENTS = [EVENT_A, EVENT_B];
 
@@ -278,11 +812,15 @@ test("sanitizePlans keeps one plan per event and starts unseen events empty", ()
     requires: { 101: 2 },
     held: { 94164000: 0, 94164001: 0, 94164002: 7 },
     bonus: { 94164000: 0, 94164001: 0, 94164002: 1 },
+    farmQuest: null,
+    currencyQuest: {},
   });
   assert.deepEqual(state.plans["80630"], {
     requires: {},
     held: { 94162101: 0 },
     bonus: { 94162101: 0 },
+    farmQuest: null,
+    currencyQuest: {},
   });
 });
 
@@ -340,9 +878,97 @@ test("sanitizePlans survives junk blobs and an absent event list", () => {
   assert.deepEqual(EventShop.sanitizePlans({ selectedEventId: 5, plans: 7 }, [EVENT_B]), {
     selectedEventId: 80630,
     plans: {
-      80630: { requires: {}, held: { 94162101: 0 }, bonus: { 94162101: 0 } },
+      80630: { requires: {}, held: { 94162101: 0 }, bonus: { 94162101: 0 }, farmQuest: null, currencyQuest: {} },
     },
   });
+});
+
+/* --- Amendment L4: farmQuest survives the sanitizer only if the event's farm list carries it --- */
+
+const B_SNAPSHOT = {
+  event: { id: 80627, name: "B27", shortName: "B27" },
+  currencies: [
+    { id: 94160901, name: "cookie", background: "bronze", icon: null },
+    { id: 94160902, name: "donut", background: "silver", icon: null },
+    { id: 94160903, name: "pie", background: "gold", icon: null },
+  ],
+  items: [goldItem],
+  farm: B_FARM,
+  trades: B_TRADES,
+};
+
+test("sanitizePlans defaults farmQuest to the best all-covering quest and keeps a stored known quest", () => {
+  assert.equal(EventShop.sanitizePlans({}, [B_SNAPSHOT]).plans["80627"].farmQuest, 94161108);
+  assert.equal(
+    EventShop.sanitizePlans({ plans: { 80627: { farmQuest: 94161107 } } }, [B_SNAPSHOT]).plans["80627"].farmQuest,
+    94161107,
+    "a quest the event still ships survives, even while not the default",
+  );
+});
+
+test("sanitizePlans re-defaults a farmQuest the event's farm list no longer carries", () => {
+  assert.equal(
+    EventShop.sanitizePlans({ plans: { 80627: { farmQuest: 424242 } } }, [B_SNAPSHOT]).plans["80627"].farmQuest,
+    94161108,
+  );
+  assert.equal(
+    EventShop.sanitizePlans({ plans: { 80627: { farmQuest: "94x" } } }, [B_SNAPSHOT]).plans["80627"].farmQuest,
+    94161108,
+  );
+  assert.equal(
+    EventShop.sanitizePlans({ plans: { 80627: { farmQuest: [] } } }, [B_SNAPSHOT]).plans["80627"].farmQuest,
+    94161108,
+  );
+  assert.equal(
+    EventShop.sanitizePlans({ plans: { 80627: { farmQuest: 94161108 } } }, [EVENT_A]).plans["80639"].farmQuest,
+    null,
+  );
+});
+
+/* --- Amendment M4: currencyQuest picks survive only as quests that drop their own currency --- */
+
+test("sanitizePlans migrates a plan without currencyQuest to {} and keeps unseen events on {}", () => {
+  assert.deepEqual(EventShop.sanitizePlans({}, [B_SNAPSHOT]).plans["80627"].currencyQuest, {});
+  assert.deepEqual(
+    EventShop.sanitizePlans({ eventId: 80639, requires: { 101: 1 } }, EVENTS).plans["80639"].currencyQuest,
+    {},
+  );
+});
+
+test("sanitizePlans keeps a currencyQuest pick that drops its own currency and re-defaults the rest", () => {
+  const saved = {
+    plans: {
+      80627: {
+        currencyQuest: { 94160901: 94161103, 94160902: 94161102, 94160903: 94161107, 999999: 94161108 },
+      },
+    },
+  };
+  const plan = EventShop.sanitizePlans(saved, [B_SNAPSHOT]).plans["80627"];
+  assert.equal(plan.currencyQuest["94160901"], 94161103, "the cookie pick drops cookies");
+  assert.equal(plan.currencyQuest["94160902"], 94161104, "94161102 drops no donut — re-defaulted to the donut best");
+  assert.equal(
+    plan.currencyQuest["94160903"],
+    94161105,
+    "94161107 is all-covering — Amendment N2 re-defaults it to the best non-all-covering pie quest",
+  );
+  assert.equal(Object.hasOwn(plan.currencyQuest, "999999"), false, "a key that is not an event currency is dead data");
+});
+
+test("sanitizedCurrencyQuest: valid pick, wrong-currency re-default, all-covering re-default, unknown id re-default, no dropper null", () => {
+  const farm = B_FARM;
+  const ids = [94160901, 94160902, 94160903];
+  const pick = (currencyKey, saved) => EventShop.sanitizedCurrencyQuest({ farm, currencyIds: ids, currencyKey, saved });
+  assert.equal(pick("94160901", 94161100), 94161100, "目で愛で drops cookies");
+  assert.equal(pick("94160901", 94161101), 94161103, "no cookies on it — the best");
+  assert.equal(pick("94160901", 94161108), 94161103, "an all-covering pick is card 4's, not the card's");
+  assert.equal(pick("94160901", "nonsense"), 94161103, "junk re-defaults");
+  assert.equal(pick("94160901", null), 94161103, "a missing pick reads as the best");
+  assert.equal(pick("4242", 94161101), null, "no currency, no pick");
+  assert.equal(
+    EventShop.sanitizedCurrencyQuest({ farm: {}, currencyIds: ids, currencyKey: "94160901", saved: 1 }),
+    null,
+    "a farm-less event has no picks at all",
+  );
 });
 
 /* --- Amendment G at the app layer: EventPlanner state, persistence and event switching --- */
@@ -412,6 +1038,8 @@ test("EventPlanner isolates plans: committing to the selected event never touche
       requires: { 101: 1 },
       held: { 94164000: 0, 94164001: 0, 94164002: 4 },
       bonus: { 94164000: 0, 94164001: 0, 94164002: 1 },
+      farmQuest: null,
+      currencyQuest: {},
     },
     "event A is exactly what it was before the switch",
   );
@@ -445,6 +1073,68 @@ test("EventPlanner clamps the currency boxes through the tier schema, not by tru
   );
 });
 
+test("EventPlanner.setFarmQuest persists an all-covering pick per event and re-defaults junk", async () => {
+  const storage = fakeStorage();
+  const planner = await plannerWith(storage, [B_SNAPSHOT]);
+  assert.equal(planner.activePlan().farmQuest, 94161108, "a fresh plan starts on the default quest");
+  planner.setFarmQuest(94161107);
+  assert.equal(planner.activePlan().farmQuest, 94161107);
+  planner.setFarmQuest("nonsense");
+  assert.equal(planner.activePlan().farmQuest, 94161108, "an id the farm list lacks re-defaults");
+  planner.setFarmQuest(424242);
+  assert.equal(planner.activePlan().farmQuest, 94161108);
+  const saved = JSON.parse(storage.dump()["fgo_event_shop_data"]);
+  assert.equal(saved.plans["80627"].farmQuest, 94161108, "and the persisted plan says so too");
+});
+
+test("EventPlanner farmQuest is per-event: switching events swaps the choice, not the store", async () => {
+  const storage = fakeStorage();
+  const planner = await plannerWith(storage, [B_SNAPSHOT, EVENT_A]);
+  planner.setFarmQuest(94161107);
+  planner.select(80639);
+  assert.equal(planner.activePlan().farmQuest, null, "the other event has no all-covering quest");
+  planner.select(80627);
+  assert.equal(planner.activePlan().farmQuest, 94161107, "the first event kept its own pick");
+});
+
+/* --- Amendment M4 at the app layer: the per-currency picks are one map inside the plan --- */
+
+test("EventPlanner.setCurrencyQuest persists per-currency picks and re-defaults excluded quests", async () => {
+  const storage = fakeStorage();
+  const planner = await plannerWith(storage, [B_SNAPSHOT]);
+  assert.deepEqual(
+    planner.activePlan().currencyQuest,
+    {},
+    "a fresh plan has no explicit picks — each card shows its best",
+  );
+  planner.setCurrencyQuest(94160903, 94161107);
+  assert.equal(
+    planner.activePlan().currencyQuest["94160903"],
+    94161105,
+    "Amendment N2: an all-covering pick is card 4's — the card re-defaults to the best non-all-covering quest",
+  );
+  planner.setCurrencyQuest(94160903, 94161103);
+  assert.equal(
+    planner.activePlan().currencyQuest["94160903"],
+    94161105,
+    "94161103 drops no pie — re-defaulted to the best",
+  );
+  planner.setCurrencyQuest(94160901, 94161100);
+  assert.equal(planner.activePlan().currencyQuest["94160901"], 94161100, "a deliberate non-all-covering pick survives");
+  const saved = JSON.parse(storage.dump()["fgo_event_shop_data"]);
+  assert.equal(saved.plans["80627"].currencyQuest["94160903"], 94161105, "and the persisted plan says so too");
+});
+
+test("EventPlanner currencyQuest is per-event: switching swaps the picks, not the store", async () => {
+  const storage = fakeStorage();
+  const planner = await plannerWith(storage, [B_SNAPSHOT, EVENT_A]);
+  planner.setCurrencyQuest(94160901, 94161100);
+  planner.select(80639);
+  assert.deepEqual(planner.activePlan().currencyQuest, {}, "the other event kept its own (empty) map");
+  planner.select(80627);
+  assert.equal(planner.activePlan().currencyQuest["94160901"], 94161100, "the first event kept its own pick");
+});
+
 test("EventPlanner reads the selected event for the modal: items and currencies only from it", async () => {
   const planner = await plannerWith(fakeStorage());
   assert.deepEqual(
@@ -468,6 +1158,8 @@ test("EventPlanner survives a snapshot list with no events", async () => {
   assert.equal(planner.activeEvent(), null);
   assert.equal(planner.state.selectedEventId, null);
   planner.applyRequires({ 101: 3 });
+  planner.setFarmQuest(5);
+  assert.equal(planner.activePlan().farmQuest, null, "no event, no pick to remember");
   planner.setHeld(94164002, 3);
   assert.deepEqual(planner.activePlan().requires, {}, "no plan to write into, and nothing throws");
   assert.deepEqual(planner.activePlan().held, {}, "no currencies, so nothing was written");
@@ -478,7 +1170,7 @@ test("EventPlanner survives a snapshot list with no events", async () => {
 test("EventPlanner writes a pruned event's saved plan back verbatim on the first mutation", async () => {
   const saved = {
     selectedEventId: 80639,
-    plans: { 80639: { requires: { 101: 1 } }, 80630: { requires: { 101: 5 }, held: { 94162101: 2 } } },
+    plans: { 80639: { requires: { 101: 1 } }, 80630: { requires: { 101: 5 }, held: { 94162101: 2 }, farmQuest: 7 } },
   };
   const storage = fakeStorage({ fgo_event_shop_data: JSON.stringify(saved) });
   const planner = await plannerWith(storage, [EVENT_A]);
@@ -540,7 +1232,7 @@ test("hostile keys in a retired plan are kept as bytes and stay inert", async ()
 
 /* Event 80379's shape: two gold currencies plus a QP row, listed id-ascending as the snapshot does.
    currencyForTier first-maps gold to 94164002, so 94164003 has no tier card — its farm card owns the
-   Held/Bonus input pair and its Required display is the modal entry point. */
+   Held/Bonus input pair; the tier card's Required field is the tab's only modal opener. */
 const collCurrencies = [
   { id: 94164000, name: "MISOおでん", background: "bronze", icon: null },
   { id: 94164001, name: "SHIMONITAネギ", background: "silver", icon: null },
@@ -556,10 +1248,27 @@ const COLLISION = {
   currencies: collCurrencies,
   items: [collGoldA, collGoldB, collQp],
   farm: {
-    94164002: { questId: 1, questName: "A", recommendLv: "70", ap: 40, dropExpected: 10, num: 3, sampleRuns: 9 },
-    94164003: { questId: 2, questName: "B", recommendLv: "70", ap: 40, dropExpected: 2, num: 5, sampleRuns: 9 },
-    94164004: null,
+    quests: [
+      {
+        questId: 1,
+        questName: "A",
+        recommendLv: "70",
+        ap: 40,
+        sampleRuns: 9,
+        drops: { 94164002: { dropExpected: 10, num: 3 } },
+      },
+      {
+        questId: 2,
+        questName: "B",
+        recommendLv: "70",
+        ap: 40,
+        sampleRuns: 9,
+        drops: { 94164003: { dropExpected: 2, num: 5 } },
+      },
+    ],
+    best: { 94164002: 1, 94164003: 2 },
   },
+  trades: [],
 };
 
 test("sanitizePlans migrates the tier key onto the first-mapped currency and keeps id-keyed figures apart", () => {
@@ -586,19 +1295,23 @@ test("sanitizePlans on a single-currency event migrates the tier figure onto its
   assert.deepEqual(plan.bonus, { 94162101: 2 });
 });
 
+/* The collision still prices: the optimizer gives each gold its own deficit (held subtracts only
+   the currency it keys) and covers both. QP is not in these totals: nothing drops it and the shop
+   row is unlimited, so the plan prices only the two golds. */
 test("farmPlan prices each colliding gold with its own held and bonus", () => {
-  const totals = EventShop.totals(COLLISION.items, { 401: 2, 402: 20, 403: 1 });
   const plan = EventShop.farmPlan({
-    totals,
-    held: { 94164002: 15, 94164003: 0 },
+    totals: { 94164002: 20, 94164003: 100 },
+    held: { 94164002: 15 },
     bonus: { 94164003: 2 },
     farm: COLLISION.farm,
+    trades: COLLISION.trades,
+    priorityQuestId: null,
   });
-  assert.equal(plan["94164002"].deficit, 5, "gold A: 20 spend minus 15 held");
-  assert.equal(plan["94164003"].deficit, 100, "gold B carries its own deficit, not gold A's");
-  assert.equal(plan["94164003"].perRun, 2 * (5 + 2), "bonus joins the second gold's own stack");
-  assert.equal(plan["94164003"].runs, Math.ceil(100 / 14));
-  assert.equal(plan["94164003"].ap, Math.ceil(100 / 14) * 40);
+  assert.equal(plan.totalPlays, 9, "8 runs of the 14/run gold B + 1 run of gold A's 30/run quest");
+  assert.deepEqual(runsOf(plan), { 2: 8, 1: 1 });
+  assert.equal(plan.yields["94164003"], 2 * (5 + 2) * 8, "bonus joins the second gold's own stack");
+  assert.ok(plan.yields["94164003"] >= 100 && plan.yields["94164002"] >= 20 - 15 + 15);
+  assert.equal(plan.surplus["94164003"], 112 - 100);
 });
 
 test("EventPlanner keeps the two golds apart and persists the blob by currency id", async () => {
@@ -635,4 +1348,146 @@ test("tierMappedIds owns exactly the first currency per tier background", async 
   const { tierMappedIds } = await import("../src/scripts/event-shop-farm-controls.js");
   assert.deepEqual([...tierMappedIds(collCurrencies)].sort(), ["94164000", "94164001", "94164002"]);
   assert.deepEqual([...tierMappedIds(EVENT_B.currencies)], ["94162101"], "single currency maps as before");
+});
+
+/* --- Amendment N: the REC Lv dropdown order and the cards 1-to-3 all-covering exclusion --- */
+
+test("recLvRank orders the numeric part first, then plain < + < ++ < ★, missing levels last", async () => {
+  const { recLvRank } = await import("../src/scripts/event-shop-farm-controls.js");
+  const ordered = ["70", "75", "80", "85", "90", "90+", "90++", "100★"];
+  const ranks = ordered.map((lv) => recLvRank(lv));
+  ranks.forEach((rank, index) => {
+    if (index === 0) return;
+    assert.ok(rank > ranks[index - 1], `${ordered[index]} must rank above ${ordered[index - 1]}`);
+  });
+  assert.equal(recLvRank(80), recLvRank("80"), "a numeric recommendLv ranks like its string");
+  assert.equal(recLvRank(" 90++ "), recLvRank("90++"), "surrounding spaces do not change the rank");
+  for (const missing of [null, undefined, "", "junk", "★"]) {
+    assert.equal(recLvRank(missing), Number.POSITIVE_INFINITY, `${JSON.stringify(missing)} sorts last`);
+  }
+  const sortedLevels = ["100★", "junk", "90", "70", "90++", "", "85", "90+", "75", "80", null].sort(
+    (a, b) => recLvRank(a) - recLvRank(b),
+  );
+  assert.equal(sortedLevels[0], "70", "sorting the raw levels by rank starts at 70");
+});
+
+test("questsDroppingCurrency lists main drops only, REC-descending, no all-covering; card 4 keeps them", async () => {
+  const { questsDroppingCurrency, byRecommendLv } = await import("../src/scripts/event-shop-farm-controls.js");
+  const ids = [94160901, 94160902, 94160903];
+  const listed = (currencyId) => questsDroppingCurrency(B_FARM, { id: currencyId }, ids).map((quest) => quest.questId);
+  assert.deepEqual(
+    listed(94160901),
+    [94161103, 94161100],
+    "Lv 75 then 70 — 牛追い/分け合い hold only secondary cookies",
+  );
+  assert.deepEqual(
+    listed(94160902),
+    [94161104, 94161101],
+    "donut mains — 誓い/父と子 are donut mains but all-covering",
+  );
+  assert.deepEqual(listed(94160903), [94161105, 94161102], "pie mains — ここ掘れ/妙案奇案 hold only secondary pies");
+  const covering = EventShop.allCoveringQuests(B_FARM, ids)
+    .slice()
+    .sort(byRecommendLv)
+    .map((quest) => quest.questId);
+  assert.deepEqual(covering, [94161108, 94161107], "90++ then 90+ — the all-covering quests are exactly card 4's list");
+  assert.deepEqual(
+    questsDroppingCurrency(C_FARM, { id: 94164000 }, [94164000, 94164001, 94164002]).map((quest) => quest.questId),
+    [94164100],
+    "80639: no all-covering to exclude, and 槍's MISO is only a secondary — だるま is the sole main",
+  );
+});
+
+/* Amendment O: cards 1-to-3 never list a quest whose card currency is a secondary drop. The three
+   80639 quests each hand a second currency to a neighbour, so every card keeps exactly one entry. */
+test("questsDroppingCurrency excludes secondary drops (Amendment O)", async () => {
+  const { questsDroppingCurrency } = await import("../src/scripts/event-shop-farm-controls.js");
+  const ids = [94164000, 94164001, 94164002];
+  const listed = (currencyId) => questsDroppingCurrency(C_FARM, { id: currencyId }, ids).map((quest) => quest.questId);
+  assert.deepEqual(listed(94164000), [94164100], "MISO card lists だるま, not 槍 — MISO is 槍's secondary");
+  assert.deepEqual(listed(94164001), [94164101], "ネギ card lists こんにゃく, not だるま — ネギ is だるま's secondary");
+  assert.deepEqual(listed(94164002), [94164102], "YAKI card lists 槍, not こんにゃく — YAKI is こんにゃく's secondary");
+});
+
+test("defaultCurrencyQuest is the best-rate non-all-covering dropper — the card default and the optimizer share it", () => {
+  const ids = [94160901, 94160902, 94160903];
+  assert.equal(EventShop.defaultCurrencyQuest(B_FARM, ids, 94160901), 94161103, "ここ掘れ tops cookies");
+  assert.equal(EventShop.defaultCurrencyQuest(B_FARM, ids, 94160902), 94161104, "妙案奇案 tops donuts");
+  assert.equal(EventShop.defaultCurrencyQuest(B_FARM, ids, 94160903), 94161105, "牛追い tops pies");
+  assert.equal(EventShop.defaultCurrencyQuest(B_FARM, ids, 4242), null, "no dropper, no default");
+  assert.equal(
+    EventShop.defaultCurrencyQuest(C_FARM, [94164000, 94164001, 94164002], 94164000),
+    94164100,
+    "no all-covering quests: 80639 defaults are unchanged",
+  );
+  const coveringOnlyFarm = {
+    quests: [B_QUESTS.find((quest) => quest.questId === 94161108)],
+    best: {},
+  };
+  assert.equal(
+    EventShop.defaultCurrencyQuest(coveringOnlyFarm, ids, 94160903),
+    null,
+    "only 誓い drops pies — exclusion leaves nothing",
+  );
+  assert.equal(
+    EventShop.defaultCurrencyQuest(coveringOnlyFarm, [], 94160903),
+    94161108,
+    "an empty currency list excludes nothing — the card fallback shows the best dropper",
+  );
+});
+
+/* Amendment Q2 re-pinned what the no-priority plan may include: the exact search prices the FULL
+   quest set — an all-covering quest IS farmable, and the oracle's minimum counts it (the shipped
+   QA oracle fuzz asserts exact minima with priority null). What stays pinned here: the priority
+   scan still excludes card 4's quest from its top-ups (the third assertion), and that exclusion
+   keeps ruling the cards' dropdowns (defaultCurrencyQuest, untouched domain rules). The old
+   assertion that a no-priority plan of this farm played two single-currency quests instead of one
+   all-covering run priced the greedy walk's top-up heuristic, not the minimum — the greedy answer
+   survives as the incumbent only while the search cannot beat it. */
+test("an all-covering quest never tops up inside the priority scan, and prices into the exact no-priority minimum", () => {
+  const farm = {
+    quests: [
+      {
+        questId: 1,
+        questName: "general",
+        recommendLv: "90++",
+        ap: 40,
+        sampleRuns: 1,
+        drops: { 1: { dropExpected: 10, num: 3 }, 2: { dropExpected: 10, num: 3 } },
+      },
+      {
+        questId: 2,
+        questName: "bronze",
+        recommendLv: "70",
+        ap: 40,
+        sampleRuns: 1,
+        drops: { 1: { dropExpected: 5, num: 3 } },
+      },
+      {
+        questId: 3,
+        questName: "silver",
+        recommendLv: "70",
+        ap: 40,
+        sampleRuns: 1,
+        drops: { 2: { dropExpected: 5, num: 3 } },
+      },
+    ],
+    best: { 1: 1, 2: 1 },
+  };
+  const base = { totals: { 1: 30, 2: 30 }, held: {}, bonus: {}, farm, trades: [], currencyIds: [1, 2] };
+  assert.deepEqual(
+    runsOf(EventShop.farmPlan({ ...base, priorityQuestId: null })),
+    { 1: 1 },
+    "the exact minimum prices the 30/run all-covering quest at one run — betterPlan keeps that, not the greedy 2+2",
+  );
+  assert.deepEqual(
+    runsOf(EventShop.farmPlan({ ...base, priorityQuestId: null, currencyQuest: { 1: 1, 2: 1 } })),
+    { 1: 1 },
+    "a selection naming the all-covering quest farms through it: the M6 farmer rule keeps every other quest out",
+  );
+  assert.deepEqual(
+    runsOf(EventShop.farmPlan({ ...base, priorityQuestId: 1 })),
+    { 1: 1 },
+    "as the 3-in-1 card's priority quest it still farms every currency in one run",
+  );
 });

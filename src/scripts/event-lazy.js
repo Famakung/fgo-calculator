@@ -62,7 +62,14 @@ function buildDisabledOption() {
   return option;
 }
 
-/* Event names carry the line break the JP banner art uses; a <select> option is one line. */
+/* Event names carry the line break the JP banner art uses; a <select> option is one line.
+   Amendment L1 adds the start month/year to every option so a past event reads as history ("·
+   Oct 2025"), not as the live shop — the window is displayed in Asia/Tokyo like the rest of the
+   event chrome. */
+const START_MONTH_FORMAT = new Intl.DateTimeFormat("en", { month: "short", year: "numeric", timeZone: "Asia/Tokyo" });
+
 function eventLabel(event) {
-  return (event.shortName || event.name || String(event.id)).replace(/[\r\n]+/g, " ").trim();
+  const name = (event.shortName || event.name || String(event.id)).replace(/[\r\n]+/g, " ").trim();
+  const started = event.startedAt ? ` \u00b7 ${START_MONTH_FORMAT.format(new Date(event.startedAt * 1000))}` : "";
+  return name + started;
 }

@@ -36,22 +36,26 @@ export function eventTierNeeds(snapshot, requires) {
 /* The tier-colour letter badge, shared by both icon paths: event imgs fall back to it on a missing
    or failed icon, and the legacy builder in event-shop.js fills the empty markup boxes with it.
    Atlas also ships a background no tier card knows ("zero" is QP), so an unknown one paints silver:
-   a visible letter beats an invisible one, where `.icon-fallback` has no colour to inherit. */
-export function buildFallbackIcon(tier) {
+   a visible letter beats an invisible one, where `.icon-fallback` has no colour to inherit.
+   A decorative caller (alt "") hides the letter too — the name it stands in for is already read. */
+export function buildFallbackIcon(tier, alt) {
   const fallback = document.createElement("div");
   fallback.className = "icon-fallback";
   fallback.style.background = TIER_COLORS[tier] || TIER_COLORS.silver;
   fallback.textContent = DOMFactory.capitalize(tier).charAt(0);
+  if (alt === "") fallback.setAttribute("aria-hidden", "true");
   return fallback;
 }
 
 /* Single fg-layer img so the icon rules size it — the tier box's own 96px height, the farm card's
    48px header and 24px drop lines; a null icon shows the card's own letter fallback directly instead
-   of requesting the string "null". */
-export function buildCurrencyImg(currency, tier) {
-  if (!currency.icon) return buildFallbackIcon(tier);
-  const img = DOMFactory.createLazyImg(currency.icon + "?v=" + IMAGE_VERSION, "fg-layer", { alt: currency.name });
-  img.onerror = () => img.replaceWith(buildFallbackIcon(tier));
+   of requesting the string "null". The alt names the currency by default (farm card headers carry
+   no visible name, so the alt is their only label, Amendment P1); callers whose own text already
+   prints the name pass "" — a decorative icon, never a second reading of the same word. */
+export function buildCurrencyImg(currency, tier, alt = currency.name) {
+  if (!currency.icon) return buildFallbackIcon(tier, alt);
+  const img = DOMFactory.createLazyImg(currency.icon + "?v=" + IMAGE_VERSION, "fg-layer", { alt });
+  img.onerror = () => img.replaceWith(buildFallbackIcon(tier, alt));
   return img;
 }
 

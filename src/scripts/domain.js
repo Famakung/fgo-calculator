@@ -964,29 +964,136 @@ export const EventShop = {
   },
 
   /* Items per run of ONE drop line: dropExpected (stacks/run) × (num + bonus), where the bonus is
-     that LINE's currency, not the card's. farmPlan and the farm cards share this one multiply, so a
-     card can never print a figure its own results row disagrees with. A null drop pays 0. */
+     that LINE's currency, not the card's. The farm optimizer and the farm cards share this one
+     multiply, so a card can never print a figure its own results disagree with. A null drop pays 0. */
   dropPerRun(drop, bonus) {
     if (!drop) return 0;
     return count(drop.dropExpected) * (count(drop.num) + Validator.validate(bonus, Schema.tier.Bonus));
   },
 
-  /* Best-quest farm plan (Amendment D). Keys are String(currencyId) on every input — totals come
-     from EventShop.totals, farm from the snapshot, and held/bonus are the plan's own per-currency
-     figures (Amendment H: keyed by currency id, so a second currency on the same tier prices with
-     its own numbers instead of borrowing the first one's).
-     Bonus is added INTO the drop's own stack size, never as a flat per-run total: a +3 bonus on a
-     quest paying 3 of an item per stack buys 6 per stack, so one run pays dropExpected × 6. */
-  farmPlan({ totals = {}, held = {}, bonus = {}, farm = {} } = {}) {
-    const plan = {};
-    const inputs = { totals, held, bonus, farm };
-    for (const currencyId of farmCurrencyKeys(totals, farm)) plan[currencyId] = farmRow(currencyId, inputs);
-    return plan;
+  /* Trade-aware minimum-play farm plan (Amendment L5). Inputs are all keyed by String(currencyId):
+     totals come from EventShop.totals, held/bonus from the plan (Amendment H currency keys), farm
+     from the snapshot ({ quests, best }) and trades from the snapshot ([{ fromId, toId, costAmount,
+     getNum }]); priorityQuestId is the plan's farmQuest and currencyQuest the per-currency card
+     picks ({ [currencyId]: questId }, Amendment M6): a shortfall's top-up farms with that currency's
+     SELECTED quest whenever it can, falling back to the best rate only when the selection is the
+     priority quest itself or unusable. Amendment N2 makes every top-up CANDIDATE non-all-covering —
+     a quest dropping all of the shop's currencyIds (the event's list; the deficit keys when the
+     caller sends none) is card 4's quest and never a top-up, so the cards 1-to-3 dropdowns and the
+     search share one exclusion. With the default picks (each currency's best non-all-covering
+     quest) the search is
+     exactly the one Amendment L pinned. The plan minimises total quest RUNS: with
+     a priority quest it scans that quest's run count and top-ups greedily beside it (largest
+     remaining shortfall first, whole runs), crediting every quest's FULL
+     drop vector so secondary drops pay into other currencies' deficits; without one a bounded exact
+     search walks the total play count upward and prices every farming mix the quest candidates
+     allow (Amendment Q2), so the answer is that input's true minimum, never more than the greedy
+     no-base walk. Surplus low-rarity currency then cascades up the
+     trade chain in integer, free, unlimited conversions (bronze→silver→gold) to cover what farming
+     leaves short. All coverage pricing runs in whole micro-units of the 1e-4 figure grid — exact
+     integer arithmetic, no float slack — and every played quest comes from the dominance search
+     pool, so an accepted plan always covers when its drops are replayed as exact integer stacks
+     (Amendment Q correctness fix: the oracle's contract). Tie-breaks: least total surplus, then
+     least AP. Deterministic and bounded: the
+     scan stops as soon as its run count alone can no longer beat the best plan found.
+     Output { plays: [{ questId, questName, recommendLv, runs, mainDropId, isAllDrop }],
+              trades: [{ fromId, toId, count }], yields: { [cid] }, surplus: { [cid] },
+              totalPlays } — totalPlays is null only when nothing can cover the deficit. */
+  farmPlan({
+    totals = {},
+    held = {},
+    bonus = {},
+    farm = {},
+    trades = [],
+    priorityQuestId = null,
+    currencyQuest = {},
+    currencyIds = null,
+  } = {}) {
+    const deficits = planDeficits(totals, held, farm);
+    const keys = Object.keys(deficits);
+    if (!keys.length || allCovered(deficits)) return emptyFarmPlan(keys);
+    const quests = planQuests(farm, bonus);
+    if (!quests.length) return infeasibleFarmPlan();
+    const selection = currencyQuest && typeof currencyQuest === "object" ? currencyQuest : {};
+    const coveringIds = new Set(
+      this.allCoveringQuests(farm, currencyIds === null ? keys : currencyIds).map((quest) => String(quest.questId)),
+    );
+    const chain = tradeChain(trades);
+    /* The searched pool: quests a minimum-play plan can profitably run at all (dominance rule
+       below, identical to the oracle's). The greedy walks — no-base incumbent and priority-scan
+       top-ups alike — only play from it, so every plan farmPlan outputs replays inside the space
+       the oracle audits against; the exact search restricts further by the M6 farmer rule. */
+    const pool = nondominatedQuests(quests);
+    const table = {
+      deficits,
+      keys,
+      chain,
+      order: cascadeOrder(keys, chain),
+      quests,
+      poolSet: new Set(pool),
+      selection,
+      topUps: quests.filter((quest) => !coveringIds.has(String(quest.meta.questId))),
+    };
+    return bestFarmPlan(table, priorityQuestId) || infeasibleFarmPlan();
+  },
+
+  /* The quests the 3-in-1 farm card can offer (Amendment L3): those dropping EVERY shop currency
+     of the event. currencyIds are the snapshot's currency ids in any order; an empty list has no
+     all-covering quest by definition. */
+  allCoveringQuests(farm, currencyIds) {
+    const keys = (Array.isArray(currencyIds) ? currencyIds : []).map(String);
+    if (!keys.length) return [];
+    const quests = farm && Array.isArray(farm.quests) ? farm.quests : [];
+    return quests.filter((quest) => quest && quest.drops && keys.every((key) => Object.hasOwn(quest.drops, key)));
+  },
+
+  /* The farmQuest default (Amendment L4): the all-covering quest with the highest total
+     dropExpected×num (plain data figures, before bonuses), ties to the lower quest id. null when
+     the event ships no all-covering quest — then per-currency planning runs with no shared base. */
+  defaultFarmQuest(farm, currencyIds) {
+    const covering = this.allCoveringQuests(farm, currencyIds);
+    if (!covering.length) return null;
+    const ranked = [...covering].sort((a, b) => questBaseTotal(b) - questBaseTotal(a) || a.questId - b.questId);
+    return ranked[0].questId;
+  },
+
+  /* The default quest of a per-currency card (Amendment N2): the best-rate quest that drops this
+     currency among the ones that do NOT cover every shop currency — an all-covering quest is card
+     4's quest and never a card's own pick. Plain data figures (dropExpected×num, bonus-free like
+     the dropdown sort), ties to the lower quest id. null when no non-all-covering quest drops the
+     currency at all — the card then shows its best dropper with no dropdown. */
+  defaultCurrencyQuest(farm, currencyIds, currencyKey) {
+    const key = String(currencyKey);
+    const covering = new Set(this.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
+    const quests = farm && Array.isArray(farm.quests) ? farm.quests : [];
+    const droppers = quests.filter((quest) => quest && (quest.drops || {})[key] && !covering.has(quest.questId));
+    const best = droppers.reduce((top, quest) => {
+      if (!top) return quest;
+      const amount = dropAmount(quest.drops[key]);
+      const topAmount = dropAmount(top.drops[key]);
+      return amount > topAmount || (amount === topAmount && quest.questId < top.questId) ? quest : top;
+    }, null);
+    return best ? best.questId : null;
+  },
+
+  /* A per-currency card's quest pick (Amendment M4, N2): the saved quest survives only when this
+     event's farm list carries it, it drops this currency AND it is not all-covering — a card cannot
+     show a quest its dropdown excludes. Anything else re-defaults through defaultCurrencyQuest, the
+     same rule the card's default and the dropdown writer use. null only when the currency has no
+     non-all-covering dropper at all. */
+  sanitizedCurrencyQuest({ farm = {}, currencyIds = [], currencyKey, saved } = {}) {
+    const key = String(currencyKey);
+    const covering = new Set(this.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
+    const quests = Array.isArray(farm.quests) ? farm.quests : [];
+    const id = Number(saved);
+    const kept = quests.some((quest) => quest.questId === id && (quest.drops || {})[key] && !covering.has(id));
+    return kept ? id : this.defaultCurrencyQuest(farm, currencyIds, key);
   },
 
   /* Multi-event storage blob (Amendment G) → { selectedEventId, plans }. The old single-event
      { eventId, requires } shape migrates into plans[eventId]; a plan whose event is not in the
-     snapshot list is dropped, and every surviving plan is sanitized against that event's own items. */
+     snapshot list is dropped, and every surviving plan is sanitized against that event's own
+     items, currency list and farm quest set. */
   sanitizePlans(saved, events) {
     const snapshots = Array.isArray(events) ? events.filter((snap) => snap && snap.event) : [];
     const blob = migratePlanBlob(saved);
@@ -998,24 +1105,680 @@ export const EventShop = {
   },
 };
 
-/* ===...=== Event Shop farm plan helpers (domain-private) ===...=== */
+/* ===...=== Event Shop farm optimizer helpers (domain-private, Amendment L) ===...=== */
+
+/* A shortfall inside this is "covered": 1e-6 units of a currency no human counts. */
+const SHORTFALL_EPS = 1e-6;
+/* The priority scan never runs past this many base runs. Real event shops price plans in the low
+   hundreds; the cap only stops pathological data (a 1-in-a-million drop) from looping for a year.
+   shortcut: caps the scan at MAX_PLAN_SCAN base runs, raise it if an event ever needs more. */
+const MAX_PLAN_SCAN = 10000;
+/* The exact search stops after this many mix evaluations. The reachability prune keeps real events
+   bounded — the worst shipped case, 80639 at the buy-all spend, finds its 453-play minimum in
+   4.6e6 — and an exhausted budget falls back to the greedy incumbent, never to a worse or partial
+   answer.
+   shortcut: caps the exact search at MAX_EXACT_SEARCH_NODES mixes; raise it if a real event's
+   optimum ever stops being found before the cap. */
+const MAX_EXACT_SEARCH_NODES = 10000000;
+/* Every shipped figure lands on the 1e-4 currency grid: dropExpected carries 4 decimals and runs,
+   needs, trade costs and gets are integers. The optimizer therefore prices every plan in whole
+   MICRO-UNITS of this grid — exact integers below 2^53, no float slack anywhere in a coverage or
+   trade decision — so an accepted plan covers under the oracle's integer replay by construction,
+   not by tolerance. (Amendment Q correctness fix: the old float + eps path let the priority scan
+   play a quest the replay excluded and let slack hide micro-shortfalls.) */
+const CURRENCY_MICRO = 10000;
+
+/* One figure snapped to the micro grid: the oracle's Math.round(x × 10^4), the same reading of
+   the same 4-decimal data. Inputs are count()-clean numbers; junk reads 0 and pays nothing. */
+function micro(value) {
+  return Math.round(count(value) * CURRENCY_MICRO);
+}
+
+/* Micro-units back to currency units for the plan's reported figures. */
+function unitsOf(microValue) {
+  return roundPlanFigure(count(microValue) / CURRENCY_MICRO);
+}
+
+/* The currencies the plan prices, in micro-units: everything the shop needs money for (totals),
+   everything with a best quest, and everything any farm quest drops. Sorted by numeric id so every
+   tie-break below walks the same order on every machine. Deficits are snapped to the micro grid
+   (the oracle's rounding of the same figures), so every later comparison is exact integer math. */
+function planDeficits(totals, held, farm) {
+  const keys = new Set(Object.keys(totals || {}));
+  for (const key of Object.keys((farm && farm.best) || {})) keys.add(key);
+  for (const quest of (farm && farm.quests) || []) for (const key of Object.keys(quest.drops || {})) keys.add(key);
+  const deficits = {};
+  for (const key of [...keys].sort(numericKeys)) {
+    deficits[key] = Math.max(0, micro(count(totals[key]) - count((held || {})[key])));
+  }
+  return deficits;
+}
+
+/* One shipped quest with its bonus-priced per-run rate in micro-units: dropExpected × (num + the
+   LINE's bonus), snapped to the grid — the oracle's Math.round(dropExpected × 10^4) × (num + bonus)
+   read of the same 4-decimal figure. Cards keep printing the plain dropPerRun float; the snap moves
+   nothing they show (2-decimal print) and is exactly what the integer replay credits. */
+function planQuests(farm, bonus) {
+  return ((farm && farm.quests) || [])
+    .filter((quest) => quest)
+    .map((quest) => {
+      const rates = {};
+      for (const [key, drop] of Object.entries(quest.drops || {}))
+        rates[key] = micro(EventShop.dropPerRun(drop, bonus[key]));
+      return { meta: quest, rates };
+    });
+}
+
+function numericKeys(a, b) {
+  return Number(a) - Number(b);
+}
+
+function questBaseTotal(quest) {
+  return Object.values(quest.drops || {}).reduce((sum, drop) => sum + count(drop.dropExpected) * count(drop.num), 0);
+}
+
+function allCovered(deficits) {
+  return Object.values(deficits).every((value) => value <= 0);
+}
+
+function emptyFarmPlan(keys) {
+  return { plays: [], trades: [], yields: zeroMap(keys), surplus: zeroMap(keys), totalPlays: 0 };
+}
+
+function infeasibleFarmPlan() {
+  return { plays: [], trades: [], yields: {}, surplus: {}, totalPlays: null };
+}
+
+function zeroMap(keys) {
+  const map = {};
+  for (const key of keys) map[key] = 0;
+  return map;
+}
+
+/* The upgrade-trade chain indexed by its SOURCE currency: { [fromKey]: [{ toKey, costMicro,
+   getMicro }] }, each source's targets sorted by id. Cost and get are the oracle's × 10^4 products,
+   so the cascade's floor division sees the same integers it does. Bad rows (no figures,
+   self-conversion) simply never join the chain; a malformed cycle survives in cascadeOrder without
+   ever double-spending. */
+function tradeChain(trades) {
+  const chain = {};
+  for (const trade of Array.isArray(trades) ? trades : []) {
+    const fromKey = tradeKey(trade && trade.fromId);
+    const toKey = tradeKey(trade && trade.toId);
+    if (fromKey === null || toKey === null || fromKey === toKey) continue;
+    if (!(count(trade.costAmount) > 0) || !(count(trade.getNum) > 0)) continue;
+    const entry = {
+      toKey,
+      costMicro: count(trade.costAmount) * CURRENCY_MICRO,
+      getMicro: count(trade.getNum) * CURRENCY_MICRO,
+    };
+    (chain[fromKey] = chain[fromKey] || []).push(entry);
+  }
+  for (const outs of Object.values(chain)) outs.sort((a, b) => Number(a.toKey) - Number(b.toKey));
+  return chain;
+}
+
+/* Trade ids arrive from event data; a non-numeric one like "__proto__" must never reach the chain
+   index, where reading `chain["__proto__"]` returns Object.prototype. Anything that is not a finite
+   number becomes a null key and tradeChain skips the trade. */
+function tradeKey(id) {
+  if (id === undefined || id === null || id === "") return null;
+  return Number.isFinite(Number(id)) ? String(id) : null;
+}
+
+/* Apply the whole integer cascade to one farming outcome, in micro-units: settle currencies
+   bottom-up through the chain (every source is spent before its target reads the pushed units),
+   keep each currency's micro deficit, and push everything else upward as far as the ratio buys —
+   the oracle's floor(max(0, free) / cost) on the same integers, so a covered mix never hinges on
+   float noise landing above or below a trade boundary. Pushing ALL surplus up is the optimal play:
+   each 10:1 conversion turns 10 units of slack into 1, so trading more can only ever lower the
+   total surplus the tie-break counts, never hide a shortfall. Returns { final, short, trades } in
+   micro-units (trades in whole counts) — short is what farming and trades together still did not
+   cover, the search's signal. `table` carries { deficits, chain, keys, order } — the immutable
+   inputs of one farmPlan call, all in micro-units. */
+function cascadeYields(table, yields) {
+  const inUnits = {};
+  const final = {};
+  const short = {};
+  const trades = [];
+  for (const key of table.order) {
+    const avail = count(yields[key]) + count(inUnits[key]);
+    let free = avail - count(table.deficits[key]);
+    let spent = 0;
+    for (const trade of table.chain[key] || []) {
+      const times = Math.floor(Math.max(0, free) / trade.costMicro);
+      if (times <= 0) continue;
+      free -= times * trade.costMicro;
+      spent += times * trade.costMicro;
+      inUnits[trade.toKey] = count(inUnits[trade.toKey]) + times * trade.getMicro;
+      trades.push({ fromId: Number(key), toId: Number(trade.toKey), count: times });
+    }
+    final[key] = avail - spent;
+    short[key] = Math.max(0, count(table.deficits[key]) - final[key]);
+  }
+  return { final, short, trades };
+}
+
+/* Bottom-up chain order via Kahn's algorithm, ids ascending at every choice point. A cyclic trade
+   graph (invalid data the validator rejects) leaves its cycle nodes for last, where inbound units
+   are simply lost — an uncovered shortfall, never a wrongly counted surplus. */
+function cascadeOrder(keys, chain) {
+  const indegree = {};
+  const nodes = new Set(keys);
+  for (const [fromKey, outs] of Object.entries(chain)) {
+    nodes.add(fromKey);
+    for (const out of outs) {
+      nodes.add(out.toKey);
+      indegree[out.toKey] = count(indegree[out.toKey]) + 1;
+    }
+  }
+  const all = [...nodes].sort(numericKeys);
+  const queue = all.filter((key) => !indegree[key]);
+  const queued = new Set(queue);
+  const order = [];
+  while (queue.length) {
+    const key = queue.shift();
+    order.push(key);
+    for (const out of chain[key] || []) {
+      indegree[out.toKey] -= 1;
+      if (!queued.has(out.toKey) && indegree[out.toKey] <= 0) {
+        queued.add(out.toKey);
+        queue.push(out.toKey);
+        queue.sort(numericKeys);
+      }
+    }
+  }
+  for (const key of all) if (!order.includes(key)) order.push(key);
+  return order;
+}
+
+/* One full greedy walk for a fixed count of priority-quest runs: seed the run vector, then
+   repeatedly farm the widest remaining post-cascade shortfall with that currency's selected top-up
+   quest (Amendment M6) from table.topUps ∩ the searched pool — the non-all-covering candidates
+   (Amendment N2) that a minimum-play plan can profitably run at all — whole
+   runs, until nothing is short. Each step fully covers its currency and coverage only ever grows,
+   so the walk ends within one pass per currency; the guard is the house loop-guard, not an ordinary
+   exit. */
+function greedyFarmPlan(table, priority, fixedRuns) {
+  const runs = {};
+  if (priority && fixedRuns > 0) runs[String(priority.meta.questId)] = fixedRuns;
+  for (let guard = table.keys.length + 1; guard > 0; guard--) {
+    const state = cascadeYields(table, sumYields(runs, table.quests));
+    if (!hasShortfall(state.short)) return finishFarmPlan(table, runs, state);
+    const target = widestShortfall(state.short, table.keys);
+    const options = table.topUps.filter((quest) => count(quest.rates[target]) > 0 && table.poolSet.has(quest));
+    if (!options.length) return null;
+    const pick = topUpQuest(options, target, table.selection[target]);
+    const id = String(pick.meta.questId);
+    /* Micro / micro below 2^53: the division's ulp error is far under 1/rate, so this ceil is the
+       exact whole runs that reach the shortfall — never one short (the oracle's replay would be),
+       never one more than the integer answer needs. */
+    runs[id] = count(runs[id]) + Math.max(1, Math.ceil(state.short[target] / pick.rates[target]));
+  }
+  return null;
+}
+
+/* Shortfalls are micro integers: any positive one is real — there is no float noise left for an
+   epsilon to hide. */
+function hasShortfall(short) {
+  return Object.values(short).some((value) => value > 0);
+}
+
+/* The widest shortfall is the currency the next runs should chase — the plan's "largest remaining
+   deficit first". Ties go to the lower currency id so the walk is deterministic. */
+function widestShortfall(short, keys) {
+  let best = null;
+  for (const key of keys) {
+    const value = count(short[key]);
+    if (value <= 0) continue;
+    if (best === null) {
+      best = key;
+      continue;
+    }
+    const current = count(short[best]);
+    const smallerId = Number(key) < Number(best);
+    if (value > current || (value === current && smallerId)) best = key;
+  }
+  return best;
+}
+
+function bestRateQuest(options, target) {
+  return options.reduce((a, b) => {
+    if (a.rates[target] !== b.rates[target]) return a.rates[target] > b.rates[target] ? a : b;
+    return a.meta.questId <= b.meta.questId ? a : b;
+  });
+}
+
+/* The quest a currency's shortfall farms with (Amendment M6): that currency's selected quest while
+   the usable candidates still carry it, else the best rate among them. Neither the priority quest
+   nor an all-covering quest is ever a candidate — the scan prices every use of the priority quest
+   through its run count, and card-4 quests are excluded from top-ups altogether (Amendment N2), so
+   a selection naming one of them falls back exactly as an absent one does. */
+function topUpQuest(options, target, selectedId) {
+  const chosen =
+    selectedId === null || selectedId === undefined
+      ? null
+      : options.find((quest) => String(quest.meta.questId) === String(selectedId));
+  return chosen || bestRateQuest(options, target);
+}
+
+function sumYields(runs, quests) {
+  const yields = {};
+  for (const quest of quests) {
+    const runsOfQuest = count(runs[String(quest.meta.questId)]);
+    if (runsOfQuest <= 0) continue;
+    for (const [key, rate] of Object.entries(quest.rates)) yields[key] = count(yields[key]) + runsOfQuest * rate;
+  }
+  return yields;
+}
+
+/* Assemble one feasible plan. Internal figures are micro-units; the reported yields and surplus
+   convert back to currency units. AP is a tie-break only (the results card prints runs, not AP),
+   so its total rides along as a NON-ENUMERABLE field: it never shows up in deepEqual, JSON, or the
+   frozen output shape. */
+function finishFarmPlan(table, runs, state) {
+  const plan = {
+    plays: playsFromRuns(runs, table.quests, table.keys),
+    trades: state.trades,
+    yields: roundMap(state.final, table.keys),
+    surplus: roundSurplus(state.final, table.deficits, table.keys),
+    totalPlays: Object.values(runs).reduce((sum, value) => sum + count(value), 0),
+  };
+  Object.defineProperty(plan, "apTotal", { value: runsAp(runs, table.quests), enumerable: false });
+  return plan;
+}
+
+function roundMap(finalMicro, keys) {
+  const yields = {};
+  for (const key of keys) yields[key] = unitsOf(finalMicro[key]);
+  return yields;
+}
+
+/* surplus = final − deficit per currency, in whole micro-units until the print conversion — an
+   exact integer gap can be negative on paper only when the mix genuinely is short. */
+function roundSurplus(finalMicro, deficitsMicro, keys) {
+  const surplus = {};
+  for (const key of keys) surplus[key] = Math.max(0, unitsOf(count(finalMicro[key]) - count(deficitsMicro[key])));
+  return surplus;
+}
+
+/* Plan figures are shown to two decimals; keeping raw search floats would only let 1e-12 noise flip
+   a tie-break. */
+function roundPlanFigure(value) {
+  return Math.round(value * 1e6) / 1e6;
+}
+
+function runsAp(runs, quests) {
+  return quests.reduce((sum, quest) => sum + count(runs[String(quest.meta.questId)]) * count(quest.meta.ap), 0);
+}
+
+/* "Quests to Play": most-ridden first, ties by quest id, each row carrying what the results card
+   needs — the quest's own data-module figures, its run count, its main-drop currency (highest
+   dropExpected×num on the plain figures, ties to the lower id) and whether it drops every shop
+   currency (three icons, not one). */
+function playsFromRuns(runs, quests, keys) {
+  return quests
+    .filter((quest) => count(runs[String(quest.meta.questId)]) > 0)
+    .map((quest) => ({
+      questId: quest.meta.questId,
+      questName: quest.meta.questName,
+      recommendLv: quest.meta.recommendLv,
+      runs: count(runs[String(quest.meta.questId)]),
+      mainDropId: mainDropCurrencyId(quest),
+      isAllDrop: keys.every((key) => Object.hasOwn(quest.rates, key)),
+    }))
+    .sort((a, b) => b.runs - a.runs || a.questId - b.questId);
+}
+
+function mainDropCurrencyId(quest) {
+  const drops = quest.meta.drops || {};
+  const keys = Object.keys(drops);
+  if (!keys.length) return null;
+  const top = keys.reduce((a, b) => (dropAmount(drops[a]) >= dropAmount(drops[b]) ? a : b));
+  return Number(top);
+}
+
+function dropAmount(drop) {
+  return count(drop.dropExpected) * count(drop.num);
+}
+
+/* The best plan over the whole scan: with a priority quest, every base run count from 0 up (bounded
+   as below), then that answer priced against the exact search bounded by it — the scan's greedy
+   top-ups can hit the minimum play count yet keep a heavier same-total surplus, and the oracle's
+   contract (fuzz: "exact minimum") demands least surplus at that total. Without a priority quest,
+   the greedy no-base walk priced against the exact search over every
+   farming mix (Amendment Q2) — betterPlan keeps whichever covers with fewer plays, less surplus
+   or less AP, so the answer is never worse than the greedy alone. The priority quest is never also
+   a top-up candidate: its every use is one of the scanned X values. table.topUps already excludes
+   the all-covering quests (Amendment N2) — the exact search keeps the all-covering quests in play,
+   which is how the oracle defines the minimum the no-priority answer must hit. */
+function bestFarmPlan(table, priorityQuestId) {
+  const priority = playablePriority(table, priorityQuestId);
+  const noBase = greedyFarmPlan(table, null, 0);
+  if (!priority) return betterPlan(noBase, exactFarmPlan(table, noBase));
+  const scanned = scanPriorityRuns(table, priority, noBase);
+  return betterPlan(scanned, exactFarmPlan(table, scanned));
+}
+
+function scanPriorityRuns(table, priority, noBase) {
+  const scan = { ...table, topUps: table.topUps.filter((quest) => quest !== priority) };
+  let best = noBase;
+  const limit = priorityScanLimit(table.deficits, priority, noBase);
+  for (let runs = 0; runs <= limit; runs++) {
+    if (best && runs > best.totalPlays) break;
+    best = betterPlan(best, greedyFarmPlan(scan, priority, runs));
+  }
+  return best;
+}
+
+/* A priority quest only steers the plan while it is part of the searched pool. A quest another
+   replays for free (same AP, >= every rate) is excluded from the pool — and from the oracle's
+   integer replay audit that defines "covered" — so a plan seeded with it could not prove its own
+   yields. Such a pick falls back to the no-priority path: the answer stays the true minimum,
+   auditable under integer replay, never a plan whose farming the replay cannot see. */
+function playablePriority(table, priorityQuestId) {
+  const priority = priorityQuest(table.quests, priorityQuestId);
+  return priority && table.poolSet.has(priority) ? priority : null;
+}
+
+function priorityQuest(quests, priorityQuestId) {
+  if (priorityQuestId === null || priorityQuestId === undefined) return null;
+  return quests.find((quest) => String(quest.meta.questId) === String(priorityQuestId)) || null;
+}
+
+/* Scan bound: X priority runs past ceil(maxDeficit / the priority's weakest positive rate) cannot
+   help any currency it drops, so the spec's window stops there. A feasible no-base plan is an
+   upper bound on the answer (it IS one), so the scan stops there too; without one, MAX_PLAN_SCAN
+   holds the line. */
+function priorityScanLimit(deficits, priority, noBase) {
+  const maxDeficit = Math.max(...Object.values(deficits), 0);
+  const rates = Object.values(priority.rates).filter((rate) => rate > 0);
+  if (!rates.length || maxDeficit <= 0) return 0;
+  const specBound = Math.ceil(maxDeficit / Math.min(...rates));
+  const planBound = noBase && noBase.totalPlays !== null ? noBase.totalPlays : MAX_PLAN_SCAN;
+  return Math.min(specBound, MAX_PLAN_SCAN, planBound);
+}
+
+/* ===...=== Exact no-priority search (Amendment Q2) ===...=== */
+
+/* The no-priority answer: walk the total play count upward and price every farming mix the
+   candidate pool allows at each count, returning the first count that covers — the exact minimum
+   plays, tie-broken least-surplus then least-AP inside it. The greedy no-base plan bounds the walk
+   (it IS one candidate answer); when no greedy plan exists the walk runs to MAX_PLAN_SCAN, and an
+   exhausted node budget simply returns nothing, leaving greedy as the answer. */
+function exactFarmPlan(table, incumbent) {
+  const pool = nondominatedQuests(exactPool(table));
+  if (!pool.length) return null;
+  const kernel = buildExactKernel(table, pool);
+  const bound = incumbent && incumbent.totalPlays !== null ? incumbent.totalPlays : MAX_PLAN_SCAN;
+  const budget = { nodes: MAX_EXACT_SEARCH_NODES };
+  for (let total = 0; total <= bound; total++) {
+    if (!hopelessMix(kernel, 0, total, kernel.zeroYields)) {
+      const best = searchExactTotal(kernel, total, budget);
+      if (best) return finishExactPlan(table, pool, best);
+    }
+    if (budget.nodes <= 0) return null;
+  }
+  return null;
+}
+
+/* The quests the exact search may run: the FULL quest list — the oracle's minimum is defined over
+   every quest the event ships, the all-covering ones included (Amendment Q2 supersedes the N2
+   top-up exclusion for the no-priority search: a global minimum has no "top-up" step to exclude
+   from; N2 still rules the priority scan and the card dropdowns) — filtered by M6's farmer rule:
+   a currency the player picked a farmer for is farmed by that farmer alone, and a quest that pick
+   demoted to secondary may not re-farm that currency through some other currency's shortfall,
+   while every unchosen shortfall keeps its whole dropper list. Order stays the quest list's, so
+   ties resolve exactly as the oracle's walk resolves them. */
+function exactPool(table) {
+  const shortKeys = table.keys.filter((key) => table.deficits[key] > 0);
+  const farmers = selectedFarmers(table, shortKeys);
+  const eligible = new Set();
+  for (const key of shortKeys) {
+    const farmer = farmers[key] || null;
+    for (const quest of table.quests) {
+      if (count(quest.rates[key]) <= 0) continue;
+      if (farmer ? farmer === quest : !demotedQuest(farmers, quest)) eligible.add(quest);
+    }
+  }
+  /* ∩ poolSet: the searched pool (dominance over the FULL quest list) is exactly the space the
+     oracle's replay audits plays against. A quest eligible here yet dominated by one the M6 farmer
+     rule kept OUT would replay as an unknown quest — its yields dropped, every currency "short".
+     Restricting plays to the pool keeps the minimum the same (a dominated quest is never needed)
+     and the answer auditable. */
+  return table.quests.filter((quest) => eligible.has(quest) && table.poolSet.has(quest));
+}
+
+function selectedFarmers(table, shortKeys) {
+  const farmers = Object.create(null);
+  for (const key of shortKeys) {
+    const selected = table.selection[key];
+    if (selected === null || selected === undefined) continue;
+    const farmer = table.quests.find(
+      (quest) => count(quest.rates[key]) > 0 && String(quest.meta.questId) === String(selected),
+    );
+    if (farmer) farmers[key] = farmer;
+  }
+  return farmers;
+}
+
+/* A quest that drops a currency the player assigned elsewhere is demoted from farming any
+   unchosen currency: running it would rebuild the pairing the player turned down. */
+function demotedQuest(farmers, quest) {
+  return Object.keys(farmers).some((key) => farmers[key] !== quest && count(quest.rates[key]) > 0);
+}
+
+/* A quest fully replayed by another (one at no more AP paying at least as much for everything the
+   other pays, and more for at least one line) can never lower the minimum play count: every run of
+   it swappable for a run of the replacer, and the cascade is monotone in yields. Same rule and
+   order as the oracle's pool filter, so the searched space and its tie-broken winner match. */
+function nondominatedQuests(pool) {
+  return pool.filter((b) => positiveRateKeys(b).length > 0 && !pool.some((a) => a !== b && dominatesQuest(a, b)));
+}
+
+function dominatesQuest(a, b) {
+  if (count(a.meta.ap) > count(b.meta.ap)) return false;
+  const keysB = positiveRateKeys(b);
+  if (!keysB.every((key) => count(a.rates[key]) >= b.rates[key])) return false;
+  return keysB.some((key) => count(a.rates[key]) > b.rates[key]) || positiveRateKeys(a).length > keysB.length;
+}
+
+function positiveRateKeys(quest) {
+  return Object.keys(quest.rates).filter((key) => count(quest.rates[key]) > 0);
+}
+
+/* One priced total: every composition of `total` runs across the pool, the front rows counted down
+   and the last row absorbing the rest — the oracle's walk order — keeping the least-surplus,
+   then least-AP covering mix. Each evaluated mix costs one budget node. */
+function searchExactTotal(kernel, total, budget) {
+  const rowCount = kernel.rates.length;
+  const yields = kernel.zeroYields.slice();
+  const runs = kernel.rates.map(() => 0);
+  const walk = (row, left) => {
+    if (row === rowCount - 1) return leafMix(kernel, yields, runs, row, left, budget);
+    let winner = null;
+    for (let value = left; value >= 0 && budget.nodes > 0; value--) {
+      runs[row] = value;
+      applyRow(kernel, yields, row, value, 1);
+      if (!hopelessMix(kernel, row + 1, left - value, yields)) winner = betterMix(winner, walk(row + 1, left - value));
+      applyRow(kernel, yields, row, value, -1);
+      runs[row] = 0;
+    }
+    return winner;
+  };
+  return walk(0, total);
+}
+
+function leafMix(kernel, yields, runs, row, left, budget) {
+  runs[row] = left;
+  applyRow(kernel, yields, row, left, 1);
+  budget.nodes -= 1;
+  const surplus = cascadeArrays(kernel, yields);
+  const mix = surplus === null ? null : { runs: runs.slice(), surplus, ap: sumRunsAp(kernel, runs) };
+  applyRow(kernel, yields, row, left, -1);
+  runs[row] = 0;
+  return mix;
+}
+
+function applyRow(kernel, yields, row, value, sign) {
+  const base = kernel.rates[row];
+  for (let position = 0; position < yields.length; position++) yields[position] += sign * value * base[position];
+}
+
+/* Is a partial mix hopeless? Some deficit no reachable source can cover: even spending every spare
+   run on the best remaining upstream rate per currency, converted at full value (no 10:1 loss —
+   over-estimating is what makes this prune safe), it stays short. Micro integers throughout, so
+   this is the oracle's own bound and it can never prune a mix that would in fact cover. */
+function hopelessMix(kernel, row, remaining, yields) {
+  const best = kernel.suffixBest[row];
+  return kernel.deficits.some((deficit, position) => {
+    if (deficit <= 0) return false;
+    const reachable = kernel.upstream[position].reduce(
+      (sum, source) => sum + yields[source] + remaining * best[source],
+      0,
+    );
+    return reachable < deficit;
+  });
+}
+
+/* Same contract tie-break as betterPlan at one fixed total: least surplus first (micro integers —
+   exact, so the oracle's ±0.5-micro noise window is a plain strict <), least AP next, and the mix
+   reached first keeps its tie — exactly how the oracle keeps its walk's winner. */
+function betterMix(current, next) {
+  if (!next) return current;
+  if (!current) return next;
+  if (next.surplus !== current.surplus) return next.surplus < current.surplus ? next : current;
+  return next.ap < current.ap ? next : current;
+}
+
+function sumRunsAp(kernel, runs) {
+  return runs.reduce((sum, value, row) => sum + value * kernel.ap[row], 0);
+}
+
+/* Assemble the winning mix through the SHARED machinery (cascadeYields, finishFarmPlan) — the
+   search's array twin only decides which mix wins, never what the plan reports. If the shared
+   cascade sees a shortfall the twin somehow missed, the mix does not ship: greedy stays the
+   answer rather than an unproven plan. */
+function finishExactPlan(table, pool, best) {
+  const runs = {};
+  pool.forEach((quest, row) => {
+    if (best.runs[row] > 0) runs[String(quest.meta.questId)] = best.runs[row];
+  });
+  const state = cascadeYields(table, sumYields(runs, table.quests));
+  if (hasShortfall(state.short)) return null;
+  return finishFarmPlan(table, runs, state);
+}
+
+/* The search kernel: the table's cascade expressed over indexed arrays in the shared node order.
+   Same per-node math as cascadeYields (micro floor division, spend-up-the-chain), minus the object
+   churn, because one mix is evaluated per node. */
+function buildExactKernel(table, pool) {
+  const nodes = table.order;
+  const indexOf = new Map(nodes.map((key, position) => [key, position]));
+  const edges = nodes.map((key) =>
+    (table.chain[key] || []).map((trade) => ({
+      to: indexOf.get(trade.toKey),
+      cost: trade.costMicro,
+      get: trade.getMicro,
+    })),
+  );
+  const rates = pool.map((quest) => nodes.map((key) => count(quest.rates[key])));
+  return {
+    nodes,
+    zeroYields: nodes.map(() => 0),
+    deficits: nodes.map((key) => count(table.deficits[key])),
+    inflow: nodes.map(() => 0),
+    final: nodes.map(() => 0),
+    edges,
+    rates,
+    ap: pool.map((quest) => count(quest.meta.ap)),
+    suffixBest: buildSuffixBest(rates, nodes.length),
+    upstream: buildUpstream(nodes, edges),
+    surplusPositions: table.keys.map((key) => indexOf.get(key)).filter((position) => position !== undefined),
+  };
+}
+
+/* suffixBest[row] = the best per-run rate per currency among pool rows row..end — the spare-run
+   bound hopelessMix spends. */
+function buildSuffixBest(rates, nodeCount) {
+  const suffix = Array.from({ length: rates.length + 1 }, () => new Array(nodeCount).fill(0));
+  for (let row = rates.length - 1; row >= 0; row--) {
+    suffix[row] = suffix[row + 1].map((best, position) => Math.max(best, rates[row][position]));
+  }
+  return suffix;
+}
+
+/* Everything that can end up AT a currency through the trade chain, itself included — the
+   upstream set the reachability bound converts at full value. */
+function buildUpstream(nodes, edges) {
+  return nodes.map((_, position) => {
+    const set = new Set([position]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      edges.forEach((list, source) => {
+        if (set.has(source)) return;
+        for (const edge of list) {
+          if (set.has(edge.to)) {
+            set.add(source);
+            grew = true;
+            break;
+          }
+        }
+      });
+    }
+    return [...set];
+  });
+}
+
+/* The twin cascade over the yields vector, all in micro integers: settle nodes in table order,
+   trading every unit above the deficit up the chain. Returns the summed surplus of the table's own
+   currencies, or null when any node is left short — an exact integer gap, no tolerance, so a mix
+   this accepts is a mix the oracle's integer replay covers. */
+function cascadeArrays(kernel, yields) {
+  cascadeIntoArrays(kernel, yields);
+  const { deficits, final } = kernel;
+  for (let position = 0; position < deficits.length; position++) {
+    if (final[position] < deficits[position]) return null;
+  }
+  return kernel.surplusPositions.reduce((sum, position) => sum + Math.max(0, final[position] - deficits[position]), 0);
+}
+
+function cascadeIntoArrays(kernel, yields) {
+  const inflow = kernel.inflow.fill(0);
+  for (let position = 0; position < kernel.nodes.length; position++) {
+    const avail = yields[position] + inflow[position];
+    let free = avail - kernel.deficits[position];
+    let spent = 0;
+    for (const edge of kernel.edges[position]) {
+      const times = Math.floor(Math.max(0, free) / edge.cost);
+      if (times <= 0) continue;
+      free -= times * edge.cost;
+      spent += times * edge.cost;
+      inflow[edge.to] += times * edge.get;
+    }
+    kernel.final[position] = avail - spent;
+  }
+}
+
+/* The winner among equal-cost plans: fewer total plays first, then less total surplus, then less
+   AP. A candidate that failed to cover anything never displaces a plan that did. */
+function betterPlan(current, candidate) {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  if (candidate.totalPlays !== current.totalPlays)
+    return candidate.totalPlays < current.totalPlays ? candidate : current;
+  const surplusDiff = surplusSum(candidate.surplus) - surplusSum(current.surplus);
+  if (Math.abs(surplusDiff) > SHORTFALL_EPS) return surplusDiff < 0 ? candidate : current;
+  return (candidate.apTotal || 0) < (current.apTotal || 0) ? candidate : current;
+}
+
+function surplusSum(surplus) {
+  return Object.values(surplus).reduce((sum, value) => sum + Math.max(0, value), 0);
+}
 
 function itemIndex(items) {
   return new Map((Array.isArray(items) ? items : []).map((item) => [String(item.id), item]));
-}
-
-function farmCurrencyKeys(totals, farm) {
-  const keys = new Set([...Object.keys(totals), ...Object.keys(farm)]);
-  return [...keys];
-}
-
-/* One currency's row. `inputs` is farmPlan's { totals, held, bonus, farm }, all keyed the same way. */
-function farmRow(currencyId, { totals, held, bonus, farm }) {
-  const quest = farm[currencyId] || null;
-  const deficit = Math.max(0, count(totals[currencyId]) - count(held[currencyId]));
-  const perRun = EventShop.dropPerRun(quest, bonus[currencyId]);
-  const runs = quest && perRun > 0 ? Math.ceil(deficit / perRun) : null;
-  return { deficit, perRun, runs, ap: runs === null ? null : runs * count(quest.ap) };
 }
 
 /* A stored figure that is not a usable number is 0 — the same reading Validator gives an empty box. */
@@ -1038,7 +1801,48 @@ function sanitizeEventPlan(plan, snapshot) {
     requires: EventShop.sanitizeRequires({ eventId, requires: (plan || {}).requires }, items, eventId),
     held: sanitizeCurrencyValues((plan || {}).held, snapshot.currencies, Schema.tier.Have),
     bonus: sanitizeCurrencyValues((plan || {}).bonus, snapshot.currencies, Schema.tier.Bonus),
+    farmQuest: sanitizeFarmQuest((plan || {}).farmQuest, snapshot),
+    currencyQuest: sanitizeCurrencyQuests((plan || {}).currencyQuest, snapshot),
   };
+}
+
+/* The 3-in-1 card's quest pick (Amendment L4): a saved id survives only if that event's farm list
+   still carries the quest — ids from another event's snapshot are dead data. Anything else,
+   including a saved null, re-defaults to the best all-covering quest, and an event with no
+   all-covering quest has no plan pick at all (null → per-currency best everywhere). */
+function sanitizeFarmQuest(saved, snapshot) {
+  const quests = (snapshot.farm || {}).quests || [];
+  const id = Number(saved);
+  if (saved !== null && saved !== undefined && Number.isInteger(id) && quests.some((quest) => quest.questId === id)) {
+    return id;
+  }
+  const currencyIds = (Array.isArray(snapshot.currencies) ? snapshot.currencies : []).map((currency) => currency.id);
+  return EventShop.defaultFarmQuest(snapshot.farm || {}, currencyIds);
+}
+
+/* The cards 1-to-3 quest picks (Amendment M4, N2): a saved map keeps only entries keyed by one of
+   this event's currencies, each run through the same drop-this-currency-and-not-all-covering rule
+   the dropdown writer uses — a stale or all-covering pick re-defaults to that currency's best
+   non-all-covering quest. A plan written before Amendment M carries no map at all: {} — and every
+   card and the optimizer then read each currency's own default, exactly what the dropdown shows
+   selected. */
+function sanitizeCurrencyQuests(saved, snapshot) {
+  const raw = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  const currencies = Array.isArray(snapshot.currencies) ? snapshot.currencies : [];
+  const currencyIds = currencies.map((currency) => currency.id);
+  const keys = new Set(currencyIds.map((id) => String(id)));
+  const clean = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!keys.has(key)) continue;
+    const choice = EventShop.sanitizedCurrencyQuest({
+      farm: snapshot.farm || {},
+      currencyIds,
+      currencyKey: key,
+      saved: value,
+    });
+    if (choice !== null) clean[key] = choice;
+  }
+  return clean;
 }
 
 /* Held and Bonus are keyed by CURRENCY id (Amendment H), so an event with two golds gives each one

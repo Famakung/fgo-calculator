@@ -11,11 +11,12 @@ Fetches data from Atlas Academy API:
     downloads bordered face WebP icons to public/craft_essences/{id}.webp.
   - Writes src/scripts/data/bond_growth.js from the same cached servant export: the bond point cost of every
     bond level, deduped into shared tables.
-  - Snapshots every farmable JP event shop (active ones; the latest ended farm event when none are
-    open; or one event of any kind with --event-id) into src/scripts/data/event_shop.js as
+  - Snapshots every farmable JP event shop (active ones, plus the latest ended farm event; or one
+    event of any kind with --event-id) into src/scripts/data/event_shop.js as
     EVENT_SHOP_DATA.events[], each with item/currency/equip/costume icons as WebP under
-    public/event_shop/, NA-first item names, and the best farm quest per currency from Atlas'
-    community drop submissions. An API outage keeps the previous file, or writes an empty
+    public/event_shop/, NA-first item names, the farm quest list with per-currency repeat drops
+    and best quest ids from Atlas' community drop submissions, and the shop's upgrade trades.
+    An API outage keeps the previous file, or writes an empty
     list stub so the build never dies.
 """
 
@@ -1585,19 +1586,22 @@ def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas
 # ==============================================================================
 #
 # Amendment G: every event shop open right now is snapshotted (newest first) so the site can offer
-# an Event Select instead of one hidden auto-pick. Inside each snapshot, Amendment D adds the best
-# farm quest per shop currency from Atlas' community drop submissions, Amendment E resolves names
+# an Event Select instead of one hidden auto-pick. Inside each snapshot, Amendment E resolves names
 # through the NA -> JP-EN -> JP chain, and Amendment F points a costume row at that costume's own
 # face instead of the servant's 1st-ascension one. Amendment J prunes shops nobody can farm: an
 # event is a farm event when a repeatable quest of its wars reports community drops for one of its
-# shop currencies; with no active farm event the newest-ended farm event ships instead (capped scan).
+# shop currencies. Amendment L replaces the per-currency best-only farm map with the full quest
+# list (every repeatable quest that pays a shop currency on REPEAT runs, first-time-only challenge
+# rewards excluded), the per-currency best quest id, and the shop's upgrade trades (bronze -> silver
+# -> gold exchanges read straight from the shop rows); the Event Select also carries the LATEST 1
+# past farm event (capped newest-first scan) so players can plan high-level quests after a rerun.
 
 EVENT_SHOP_STUB = {"events": []}
 
 # A quest the game closes after one clear is not farmable; only these two repeat.
 REPEATABLE_AFTER_CLEAR = ("repeatLast", "repeat")
 
-# Amendment J fallback: how many ended events the newest-first scan reads before giving up.
+# Amendment L1 past-event scan: how many ended events the newest-first scan reads before giving up.
 FARM_FALLBACK_SCAN_CAP = 30
 
 # The lore export is the only source naming a servant's costume details and it is 195 MB, so it is
@@ -1649,11 +1653,12 @@ def _shop_window_open(event: dict, moment: int) -> bool:
 
 
 def _select_farm_events(cache_dir: str, basic_events: List[dict], now: Optional[int] = None, force: bool = False) -> List[dict]:
-    """Amendment J selection: every ACTIVE farm event, else one latest farm event, else none.
+    """Amendment L1 selection: every ACTIVE farm event plus the LATEST 1 past farm event.
 
     A farm-event fetch that raises skips only that event on the active pass — its open siblings
-    still ship. The fallback pass lets raises through: there the caller could not prove nothing
-    farmable exists, and writing the stub there would replace a good previous file on one hiccup."""
+    still ship. The past scan raises when nothing active passed: there the caller could not prove
+    nothing farmable exists, and writing the stub would replace a good previous file on one hiccup.
+    With at least one active farm event shipping, a past-scan hiccup only loses the history entry."""
     moment = int(time.time()) if now is None else now
     passing = []
     for event in select_events(basic_events, now=moment):
@@ -1662,30 +1667,49 @@ def _select_farm_events(cache_dir: str, basic_events: List[dict], now: Optional[
                 passing.append(event)
         except Exception as e:
             print(f"  [WARN] Event {event.get('id')} farm test fetch failed, skipped: {e}", file=sys.stderr)
-    if passing:
-        return passing
-    return _latest_farm_fallback(cache_dir, basic_events, moment, force=force)
+    live_ids = {event.get("id") for event in passing}
+    past = None
+    try:
+        past = _latest_past_farm_event(cache_dir, basic_events, moment, live_ids, force=force)
+    except Exception as e:
+        if not passing:
+            raise
+        print(f"  [WARN] Past farm event scan failed, history entry skipped: {e}", file=sys.stderr)
+    if past:
+        passing.append(past)
+    return sorted(passing, key=lambda e: -(e.get("startedAt") or 0))
 
 
-def _latest_farm_fallback(cache_dir: str, basic_events: List[dict], now: int, force: bool = False) -> List[dict]:
-    """No active farm event: ship the newest farm event the history still supports. EventQuest
-    entries are scanned newest-startedAt-first, capped at FARM_FALLBACK_SCAN_CAP, and the first
-    one passing the farm-event test wins — ended events qualify, Atlas keeps their drop data."""
+def _latest_past_farm_event(
+    cache_dir: str, basic_events: List[dict], now: int, live_ids: Set[int], force: bool = False
+) -> Optional[dict]:
+    """Amendment L1: the newest ENDED eventQuest that passes the farm-event test, scanned
+    newest-startedAt-first and capped at FARM_FALLBACK_SCAN_CAP. Atlas keeps historical drop
+    data, so a closed event stays a usable farm reference for the planner."""
     events = basic_events if isinstance(basic_events, list) else []
-    ordered = sorted(
-        (e for e in events if isinstance(e, dict) and e.get("type") == "eventQuest"),
+    ended = sorted(
+        (
+            e
+            for e in events
+            if isinstance(e, dict)
+            and e.get("type") == "eventQuest"
+            and e.get("id") not in live_ids
+            and (e.get("finishedAt") or 0)
+            and (e.get("finishedAt") or 0) <= now
+        ),
         key=lambda e: -(e.get("startedAt") or 0),
     )
-    for event in ordered[:FARM_FALLBACK_SCAN_CAP]:
+    for event in ended[:FARM_FALLBACK_SCAN_CAP]:
         if _farm_event_passes(cache_dir, event, force=force):
-            return [event]
-    return []
+            return event
+    return None
 
 
 def _farm_event_passes(cache_dir: str, event: dict, force: bool = False) -> bool:
     """Amendment J farm-event test: the event's shop has rows, and at least one repeatable quest
     (afterClear repeatLast|repeat) in its wars reports community drops for at least one of the
-    shop's own currencies. A campaign exchange shop (no war) and a memorial battle (quests
+    shop's own currencies on REPEAT runs — the same quests the snapshot ships (Amendment L's
+    challenge exclusion included). A campaign exchange shop (no war) and a memorial battle (quests
     without submissions) both fail it. Reads the same event/war/quest files the snapshot's farm
     collection reads, once per run; a fetch that cannot be read raises, never a silent prune."""
     detail = _event_detail(cache_dir, event, force=force)
@@ -1694,7 +1718,7 @@ def _farm_event_passes(cache_dir: str, event: dict, force: bool = False) -> bool
         return False
     war_ids = (detail or {}).get("warIds") or event.get("warIds") or []
     quests = _collect_farm_quests(cache_dir, war_ids, force=force, strict=True)
-    return any(_drop_rows(quests, currency_id) for currency_id in currency_ids)
+    return any(_farm_quest_entry(quest, currency_ids) for quest in quests)
 
 
 def _shop_currency_ids(entries: List[dict]) -> List[int]:
@@ -1705,6 +1729,29 @@ def _shop_currency_ids(entries: List[dict]) -> List[int]:
         if cid and cid not in ids:
             ids.append(cid)
     return ids
+
+
+def _shop_trades(entries: List[dict], currency_ids: List[int]) -> List[dict]:
+    """Upgrade trades (Amendment L8): shop rows that sell one currency in exchange for another —
+    purchaseType "item" whose target is a shop currency, paid for with a different shop currency.
+    The in-game exchange rate is costAmount per getNum (10 bronze for 1 silver), the rows are
+    unlimited, and trading costs no AP — the optimizer treats the chain as a free coverage source.
+    Sorted (fromId, toId) so the generated file is byte-stable across syncs."""
+    currencies = set(currency_ids)
+    trades = []
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("purchaseType") != "item":
+            continue
+        cost = entry.get("cost") or {}
+        from_id = (cost.get("item") or {}).get("id")
+        targets = entry.get("targetIds") or []
+        to_id = targets[0] if targets else None
+        cost_amount = int(cost.get("amount") or 0)
+        get_num = int(entry.get("setNum") or 0)
+        if not from_id or from_id == to_id or to_id not in currencies or cost_amount <= 0 or get_num <= 0:
+            continue
+        trades.append({"fromId": from_id, "toId": to_id, "costAmount": cost_amount, "getNum": get_num})
+    return sorted(trades, key=lambda t: (t["fromId"], t["toId"]))
 
 
 def _export_by_id(cache_dir: str, filename: str, url: str, force: bool = False) -> Dict[int, dict]:
@@ -1751,7 +1798,7 @@ def resolve_equip_name(equip_id: Optional[int], entry: dict, names: Dict[str, Di
     return ""
 
 
-# --- Farm model (Amendment D): the quest the community reports as dropping a currency the most ---
+# --- Farm model (Amendment L): every repeatable quest that pays a shop currency on repeat runs ---
 
 
 def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, strict: bool = False) -> List[dict]:
@@ -1792,13 +1839,16 @@ def _quest_phase_detail(cache_dir: str, quest: dict, force: bool = False, strict
 
 
 def _farm_quest(quest: dict, detail: dict) -> dict:
-    """The farm candidate: what the quest asks and pays, plus its drop lines."""
+    """The farm candidate: what the quest asks and pays, plus its repeat drop lines and first-clear
+    gifts. The gifts matter to the challenge exclusion (Amendment L2): a shop currency handed out
+    once on first clear but never dropped again is not something the quest can be farmed for."""
     return {
         "questId": quest.get("id"),
         "questName": detail.get("name") or quest.get("name") or "",
         "recommendLv": detail.get("recommendLv") or quest.get("recommendLv") or "",
         "ap": int(detail.get("consume") or quest.get("consume") or 0),
         "drops": detail.get("drops") or [],
+        "gifts": detail.get("gifts") or [],
     }
 
 
@@ -1808,7 +1858,7 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
     gets the same list from the memo instead of a second download of every war and quest.
     strict marks the test path: a war or quest that cannot be read raises rather than contributing
     an empty list, so an outage is never mistaken for "not a farm event" and pruned. The snapshot
-    stays lenient (a null farm entry), and a raise leaves this memo untouched."""
+    stays lenient (an empty quest list), and a raise leaves this memo untouched."""
     key = tuple(war_ids or [])
     if key not in _farm_quests_results:
         quests = []
@@ -1857,53 +1907,58 @@ def _drop_row(quest: dict, drop: dict, currency_id: int) -> Optional[dict]:
     }
 
 
-def _best_farm_entry(quests: List[dict], currency_id: int) -> Optional[dict]:
-    """The quest dropping this currency most per run, ties to the lower quest id; None when the
-    community has reported no drop of it at all."""
-    rows = _drop_rows(quests, currency_id)
-    if not rows:
+def _first_time_only_reward(quest: dict, shop_currency_ids: List[int], drops: Dict[str, dict]) -> bool:
+    """Amendment L2 challenge exclusion: the quest pays a shop currency once on first clear (it is in
+    the gifts) but never again on a repeat run (it is not in the repeat drops), so its farm-item
+    reward is first-time-only and the quest is not farmable for the shop."""
+    gift_ids = {
+        gift.get("objectId")
+        for gift in quest.get("gifts") or []
+        if gift.get("objectId") in shop_currency_ids
+    }
+    return any(str(currency_id) not in drops for currency_id in gift_ids)
+
+
+def _farm_quest_entry(quest: dict, shop_currency_ids: List[int]) -> Optional[dict]:
+    """The shipped farm card for one quest: its per-currency repeat drops plus the reported-run
+    count. None when the quest repeats no shop currency at all, or when a gift-only shop-currency
+    reward marks it a challenge quest (Amendment L2). sampleRuns is the highest run count among the
+    drop lines the card ships."""
+    rows = {str(currency_id): (_drop_rows([quest], currency_id) or [None])[0] for currency_id in shop_currency_ids}
+    drops = {key: {"dropExpected": row["dropExpected"], "num": row["num"]} for key, row in rows.items() if row}
+    if not drops or _first_time_only_reward(quest, shop_currency_ids, drops):
         return None
-    return {key: value for key, value in rows[0].items() if key != "amount"}
+    return {
+        "questId": quest["questId"],
+        "questName": quest["questName"],
+        "recommendLv": quest["recommendLv"],
+        "ap": quest["ap"],
+        "sampleRuns": max(row["sampleRuns"] for row in rows.values() if row),
+        "drops": drops,
+    }
 
 
-def _find_farm_quest(quests: List[dict], quest_id: int) -> Optional[dict]:
-    """The quest behind a chosen farm entry, so its other drop lines can be read."""
-    return next((quest for quest in quests if quest["questId"] == quest_id), None)
+def _farm_best(quests: List[dict], shop_currency_ids: List[int]) -> Dict[str, int]:
+    """{ currencyId: questId } — the quest dropping this currency most per run (dropExpected×num),
+    ties to the lower quest id. A currency no shipped quest drops has no key at all: the site reads
+    a missing key as "no best quest" rather than a null entry."""
+    best = {}
+    for currency_id in shop_currency_ids:
+        key = str(currency_id)
+        candidates = [quest for quest in quests if key in quest["drops"]]
+        if not candidates:
+            continue
+        top = min(candidates, key=lambda quest: (-quest["drops"][key]["dropExpected"] * quest["drops"][key]["num"], quest["questId"]))
+        best[key] = top["questId"]
+    return best
 
 
-def _secondary_drop(quest: dict, primary_id: int, shop_currency_ids: List[int]) -> Optional[dict]:
-    """That same quest's next-best shop-currency drop (Amendment I).
-
-    Only the shop's own currencies qualify, so event point items and QP — never sold in the shop —
-    drop out on their own, and the card's currency is excluded because the line reports the second
-    thing a run pays for. Several stack lines of one currency are ranked together and the best wins,
-    the same rule that picks the primary; ties go to the lower currency id so the figure repeats."""
-    candidates = [
-        dict(row, currencyId=currency_id)
-        for currency_id in shop_currency_ids
-        if currency_id != primary_id
-        for row in _drop_rows([quest], currency_id)
-    ]
-    if not candidates:
-        return None
-    best = min(candidates, key=lambda row: (-row["amount"], row["currencyId"]))
-    return {"currencyId": best["currencyId"], "dropExpected": best["dropExpected"], "num": best["num"]}
-
-
-def _farm_entry(quests: List[dict], currency_id: int, shop_currency_ids: List[int]) -> Optional[dict]:
-    """The best quest for this currency, plus that quest's secondary shop-currency drop."""
-    entry = _best_farm_entry(quests, currency_id)
-    if not entry:
-        return None
-    quest = _find_farm_quest(quests, entry["questId"])
-    entry["secondary"] = _secondary_drop(quest, currency_id, shop_currency_ids) if quest else None
-    return entry
-
-
-def _collect_farm(cache_dir: str, war_ids: List[int], currency_ids: List[int], force: bool = False) -> Dict[str, Optional[dict]]:
-    """{ currencyId: best farm quest | null } for the shop's own currencies only."""
+def _collect_farm(cache_dir: str, war_ids: List[int], currency_ids: List[int], force: bool = False) -> dict:
+    """farm = { quests: [repeat-drop quests], best: { currencyId: questId } } (Amendment L2), the
+    shop's own currencies only. An event with no wars simply has no quests."""
     quests = _collect_farm_quests(cache_dir, war_ids, force=force) if war_ids else []
-    return {str(currency_id): _farm_entry(quests, currency_id, currency_ids) for currency_id in currency_ids}
+    shipped = [entry for entry in (_farm_quest_entry(quest, currency_ids) for quest in quests) if entry]
+    return {"quests": shipped, "best": _farm_best(shipped, currency_ids)}
 
 
 # --- Costume faces (Amendment F): the costume detail, not the servant's base face ---
@@ -2178,6 +2233,7 @@ def _collect_event_snapshot(cache_dir: str, event: dict, item_map: Dict[int, dic
         "currencies": [currencies[cid] for cid in sorted(currencies)],
         "items": sorted(items, key=lambda it: (it["priority"], it["id"])),
         "farm": _collect_farm(cache_dir, war_ids, sorted(currencies), force=force),
+        "trades": _shop_trades(entries, sorted(currencies)),
     }
 
 
@@ -2185,7 +2241,7 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
     """Build the full EVENT_SHOP_DATA payload from the live API (all fetches ETag-cached).
 
     --event-id snapshots exactly that event with every Amendment J filter skipped; otherwise the
-    farmable shops ship: active farm events, or the latest farm event when none are open. One
+    farmable shops ship: active farm events plus the latest past farm event (Amendment L1). One
     event failing does not sink the run: it is skipped with a WARN and the others still ship.
     When every open event failed, the caller's outage policy keeps the previous file instead."""
     _event_icon_results.clear()

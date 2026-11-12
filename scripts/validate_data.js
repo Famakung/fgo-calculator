@@ -263,69 +263,104 @@ function validateEventShopItems(items, currencyIds, ctx) {
   });
 }
 
-/* farm = { [currencyId]: bestQuest | null } (Amendment D1/D6). Keys may only be shop currencies; a
-   value is null (no community drop data) or one drop figure for the quest the site tells the player
-   to run, plus that quest's secondary shop-currency drop (Amendment I). recommendLv stays the string
-   Atlas gives ("70"), but a number is equally readable. */
+/* farm = { quests: [ { questId, questName, recommendLv, ap, sampleRuns, drops: { [currencyId]:
+   { dropExpected, num } } } ], best: { [currencyId]: questId } } (Amendment L2). quests are the
+   repeatable quests that pay at least one shop currency on repeat runs; best names the top quest per
+   currency. recommendLv stays the string Atlas gives ("70"), but a number is equally readable.
+   trades = [ { fromId, toId, costAmount, getNum } ] (Amendment L8): the shop's upgrade exchanges,
+   both endpoints shop currencies and the ratio costAmount/getNum strictly positive. */
 function validateEventShopFarm(farm, currencyIds, ctx) {
   if (!farm || typeof farm !== "object" || Array.isArray(farm)) {
-    errors.push(`${ctx}: farm must be an object of currency id to quest or null (got ${JSON.stringify(farm)})`);
+    errors.push(`${ctx}: farm must be an object with quests and best (got ${JSON.stringify(farm)})`);
     return;
   }
-  for (const [key, entry] of Object.entries(farm)) {
-    if (!currencyIds.has(Number(key))) {
-      errors.push(`${ctx}: farm key ${key} is not a shop currency`);
-    }
-    if (entry === null) continue;
-    checkFarmEntry(ctx, key, entry, currencyIds);
-  }
-}
-
-/* The card's second drop line: null when the quest has no other shop-currency drop, otherwise the
-   currency it falls back to and that line's own figures. It must name a DIFFERENT currency than the
-   entry's own (currencyKey): the sync's _secondary_drop excludes the primary, so a secondary equal
-   to its own key is a hand-edited or stale snapshot printing the same line twice on one card. */
-function checkFarmSecondary(what, currencyKey, secondary, currencyIds) {
-  if (secondary === null) return;
-  if (!secondary || typeof secondary !== "object" || Array.isArray(secondary)) {
-    errors.push(`${what}.secondary: must be null or an object (got ${JSON.stringify(secondary)})`);
+  if (!Array.isArray(farm.quests)) {
+    errors.push(`${ctx}: farm.quests must be an array (got ${JSON.stringify(farm.quests)})`);
     return;
   }
-  if (!currencyIds.has(Number(secondary.currencyId))) {
-    errors.push(`${what}.secondary: currencyId ${JSON.stringify(secondary.currencyId)} is not a shop currency`);
-  }
-  if (Number(secondary.currencyId) === Number(currencyKey)) {
-    errors.push(`${what}.secondary: currencyId ${secondary.currencyId} is this entry's own currency, not a second one`);
-  }
-  if (typeof secondary.dropExpected !== "number" || !(secondary.dropExpected > 0)) {
-    errors.push(`${what}.secondary: dropExpected must be a number above 0`);
-  }
-  if (!Number.isInteger(secondary.num) || secondary.num <= 0) {
-    errors.push(`${what}.secondary: num must be a positive integer`);
-  }
+  const questIds = new Set();
+  farm.quests.forEach((quest) => validateFarmQuest(ctx, quest, currencyIds, questIds));
+  validateFarmBest(ctx, farm.best, currencyIds, questIds);
 }
 
-function checkFarmEntry(ctx, currencyKey, entry, currencyIds) {
-  const what = `${ctx} farm entry ${currencyKey}`;
-  if (!Number.isInteger(entry.questId) || entry.questId <= 0)
+function validateFarmQuest(ctx, quest, currencyIds, questIds) {
+  const what = `${ctx} farm quest ${quest && quest.questId}`;
+  if (!quest || typeof quest !== "object" || Array.isArray(quest)) {
+    errors.push(`${what}: farm quest must be an object (got ${JSON.stringify(quest)})`);
+    return;
+  }
+  if (!Number.isInteger(quest.questId) || quest.questId <= 0)
     errors.push(`${what}: questId must be a positive integer`);
-  if (typeof entry.questName !== "string") errors.push(`${what}: questName must be a string`);
-  if (typeof entry.recommendLv !== "string" && typeof entry.recommendLv !== "number") {
-    errors.push(`${what}: recommendLv must be a string or number (got ${JSON.stringify(entry.recommendLv)})`);
+  if (questIds.has(quest.questId)) errors.push(`${what}: duplicate farm questId`);
+  questIds.add(quest.questId);
+  if (typeof quest.questName !== "string") errors.push(`${what}: questName must be a string`);
+  if (typeof quest.recommendLv !== "string" && typeof quest.recommendLv !== "number") {
+    errors.push(`${what}: recommendLv must be a string or number (got ${JSON.stringify(quest.recommendLv)})`);
   }
-  for (const field of ["ap", "num", "sampleRuns"]) {
-    if (!Number.isInteger(entry[field]) || entry[field] < 0)
+  for (const field of ["ap", "sampleRuns"]) {
+    if (!Number.isInteger(quest[field]) || quest[field] < 0)
       errors.push(`${what}: ${field} must be a non-negative integer`);
   }
-  if (typeof entry.num !== "number" || entry.num <= 0) errors.push(`${what}: num must be a positive integer`);
-  if (typeof entry.dropExpected !== "number" || !(entry.dropExpected > 0)) {
-    errors.push(`${what}: dropExpected must be a number above 0`);
+  const keys = validateFarmDrops(what, quest.drops, currencyIds);
+  if (!keys.length) errors.push(`${what}: drops must carry at least one shop currency`);
+}
+
+function validateFarmDrops(what, drops, currencyIds) {
+  if (!drops || typeof drops !== "object" || Array.isArray(drops)) {
+    errors.push(`${what}.drops: must be an object of currency id to drop figures (got ${JSON.stringify(drops)})`);
+    return [];
   }
-  if (!Object.prototype.hasOwnProperty.call(entry, "secondary")) {
-    errors.push(`${what}: secondary is required (null when the quest has no other shop-currency drop)`);
-  } else {
-    checkFarmSecondary(what, currencyKey, entry.secondary, currencyIds);
+  for (const [key, drop] of Object.entries(drops)) {
+    if (!currencyIds.has(Number(key))) errors.push(`${what}.drops: key ${key} is not a shop currency`);
+    if (!drop || typeof drop !== "object" || Array.isArray(drop)) {
+      errors.push(`${what}.drops[${key}]: must be an object (got ${JSON.stringify(drop)})`);
+      continue;
+    }
+    if (typeof drop.dropExpected !== "number" || !(drop.dropExpected > 0)) {
+      errors.push(`${what}.drops[${key}]: dropExpected must be a number above 0`);
+    }
+    if (!Number.isInteger(drop.num) || drop.num <= 0)
+      errors.push(`${what}.drops[${key}]: num must be a positive integer`);
   }
+  return Object.keys(drops);
+}
+
+function validateFarmBest(ctx, best, currencyIds, questIds) {
+  if (!best || typeof best !== "object" || Array.isArray(best)) {
+    errors.push(`${ctx}: farm.best must be an object of currency id to quest id (got ${JSON.stringify(best)})`);
+    return;
+  }
+  for (const [key, questId] of Object.entries(best)) {
+    if (!currencyIds.has(Number(key))) errors.push(`${ctx}: farm.best key ${key} is not a shop currency`);
+    if (!Number.isInteger(questId) || questId <= 0) {
+      errors.push(`${ctx}: farm.best ${key}: questId must be a positive integer (got ${JSON.stringify(questId)})`);
+      continue;
+    }
+    if (!questIds.has(questId)) errors.push(`${ctx}: farm.best ${key}: quest ${questId} is not in farm.quests`);
+  }
+}
+
+function validateEventShopTrades(trades, currencyIds, ctx) {
+  if (!Array.isArray(trades)) {
+    errors.push(`${ctx}: trades must be an array (got ${JSON.stringify(trades)})`);
+    return;
+  }
+  trades.forEach((trade) => {
+    const what = `${ctx} trade ${JSON.stringify(trade && [trade.fromId, trade.toId])}`;
+    if (!trade || typeof trade !== "object" || Array.isArray(trade)) {
+      errors.push(`${what}: trade must be an object`);
+      return;
+    }
+    if (!currencyIds.has(Number(trade.fromId)))
+      errors.push(`${what}: fromId ${JSON.stringify(trade.fromId)} is not a shop currency`);
+    if (!currencyIds.has(Number(trade.toId)))
+      errors.push(`${what}: toId ${JSON.stringify(trade.toId)} is not a shop currency`);
+    if (Number(trade.fromId) === Number(trade.toId)) errors.push(`${what}: fromId and toId are the same currency`);
+    for (const field of ["costAmount", "getNum"]) {
+      if (!Number.isInteger(trade[field]) || trade[field] <= 0)
+        errors.push(`${what}: ${field} must be a positive integer`);
+    }
+  });
 }
 
 function validateEventShopSnapshot(snapshot, index, total) {
@@ -342,6 +377,7 @@ function validateEventShopSnapshot(snapshot, index, total) {
   const currencyIds = validateEventShopCurrencies(snapshot.currencies, ctx);
   validateEventShopItems(snapshot.items, currencyIds, ctx);
   validateEventShopFarm(snapshot.farm, currencyIds, ctx);
+  validateEventShopTrades(snapshot.trades, currencyIds, ctx);
   if (index > 0) {
     const prev = total[index - 1];
     if ((prev.event.startedAt || 0) < (event.startedAt || 0)) {

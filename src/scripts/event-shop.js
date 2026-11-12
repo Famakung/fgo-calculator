@@ -233,9 +233,24 @@ export const App = {
     UIBuilder.buildMaterialsGrid(document.getElementById("materialsGrid"), this.state);
     showFarmCard();
     UIBuilder.loadQuestIcons();
-    hydrateFarmGrid(snapshot, EventPlanner.activePlan(), refreshFarmDropLines);
+    hydrateFarmGrid(snapshot, EventPlanner.activePlan(), this._farmHandlers());
     ViewManager.resetResults();
     this.refreshNeeds();
+  },
+
+  /* The farm grid's two write paths (Amendment L, M4): a Bonus figure repaints the live drop
+     lines; any quest pick — a card's own dropdown or the 3-in-1's — repaints the whole grid (each
+     card resolves its own selected quest through it) and reprices the results when they are
+     showing. */
+  _farmHandlers() {
+    return { onBonusChange: refreshFarmDropLines, onQuestChange: () => this.onFarmQuestChanged() };
+  },
+
+  onFarmQuestChanged() {
+    const snapshot = EventPlanner.activeEvent();
+    if (!snapshot) return;
+    hydrateFarmGrid(snapshot, EventPlanner.activePlan(), this._farmHandlers());
+    if (document.getElementById("results")?.classList.contains("visible")) this._calculateFarm();
   },
 
   /* Event-mode boxes: Required is the plan's spend and Held/Bonus are the plan's figures. */
@@ -267,24 +282,32 @@ export const App = {
     return this._calculateLegacy();
   },
 
-  /* Best-quest math (Amendment D): what each currency still needs after the plan's spend minus its
-     held figure, over what one run of that currency's best quest pays — Bonus added into the stack.
-     The plan's held/bonus are currency-keyed since Amendment H, so farmPlan reads them whole: every
-     currency — mapped to a tier or not — prices with its own figures. The legacy base/primary/
-     secondary model and Calculator.calcOptimalRuns are not consulted. */
+  /* Trade-aware minimum-play math (Amendment L5, M6, N2): what each currency still needs after the
+      plan's spend minus its held figure, over the whole farm optimizer — priority quest scan,
+      each currency's SELECTED non-all-covering top-up quest (currencyIds names the shop's list so
+      the exclusion is the cards' own rule), full-drop cross-credit, integer cascade trades. The
+      plan's held/bonus are currency-keyed since
+      Amendment H, so farmPlan reads them whole: every currency — mapped to a tier or not — prices
+      with its own figures. The legacy base/primary/secondary model and Calculator.calcOptimalRuns
+      are not consulted. */
   _calculateFarm() {
     const snapshot = EventPlanner.activeEvent();
     this._commitTierBoxes();
     this._commitFarmBoxes(snapshot);
     const plan = EventPlanner.activePlan();
+    const totals = EventShop.totals(snapshot.items, plan.requires);
     const result = EventShop.farmPlan({
-      totals: EventShop.totals(snapshot.items, plan.requires),
+      totals,
       held: plan.held,
       bonus: plan.bonus,
       farm: snapshot.farm,
+      trades: snapshot.trades || [],
+      priorityQuestId: plan.farmQuest,
+      currencyQuest: plan.currencyQuest,
+      currencyIds: (snapshot.currencies || []).map((currency) => currency.id),
     });
     refreshFarmDropLines();
-    showFarmResults(snapshot, result, revealResults);
+    showFarmResults(snapshot, { plan, totals, result, reveal: revealResults });
   },
 
   /* Event Select switch inside the debounce window: commit every live Held/Bonus figure to the

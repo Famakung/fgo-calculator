@@ -175,20 +175,43 @@ test("the shipped snapshot keeps the planner's own arithmetic honest", () => {
   }
 });
 
-test("the shipped farm map covers exactly the shop currencies of every event", () => {
+/* The shipped data is the planner's real input: farm quests, best and trades must hold the
+   Amendment L shape, and the optimizer run over it must stay finite, whole and never leave a
+   buy-all deficit uncovered. */
+test("the shipped farm data carries quests, best and trades for every event", () => {
   for (const snapshot of EVENT_SHOP_DATA.events || []) {
-    assert.deepEqual(
-      Object.keys(snapshot.farm || {}).sort(),
-      snapshot.currencies.map((c) => String(c.id)).sort(),
-      `event ${snapshot.event.id}: farm keys must equal the currency ids`,
-    );
-    for (const entry of Object.values(snapshot.farm || {})) {
-      if (entry === null) continue;
-      assert.ok(Number.isInteger(entry.questId) && entry.questId > 0);
-      assert.ok(entry.dropExpected > 0, "a reported quest must drop something");
-      assert.ok(Number.isInteger(entry.num) && entry.num > 0);
-      assert.ok(Number.isInteger(entry.ap) && entry.ap >= 0);
-      assert.equal(typeof entry.recommendLv === "string" || typeof entry.recommendLv === "number", true);
+    const currencyIds = snapshot.currencies.map((c) => String(c.id));
+    const farm = snapshot.farm || {};
+    assert.ok(Array.isArray(farm.quests), `event ${snapshot.event.id}: farm.quests must be an array`);
+    const questIds = new Set();
+    for (const quest of farm.quests) {
+      assert.ok(
+        Number.isInteger(quest.questId) && quest.questId > 0 && !questIds.has(quest.questId),
+        `quest id ${quest.questId}`,
+      );
+      questIds.add(quest.questId);
+      assert.ok(Number.isInteger(quest.ap) && quest.ap >= 0);
+      assert.ok(typeof quest.recommendLv === "string" || typeof quest.recommendLv === "number", true);
+      const keys = Object.keys(quest.drops || {});
+      assert.ok(keys.length >= 1, `quest ${quest.questId}: a farm quest must drop a shop currency`);
+      for (const key of keys) {
+        assert.ok(currencyIds.includes(key), `quest ${quest.questId}: drops an undeclared currency ${key}`);
+        assert.ok(quest.drops[key].dropExpected > 0, "a reported drop must pay");
+        assert.ok(Number.isInteger(quest.drops[key].num) && quest.drops[key].num > 0);
+      }
+    }
+    for (const [key, questId] of Object.entries(farm.best || {})) {
+      assert.ok(currencyIds.includes(key), `best key ${key} is not a shop currency`);
+      assert.ok(questIds.has(questId), `best ${key} → quest ${questId} is not in farm.quests`);
+    }
+    for (const trade of snapshot.trades || []) {
+      assert.ok(
+        currencyIds.includes(String(trade.fromId)) && currencyIds.includes(String(trade.toId)),
+        `trade ${JSON.stringify(trade)} leaves the shop`,
+      );
+      assert.notEqual(trade.fromId, trade.toId);
+      assert.ok(Number.isInteger(trade.costAmount) && trade.costAmount > 0, "the cascade ratio is strictly positive");
+      assert.ok(Number.isInteger(trade.getNum) && trade.getNum > 0);
     }
   }
 });
@@ -196,11 +219,61 @@ test("the shipped farm map covers exactly the shop currencies of every event", (
 test("farmPlan over a shipped snapshot stays finite and never under-coverage the deficit", () => {
   for (const snapshot of EVENT_SHOP_DATA.events || []) {
     const totals = EventShop.totals(snapshot.items, EventShop.clearRequires(snapshot.items));
-    const plan = EventShop.farmPlan({ totals, held: {}, bonus: {}, farm: snapshot.farm || {} });
-    for (const [currencyId, row] of Object.entries(plan)) {
-      assert.equal(row.deficit, Math.max(0, totals[currencyId] || 0));
-      if (row.runs === null) continue;
-      assert.ok(row.runs * (row.perRun || 1) >= row.deficit, `${currencyId}: the runs must cover the deficit`);
+    const plan = EventShop.farmPlan({
+      totals,
+      held: {},
+      bonus: {},
+      farm: snapshot.farm || { quests: [], best: {} },
+      trades: snapshot.trades || [],
+      priorityQuestId: EventShop.defaultFarmQuest(
+        snapshot.farm || {},
+        snapshot.currencies.map((c) => c.id),
+      ),
+    });
+    if (plan.totalPlays === null) continue;
+    assert.ok(Number.isInteger(plan.totalPlays) && plan.totalPlays >= 0);
+    let sum = 0;
+    for (const play of plan.plays) {
+      assert.ok(Number.isInteger(play.runs) && play.runs >= 1, `quest ${play.questId} plays a whole number of runs`);
+      sum += play.runs;
     }
+    assert.equal(sum, plan.totalPlays, "totalPlays is the plays column summed");
+    for (const [currencyId, required] of Object.entries(totals)) {
+      assert.ok(
+        (plan.yields[currencyId] || 0) >= required - 1e-6,
+        `${currencyId}: the plan must cover the buy-all spend`,
+      );
+    }
+    for (const trade of plan.trades)
+      assert.ok(Number.isInteger(trade.count) && trade.count > 0, "executed trades are whole and used");
   }
+});
+
+/* farmChain indexes trades on a plain object keyed by fromId: a hostile id like "__proto__" made
+   `chain[fromKey] || []` read through Object.prototype and the entry push throw. tradeKey now drops
+   every non-numeric id as a null key, so tradeChain skips it and valid trades keep cascading. */
+test("farmPlan drops trades with hostile ids instead of throwing through Object.prototype", () => {
+  const farm = {
+    quests: [{ questId: 7, ap: 0, drops: { 5: { dropExpected: 1, num: 5 } } }],
+    best: { 5: 7 },
+  };
+  const hostileTrades = [
+    { fromId: "__proto__", toId: 6, costAmount: 10, getNum: 1 },
+    { fromId: "constructor", toId: 6, costAmount: 10, getNum: 1 },
+    { fromId: "12abc", toId: 6, costAmount: 10, getNum: 1 },
+    { fromId: 5, toId: "toString", costAmount: 10, getNum: 1 },
+  ];
+
+  const hostileOnly = EventShop.farmPlan({ totals: { 5: 9, 6: 1 }, held: {}, bonus: {}, farm, trades: hostileTrades });
+  assert.equal(hostileOnly.totalPlays, null, "no hostile trade can cover currency 6");
+
+  const mixed = EventShop.farmPlan({
+    totals: { 5: 9, 6: 1 },
+    held: {},
+    bonus: {},
+    farm,
+    trades: [{ fromId: 5, toId: 6, costAmount: 1, getNum: 1 }, ...hostileTrades],
+  });
+  assert.equal(mixed.totalPlays, 2, "the valid trade still prices the plan");
+  assert.deepEqual(mixed.trades, [{ fromId: 5, toId: 6, count: 1 }], "hostile trades never join the chain");
 });

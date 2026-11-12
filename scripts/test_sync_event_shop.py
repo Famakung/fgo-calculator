@@ -5,12 +5,15 @@ Run: python3 scripts/test_sync_event_shop.py
 Fully offline: get_cached_json / _make_event_icon are swapped for fixture doubles, so no network
 and no Pillow are needed (the CI self-test job installs neither). Mirrors the stub-keeping policy
 and the EVENT_SHOP_DATA output shape the site ships: Amendment G's `{ events: [...] }` list, each
-snapshot carrying Amendment D's farm map, Amendment E's NA-first names, Amendment F's costume
-faces and Amendment J's farm-event selection (campaigns and memorials pruned, latest-farm fallback).
+snapshot carrying Amendment L's farm model (quest list + best map, challenge quests excluded) and
+upgrade trades, Amendment E's NA-first names, Amendment F's costume faces and Amendment L1's
+selection (active farm events plus the latest past farm event, campaigns and memorials pruned).
 
 The pre-G single-event fixtures are adapted to the events[] shape; no assertion was dropped — the
-old checks now run per snapshot, and the new ones cover the window filter, farm pick, name chain,
-costume resolution and the Amendment J selection rules.
+old checks now run per snapshot, and the new ones cover the window filter, the farm quest model
+(best line per quest/currency, sampleRuns, gift-only challenge exclusion), the trade parsing, the
+latest-past-event scan with its cap and outage behaviour, the name chain, costume resolution and
+the selection rules.
 """
 
 import json
@@ -39,15 +42,16 @@ SILVER = {"id": 94164001, "name": "SHIMONITAネギ", "icon": "JP/Items/94164001.
 BRONZE = {"id": 94164000, "name": "MISOおでん", "icon": "JP/Items/94164000.png", "background": "bronze"}
 TICKET = {"id": 94162101, "name": "1億DLチケット", "icon": "JP/Items/94162101.png"}
 
-# A closed event and a live one: only the live one may reach the output.
+# A closed event and a live one: only the live one may reach the active pass. The closed farm event
+# also feeds the Amendment L1 history scan — the past scan reads it BEFORE the no-shop OLD_EVENT.
 OLD_EVENT = {"id": 70000, "name": "Old event", "shortName": "Old", "type": "eventQuest", "startedAt": 1700000000, "finishedAt": 1700999999}
 LIVE_EVENT = {"id": 80639, "name": "Gudagudapuni Puni Wars!", "shortName": "GudaPuni", "type": "eventQuest", "startedAt": 1794394800, "finishedAt": 1796788799, "warIds": [9208]}
 EARLIER_LIVE_EVENT = {"id": 80630, "name": "100M DL campaign", "shortName": "100M", "type": "eventQuest", "startedAt": 1794052800, "finishedAt": 1798729199, "warIds": []}
 # Amendment J fixtures: a second ACTIVE farm event (multi-active kept), a live MEMORIAL (repeatable
-# quests, zero drop submissions -> pruned) and an ENDED farm event for the fallback scan.
+# quests, zero drop submissions -> pruned) and an ENDED farm event for the history entry.
 SECOND_FARM_EVENT = {"id": 80642, "name": "Second farm event", "shortName": "Second", "type": "eventQuest", "startedAt": 1794200000, "finishedAt": 1796788799, "warIds": [9208]}
 MEMORIAL_EVENT = {"id": 80379, "name": "Memorial battle", "shortName": "Memorial", "type": "eventQuest", "startedAt": 1794300000, "finishedAt": 1796788799, "warIds": [9999]}
-ENDED_FARM_EVENT = {"id": 70001, "name": "Ended farm event", "shortName": "Ended", "type": "eventQuest", "startedAt": 1700000000, "finishedAt": 1700999999, "warIds": [9208]}
+ENDED_FARM_EVENT = {"id": 70001, "name": "Ended farm event", "shortName": "Ended", "type": "eventQuest", "startedAt": 1789556400, "finishedAt": 1791000000, "warIds": [9208]}
 # An eventQuest whose window never closes is live; a story quest is never a shop.
 OPEN_ENDED_EVENT = {"id": 80640, "name": "Still running", "shortName": "Still", "type": "eventQuest", "startedAt": 1790000000, "finishedAt": 1893423600}
 STORY = {"id": 100, "name": "Main story", "type": "storyQuest", "startedAt": 1700000000, "finishedAt": 1893423600}
@@ -81,6 +85,20 @@ SHOP_ENTRIES = [
     {
         "id": 80639009, "name": "JP-only crystal", "purchaseType": "item", "targetIds": [7400],
         "cost": {"item": BRONZE, "amount": 1}, "limitNum": 0, "setNum": 1, "priority": 200, "slot": 1,
+    },
+    # Amendment L8 upgrade trades: buy one silver currency for 10 bronze, one gold for 10 silver.
+    {
+        "id": 80639053, "name": "SHIMONITAネギ交換", "purchaseType": "item", "targetIds": [94164001],
+        "cost": {"item": BRONZE, "amount": 10}, "limitNum": 0, "setNum": 1, "priority": 300, "slot": 1,
+    },
+    {
+        "id": 80639054, "name": "YAKIまんじゅう交換", "purchaseType": "item", "targetIds": [94164002],
+        "cost": {"item": SILVER, "amount": 10}, "limitNum": 0, "setNum": 1, "priority": 310, "slot": 1,
+    },
+    # Not a trade: the reward is an ordinary item, not a shop currency.
+    {
+        "id": 80639055, "name": "Trinket", "purchaseType": "item", "targetIds": [705500],
+        "cost": {"item": BRONZE, "amount": 5}, "limitNum": 0, "setNum": 1, "priority": 320, "slot": 1,
     },
 ]
 
@@ -122,7 +140,9 @@ COSTUME_RELEASE_ENTRY = {
     "cost": {"item": GOLD, "amount": 1}, "limitNum": 1, "setNum": 1, "priority": 1, "slot": 1,
 }
 
-# Farm drops (Amendment D). Two quests tie on MISO so the lower quest id must win.
+# Farm drops (Amendment L). Two quests tie on MISO so the lower quest id must win; two more prove
+# the challenge exclusion: 94164105 gifts a shop currency its repeat runs never drop (excluded),
+# 94164106 gifts a currency it also repeats (kept).
 WAR = {
     "id": 9208,
     "spots": [
@@ -136,7 +156,10 @@ WAR = {
             {"id": 94164102, "name": "【GUNMA巡り】槍をスキーに連れていけ", "afterClear": "repeatLast", "phases": [1], "recommendLv": "70", "consume": 40},
             {"id": 94164104, "name": "no submissions", "afterClear": "repeatLast", "phases": [1], "recommendLv": "90", "consume": 50},
         ]},
-        {"id": 920702, "quests": []},
+        {"id": 920702, "quests": [
+            {"id": 94164105, "name": "challenge gift-only", "afterClear": "repeatLast", "phases": [1], "recommendLv": "80", "consume": 40},
+            {"id": 94164106, "name": "gift subset of drops", "afterClear": "repeatLast", "phases": [1], "recommendLv": "80", "consume": 40},
+        ]},
     ]
 }
 
@@ -159,15 +182,15 @@ SECOND_SHOP = [
 ]
 
 
-def _quest(quest_id, name, recommend_lv, ap, drops):
-    return {"id": quest_id, "name": name, "recommendLv": recommend_lv, "consume": ap, "drops": drops}
+def _quest(quest_id, name, recommend_lv, ap, drops, gifts=()):
+    return {"id": quest_id, "name": name, "recommendLv": recommend_lv, "consume": ap, "drops": drops, "gifts": list(gifts)}
 
 
 QUEST_FIXTURES = {
     "nice_quest_94164100_1.json": _quest(94164100, "【GUNMA巡り】だるまを買いにいこう", "70", 40, [
         {"type": "item", "objectId": 94164000, "num": 3, "dropExpected": 10.711711711711711, "runs": 111},
         {"type": "item", "objectId": 94164001, "num": 3, "dropExpected": 1.882882882882883, "runs": 111},
-        # Event points: the biggest drop on the quest, and never a card's second line (Amendment I1),
+        # Event points: the biggest drop on the quest, and never a farm line (Amendment L2),
         # because the shop does not sell them — they are not in this event's currencies at all.
         {"type": "item", "objectId": 94164050, "num": 10, "dropExpected": 40.0, "runs": 111},
     ]),
@@ -183,18 +206,26 @@ QUEST_FIXTURES = {
         {"type": "item", "objectId": 94164002, "num": 3, "dropExpected": 10.831521739130435, "runs": 89},
         {"type": "item", "objectId": 94164000, "num": 3, "dropExpected": 2.3258, "runs": 89},
         {"type": "item", "objectId": 94164000, "num": 1, "dropExpected": 6.0, "runs": 89},
-    ]),
+    ], gifts=[{"type": "item", "objectId": 94164000, "num": 1}]),  # gift ⊆ drops: kept
     # A quest nobody has submitted drops for: dropExpected absent entirely.
     "nice_quest_94164104_1.json": _quest(94164104, "no submissions", "90", 50, [
         {"type": "item", "objectId": 94164002, "num": 3, "runs": 0},
     ]),
+    # Challenge quest (Amendment L2): it repeats the bronze currency but its GOLD reward is a
+    # first-clear gift the repeat runs never drop — excluded whole from the farm list.
+    "nice_quest_94164105_1.json": _quest(94164105, "challenge gift-only", "80", 40, [
+        {"type": "item", "objectId": 94164000, "num": 3, "dropExpected": 20.0, "runs": 30},
+    ], gifts=[{"type": "item", "objectId": 94164002, "num": 5}]),
+    "nice_quest_94164106_1.json": _quest(94164106, "gift subset of drops", "80", 40, [
+        {"type": "item", "objectId": 94164001, "num": 2, "dropExpected": 5.0, "runs": 12},
+    ], gifts=[{"type": "item", "objectId": 94164001, "num": 1}]),
 }
 
 
 def fixture_json(cache_dir, filename, url, force=False):
     """Stand-in for get_cached_json, keyed on the plan's cache filenames."""
     if filename == "basic_event.json":
-        return [OLD_EVENT, LIVE_EVENT, EARLIER_LIVE_EVENT, MEMORIAL_EVENT, SECOND_FARM_EVENT, STORY, NO_END_EVENT]
+        return [OLD_EVENT, LIVE_EVENT, EARLIER_LIVE_EVENT, MEMORIAL_EVENT, SECOND_FARM_EVENT, ENDED_FARM_EVENT, STORY, NO_END_EVENT]
     if filename == "nice_event_80639.json":
         return {"id": 80639, "shop": SHOP_ENTRIES, "warIds": [9208]}
     if filename == "nice_event_80630.json":
@@ -384,72 +415,74 @@ def check_costume_faces():
 
 
 def check_farm_pick():
-    """Amendment D1: best dropExpected×num per shop currency, ties to the lower quest id."""
+    """Amendment L2: farm.quests lists every repeatable quest that repeats a shop currency, each
+    with its per-currency best drop line; best maps each currency to its highest-amount quest."""
     with Sandbox() as s:
-        quests = m._collect_farm_quests(s.tmp, [9208])
-        assert sorted(q["questId"] for q in quests) == [94164100, 94164101, 94164102, 94164103, 94164104], "repeatLast and repeat only"
+        farm = m._collect_farm(s.tmp, [9208], [94164000, 94164001, 94164002])
+        assert [q["questId"] for q in farm["quests"]] == [94164100, 94164103, 94164101, 94164102, 94164106], (
+            "104 (no submissions) and 105 (gift-only gold) are out; everything else is in, war order"
+        )
 
-        miso = m._best_farm_entry(quests, 94164000)
-        assert miso["questId"] == 94164100, "the 10.7117 x 3 tie goes to the lower quest id"
+        miso = next(q for q in farm["quests"] if q["questId"] == 94164100)
         assert miso["questName"] == "【GUNMA巡り】だるまを買いにいこう"
         assert miso["recommendLv"] == "70", "recommendLv is Atlas' string"
         assert miso["ap"] == 40
-        assert miso["dropExpected"] == 10.7117, "dropExpected keeps 4 decimals"
-        assert miso["num"] == 3 and miso["sampleRuns"] == 111
-        assert "amount" not in miso, "the ranking figure stays internal"
+        assert miso["sampleRuns"] == 111
+        assert miso["drops"] == {
+            "94164000": {"dropExpected": 10.7117, "num": 3},
+            "94164001": {"dropExpected": 1.8829, "num": 3},
+        }, "point drops never enter the map"
 
-        assert m._best_farm_entry(quests, 94164001)["questId"] == 94164101, "silver peaks at its own quest"
-        assert m._best_farm_entry(quests, 94164002)["questId"] == 94164102
-        assert m._best_farm_entry(quests, 94164002)["dropExpected"] == 10.8315
-        assert m._best_farm_entry(quests, 94162101) is None, "a currency nobody drops is null"
-        assert m._best_farm_entry(quests, 94164003) is None, "a quest with no submissions contributes nothing"
-        assert m._collect_farm(s.tmp, [], [94164000]) == {"94164000": None}, "an event with no war has no farm data"
+        # Two bronze lines on one quest: the best (highest amount/run) is the one that ships.
+        spear = next(q for q in farm["quests"] if q["questId"] == 94164102)
+        assert spear["drops"]["94164000"] == {"dropExpected": 2.3258, "num": 3}, "2.3258×3 beats 6.0×1"
+        assert spear["drops"]["94164002"] == {"dropExpected": 10.8315, "num": 3}
+
+        assert farm["best"] == {"94164000": 94164100, "94164001": 94164101, "94164002": 94164102}, (
+            "bronze ties 100 against 103 at the same rate and goes to the lower quest id"
+        )
+        assert "94164105" not in json.dumps(farm), "a gift-only challenge quest cannot enter the farm model"
+        assert m._collect_farm(s.tmp, [], [94164000]) == {"quests": [], "best": {}}, "an event with no war has no farm data"
     return 1
 
 
-def check_farm_secondary():
-    """Amendment I1: each farm entry also names the same quest's next-best SHOP-currency drop."""
-    shop_ids = [94164000, 94164001, 94164002]
+def check_challenge_exclusion():
+    """Amendment L2: a quest whose shop-currency reward is FIRST-TIME ONLY (in gifts, not in repeat
+    drops) is not a farm quest; a gift that is a subset of the repeat drops keeps the quest in."""
     with Sandbox() as s:
         quests = m._collect_farm_quests(s.tmp, [9208])
-        farm = m._collect_farm(s.tmp, [9208], shop_ids)
+        shop = [94164000, 94164001, 94164002]
 
-        miso = farm["94164000"]
-        assert miso["questId"] == 94164100
-        assert miso["secondary"] == {"currencyId": 94164001, "dropExpected": 1.8829, "num": 3}, (
-            "the quest's other shop currency is the second line, at its own figures"
+        challenge = next(q for q in quests if q["questId"] == 94164105)
+        assert m._farm_quest_entry(challenge, shop) is None, "gift gold with no repeat gold drop: first-time-only, excluded"
+        kept = m._farm_quest_entry(challenge, [94164000])
+        assert kept and kept["drops"] == {"94164000": {"dropExpected": 20.0, "num": 3}}, (
+            "a bronze-only shop has no gift-only currency at all — the gift rule reads per event, not per quest"
         )
 
-        assert farm["94164001"]["secondary"] == {"currencyId": 94164002, "dropExpected": 2.0351, "num": 3}, (
-            "the silver card pairs with the gold the same quest drops"
-        )
-        assert farm["94164002"]["secondary"] == {"currencyId": 94164000, "dropExpected": 2.3258, "num": 3}, (
-            "two bronze lines on one quest: the higher amount per run wins, 2.3258x3 over 6.0x1"
-        )
-        secondaries = [entry["secondary"]["currencyId"] for entry in farm.values() if entry["secondary"]]
-        assert 94164050 not in secondaries, "event points are never a second line, however big the drop"
-        assert all(currency_id in shop_ids for currency_id in secondaries), "every secondary is a shop currency"
+        subset = next(q for q in quests if q["questId"] == 94164106)
+        entry = m._farm_quest_entry(subset, shop)
+        assert entry and entry["drops"] == {"94164001": {"dropExpected": 5.0, "num": 2}}, "gift ⊆ repeat drops: kept"
 
-        single = m._find_farm_quest(quests, 94164103)
-        assert m._secondary_drop(single, 94164000, shop_ids) is None, "a quest whose only shop currency is the card's own has no second line"
-        assert m._farm_entry(quests, 94162101, shop_ids) is None, "a currency nobody drops stays null, secondary and all"
+        no_gift = next(q for q in quests if q["questId"] == 94164100)
+        assert m._farm_quest_entry(no_gift, [94164003]) is None, "a quest dropping none of the event's currencies is not a farm quest for it"
+    return 1
 
-    tie_quest = m._farm_quest(
-        {"id": 94164199, "name": "tie", "recommendLv": "70", "consume": 40},
-        {
-            "id": 94164199,
-            "name": "tie",
-            "recommendLv": "70",
-            "consume": 40,
-            "drops": [
-                {"type": "item", "objectId": 94164002, "num": 2, "dropExpected": 3.0, "runs": 10},
-                {"type": "item", "objectId": 94164001, "num": 3, "dropExpected": 2.0, "runs": 10},
-            ],
-        },
-    )
-    assert m._secondary_drop(tie_quest, 94164000, shop_ids) == {"currencyId": 94164001, "dropExpected": 2.0, "num": 3}, (
-        "6 per run on two currencies: the lower currency id is the deterministic pick"
-    )
+
+def check_shop_trades():
+    """Amendment L8: upgrade rows (purchaseType item, reward is another shop currency) become
+    {fromId, toId, costAmount, getNum}; ordinary rewards and foreign targets never do."""
+    trades = m._shop_trades(SHOP_ENTRIES, [94164000, 94164001, 94164002])
+    assert trades == [
+        {"fromId": 94164000, "toId": 94164001, "costAmount": 10, "getNum": 1},
+        {"fromId": 94164001, "toId": 94164002, "costAmount": 10, "getNum": 1},
+    ], "both 10:1 upgrades, sorted by (fromId, toId); the coin row (80639055) is not a trade"
+    assert m._shop_trades([], [94164000]) == []
+    assert m._shop_trades(SHOP_ENTRIES, [94164003]) == [], "an event whose shop holds no upgrade rows ships none"
+    self_swap = {"id": 1, "purchaseType": "item", "targetIds": [94164000], "cost": {"item": BRONZE, "amount": 5}, "setNum": 1}
+    assert m._shop_trades([self_swap], [94164000]) == [], "a currency is never an upgrade of itself"
+    zero = {"id": 2, "purchaseType": "item", "targetIds": [94164001], "cost": {"item": BRONZE, "amount": 0}, "setNum": 1}
+    assert m._shop_trades([zero], [94164000, 94164001]) == [], "a free row is not a trade"
     return 1
 
 
@@ -515,7 +548,7 @@ def check_farm_test_read_outage():
     with Sandbox() as s:
         m.get_cached_json = war_down
         farm = m._collect_farm(s.tmp, [9208], [94164000, 94164001])
-        assert farm == {"94164000": None, "94164001": None}, "the snapshot path stays lenient: an outage is a null farm entry"
+        assert farm == {"quests": [], "best": {}}, "the snapshot path stays lenient: an outage is an empty quest list"
         assert m._collect_farm_quests(s.tmp, [9208]) == [], "the lenient read still memoizes what it could collect"
         m._farm_quests_results.clear()
         m.get_cached_json = fixture_json
@@ -531,17 +564,24 @@ def check_farm_test_read_outage():
     return 6
 
 
-def check_farm_fallback():
-    """Amendment J: no active farm event -> the LATEST FARM event wins the capped newest-first scan."""
+def check_past_farm_selection():
+    """Amendment L1: the list is the ACTIVE farm events PLUS the LATEST 1 past farm event — the
+    newest ENDED eventQuest passing the farm test in a capped newest-first scan."""
     with Sandbox() as s:
         picked = [e["id"] for e in m._select_farm_events(s.tmp, [MEMORIAL_EVENT, EARLIER_LIVE_EVENT, ENDED_FARM_EVENT], now=NOW)]
-        assert picked == [70001], "the newest entries are a memorial and a campaign; the ended farm event ships alone"
+        assert picked == [70001], "no active farm event: the past entry ships alone"
 
-        fillers = [dict(EARLIER_LIVE_EVENT, id=90000 + i) for i in range(1, 30)]
+        both = [e["id"] for e in m._select_farm_events(s.tmp, [LIVE_EVENT, SECOND_FARM_EVENT, ENDED_FARM_EVENT, MEMORIAL_EVENT], now=NOW)]
+        assert both == [80639, 80642, 70001], "actives newest-first, then the latest past event — appended, never replacing"
+
+        only_past = [e["id"] for e in m._select_farm_events(s.tmp, [ENDED_FARM_EVENT, OLD_EVENT], now=NOW)]
+        assert only_past == [70001], "OLD_EVENT has no shop; the closed farm event is the first ended one that passes"
+
+        fillers = [dict(ENDED_FARM_EVENT, id=90000 + i, startedAt=1792000000 + i) for i in range(1, 30)]
         assert [e["id"] for e in m._select_farm_events(s.tmp, fillers + [ENDED_FARM_EVENT], now=NOW)] == [70001], (
-            "the 30th scan candidate is still inside FARM_FALLBACK_SCAN_CAP"
+            "the 30th ended candidate is still inside the cap"
         )
-        fillers.append(dict(EARLIER_LIVE_EVENT, id=90030))
+        fillers.append(dict(ENDED_FARM_EVENT, id=90030, startedAt=1792030000))
         assert m._select_farm_events(s.tmp, fillers + [ENDED_FARM_EVENT], now=NOW) == [], (
             "the 31st candidate is outside the cap: the scan stops at 30"
         )
@@ -560,28 +600,38 @@ def check_farm_fallback():
             m._select_farm_events(s.tmp, [ENDED_FARM_EVENT], now=NOW)
         except RuntimeError:
             raised = True
-        assert raised, "a fallback candidate that cannot be read raises: one hiccup must not stub a good previous file"
+        assert raised, "a past candidate that cannot be read raises when nothing active shipped: one hiccup must not stub a good previous file"
+
+        shipping = m._select_farm_events(s.tmp, [LIVE_EVENT, ENDED_FARM_EVENT], now=NOW)
+        assert [e["id"] for e in shipping] == [80639], "with an active farm event shipping, the same raise only drops the history entry"
     return 1
 
 
 def check_override_bypass():
-    """Amendment J5: --event-id ships whatever it names — every filter skipped, campaign included."""
+    """Amendment J5/L1: --event-id ships whatever it names — every filter skipped, campaign and
+    closed events included — with the new farm/trades keys."""
     with Sandbox() as s:
         m.sync_event_shop(cache_dir=s.tmp, event_id=80630)
         data = s.read_data()
-        assert [snap["event"]["id"] for snap in data["events"]] == [80630], "the campaign shop the active pass prunes ships under --event-id"
-        assert data["events"][0]["farm"] == {"94162101": None}, "override snapshot keeps the null-farm shape: every currency a key, not a missing one"
+        assert [snap["event"]["id"] for snap in data["events"]] == [80630], "the campaign shop the farm pass prunes ships under --event-id"
+        assert data["events"][0]["farm"] == {"quests": [], "best": {}}, "override snapshot keeps the empty farm shape: no war, no quests, no best entries"
+        assert data["events"][0]["trades"] == [], "a shop with no upgrade rows ships an empty trades list"
+        m.sync_event_shop(cache_dir=s.tmp, event_id=80639)
+        snap = s.read_data()["events"][0]
+        assert snap["farm"]["best"] == {"94164000": 94164100, "94164001": 94164101, "94164002": 94164102}, "override ships the full farm model too"
+        assert [t["toId"] for t in snap["trades"]] == [94164001, 94164002], "and the parsed upgrade trades"
         m.sync_event_shop(cache_dir=s.tmp, event_id=70000)
         assert s.read_data() == {"events": []}, "an override onto an event with no shop rows yields the empty list"
     return 1
 
 
 def check_no_duplicate_fetches():
-    """Amendment J efficiency: test and snapshot share one read per event/war/quest file per run."""
+    """Amendment J efficiency, kept under L: test, snapshot and past scan share one read per
+    event/war/quest file per run — including the history event's own detail."""
     with Sandbox() as s, patch.object(m.time, "time", lambda: NOW):
         s.spy_json()
         m.sync_event_shop(cache_dir=s.tmp)
-        for filename in ("nice_event_80639.json", "nice_event_80642.json", "nice_war_9208.json", "nice_quest_94164100_1.json"):
+        for filename in ("nice_event_80639.json", "nice_event_80642.json", "nice_event_70001.json", "nice_war_9208.json", "nice_quest_94164100_1.json"):
             assert s.fetched.count(filename) == 1, f"{filename} read exactly once: the farm test's reads feed the snapshot"
     return 1
 
@@ -621,25 +671,27 @@ def check_entry_mapping():
 
 
 def check_sync_multi_event():
-    """Happy path (Amendment J): both active FARM shops ship, campaign and memorial are pruned."""
+    """Happy path (Amendment L1): both active FARM shops plus the latest past farm event ship,
+    campaign and memorial are pruned."""
     with Sandbox() as s, patch.object(m.time, "time", lambda: NOW):
         m.sync_event_shop(cache_dir=s.tmp)
         data = s.read_data()
         ids = [snap["event"]["id"] for snap in data["events"]]
-        assert ids == [80639, 80642], "farm events newest-first; the campaign (no war) and memorial (no drops) shops are pruned"
+        assert ids == [80639, 80642, 70001], "farm events newest-first with the latest past entry after them; the campaign and memorial are pruned"
         snap = data["events"][0]
         assert snap["event"]["shortName"] == "GudaPuni"
         assert snap["event"]["startedAt"] == 1794394800
         assert [c["id"] for c in snap["currencies"]] == [94164000, 94164001, 94164002], "currencies sorted asc"
         assert snap["currencies"][2]["background"] == "gold"
         assert snap["currencies"][0]["name"] == "MISOおでん", "untranslated currency keeps the JP name"
-        assert [i["id"] for i in snap["items"]] == [80639001, 80639006, 80639002, 80639005, 80639008, 80639009], "items sorted (priority, id)"
+        assert [i["id"] for i in snap["items"]] == [80639001, 80639006, 80639002, 80639005, 80639008, 80639009, 80639053, 80639054, 80639055], "items sorted (priority, id)"
         icons = {i["id"]: i["icon"] for i in snap["items"]}
         assert icons[80639001] == "event_shop/costume_20470011.webp"
         assert icons[80639002] == "event_shop/equip_9409690.webp"
         assert icons[80639005] == "event_shop/item_705500.webp"
         assert icons[80639006] is None, "unknown type keeps the row, drops the icon"
         assert icons[80639008] == "event_shop/item_705500.webp", "the same asset is reused across rows"
+        assert icons[80639053] == "event_shop/item_94164001.webp", "the trade row's reward reuses the currency's own icon"
         fetched = [dest for _path, dest, _kind in s.icon_calls]
         assert len(fetched) == len(set(fetched)) == 8, (
             "one fetch per unique asset, and the pruned events' ticket currency and chalice are never downloaded"
@@ -647,19 +699,30 @@ def check_sync_multi_event():
         assert os.path.exists(os.path.join(m.PUBLIC_EVENT_SHOP_DIR, "item_705500.webp"))
 
         farm = snap["farm"]
-        assert sorted(farm.keys()) == ["94164000", "94164001", "94164002"], "farm covers exactly the shop currencies"
-        assert farm["94164000"]["questId"] == 94164100 and farm["94164000"]["recommendLv"] == "70"
-        assert farm["94164002"]["questId"] == 94164102
-        assert farm["94164000"]["secondary"] == {"currencyId": 94164001, "dropExpected": 1.8829, "num": 3}, (
-            "the secondary drop ships in the generated snapshot, not just in the picker"
+        assert [q["questId"] for q in farm["quests"]] == [94164100, 94164103, 94164101, 94164102, 94164106], (
+            "the shipped quest list is the farm model the site reads: challenge and no-submission quests out"
         )
+        assert farm["best"] == {"94164000": 94164100, "94164001": 94164101, "94164002": 94164102}
+        assert farm["quests"][0]["recommendLv"] == "70"
+        assert farm["quests"][0]["drops"]["94164001"] == {"dropExpected": 1.8829, "num": 3}, (
+            "every shop-currency drop line ships in the generated snapshot, not just the best"
+        )
+        assert snap["trades"] == [
+            {"fromId": 94164000, "toId": 94164001, "costAmount": 10, "getNum": 1},
+            {"fromId": 94164001, "toId": 94164002, "costAmount": 10, "getNum": 1},
+        ], "the upgrade trades ship parsed and sorted"
 
         second = _snapshot(data, 80642)
         assert [c["id"] for c in second["currencies"]] == [94164002], "the second farm event keeps its own currencies"
         assert [i["id"] for i in second["items"]] == [80642001]
         assert second["items"][0]["name"] == "Chalice", "NA name wins in the second event too"
-        assert sorted(second["farm"]) == ["94164002"], "its farm map covers only its own currency"
-        assert second["farm"]["94164002"]["questId"] == 94164102, "the same war's drops hydrate the second event"
+        assert [q["questId"] for q in second["farm"]["quests"]] == [94164101, 94164102], "only quests dropping ITS currencies are farm quests for it"
+        assert second["farm"]["best"] == {"94164002": 94164102}, "the same war's drops hydrate the second event"
+        assert second["trades"] == [], "no upgrade rows in its own shop, no trades"
+
+        past = _snapshot(data, 70001)
+        assert past["farm"]["best"] == farm["best"], "the history entry carries the full farm model, same war data"
+        assert len(past["trades"]) == 2, "and its trades — the planner tests past events with the same math"
     return 1
 
 
@@ -706,7 +769,8 @@ def check_outage_policy():
         m.sync_event_shop(cache_dir=s.tmp)
         assert s.read_data() == {"events": []}, "healthy API, nothing open -> empty list (not an exception path)"
 
-    # One open farm event whose detail fetch raises while the other answers: the good one still ships.
+    # One open farm event whose detail fetch raises while the other answers: the good one still
+    # ships — and the history entry rides along with it.
     with Sandbox() as s, patch.object(m.time, "time", lambda: NOW):
         inner = fixture_json
 
@@ -718,7 +782,7 @@ def check_outage_policy():
         m.get_cached_json = partial
         m.sync_event_shop(cache_dir=s.tmp)
         data = s.read_data()
-        assert [snap["event"]["id"] for snap in data["events"]] == [80639], "the failing farm event is skipped, the other ships"
+        assert [snap["event"]["id"] for snap in data["events"]] == [80639, 70001], "the failing farm event is skipped, the other plus the history entry ship"
 
     # Every farm-test fetch failing is a total failure: the fallback scan raises too, and the
     # caller's outage policy keeps the previous file instead of stubbing over it (Amendment J).
@@ -839,10 +903,11 @@ def main():
         check_name_chain,
         check_costume_faces,
         check_farm_pick,
-        check_farm_secondary,
+        check_challenge_exclusion,
+        check_shop_trades,
         check_farm_event_test,
         check_farm_test_read_outage,
-        check_farm_fallback,
+        check_past_farm_selection,
         check_override_bypass,
         check_no_duplicate_fetches,
         check_entry_mapping,

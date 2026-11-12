@@ -132,13 +132,14 @@ def main():
 
     # Amendment J makes a no-war shop fail the farm-event test, so this mapping probe ships it the
     # way the site still can: --event-id, which skips every selection filter. The "no warIds means
-    # every currency gets a null farm entry, not a missing key" pin moves to the override path here.
+    # an empty farm list, not missing keys" pin moves to the override path here.
     with patch.object(m, "get_cached_json", collect_json), patch.object(m, "_make_event_icon", no_icon_fetch):
         payload = m._collect_event_shops("/tmp", 1, dry_run=True)
     snapshot = payload["events"][0]
     assert [c["id"] for c in snapshot["currencies"]] == [94164002], "a free-entry-only currency stays out of the registry"
     assert [i["id"] for i in snapshot["items"]] == [2], "the free entry itself is still dropped from items"
-    assert snapshot["farm"] == {"94164002": None}, "no warIds means every currency gets a null farm entry, not a missing key"
+    assert snapshot["farm"] == {"quests": [], "best": {}}, "no warIds means an empty quest list and an empty best map, not missing keys"
+    assert snapshot["trades"] == [], "no upgrade rows in this shop means an empty trades list, never a missing key"
     n += 1
 
     # --- an open eventQuest whose shop is empty is not an event shop: it drops out of the list ---
@@ -165,6 +166,44 @@ def main():
     with patch.object(m, "get_cached_json", empty_shop_json), patch.object(m, "_make_event_icon", no_icon_fetch):
         payload = m._collect_event_shops("/tmp", None, dry_run=True)
     assert [snap["event"]["id"] for snap in payload["events"]] == [6], "the shopless event is skipped, the one with rows ships"
+    n += 1
+
+    # --- _farm_quest_entry: quests with missing gift rows or only-unusable drops never ship ---
+    bare_quest = {"questId": 1, "questName": "q", "recommendLv": "", "ap": 0, "drops": [], "gifts": None}
+    assert m._farm_quest_entry(bare_quest, [94164002]) is None, "a quest with no drop lines is not a farm quest"
+    junk_drops = {
+        "questId": 2,
+        "questName": "junk",
+        "recommendLv": "",
+        "ap": 0,
+        "drops": [
+            {"type": "item", "objectId": 94164002, "num": 3, "dropExpected": None, "runs": 4},
+            {"type": "item", "objectId": 94164002, "num": 0, "dropExpected": 5.0, "runs": 4},
+            {"type": "item", "objectId": 94164002, "num": 3, "dropExpected": -1.0, "runs": 4},
+        ],
+        "gifts": [],
+    }
+    assert m._farm_quest_entry(junk_drops, [94164002]) is None, "null, zero-stack and negative drop figures are all unusable"
+    partial = dict(junk_drops, drops=junk_drops["drops"] + [{"type": "item", "objectId": 94164002, "num": 2, "dropExpected": 1.5, "runs": 9}])
+    entry = m._farm_quest_entry(partial, [94164002])
+    assert entry["drops"] == {"94164002": {"dropExpected": 1.5, "num": 2}} and entry["sampleRuns"] == 9, (
+        "the one usable line ships, and sampleRuns counts its runs, not the junk rows' submissions"
+    )
+    gift_only = {"questId": 3, "questName": "challenge", "recommendLv": "", "ap": 0, "drops": [], "gifts": [{"objectId": 94164002, "num": 1}]}
+    assert m._farm_quest_entry(gift_only, [94164002]) is None, "a challenge quest's gift is not a farm drop"
+    n += 1
+
+    # --- _shop_trades: half-filled rows drop out; ids, ratios and self-swaps must all hold ---
+    currency_ids = [94164000, 94164002]
+    assert m._shop_trades([None, {"purchaseType": "item"}, {"purchaseType": "item", "targetIds": [], "cost": {"item": GOLD, "amount": 5}}], currency_ids) == [], (
+        "entries with no target, no cost or a null row are never trades"
+    )
+    assert m._shop_trades([{"purchaseType": "servant", "targetIds": [94164002], "cost": {"item": BRONZE, "amount": 10}, "setNum": 1}], currency_ids) == [], (
+        "a servant row paying with a currency is not an upgrade trade"
+    )
+    assert m._shop_trades([{"purchaseType": "item", "targetIds": [94164002], "cost": {"item": BRONZE, "amount": 10}, "setNum": None}], currency_ids) == [], (
+        "a row that sells nothing per purchase is not a usable ratio"
+    )
     n += 1
 
     print(f"{n} tests passed")

@@ -1,9 +1,11 @@
 import { EVENT_SHOP_STORAGE_KEY } from "./constants.js";
-import { EventShop, Schema, Validator } from "./domain.js";
+import { EventShop, Schema } from "./domain.js";
+import { planOf, snapshotEvents, retiredPlans, clampCurrencyBox } from "./event-planner-state.js";
 import { EVENT_SHOP_DATA } from "./data/event_shop.js";
 
 /* Application layer for the Event Shop planner: owns the selected event and that event's plan
-   (requires + held + bonus) and persists everything under EVENT_SHOP_STORAGE_KEY. Amendment G made
+   (requires + held + bonus + farmQuest + currencyQuest) and persists everything under EVENT_SHOP_STORAGE_KEY.
+   Amendment G made
    the snapshot a list, so each event keeps its own plan and editing one never touches another.
    Amendment B removed the planner card: the per-currency modal is the sole configuration surface,
    so this module is state and storage only, with no DOM at all. The tier boxes and the farm cards
@@ -11,7 +13,10 @@ import { EVENT_SHOP_DATA } from "./data/event_shop.js";
    so an event with two golds gives each one its own numbers; the card displays refresh through
    App.refreshNeeds(). There is no runtime network — state reads the generated snapshot list.
     Amendment J5 adds the retired stash: a pruned event's saved plan stays in storage untouched,
-    because sanitizePlans drops it from state and a save that wrote only state would erase it. */
+    because sanitizePlans drops it from state and a save that wrote only state would erase it.
+    Amendment M4 adds the per-currency quest picks (currencyQuest: { [currencyId]: questId }); the
+    pure plan helpers — snapshot list, plan copy, retired stash, currency-box clamp — live in
+    event-planner-state.js. */
 export const EventPlanner = {
   state: { selectedEventId: null, plans: {} },
   _initialized: false,
@@ -105,6 +110,38 @@ export const EventPlanner = {
     this._mutatePlan({ bonus: clampCurrencyBox(this.activePlan().bonus, currencyId, value, Schema.tier.Bonus) });
   },
 
+  /* The 3-in-1 card's quest pick (Amendment L4): the dropdown only offers this event's all-covering
+     quests, and anything else — a stale id, a quest the data retired — re-defaults through the same
+     domain rule the load-time sanitize uses, so the plan never holds a quest the cards cannot show. */
+  setFarmQuest(questId) {
+    const event = this.activeEvent();
+    if (!event) return;
+    const quests = (event.farm || {}).quests || [];
+    const id = Number(questId);
+    const known = quests.some((quest) => quest.questId === id);
+    const currencyIds = (event.currencies || []).map((currency) => currency.id);
+    this._mutatePlan({ farmQuest: known ? id : EventShop.defaultFarmQuest(event.farm || {}, currencyIds) });
+  },
+
+  /* A per-currency card's quest pick (Amendment M4, N2): the card's dropdown only offers this event's
+     quests that drop THIS currency and are not all-covering, and anything else re-defaults to that
+     currency's best non-all-covering dropper through the same domain rule the load-time sanitize
+     uses — the plan never holds a quest a card cannot show. The map is keyed by currency id,
+     stringified the way the plan's other currency maps are. */
+  setCurrencyQuest(currencyId, questId) {
+    const event = this.activeEvent();
+    if (!event) return;
+    const key = String(currencyId);
+    const currencyIds = (event.currencies || []).map((currency) => currency.id);
+    const choice = EventShop.sanitizedCurrencyQuest({
+      farm: event.farm || {},
+      currencyIds,
+      currencyKey: key,
+      saved: questId,
+    });
+    this._mutatePlan({ currencyQuest: { ...this.activePlan().currencyQuest, [key]: choice } });
+  },
+
   _mutatePlan(patch) {
     if (this.state.selectedEventId === null) return;
     const plans = { ...this.state.plans };
@@ -135,40 +172,3 @@ export const EventPlanner = {
     }
   },
 };
-
-/* The snapshot list of a generated data module; the pre-G single-event shape has none, so the site
-   falls back to the legacy calculator rather than reading a stale one-event blob as an event list. */
-function snapshotEvents(data) {
-  if (!data || !Array.isArray(data.events)) return [];
-  return data.events.filter((snap) => snap && snap.event);
-}
-
-/* A copy, so a caller reading the plan cannot write into the stored one by accident. */
-function planOf(state, eventId) {
-  const plan = state.plans[String(eventId)];
-  if (!plan) return { requires: {}, held: {}, bonus: {} };
-  return { requires: { ...plan.requires }, held: { ...plan.held }, bonus: { ...plan.bonus } };
-}
-
-/* Amendment J5: the saved plans of events the current data no longer lists, kept out of state but
-   written back verbatim, so the first mutation after a prune cannot erase a player's plan for that
-   event. Nothing reads or sanitizes these bytes, which is why they are copied by own key with
-   defineProperty: a blob parsed from JSON can hold an own "__proto__" key, and plain assignment
-   would turn that into a prototype swap instead of a stored entry. */
-function retiredPlans(saved, events) {
-  const plans = (saved && typeof saved === "object" && saved.plans) || {};
-  const live = new Set(events.map((snap) => String(snap.event.id)));
-  const retired = {};
-  for (const key of Object.keys(plans).filter((key) => !live.has(key))) {
-    Object.defineProperty(retired, key, { value: plans[key], enumerable: true, writable: true, configurable: true });
-  }
-  return retired;
-}
-
-/* One currency's figure of one plan, written through the schema its box declares. An id outside the
-   plan's currencies is refused, so a stale caller cannot widen a plan. */
-function clampCurrencyBox(values, currencyId, value, schema) {
-  const key = String(currencyId);
-  if (!Object.hasOwn(values, key)) return values;
-  return { ...values, [key]: Math.floor(Validator.validate(value, schema)) };
-}
