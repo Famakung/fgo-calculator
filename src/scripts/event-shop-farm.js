@@ -1,20 +1,18 @@
 import { TIERS } from "./constants.js";
 import { EventShop } from "./domain.js";
 import { DOMFactory } from "./presentation.js";
-import { buildCurrencyImg, bindCurrencyModalOpen } from "./event-shop-tier.js";
+import { buildCurrencyImg } from "./event-shop-tier.js";
 import { buildDropLines } from "./event-shop-farm-lines.js";
 import { tierMappedIds, buildHeldBonusBoxes } from "./event-shop-farm-controls.js";
-import { fmt } from "./event-planner-parts.js";
 
 /* ===...=== Best-quest farm view (Amendment D) ===...=== */
 /* Everything the Event tab shows instead of the legacy drop-rate model: one card per shop currency
    naming the quest Atlas' community data says drops the most of it, the card's own mode chrome (the
    base/primary/secondary row and the configured per-quest grid are legacy-only), the plan-backed
    tier boxes, and the results row per currency. Since Amendment I7 the farm card carries no
-   Required box — the Required displays live only in the "Shop Requirements" tier cards — and the
-   card's currency header is the modal opener for that currency, so every currency stays reachable
-   through the same shared opener path. For a currency no tier card owns the card also keeps its
-   Held/Bonus inputs.
+   Required box, and since Amendment K its currency header is a plain display: the tier cards'
+   Required field is the one modal opener in the tab. For a currency no tier card owns the card
+   also keeps its Held/Bonus inputs.
    Amendment I makes the card's figures the quest's two real shop-currency drops, one line each
    (event-shop-farm-lines.js), and retires the AP and reported-run lines: what a run costs is the
    results row's business, not the card's. DOM is built with createElement/textContent only and
@@ -55,24 +53,15 @@ function buildFarmCard(currency, view) {
   return card;
 }
 
-/* The currency header is the modal opener for that currency (Amendment I7): role=button with the
-   shared click/Enter/Space path from event-shop-tier.js, the currency id travelling as dataset. The
-   Held/Bonus inputs are siblings below the header, never descendants of it, so their clicks and
-   keystrokes cannot bubble into this opener. */
+/* The currency header is a plain display (Amendment K): name + art, no role, no tab stop, no
+   opener. Shop items are reached through the tier cards' Required field, the tab's only opener. */
 function buildCardTitle(currency) {
-  const title = DOMFactory.el("div", "farm-card-title", {
-    role: "button",
-    tabindex: "0",
-    "aria-haspopup": "dialog",
-    "aria-label": `${currency.name}: open shop items`,
-  });
+  const title = DOMFactory.el("div", "farm-card-title");
   const icon = DOMFactory.el("span", "mini-icon");
   icon.replaceChildren(buildCurrencyImg(currency, currency.background));
   const name = DOMFactory.el("span", "farm-card-name");
   name.textContent = currency.name;
-  title.dataset.currencyId = String(currency.id);
   title.replaceChildren(icon, name);
-  bindCurrencyModalOpen(title);
   return title;
 }
 
@@ -104,9 +93,10 @@ function farmEntry(farm, currency) {
 
 /* ===...=== Event-mode results and plan boxes ===...=== */
 
-/* Event mode results: what each currency still needs, the runs its best quest takes, and the AP
-   that costs — all straight from EventShop.farmPlan. Tiers the shop has no currency for show 0 and
-   "—", because there is nothing to farm and no plan to price. */
+/* Event mode results: what each currency still needs and the runs its best quest takes, straight
+   from EventShop.farmPlan. AP is priced but never printed (Amendment K): the run count is the
+   answer. Tiers the shop has no currency for show 0 and "—", because there is nothing to farm and
+   no plan to price. */
 export function showFarmResults(snapshot, plan, reveal) {
   reveal();
   TIERS.forEach((tier) => writeFarmTier(tier, snapshot, plan));
@@ -127,7 +117,7 @@ function writeFarmTier(tier, snapshot, plan) {
 
 function farmTierLabel(row) {
   if (!row || row.runs === null) return NO_DROP_MESSAGE;
-  return `${row.runs === 1 ? "run" : "runs"} \u00b7 ${fmt(row.ap)} AP`;
+  return row.runs === 1 ? "run" : "runs";
 }
 
 function farmRowForTier(snapshot, plan, tier) {

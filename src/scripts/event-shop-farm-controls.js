@@ -8,9 +8,10 @@ import { EventPlanner } from "./event-planner.js";
    no tier card gets its own Held/Bonus input pair, writing the same currency-keyed plan the tier
    boxes write. Exactly one input pair per currency: a tier-mapped currency gets no farm Held/Bonus,
    because its tier card already owns them. Amendment I7 removed the farm Required display — the
-   tier cards are its only home now, and every currency stays modal-reachable through its farm
-   card's header (event-shop-farm.js). The boxes reuse the house .material-input-box markup, so the
-   label and field geometry match the tier cards'. */
+   tier cards are its only home now, and so is their Required field for reaching a currency's shop
+   items (event-shop-tier.js) — since Amendment K the farm card's header is a plain display. The
+   boxes reuse the house .material-input-box markup, so the label and field geometry match the tier
+   cards'. */
 
 /* The currency ids the tier cards own: the first currency carrying each TIERS background, through
    EventShop.currencyForTier — the single mapping rule. Snapshot currencies list in id-ascending

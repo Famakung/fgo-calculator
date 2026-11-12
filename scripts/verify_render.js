@@ -1131,8 +1131,10 @@ try {
   }
 
   /* The Bond tab reads quest first, then the party it is spent on, and the calculate button belongs to
-     the party card — bottom right of it, not a full-width bar across the page. The Event Shop button is
-     measured too, because it shares .calculate-btn and must keep stretching. */
+     the party card — bottom right of it, not a full-width bar across the page. Since Amendment K the
+     Event Shop button is pinned to the SAME house pattern: it rides the Shop Requirements card's
+     .bond-card-actions--end with the bond button's auto width (the old full-width pin was retired by
+     owner directive). */
   const order = await page.evaluate(() => {
     const quest = document.getElementById("bondQuestSelect").closest(".card");
     const party = document.getElementById("servantGrid").closest(".card");
@@ -1155,17 +1157,33 @@ try {
   }
 
   await page.click('.tab-btn[data-tab="event"]');
-  const eventRatio = await page.evaluate(() => {
+  const eventBtn = await page.evaluate(() => {
     const btn = document.getElementById("calculateBtn");
-    return btn.getBoundingClientRect().width / btn.parentElement.clientWidth;
+    const actions = btn.parentElement;
+    const inner = btn.closest(".card-inner");
+    const title = inner ? inner.querySelector(":scope > .card-title") : null;
+    const br = btn.getBoundingClientRect();
+    const ar = actions.getBoundingClientRect();
+    return {
+      inActions: actions.classList.contains("bond-card-actions") && actions.classList.contains("bond-card-actions--end"),
+      lastChild: actions === inner.lastElementChild,
+      card: title ? title.textContent.trim() : null,
+      ratio: br.width / actions.clientWidth,
+      rightGap: Math.round(ar.right - br.right),
+    };
   });
   await page.click('.tab-btn[data-tab="bond"]');
-  if (!(eventRatio > 0.9)) {
-    errors.push(`event tab: #calculateBtn spans ${(eventRatio * 100).toFixed(0)}% of its row, want full width`);
-  }
+  if (!eventBtn.inActions || eventBtn.card !== "Shop Requirements")
+    errors.push(`event tab(K5): #calculateBtn is not inside the Shop Requirements .bond-card-actions--end — ${JSON.stringify(eventBtn)}`);
+  if (!eventBtn.lastChild)
+    errors.push("event tab(K5): the actions row is not the last child of the Shop Requirements card-inner");
+  if (!(eventBtn.ratio > 0 && eventBtn.ratio <= 0.5))
+    errors.push(`event tab(K5): #calculateBtn spans ${(eventBtn.ratio * 100).toFixed(0)}% of its row, want at most half — bond-button parity`);
+  if (Math.abs(eventBtn.rightGap) > 1.5)
+    errors.push(`event tab(K5): the button's right edge is ${eventBtn.rightGap}px off the row's right edge, want flush`);
   console.log(
     `NOTE: bond tab order — quest card first, button ${JSON.stringify(order.label)} at ` +
-      `${(order.ratio * 100).toFixed(0)}% of the party card; event button ${(eventRatio * 100).toFixed(0)}%`,
+      `${(order.ratio * 100).toFixed(0)}% of the party card; event button ${(eventBtn.ratio * 100).toFixed(0)}% of its row, right gap ${eventBtn.rightGap}px`,
   );
 
   /* An essence worn by a borrowed support servant pays that CE's friend-side rate: 0910 Chaldea Teatime

@@ -18,8 +18,11 @@
  * The oracle for every expected number is the mode's own event data (the data module for MAIN/LEGACY,
  * the fixture JSON for MULTI) — never the app's own EventShop.
  *
- * Contracts pinned (Amendment I final = I7 refinement included, Amendment J = pruning + fallback):
- *  - Select Event card FIRST in #panel-event, title "Select Event", Bond-consistent
+ * Contracts pinned (Amendment I final = I7 refinement included, Amendment J = pruning + fallback,
+ * Amendment K = the owner-approved 7-point UI pass — the I7 header-opener pins are INVERTED to
+ * absence pins BY DESIGN):
+ *  - Select Event card FIRST in #panel-event and the K4 card order: "Select Event" →
+ *    "Drop Rates per Run" → "Shop Requirements" → the #results "Items Needed" card; Bond-consistent
  *    .input-row > label.input-label + select.select-field; NO blank option; fresh storage
  *    FORCE-SELECTS the latest event (max startedAt == list head, both pinned); with one event the
  *    list is exactly that one option; a saved selection wins (MULTI); zero events (stub copy) →
@@ -27,9 +30,10 @@
  *  - per-event saves (MULTI): set a plan on A, switch to B, switch back to A → A restored
  *    byte-equal, B's edit never leaked into A; plans survive reload; the pre-G { eventId, requires }
  *    blob migrates (live and dead ids) and the disk blob stays untouched until the first mutation;
- *  - farm cards (Amendment I, "Drop Rates per Run"): title, one card per shop currency, card =
- *    [currency header: role=button tabindex=0 aria-haspopup=dialog, icon + currency name] +
- *    quest-name line + "REC Lv. {recommendLv}" (skipped when falsy) + primary drop line +
+ *  - farm cards (Amendment I, re-pinned by Amendment K2/K3/K6, "Drop Rates per Run"): title, one
+ *    card per shop currency, card = [currency header: PLAIN DISPLAY — zero role, tabindex,
+ *    aria-haspopup, aria-label, data-currency-id, cursor auto] + quest-name line +
+ *    "REC Lv. {recommendLv}" (skipped when falsy) + primary drop line +
  *    secondary drop line (or a bare "—" when the quest has no second shop-currency drop). Each line
  *    is "[icon] {num}(+{bonus}) {dropExpected×(num+bonus)} / run" at 2dp, keyed to ITS OWN currency,
  *    repainted live when that currency's Bonus changes — on EVERY line carrying it (a currency can
@@ -38,24 +42,29 @@
  *    the cards' visible text + zero require-display inputs + zero farmRequired* ids); a null farm
  *    entry → the single "No drop data yet" line. Held/Bonus inputs appear on a farm card ONLY for a
  *    currency no tier card owns; the base-row and #questDropsGrid stay hidden, #farmGrid visible
- *    (the reverse in stub mode);
- *  - modal access for every currency: the farm card's CURRENCY HEADER opens THAT currency's modal
- *    (click, Enter and Space; inputs inside the card never trigger it), the tier cards' Required
- *    display opens the same modal for the mapped currency;
+ *    (the reverse in stub mode). Header art is 48px (box and img), drop-line art 24px (Amendment K3);
+ *  - modal access (Amendment K2): the tier cards' Required field is the SOLE modal opener; clicking
+ *    or pressing Enter/Space on a farm header must NEVER open the modal, and inputs inside a card
+ *    never open anything either;
  *  - results math vs an INDEPENDENT reference farmPlan recomputed here from the mode's data: the
  *    gold buy-out (truth 6610) at held 1000 + bonus 2 reads deficit 5610 and
  *    runs = ceil(5610/(dropExpected×(num+2))) — the shipped snapshot's dropExpected says 104, a flat
  *    "per-run add" bug says 163, and the gate pins that the two disagree before trusting either;
- *    a null-farm currency says "—" + "No drop data yet"; result labels carry the CURRENCY names and
- *    restore to the tier words when a switch leaves a tier unmapped (and on the stub);
+ *    a null-farm currency says "—" + "No drop data yet"; event-mode #results labels are
+ *    "{N} runs"/"run" with ZERO "AP" text (Amendment K6) and carry the CURRENCY names, restoring to
+ *    the tier words when a switch leaves a tier unmapped (the stub keeps its own unchanged wording);
  *  - ABSENCE of every planner-card surface (#eventPlannerCard/.eshop-summary/.eshop-filter-chip/
  *    .eshop-group/...), zero requests for the deleted icons/materials mockup, zero HTTP >= 400;
  *  - geometry parity Required===Held===Bonus offsetHeight/Width per tier, dashed/pointer/focus
  *    cues, hover rule pinned through the CSSOM (headless reports (hover: hover)=false);
  *  - standalone event icons (.material-icon--event transparent, one decoded fg img, no badge) in
  *    the tier cards and farm cards; the hidden #questDropsGrid spans stay hydrated (1 img, right
- *    file, no badge) but decode is not demanded of nodes the user cannot see;
- *  - the currency modal contract: opens from a tier Required (click/Enter/Space), Escape/✕/Cancel/
+ *    file, no badge) but decode is not demanded of nodes the user cannot see. Amendment K1: tier
+ *    icon boxes are 96px tall, the fg-layer FILLS the box (100%, no 80px inset), the base
+ *    .material-icon rule carries NO grey plate any more, and stub letter badges are 96px tall with
+ *    their TIER_COLORS background;
+ *  - the currency modal contract: the tier cards' Required field is the SOLE opener (Amendment K2),
+ *    Escape/✕/Cancel/
  *    backdrop discard, ALL clamping in the draft rows (limit clamp, focus-preserving typing,
  *    schema max, negative, rapid stepper race), Default/Select All semantics, only Done commits;
  *  - Done agreement through storage (new {selectedEventId, plans} shape) + tier Required + the
@@ -92,11 +101,16 @@
  *   flat-bonus: in the selectors chunk replace `I(e.dropExpected)*(I(e.num)+x.validate(t,` with
  *               `I(e.dropExpected)*I(e.num)+x.validate(t,`
  *               (bonus leaves the stack — must redden the farm results pin 104→163);
- *   header-opener no-op: in the event-lazy chunk replace `,A(t),t}` (the end of the farm card's
- *               header builder) with `,t}` — the header never binds click/Enter/Space, so the
- *               modal-access pins go red while the tier Required keeps working;
- *   secondary-wrong-currency: in the event-lazy chunk replace `I(n,e.secondary.currencyId)` with
- *               `I(n,t.id)` — the secondary line resolves to the CARD's currency, so the drop-line
+ *   header-still-clickable (Amendment K regression): in the event-lazy chunk find the farm card's
+ *               plain header builder `s.el(`div`,`farm-card-title`)…replaceChildren(n,r),t}` and
+ *               restore the removed opener — dataset currency id + role/tabindex + the
+ *               bindCurrencyModalOpen call (resolved structurally by its `dataset.modalBound` body).
+ *               The K2 absence pins and the inert-header scenes go red while the tier Required keeps working;
+ *   calcbtn-misplaced (Amendment K regression): in index.html move the #calculateBtn button out of
+ *               the Shop Requirements .bond-card-actions--end back to a card sibling — the K5
+ *               placement/width pins go red;
+ *   secondary-wrong-currency: in the event-lazy chunk replace `L(n,e.secondary.currencyId)` with
+ *               `L(n,t.id)` — the secondary line resolves to the CARD's currency, so the drop-line
  *               pins (secondary id + art + amount) go red;
  *   costume:    in the event-lazy chunk replace `costume_20470011.webp` with `costume_20479999.webp`
  *               (must redden the costume-face src/decode pin and the zero-4xx absence pin).
@@ -485,8 +499,9 @@ try {
           bonusBox: box(bonus),
           iconEventClass: iconBox ? iconBox.classList.contains("material-icon--event") : null,
           iconBoxBg: iconBox ? getComputedStyle(iconBox).backgroundColor : null,
+          iconBoxH: iconBox ? iconBox.offsetHeight : 0,
           badge: badgeOf(iconBox),
-          imgs: imgs.map((i) => ({ cls: i.className, src: i.getAttribute("src"), w: i.naturalWidth })),
+          imgs: imgs.map((i) => ({ cls: i.className, src: i.getAttribute("src"), w: i.naturalWidth, h: i.offsetHeight })),
         };
       }
       const quests = {};
@@ -543,6 +558,7 @@ try {
             cards: [...farmGrid.querySelectorAll(".farm-card")].map((c) => {
               const header = c.querySelector(".farm-card-title");
               const hImg = header ? header.querySelector("img") : null;
+              const hBox = header ? header.querySelector(".mini-icon") : null;
               return {
                 tier: c.dataset.tier,
                 name: (c.querySelector(".farm-card-name") || {}).textContent || null,
@@ -555,6 +571,8 @@ try {
                       ariaLabel: header.getAttribute("aria-label"),
                       currencyId: header.dataset.currencyId || null,
                       cursor: getComputedStyle(header).cursor,
+                      boxH: hBox ? hBox.offsetHeight : 0,
+                      imgH: hImg ? hImg.offsetHeight : 0,
                       imgSrc: hImg ? hImg.getAttribute("src") : null,
                       imgW: hImg ? hImg.naturalWidth : 0,
                       text: header.textContent,
@@ -562,6 +580,7 @@ try {
                   : null,
                 drops: [...c.querySelectorAll(".drop-line")].map((d) => {
                   const img = d.querySelector("img");
+                  const dBox = d.querySelector(".mini-icon");
                   return {
                     kind: d.dataset.dropLine,
                     currencyId: d.dataset.currencyId || null,
@@ -571,6 +590,8 @@ try {
                     value: (d.querySelector(".drop-value") || {}).textContent || null,
                     imgSrc: img ? img.getAttribute("src") : null,
                     imgW: img ? img.naturalWidth : 0,
+                    boxH: dBox ? dBox.offsetHeight : 0,
+                    imgH: img ? img.offsetHeight : 0,
                   };
                 }),
                 inputs: [...c.querySelectorAll("input")].map((i) => ({
@@ -674,6 +695,10 @@ try {
         errors.push(
           `${label}: #${id} badge is ${box.badgeW}×${box.badgeH}px in a ${box.boxW}×${box.boxH}px box, want it to fill the box`,
         );
+      /* K1: the tier icon containers are the 96px material-icon; the quest spans the 48px mini-icon */
+      const wantH = TIERS.includes(tier) && id.endsWith("Icon") ? 96 : 48;
+      if (Math.abs(box.boxH - wantH) > 1)
+        errors.push(`${label}(K1/K3): #${id} container is ${box.boxH}px tall, want ${wantH}px`);
     }
   };
 
@@ -741,6 +766,18 @@ try {
           firstCardTitle: titles[0] || null,
           secondCardTitle: titles[1] || null,
           cardTitles: titles,
+          orderTitles: [...panel.querySelectorAll(".card-inner > .card-title")].map((e) =>
+            e.textContent.trim(),
+          ),
+          calc: (() => {
+            const b = document.getElementById("calculateBtn");
+            if (!b) return null;
+            const a = b.parentElement;
+            const inner = a ? a.closest(".card-inner") : null;
+            if (!inner) return { actions: a ? a.className : null, last: false, card: null };
+            const t = inner.querySelector(":scope > .card-title");
+            return { actions: a.className, last: a === inner.lastElementChild, card: t ? t.textContent.trim() : null };
+          })(),
           selectCardHasSelect: !!(cards[0] && cards[0].querySelector("#eventSelect")),
           modalPresent: !!document.getElementById("eventShopModal"),
           modalList: !!document.getElementById("eventShopModalList"),
@@ -799,7 +836,23 @@ try {
         for (const p of props) out[p] = rule.style.getPropertyValue(p);
         return out;
       };
-      const out = { hover: null, focus: null, requireBase: null, iconBase: null, iconEvent: null, farmFallback: null };
+      const out = {
+        hover: null,
+        focus: null,
+        requireBase: null,
+        iconBase: null,
+        iconEvent: null,
+        iconFg: null,
+        farmFallback: null,
+        farmGrid: null,
+        farmGridMedia: 0,
+        farmTitle: null,
+        farmTitleCues: 0,
+        farmTitleFg: null,
+        dropLine: null,
+        btnActions: null,
+        btnSmall: null,
+      };
       const walk = (rules, mediaText) => {
         for (const r of rules) {
           if (r.media) {
@@ -832,9 +885,24 @@ try {
                 "display",
               ]),
             };
-          if (s === ".material-icon") out.iconBase = { decl: decl(r, ["background", "background-color"]) };
+          if (s === ".material-icon")
+            out.iconBase = { decl: decl(r, ["background", "background-color", "height"]) };
           if (s === ".material-icon--event") out.iconEvent = { decl: decl(r, ["background", "background-color"]) };
+          if (s === ".material-icon.fg-layer") out.iconFg = { decl: decl(r, ["width", "height"]) };
           if (s === ":where(.farm-card)") out.farmFallback = { decl: decl(r, ["--tier-color", "--tier-text"]) };
+          if (s === ".farm-grid") {
+            if (mediaText) out.farmGridMedia++;
+            else out.farmGrid = { decl: decl(r, ["display", "grid-template-columns", "justify-content"]) };
+          }
+          if (s === ".farm-card-title") out.farmTitle = { decl: decl(r, ["cursor"]) };
+          if (/farm-card-title(?![\w .-])/.test(s) && /(?::hover|:focus)/.test(s)) out.farmTitleCues++;
+          if (s === ".farm-card-title.mini-icon.fg-layer")
+            out.farmTitleFg = { decl: decl(r, ["width", "height"]) };
+          if (s === ".farm-card.drop-line.mini-icon") out.dropLine = { decl: decl(r, ["height"]) };
+          if (s === ".bond-card-actions.calculate-btn") {
+            if (/width\s*<\s*380/.test(mediaText)) out.btnSmall = { decl: decl(r, ["width"]) };
+            else out.btnActions = { decl: decl(r, ["width"]) };
+          }
         }
       };
       for (const sheet of document.styleSheets) {
@@ -1144,8 +1212,12 @@ try {
       errors.push(
         `legacy: first card is ${JSON.stringify([pg.firstCardId, pg.firstCardTitle])}, want ["eventSelectCard","Select Event"] — the card ships regardless of events`,
       );
-    if (pg.secondCardTitle !== "Shop Requirements")
-      errors.push(`legacy: second card title is ${JSON.stringify(pg.secondCardTitle)}, want "Shop Requirements"`);
+    if (pg.secondCardTitle !== "Drop Rates per Run")
+      errors.push(`legacy(K4): second card title is ${JSON.stringify(pg.secondCardTitle)}, want "Drop Rates per Run"`);
+    if (JSON.stringify(pg.orderTitles) !== JSON.stringify(["Select Event", "Drop Rates per Run", "Shop Requirements", "Items Needed"]))
+      errors.push(`legacy(K4): card order is ${JSON.stringify(pg.orderTitles)}, want Select Event → Drop Rates per Run → Shop Requirements → Items Needed`);
+    if (!pg.calc || pg.calc.actions !== "bond-card-actions bond-card-actions--end" || !pg.calc.last || pg.calc.card !== "Shop Requirements")
+      errors.push(`legacy(K5): #calculateBtn placement wrong — ${JSON.stringify(pg.calc)}, want LAST child of the Shop Requirements .bond-card-actions--end`);
     if (!pg.modalPresent || !pg.modalList)
       errors.push("legacy: #eventShopModal markup is static and must ship regardless of data");
 
@@ -1192,8 +1264,12 @@ try {
         );
       if (td.iconEventClass)
         errors.push(`legacy: ${t} icon box carries material-icon--event — the transparent override is event-mode only`);
-      if (td.iconBoxBg !== "rgb(229, 231, 235)")
-        errors.push(`legacy: ${t} generic icon plate is ${td.iconBoxBg}, want the grey #e5e7eb`);
+      if (td.iconBoxBg !== "rgba(0, 0, 0, 0)")
+        errors.push(
+          `legacy(K1): ${t} icon box paints ${td.iconBoxBg} — the grey #e5e7eb base plate was deleted by Amendment K; the badge carries the colour`,
+        );
+      if (td.iconBoxH !== 96)
+        errors.push(`legacy(K1): ${t} icon box is ${td.iconBoxH}px tall, want the 96px tier icon`);
       if (td.name !== t.charAt(0).toUpperCase() + t.slice(1))
         errors.push(`legacy: ${t} card name is ${JSON.stringify(td.name)}`);
       if (td.imgs.length)
@@ -1321,9 +1397,17 @@ try {
       errors.push(
         `select card: first card of #panel-event is ${JSON.stringify([pg.firstCardId, pg.firstCardTitle, pg.selectCardHasSelect])}, want ["eventSelectCard","Select Event",true]`,
       );
-    if (pg.secondCardTitle !== "Shop Requirements")
+    if (pg.secondCardTitle !== "Drop Rates per Run")
       errors.push(
-        `select card: the calculator card must follow the select — second title ${JSON.stringify(pg.secondCardTitle)}`,
+        `select card(K4): the farm card must follow the select — second title ${JSON.stringify(pg.secondCardTitle)}`,
+      );
+    if (JSON.stringify(pg.orderTitles) !== JSON.stringify(["Select Event", "Drop Rates per Run", "Shop Requirements", "Items Needed"]))
+      errors.push(
+        `select card(K4): card order is ${JSON.stringify(pg.orderTitles)}, want Select Event → Drop Rates per Run → Shop Requirements → Items Needed`,
+      );
+    if (!pg.calc || pg.calc.actions !== "bond-card-actions bond-card-actions--end" || !pg.calc.last || pg.calc.card !== "Shop Requirements")
+      errors.push(
+        `btn(K5): #calculateBtn placement wrong — ${JSON.stringify(pg.calc)}, want LAST child of the Shop Requirements .bond-card-actions--end`,
       );
     if (!pg.modalPresent || !pg.modalList)
       errors.push("modal chrome: #eventShopModal / #eventShopModalList missing from static markup");
@@ -1496,20 +1580,64 @@ try {
           `parity CSSOM: eshop-require-display still overrides box geometry (${geometry.join("/")}) — Amendment B says geometry inherits from material-input-box-field`,
         );
     }
-    if (
-      !css.iconBase ||
-      !/#e5e7eb|rgb\(229, 231, 235\)/.test(
-        (css.iconBase.decl.background || "") + (css.iconBase.decl["background-color"] || ""),
-      )
-    )
+    if (css.iconBase && (css.iconBase.decl.background || css.iconBase.decl["background-color"]))
       errors.push(
-        `icons CSSOM: base .material-icon grey plate rule missing or changed — ${JSON.stringify(css.iconBase)}`,
+        `icons CSSOM(K1): base .material-icon declares a background (${JSON.stringify(css.iconBase.decl)}) — Amendment K deleted the grey plate, only --event keeps the box transparent`,
+      );
+    if (!css.iconBase || css.iconBase.decl.height !== "96px")
+      errors.push(`icons CSSOM(K1): base .material-icon height is ${JSON.stringify(css.iconBase && css.iconBase.decl.height)}, want 96px`);
+    if (!css.iconFg || css.iconFg.decl.width !== "100%" || css.iconFg.decl.height !== "100%")
+      errors.push(
+        `icons CSSOM(K1): .material-icon .fg-layer is ${JSON.stringify(css.iconFg && css.iconFg.decl)}, want 100%/100% fill — the 80px inset must not come back`,
       );
     if (
       !css.iconEvent ||
       !/transparent/.test((css.iconEvent.decl.background || "") + (css.iconEvent.decl["background-color"] || ""))
     )
       errors.push(`icons CSSOM: .material-icon--event transparent rule missing — ${JSON.stringify(css.iconEvent)}`);
+    /* Amendment K7 farm grid track rule + the absence of the deleted media overrides */
+    if (
+      !css.farmGrid ||
+      !/auto-fill/.test(css.farmGrid.decl["grid-template-columns"] || "") ||
+      !/280px/.test(css.farmGrid.decl["grid-template-columns"] || "") ||
+      !/320px/.test(css.farmGrid.decl["grid-template-columns"] || "") ||
+      css.farmGrid.decl["justify-content"] !== "center"
+    )
+      errors.push(
+        `farm CSSOM(K7): .farm-grid is ${JSON.stringify(css.farmGrid)}, want repeat(auto-fill, minmax(min(100%, 280px), 320px)) + justify-content: center`,
+      );
+    if (css.farmGridMedia !== 0)
+      errors.push(
+        `farm CSSOM(K7): ${css.farmGridMedia} media rule(s) still override .farm-grid — the old 580/940 repeat() pins were deleted by Amendment K`,
+      );
+    /* Amendment K2: the header is a plain display — no cursor cue rule, no hover/focus opener cue */
+    if (css.farmTitle && css.farmTitle.decl.cursor && css.farmTitle.decl.cursor !== "auto")
+      errors.push(`farm CSSOM(K2): .farm-card-title cursor is ${css.farmTitle.decl.cursor}, want none/auto (not a control)`);
+    if (css.farmTitleCues !== 0)
+      errors.push(
+        `farm CSSOM(K2): ${css.farmTitleCues} rule(s) style .farm-card-title as a control (:hover/:focus-visible cues) — the opener cues were deleted by Amendment K`,
+      );
+    if (!css.farmTitleFg || css.farmTitleFg.decl.width !== "100%" || css.farmTitleFg.decl.height !== "100%")
+      errors.push(`farm CSSOM(K3): the header fg-layer fill rule is ${JSON.stringify(css.farmTitleFg)}, want 100%/100%`);
+    if (!css.dropLine || css.dropLine.decl.height !== "24px")
+      errors.push(`farm CSSOM(K3): the drop-line .mini-icon height rule is ${JSON.stringify(css.dropLine)}, want 24px`);
+    /* Amendment K5: the event Calculate button rides the bond actions house rule */
+    if (!css.btnActions || css.btnActions.decl.width !== "auto")
+      errors.push(`btn CSSOM(K5): .bond-card-actions .calculate-btn width is ${JSON.stringify(css.btnActions && css.btnActions.decl.width)}, want auto ≥380px`);
+    if (!css.btnSmall || css.btnSmall.decl.width !== "100%")
+      errors.push(`btn CSSOM(K5): the <380px media rule for .bond-card-actions .calculate-btn is ${JSON.stringify(css.btnSmall)}, want width: 100%`);
+    /* K5 live geometry at the 1120px viewport: auto width, flush to the actions row's right edge */
+    const btnGeo = await page.evaluate(() => {
+      const b = document.getElementById("calculateBtn");
+      const a = b.parentElement;
+      const br = b.getBoundingClientRect();
+      const ar = a.getBoundingClientRect();
+      return { ratio: br.width / a.clientWidth, rightGap: Math.round(ar.right - br.right) };
+    });
+    if (!(btnGeo.ratio > 0 && btnGeo.ratio <= 0.5))
+      errors.push(`btn(K5): #calculateBtn spans ${(btnGeo.ratio * 100).toFixed(0)}% of its row at 1120px, want at most half (bond parity)`);
+    if (Math.abs(btnGeo.rightGap) > 1.5)
+      errors.push(`btn(K5): the button's right edge is ${btnGeo.rightGap}px off the actions row's right edge, want flush (right-aligned)`);
     if (!css.farmFallback || !/var\(--silver\)/.test(css.farmFallback.decl["--tier-color"] || ""))
       errors.push(
         `farm CSSOM: :where(.farm-card) silver --tier-color fallback missing — ${JSON.stringify(css.farmFallback)} — an unknown tier background (QP "zero") would lose its border colour`,
@@ -1544,6 +1672,10 @@ try {
         errors.push(
           `icons: ${tier} icon box has ${fg.length} fg + ${bg.length} bg img(s), want a single event fg-layer`,
         );
+      /* Amendment K1 geometry: the 96px box, filled by the fg-layer (no 80px inset) */
+      if (td.iconBoxH !== 96) errors.push(`icons(K1): ${tier} tier icon box is ${td.iconBoxH}px tall, want 96px`);
+      if (fg[0] && fg[0].h !== 96)
+        errors.push(`icons(K1): ${tier} fg-layer is ${fg[0].h}px tall, want it to FILL the 96px box (the 80px inset must not return)`);
       if (td.badge)
         errors.push(
           `icons: ${tier} icon box still shows the ${JSON.stringify(td.badge.text)} fallback badge in event mode — hydration did not replace it`,
@@ -1654,17 +1786,31 @@ try {
           errors.push(
             `farm absence(I7): ${strayInputs.length} require-display/farmRequired input(s) inside #farmGrid — ${JSON.stringify(strayInputs.map((i) => i.id))}`,
           );
-        const roleCount = f.cards.filter((c) => c.header && c.header.role === "button").length;
-        if (roleCount !== f.cards.length)
-          errors.push(`farm(I7): ${roleCount}/${f.cards.length} cards have a role=button header — the header is the modal opener`);
+        /* Amendment K2: the header is a PLAIN DISPLAY — every opener attribute must be ABSENT.
+           (The inverted I7 pin: role=button/tabindex/aria-haspopup/aria-label/data-currency-id on
+           any .farm-card-title, or a pointer cursor, means the header-opener regression is back.) */
+        const openerAttrs = f.cards.filter(
+          (c) => c.header && (c.header.role || c.header.tabindex || c.header.haspopup || c.header.ariaLabel || c.header.currencyId),
+        );
+        if (openerAttrs.length)
+          errors.push(
+            `farm(K2): ${openerAttrs.length}/${f.cards.length} headers still carry opener attrs — ${JSON.stringify(
+              openerAttrs.map((c) => [c.name, c.header.role, c.header.tabindex, c.header.haspopup, c.header.ariaLabel, c.header.currencyId]),
+            )}`,
+          );
+        const pointerHeaders = f.cards.filter((c) => c.header && c.header.cursor !== "auto");
+        if (pointerHeaders.length)
+          errors.push(
+            `farm(K2): ${pointerHeaders.length} header(s) are not cursor:auto — ${JSON.stringify(pointerHeaders.map((c) => [c.name, c.header.cursor]))}`,
+          );
 
         const mapped = new Set(TIERS.map((t) => currencyForTierRef(CURRENCIES, t)).filter(Boolean).map((c) => String(c.id)));
         for (const currency of CURRENCIES) {
           const id = String(currency.id);
-          const card = f.cards.find((c) => c.header && c.header.currencyId === id);
+          const card = f.cards.find((c) => c.name === currency.name);
           if (!card) {
             errors.push(
-              `farm: no card for ${currency.name} (${id}, tier ${currency.background}) — ${JSON.stringify(f.cards.map((c) => [c.tier, c.name, c.header && c.header.currencyId]))}`,
+              `farm: no card for ${currency.name} (${id}, tier ${currency.background}) — ${JSON.stringify(f.cards.map((c) => [c.tier, c.name]))}`,
             );
             continue;
           }
@@ -1672,24 +1818,25 @@ try {
             errors.push(
               `farm(${currency.name}): card is tier ${JSON.stringify(card.tier)} name ${JSON.stringify(card.name)}, want ${currency.background} / ${currency.name}`,
             );
-          /* the header IS the opener: role/tabindex/aria-haspopup/aria-label/own currency id + art */
+          /* the header is a plain display (K2) carrying the currency's art at the 48px header step
+             (K3): no attrs of any kind, and the mini-icon box AND its img measure 48px */
           const h = card.header;
           if (!h) errors.push(`farm(${currency.name}): no .farm-card-title header`);
           else {
-            if (h.currencyId !== id)
-              errors.push(`farm(${currency.name}): header carries currency ${JSON.stringify(h.currencyId)}, want ${id}`);
-            if (h.role !== "button" || h.tabindex !== "0" || h.haspopup !== "dialog")
+            if (h.currencyId || h.role || h.tabindex || h.haspopup || h.ariaLabel)
               errors.push(
-                `farm(${currency.name}): header is not an opener (role ${JSON.stringify(h.role)}, tabindex ${JSON.stringify(h.tabindex)}, aria-haspopup ${JSON.stringify(h.haspopup)})`,
+                `farm(K2)(${currency.name}): header carries attrs ${JSON.stringify([h.role, h.tabindex, h.haspopup, h.ariaLabel, h.currencyId])}, want all absent`,
               );
-            if (h.ariaLabel !== `${currency.name}: open shop items`)
-              errors.push(`farm(${currency.name}): header aria-label ${JSON.stringify(h.ariaLabel)}`);
             const wantFile = `event_shop/${currency.icon.split("/").pop()}`;
             if (!(h.imgSrc || "").includes(wantFile) || !(h.imgSrc || "").includes(`?v=${IMAGE_VERSION}`))
               errors.push(
                 `farm(${currency.name}): header icon ${JSON.stringify(h.imgSrc)}, want ${wantFile}?v=${IMAGE_VERSION}`,
               );
             if (!(h.imgW > 0)) errors.push(`farm(${currency.name}): header icon never decoded (naturalWidth ${h.imgW})`);
+            if (h.boxH !== 48 || h.imgH !== 48)
+              errors.push(
+                `farm(K3)(${currency.name}): header art is box ${h.boxH}px / img ${h.imgH}px, want 48px/48px (box and image)`,
+              );
             if (h.text.replace(/\s+/g, " ").trim() !== currency.name)
               errors.push(`farm(${currency.name}): header text ${JSON.stringify(h.text)}, want the currency name alone`);
           }
@@ -1774,6 +1921,8 @@ try {
                 `farm(${currency.name}): ${want.kind} line icon ${JSON.stringify(d.imgSrc)}, want ${wantFile}?v=${IMAGE_VERSION}`,
               );
             if (!(d.imgW > 0)) errors.push(`farm(${currency.name}): ${want.kind} line icon never decoded (${d.imgW})`);
+            if (d.boxH !== 24 || d.imgH !== 24)
+              errors.push(`farm(K3)(${currency.name}): ${want.kind} line art is box ${d.boxH}px / img ${d.imgH}px, want 24px/24px`);
           }
         }
         /* non-vacuity: with the shipped snapshot every card must be on the FULL-data path, and the
@@ -1818,12 +1967,12 @@ try {
         for (const c of CURRENCIES) {
           const entry = FARM[String(c.id)];
           if (!entry) continue;
-          if (String(c.id) === id) carriersNow.push({ card: String(c.id), kind: "primary", de: entry.dropExpected, num: entry.num });
+          if (String(c.id) === id) carriersNow.push({ card: c.name, kind: "primary", de: entry.dropExpected, num: entry.num });
           if (entry.secondary && String(entry.secondary.currencyId) === id)
-            carriersNow.push({ card: String(c.id), kind: "secondary", de: entry.secondary.dropExpected, num: entry.secondary.num });
+            carriersNow.push({ card: c.name, kind: "secondary", de: entry.secondary.dropExpected, num: entry.secondary.num });
         }
-        const readLine = (cards, cardId, kind) =>
-          (((cards.find((c) => c.header && c.header.currencyId === cardId) || {}).drops) || []).find(
+        const readLine = (cards, cardName, kind) =>
+          (((cards.find((c) => c.name === cardName) || {}).drops) || []).find(
             (d) => d.kind === kind && d.currencyId === id,
           );
         const cardCountBefore = (await readTier()).farm.cards.length;
@@ -2028,13 +2177,45 @@ try {
       errors.push(`keyboard: Space on silverNeed opened ${JSON.stringify(modal.title)}, want ${silverCurrency.name}`);
     await closeBy("Escape", "Escape after Space-open");
 
-    /* ==== 8b. the farm card's CURRENCY HEADER is the modal opener (Amendment I7, every mode) === */
-    /* Click, Enter and Space on the header all open THAT currency's modal, and the tier card's
-       Required display opens the SAME modal for a mapped currency. Inputs inside a card (the
-       farm Held/Bonus pair of an unmapped currency) must never trigger it. */
+    /* ==== 8b. the tier Required is the SOLE opener; farm headers are inert (Amendment K2) ==== */
+    /* Click, Enter and Space aimed at a farm card's currency header must NEVER open the modal — the
+       header lost its opener role in Amendment K. The tier card's Required display keeps opening the
+       SAME modal for the mapped currency. Inputs inside a card still open nothing. */
     {
       await resetPlan();
-      const headerSel = (id) => `#farmGrid .farm-card-title[data-currency-id="${id}"]`;
+      const headerByName = async (name) => {
+        const handles = await page.$$("#farmGrid .farm-card-title");
+        for (const el of handles) {
+          const t = await el.evaluate((e) => e.textContent.replace(/\s+/g, " ").trim());
+          if (t === name) return el;
+        }
+        return null;
+      };
+      for (const currency of CURRENCIES) {
+        const h = await headerByName(currency.name);
+        if (!h) {
+          errors.push(`8b(K2): no .farm-card-title header for ${currency.name} — the card title vanished`);
+          continue;
+        }
+        await h.click();
+        await wait(SETTLE_MS);
+        if ((await readModal()).open) {
+          errors.push(`8b(K2): clicking ${currency.name}'s farm header opened the modal — the header is not a control`);
+          await closeBy("Escape", "8b: recover after the header click opened the modal");
+        }
+        for (const via of ["Enter", "Space"]) {
+          await h.focus();
+          const focused = await h.evaluate((e) => document.activeElement === e);
+          if (focused) errors.push(`8b(K2): ${currency.name}'s header took keyboard focus — it must not be a tab stop`);
+          await page.keyboard.press(via);
+          await wait(SETTLE_MS);
+          if ((await readModal()).open) {
+            errors.push(`8b(K2): ${via} aimed at ${currency.name}'s header opened the modal`);
+            await closeBy("Escape", "8b: recover after the header key opened the modal");
+          }
+        }
+      }
+      /* the tier Required opens the mapped currency's modal — same title, same rows */
       const expectedRows = (snapshot, currencyId) =>
         snapshot.items
           .filter((i) => String(i.cost.itemId) === String(currencyId))
@@ -2043,38 +2224,19 @@ try {
           .join();
       for (const currency of CURRENCIES) {
         const id = String(currency.id);
-        for (const via of ["click", "Enter", "Space"]) {
-          if (via === "click") await safeClick(headerSel(id));
-          else {
-            await page.focus(headerSel(id));
-            await page.keyboard.press(via);
-          }
-          const opened = await modalGate(true, `header ${via}: ${currency.name} modal opens`);
-          if (!opened) continue;
-          const m = await readModal();
-          if (m.title !== `${currency.name} \u2014 Shop Items`)
-            errors.push(
-              `header ${via}: opened ${JSON.stringify(m.title)}, want "${currency.name} \u2014 Shop Items" — the opener must carry the CARD's currency, not first-match's`,
-            );
-          const gotIds = m.rows.map((r) => r.id).sort().join();
-          if (gotIds !== expectedRows(EACTIVE, id))
-            errors.push(`header ${via}: ${currency.name} modal rows ${JSON.stringify(gotIds)}, want ${JSON.stringify(expectedRows(EACTIVE, id))}`);
-          await closeBy("Escape", `header ${via} then Escape`);
-        }
-        /* the tier Required opens the same thing for a tier-mapped currency */
-        if (currencyForTierRef(CURRENCIES, currency.background) && String(currencyForTierRef(CURRENCIES, currency.background).id) === id) {
-          await safeClick(sel.tierNeed(currency.background));
-          if (await modalGate(true, `tier Required: ${currency.name} modal`)) {
-            const mt = await readModal();
-            if (mt.title !== `${currency.name} \u2014 Shop Items`)
-              errors.push(`tier Required: ${currency.background} opened ${JSON.stringify(mt.title)}, want the mapped currency's modal`);
-            if (mt.rows.map((r) => r.id).sort().join() !== expectedRows(EACTIVE, id))
-              errors.push(`tier Required: ${currency.background} modal rows differ from the header opener's for the same currency`);
-            await closeBy("Escape", "tier Required then Escape");
-          }
+        const mappedHere = currencyForTierRef(CURRENCIES, currency.background);
+        if (!mappedHere || String(mappedHere.id) !== id) continue;
+        await safeClick(sel.tierNeed(currency.background));
+        if (await modalGate(true, `tier Required: ${currency.name} modal`)) {
+          const mt = await readModal();
+          if (mt.title !== `${currency.name} \u2014 Shop Items`)
+            errors.push(`tier Required: ${currency.background} opened ${JSON.stringify(mt.title)}, want the mapped currency's modal`);
+          if (mt.rows.map((r) => r.id).sort().join() !== expectedRows(EACTIVE, id))
+            errors.push(`tier Required: ${currency.background} modal rows differ from the currency's own item list`);
+          await closeBy("Escape", "tier Required then Escape");
         }
       }
-      /* a farm input click never bubbles into the opener (MULTI is where such inputs exist) */
+      /* a farm input click never opens anything (MULTI is where unmapped cards carry inputs) */
       if (MULTI) {
         await switchEvent(PIN_ZERO, '8b: switch → 80292 (unmapped QP + second silver)');
         const unmapped = EZERO.currencies.filter((c) => !currencyForTierRef(EZERO.currencies, c.background) || String(currencyForTierRef(EZERO.currencies, c.background).id) !== String(c.id));
@@ -2088,7 +2250,7 @@ try {
           await safeClick(held);
           await wait(SETTLE_MS);
           if ((await readModal()).open)
-            errors.push(`8b: clicking ${currency.name}'s farm Held input opened the modal — inputs must never trigger the header opener`);
+            errors.push(`8b: clicking ${currency.name}'s farm Held input opened the modal — inputs must never open it`);
         }
         await switchEvent(ACTIVE_ID, "8b: back to the pinned event");
       }
@@ -2400,7 +2562,8 @@ try {
         const id = String(currency.id);
         const ref = refFarmRow(FARM[id], totals[id], held[tier], bonus[tier]);
         const got = res.results[tier];
-        const wantLabel = `${ref.runs === 1 ? "run" : "runs"} \u00b7 ${fmtRef(ref.ap)} AP`;
+        /* Amendment K6: event-mode labels are "{N} runs"/"run" — the AP figure is priced but never printed */
+        const wantLabel = ref.runs === 1 ? "run" : "runs";
         if (got.deficit !== String(ref.deficit) || got.play !== String(ref.runs) || got.label !== wantLabel) {
           if (!firstBad)
             firstBad = { tier, got, want: { deficit: String(ref.deficit), play: String(ref.runs), label: wantLabel } };
@@ -2409,6 +2572,10 @@ try {
           );
         }
       }
+      /* K6 absence sweep: no "AP" text anywhere in the visible #results surface */
+      const resultsText = await page.evaluate(() => (document.getElementById("results") || {}).textContent || "");
+      if (/\bAP\b/.test(resultsText))
+        errors.push(`results(K6): #results still prints AP — ${JSON.stringify(resultsText.replace(/\s+/g, " ").slice(0, 160))}`);
       /* the headline discriminator: gold buy-out 6610 − 1000 held over dropExpected × (num+2).
          The two bug-shaped answers differ from the right one, so the scene proves it can see the
          difference before it claims the app is right. */
@@ -2430,10 +2597,10 @@ try {
         );
       if (res.results.gold.play !== String(goldRef.runs))
         errors.push(`farm math: gold play cell is ${JSON.stringify(res.results.gold.play)}, want ${goldRef.runs}`);
-      const wantGoldLabel = `${goldRef.runs === 1 ? "run" : "runs"} \u00b7 ${fmtRef(goldRef.ap)} AP`;
+      const wantGoldLabel = goldRef.runs === 1 ? "run" : "runs";
       if (res.results.gold.label !== wantGoldLabel)
         errors.push(
-          `farm math: gold label is ${JSON.stringify(res.results.gold.label)}, want ${JSON.stringify(wantGoldLabel)} (the runs count lives in the play cell, the label carries the wording + AP)`,
+          `farm math: gold label is ${JSON.stringify(res.results.gold.label)}, want ${JSON.stringify(wantGoldLabel)} (the runs count lives in the play cell, the label carries the K6 wording alone — no AP)`,
         );
     }
 
@@ -2532,7 +2699,8 @@ try {
             `isolation(G): A's held/bonus after the round trip reads ${JSON.stringify([backA.tiers.gold.heldValue, backA.tiers.gold.bonusValue])}, want ["1000","2"]`,
           );
         const fullShape = (c) => {
-          const entry = FARM[c.header && c.header.currencyId];
+          const cur = CURRENCIES.find((x) => x.name === c.name);
+          const entry = cur ? FARM[String(cur.id)] : null;
           if (!entry) return c.lines.length === 1 && c.lines[0] === "No drop data yet" && c.drops.length === 0;
           const stats = entry.recommendLv ? 2 : 1;
           const drops = entry.secondary ? 2 : 1;
@@ -2589,11 +2757,14 @@ try {
         errors.push(
           `farm: an 80379 card invented drop data where the snapshot has null — ${JSON.stringify(s79.farm.cards.map((c) => [c.lines, c.drops.length]))}`,
         );
-      for (const c of s79.farm.cards) {
-        const cur = EMULTI.currencies.find((x) => String(x.id) === (c.header || {}).currencyId);
-        if (!cur)
-          errors.push(`farm: 80379 card header carries ${JSON.stringify((c.header || {}).currencyId)}, want one of the event's own currency ids`);
-      }
+      const tagged = s79.farm.cards.filter((c) => c.header && c.header.currencyId);
+      if (tagged.length)
+        errors.push(
+          `farm(K2): ${tagged.length} 80379 header(s) still carry data-currency-id — the header must be attr-free`,
+        );
+      const unnamed = s79.farm.cards.filter((c) => !EMULTI.currencies.some((x) => x.name === c.name));
+      if (unnamed.length)
+        errors.push(`farm: 80379 card names ${JSON.stringify(unnamed.map((c) => c.name))} are not the event's own currencies`);
       await switchEvent(ACTIVE_ID, "switch back → 80639");
       const back = await readTier();
       if (back.results.gold.deficitLabel !== BUY_ALL_NAMES[String(goldCurrency.id)])
@@ -2656,9 +2827,9 @@ try {
       for (const currency of currencies) {
         const id = String(currency.id);
         const entry = EDASH.farm[id];
-        const card = sd.farm.cards.find((c) => c.header && c.header.currencyId === id);
+        const card = sd.farm.cards.find((c) => c.name === currency.name);
         if (!card || !entry) {
-          errors.push(`dash(${currency.name}): no card for the fixture currency — ${JSON.stringify(sd.farm.cards.map((c) => (c.header || {}).currencyId))}`);
+          errors.push(`dash(${currency.name}): no card for the fixture currency — ${JSON.stringify(sd.farm.cards.map((c) => c.name))}`);
           continue;
         }
         const wantStats = [entry.questName];
@@ -2672,13 +2843,16 @@ try {
           errors.push(`dash(${currency.name}): ${card.drops.length} drop line(s) ${JSON.stringify(card.drops.map((d) => d.kind))}, want the primary line alone`);
         if (card.drops[0] && (card.drops[0].currencyId !== id || card.drops[0].num !== String(entry.num)))
           errors.push(`dash(${currency.name}): primary line data wrong — ${JSON.stringify([card.drops[0].currencyId, card.drops[0].num])}`);
-        /* the header opener still works on a secondary-less card */
-        await safeClick(`#farmGrid .farm-card-title[data-currency-id="${id}"]`);
-        if (await modalGate(true, `17D: ${currency.name} header opens its modal`)) {
+        /* Amendment K: the secondary-less card's header is still inert, and the tier Required
+           (this fixture's currencies are all tier-mapped) opens its modal */
+        if (card.header && (card.header.role || card.header.currencyId))
+          errors.push(`dash(K2)(${currency.name}): the fixture header carries opener attrs ${JSON.stringify([card.header.role, card.header.currencyId])}`);
+        await safeClick(sel.tierNeed(currency.background));
+        if (await modalGate(true, `17D: ${currency.name} tier Required opens its modal`)) {
           const m = await readModal();
           if (m.title !== `${currency.name} \u2014 Shop Items`)
-            errors.push(`dash(${currency.name}): header opened ${JSON.stringify(m.title)}`);
-          await closeBy("Escape", "17D: close after header open");
+            errors.push(`dash(${currency.name}): the tier Required opened ${JSON.stringify(m.title)}`);
+          await closeBy("Escape", "17D: close after the tier Required open");
         }
       }
       /* results math is untouched by the missing secondary: the primary line still prices alone */
@@ -2702,12 +2876,13 @@ try {
       await switchEvent(ACTIVE_ID, "17D: leave the fixture");
     }
 
-    /* ==== 17H. Amendment H+I7: currency-keyed farm controls + header opener (MULTI) ==== */
+    /* ==== 17H. Amendment H + K2: currency-keyed farm controls, tier-Required-only opener ==== */
     if (MULTI) {
-      /* Amendment I7 moved the farm card's modal door from a Required box to the currency HEADER and
-         deleted the box entirely. The collision contract still holds, re-pinned: (1) every farm card's
-         header opens THAT currency's modal — by click and by Enter — so a currency no tier card owns
-         stays reachable; (2) exactly one Held/Bonus pair per currency — tier-mapped currencies keep
+      /* Amendment K moved the farm card's modal door back out of the header entirely: the header is
+         a plain display and the tier cards' Required is the tab's only opener. The collision
+         contract still holds, re-pinned: (1) NO header carries opener attrs and header clicks/keys
+         open nothing — a currency no tier card owns simply has no modal door (owner directive K2);
+         (2) exactly one Held/Bonus pair per currency — tier-mapped currencies keep
          the tier-card pair and get no farm pair, every other currency owns a farm pair writing the
          same currency-keyed plan; (3) farm figures persist by CURRENCY id, migrate from stored TIER
          ids through first-match, price per currency, and are committed synchronously at Calculate;
@@ -2728,7 +2903,7 @@ try {
               const inputs = [...c.querySelectorAll("input")];
               return {
                 tier: c.dataset.tier,
-                currencyId: header ? header.dataset.currencyId : null,
+                headerCurrencyId: header ? header.dataset.currencyId || null : null,
                 headerRole: header ? header.getAttribute("role") : null,
                 headerTabindex: header ? header.getAttribute("tabindex") : null,
                 headerHaspopup: header ? header.getAttribute("aria-haspopup") : null,
@@ -2799,33 +2974,41 @@ try {
           errors.push(
             `H1(${snap.event.id}): ${ctl.cards.length} farm card(s), want ${snap.currencies.length} — one per shop currency`,
           );
-        const ids = ctl.cards.map((c) => c.currencyId);
-        if (new Set(ids).size !== ids.length)
-          errors.push(`H1(${snap.event.id}): two farm cards claim the same currency — ${JSON.stringify(ids)}`);
-        const foreign = ids.filter((id) => id !== null && !snap.currencies.some((c) => String(c.id) === id));
+        const names = ctl.cards.map((c) => c.headerText);
+        if (new Set(names).size !== names.length)
+          errors.push(`H1(${snap.event.id}): two farm cards share a header name — ${JSON.stringify(names)}`);
+        const foreign = names.filter((n) => n !== null && !snap.currencies.some((c) => c.name === n));
         if (foreign.length)
           errors.push(
-            `H1(${snap.event.id}): farm card(s) for currencies the event never sold — ${JSON.stringify(foreign)}`,
+            `H1(${snap.event.id}): farm card headers name currencies the event never sold — ${JSON.stringify(foreign)}`,
+          );
+        /* Amendment K2: NO header may wear opener attrs on any multi-event shape */
+        const attrHeaders = ctl.cards.filter(
+          (c) => c.headerRole || c.headerTabindex || c.headerHaspopup || c.headerAria || c.headerCurrencyId,
+        );
+        if (attrHeaders.length)
+          errors.push(
+            `H1(K2)(${snap.event.id}): ${attrHeaders.length} header(s) still carry opener attrs — ${JSON.stringify(
+              attrHeaders.map((c) => [c.headerText, c.headerRole, c.headerTabindex, c.headerHaspopup, c.headerAria, c.headerCurrencyId]),
+            )}`,
           );
         const tierState = await readTier();
         for (const currency of snap.currencies) {
           const id = String(currency.id);
-          const card = ctl.cards.find((c) => c.currencyId === id);
+          const card = ctl.cards.find((c) => c.headerText === currency.name);
           if (!card) {
             errors.push(
-              `H1(${snap.event.id}): no farm card header for currency ${id} (${currency.name}, background ${currency.background}) — ${
-                mapped.has(id) ? "its tier card is the only door" : "unreachable: the header is the modal opener and it is gone"
+              `H1(${snap.event.id}): no farm card header named ${currency.name} (${id}, background ${currency.background}) — ${
+                mapped.has(id) ? "its tier Required is the modal door" : "unmapped: the card and its Held/Bonus pair must still render"
               }`,
             );
             continue;
           }
-          /* the header is the opener (Amendment I7): role/tabindex/aria + its OWN currency id */
-          if (card.headerRole !== "button" || card.headerTabindex !== "0" || card.headerHaspopup !== "dialog")
+          /* K2 absence: the header is a plain display — role/tabindex/aria-haspopup/aria-label/dataset all gone */
+          if (card.headerRole || card.headerTabindex || card.headerHaspopup || card.headerAria || card.headerCurrencyId)
             errors.push(
-              `H1(${snap.event.id}): ${currency.name} header is not an opener (role ${JSON.stringify(card.headerRole)}, tabindex ${JSON.stringify(card.headerTabindex)}, aria-haspopup ${JSON.stringify(card.headerHaspopup)})`,
+              `H1(K2)(${snap.event.id}): ${currency.name} header carries ${JSON.stringify([card.headerRole, card.headerTabindex, card.headerHaspopup, card.headerAria, card.headerCurrencyId])}, want all absent`,
             );
-          if (card.headerAria !== `${currency.name}: open shop items`)
-            errors.push(`H1(${snap.event.id}): ${currency.name} header aria-label is ${JSON.stringify(card.headerAria)}`);
           if (card.headerText !== currency.name)
             errors.push(`H1(${snap.event.id}): ${currency.name} header text reads ${JSON.stringify(card.headerText)}`);
           /* I7: no Required surface may live in a farm card */
@@ -2876,115 +3059,99 @@ try {
         }
       }
 
-      /* --- H2. 80379 second gold: modal by title, per-currency totals, keyboard path --- */
+      /* --- H2. 80379 second gold: inert headers, currency-keyed plan, first-gold-only door --- */
       const golds = EMULTI.currencies.filter((c) => c.background === "gold");
       const [firstGold, secondGold] = golds;
-      const hHeader = (id) => `#farmGrid .farm-card-title[data-currency-id="${id}"]`;
+      const secondItem = itemsOf(EMULTI, secondGold.id)[0];
+      /* K2 removed the unmapped currency's modal door entirely — its draft survives only as a SAVED
+         plan. Seed the blob the way the old modal-Done path wrote it, reload, and pin what the page
+         does with it: totals key by currency, the tier maps first-match, and no header opens. */
+      const farmHeaderInert = async (name, label) => {
+        const handles = await page.$$("#farmGrid .farm-card-title");
+        let hit = null;
+        for (const el of handles) {
+          const t = await el.evaluate((e) => e.textContent.replace(/\s+/g, " ").trim());
+          if (t === name) hit = el;
+        }
+        if (!hit) {
+          errors.push(`${label}: no farm header named ${name} — the card vanished`);
+          return;
+        }
+        await hit.click();
+        await wait(SETTLE_MS);
+        if ((await readModal()).open) {
+          errors.push(`${label}: clicking ${name}'s farm header opened the modal — K2 says the header is not a control`);
+          await closeBy("Escape", `${label}: recover after header click`);
+        }
+        await hit.focus();
+        await page.keyboard.press("Enter");
+        await wait(SETTLE_MS);
+        if ((await readModal()).open) {
+          errors.push(`${label}: Enter on ${name}'s farm header opened the modal`);
+          await closeBy("Escape", `${label}: recover after header Enter`);
+        }
+      };
       await resetPlan();
       await switchEvent(PIN_MULTI, "H2: switch → 80379 (two golds)");
-      await safeClick(hHeader(secondGold.id));
-      const h2open = await modalGate(true, "H2: the second gold's farm header opens its modal");
-      const m2 = await readModal();
-      const secondItem = itemsOf(EMULTI, secondGold.id)[0];
-      if (h2open) {
-        if (m2.title !== `${secondGold.name} \u2014 Shop Items`)
-          errors.push(
-            `H2: the ${secondGold.name} Required display opened ${JSON.stringify(m2.title)}, want "${secondGold.name} \u2014 Shop Items" — currencyForTier first-match hijacked the modal`,
-          );
-        const wantIds = itemsOf(EMULTI, secondGold.id)
-          .map((i) => String(i.id))
-          .sort()
-          .join();
-        const gotIds = m2.rows.map((r) => r.id).sort().join();
-        if (gotIds !== wantIds)
-          errors.push(`H2: that modal lists rows ${JSON.stringify(gotIds)}, want the second gold's own items ${JSON.stringify(wantIds)}`);
-        await typeInto(sel.modalInput(String(secondItem.id)), "5");
-        await clickDone();
-      }
+      await seedAndReload(
+        JSON.stringify({
+          selectedEventId: PIN_MULTI,
+          plans: { [String(PIN_MULTI)]: { requires: { [String(secondItem.id)]: 5 }, held: {}, bonus: {} } },
+        }),
+      );
       const h2ctl = await readFarmCtl(PIN_MULTI);
       const h2tier = await readTier();
+      if ((h2ctl.plan.requires || {})[String(secondItem.id)] !== 5)
+        errors.push(`H2: the reload lost the seeded second-gold row — ${JSON.stringify(h2ctl.plan.requires)}`);
       const want2 = refTotals(EMULTI.items, EMULTI.currencies, (h2ctl.plan && h2ctl.plan.requires) || {});
       if (want2[String(secondGold.id)] !== 5 * secondItem.cost.amount)
         errors.push(
           `H2: the reference says ${secondGold.name} spend is ${want2[String(secondGold.id)]}, expected 5 × ${secondItem.cost.amount} — the plan did not key by currency`,
         );
-      /* I7: no Required display shows an unmapped currency's spend — the header modal is its door,
-         and reopening it must come back with the committed figure, subtotal and title */
-      const hHeaderOpen = async (currencyId, label) => {
-        await safeClick(hHeader(currencyId));
-        if (!(await modalGate(true, label))) return null;
-        return readModal();
-      };
-      const m2q = await hHeaderOpen(String(secondGold.id), "H2: reopen the second gold via its header");
-      if (m2q) {
-        if (m2q.title !== `${secondGold.name} \u2014 Shop Items`)
-          errors.push(`H2: the reopened modal is ${JSON.stringify(m2q.title)}, want the second gold's own`);
-        const row = m2q.rows.find((r) => r.id === String(secondItem.id));
-        if (!row || row.value !== "5")
-          errors.push(`H2: the second gold's modal reopens at ${JSON.stringify(row && row.value)}, want "5" — its spend must be reachable`);
-        if (row && num(row.total) !== 5 * secondItem.cost.amount)
-          errors.push(`H2: the second gold's row subtotal is ${JSON.stringify(row.total)}, want ${5 * secondItem.cost.amount}`);
-        const zeroRows = m2q.rows.filter((r) => r.id !== String(secondItem.id) && r.value !== "0");
-        if (zeroRows.length)
-          errors.push(`H2: ${zeroRows.length} other ${secondGold.name} row(s) carry spend — per-currency totals crossed rows`);
-        await closeBy("Escape", "H2: close the second gold's modal");
-      }
-      if ((h2ctl.plan.requires || {})[String(secondItem.id)] !== 5)
-        errors.push(`H2: the plan did not commit the second gold's row — ${JSON.stringify(h2ctl.plan.requires)}`);
       if (h2tier.tiers.gold.needValue !== "0")
         errors.push(
-          `H2: the gold TIER Required reads ${JSON.stringify(h2tier.tiers.gold.needValue)} — the tier maps to ${firstGold.name}, whose plan is empty`,
+          `H2: the gold TIER Required reads ${JSON.stringify(h2tier.tiers.gold.needValue)} — the tier maps to ${firstGold.name}, whose plan is empty; ${secondGold.name}'s spend must never tint it`,
         );
-      await page.focus(hHeader(firstGold.id));
-      await page.keyboard.press("Enter");
-      const h2kb = await modalGate(true, "H2: Enter on the first gold's farm header opens ITS modal");
-      if (h2kb) {
+      /* no header opens anything; only the mapped first gold's tier Required has a door */
+      await farmHeaderInert(firstGold.name, "H2: first gold header");
+      await farmHeaderInert(secondGold.name, "H2: second gold header");
+      await safeClick(sel.tierNeed("gold"));
+      if (await modalGate(true, "H2: the mapped gold's tier Required opens ITS modal")) {
         const m2f = await readModal();
         if (m2f.title !== `${firstGold.name} \u2014 Shop Items`)
-          errors.push(`H2: Enter opened ${JSON.stringify(m2f.title)}, want the first gold's own modal`);
+          errors.push(`H2: the tier Required opened ${JSON.stringify(m2f.title)}, want the first gold's own modal`);
+        if (m2f.rows.some((r) => r.id === String(secondItem.id)))
+          errors.push(`H2: the ${firstGold.name} modal lists ${secondGold.name}'s row — first-match must not merge the golds`);
+        if (m2f.rows.some((r) => r.value !== "0"))
+          errors.push(`H2: the ${firstGold.name} modal shows spend ${JSON.stringify(m2f.rows.map((r) => r.value))} — the seeded plan belongs to the OTHER gold`);
+        await closeBy("Escape", "H2: Escape discards the draft");
       }
-      await closeBy("Escape", "H2: Escape discards the draft");
 
-      /* --- H3. 80292 QP + second silver: three independent currency totals on one event --- */
+      /* --- H3. 80292 QP + second silver: three independent totals, all doors closed but tier --- */
       const silvers = EZERO.currencies.filter((c) => c.background === "silver");
       const [firstSilver, secondSilver] = silvers;
       const qp = EZERO.currencies.find((c) => String(c.id) === "1");
+      const qpItems = itemsOf(EZERO, qp.id);
+      const qpBig = qpItems.find((i) => i.limitNum > 1);
+      const qpSmall = qpItems.find((i) => i.limitNum === 1);
+      const kpItem = itemsOf(EZERO, secondSilver.id).find((i) => i.limitNum === 1);
       await resetPlan();
       await switchEvent(PIN_ZERO, 'H3: switch → 80292 (QP "zero" + two silvers)');
-      await safeClick(hHeader(qp.id));
-      const h3open = await modalGate(true, "H3: the QP farm header opens the QP modal");
-      const mq = await readModal();
-      const qpItems = itemsOf(EZERO, qp.id);
-      if (h3open) {
-        if (mq.title !== `${qp.name} \u2014 Shop Items`)
-          errors.push(`H3: the QP header opened ${JSON.stringify(mq.title)}, want "${qp.name} \u2014 Shop Items"`);
-        const wantQp = qpItems
-          .map((i) => String(i.id))
-          .sort()
-          .join();
-        const gotQp = mq.rows.map((r) => r.id).sort().join();
-        if (gotQp !== wantQp)
-          errors.push(
-            `H3: the QP modal lists ${JSON.stringify(gotQp)}, want ${JSON.stringify(wantQp)} — "zero" maps to no tier card, so the farm card is its only door`,
-          );
-        const qpBig = qpItems.find((i) => i.limitNum > 1);
-        const qpSmall = qpItems.find((i) => i.limitNum === 1);
-        await typeInto(sel.modalInput(String(qpBig.id)), String(qpBig.limitNum));
-        await typeInto(sel.modalInput(String(qpSmall.id)), "1");
-        await clickDone();
-      }
-      await safeClick(hHeader(secondSilver.id));
-      const h3k = await modalGate(true, "H3: the second silver's farm header opens ITS modal");
-      if (h3k) {
-        const mk = await readModal();
-        if (mk.title !== `${secondSilver.name} \u2014 Shop Items`)
-          errors.push(
-            `H3: the ${secondSilver.name} header opened ${JSON.stringify(mk.title)} — first-match gave the modal to ${firstSilver.name}`,
-          );
-        const kpItem = itemsOf(EZERO, secondSilver.id).find((i) => i.limitNum === 1);
-        await typeInto(sel.modalInput(String(kpItem.id)), "1");
-        await clickDone();
-      }
+      /* K2: QP and the second silver have NO opener in this build — their drafts arrive as a saved
+         plan (exactly the figures the old header-modal path used to commit). */
+      await seedAndReloadGoldless(
+        JSON.stringify({
+          selectedEventId: PIN_ZERO,
+          plans: {
+            [String(PIN_ZERO)]: {
+              requires: { [String(qpBig.id)]: qpBig.limitNum, [String(qpSmall.id)]: 1, [String(kpItem.id)]: 1 },
+              held: {},
+              bonus: {},
+            },
+          },
+        }),
+        PIN_ZERO,
+      );
       const h3ctl = await readFarmCtl(PIN_ZERO);
       const h3tier = await readTier();
       const want3 = refTotals(EZERO.items, EZERO.currencies, (h3ctl.plan && h3ctl.plan.requires) || {});
@@ -2995,32 +3162,23 @@ try {
         errors.push(
           `H3: the reference QP spend is ${want3[String(qp.id)]}, pinned data truth ${wantQpTruth} — re-verify before blaming the app`,
         );
-      /* three currencies, three independent plans — each unmapped currency's spend is reachable
-         through its own header modal (I7 deleted the card-side Required display) */
-      const mq2 = await hHeaderOpen(String(qp.id), "H3: the QP header reopens the QP modal");
-      if (mq2) {
-        const big = mq2.rows.find((r) => r.id === String(qpBigTruth.id));
-        const small = mq2.rows.find((r) => r.id === String(qpSmallTruth.id));
-        if (!big || big.value !== String(qpBigTruth.limitNum))
-          errors.push(`H3: the QP modal reopens ${qpBigTruth.id} at ${JSON.stringify(big && big.value)}, want ${qpBigTruth.limitNum}`);
-        if (!small || small.value !== "1")
-          errors.push(`H3: the QP modal reopens ${qpSmallTruth.id} at ${JSON.stringify(small && small.value)}, want 1`);
-        const wantSum = wantQpTruth;
-        const gotSum = mq2.rows.reduce((n, r) => n + num(r.total), 0);
-        if (gotSum !== wantSum)
-          errors.push(`H3: the QP modal's row subtotals sum to ${gotSum}, want ${wantSum} — QP spend leaked across currencies`);
-        await closeBy("Escape", "H3: close the QP modal");
-      }
-      const kpItemTruth = itemsOf(EZERO, secondSilver.id).find((i) => i.limitNum === 1);
-      const mk2 = await hHeaderOpen(String(secondSilver.id), "H3: the second silver's header reopens ITS modal");
-      if (mk2) {
-        const row = mk2.rows.find((r) => r.id === String(kpItemTruth.id));
-        if (!row || row.value !== "1")
-          errors.push(`H3: ${secondSilver.name}'s modal reopens at ${JSON.stringify(row && row.value)}, want "1"`);
-        const other = mk2.rows.filter((r) => r.id !== String(kpItemTruth.id) && r.value !== "0");
-        if (other.length)
-          errors.push(`H3: ${secondSilver.name}'s modal shows ${other.length} other row(s) with spend — three currencies must keep three totals`);
-        await closeBy("Escape", "H3: close the second silver's modal");
+      /* three currencies, three independent plans — the unmapped ones open NOTHING and never tint
+         the mapped currency's modal (first-match owns the single door) */
+      await farmHeaderInert(qp.name, "H3: QP header");
+      await farmHeaderInert(secondSilver.name, "H3: second silver header");
+      await farmHeaderInert(firstSilver.name, "H3: mapped silver header");
+      await safeClick(sel.tierNeed("silver"));
+      if (await modalGate(true, "H3: the mapped silver's tier Required opens ITS modal")) {
+        const m3 = await readModal();
+        if (m3.title !== `${firstSilver.name} \u2014 Shop Items`)
+          errors.push(`H3: the tier Required opened ${JSON.stringify(m3.title)}, want the mapped ${firstSilver.name}`);
+        if (m3.rows.some((r) => r.id === String(kpItem.id)))
+          errors.push(`H3: the ${firstSilver.name} modal lists ${secondSilver.name}'s row — the silvers must stay separate`);
+        if (m3.rows.some((r) => r.id === String(qpBig.id) || r.id === String(qpSmall.id)))
+          errors.push(`H3: the ${firstSilver.name} modal lists QP rows — "zero" maps to no tier card`);
+        if (m3.rows.some((r) => r.value !== "0"))
+          errors.push(`H3: the ${firstSilver.name} modal shows ${JSON.stringify(m3.rows.map((r) => r.value))} — the seeded spend belongs to OTHER currencies`);
+        await closeBy("Escape", "H3: close the mapped silver's modal");
       }
       for (const currency of EZERO.currencies) {
         const mappedHere = TIERS.includes(currency.background) ? currencyForTierRef(EZERO.currencies, currency.background) : null;
@@ -3083,7 +3241,7 @@ try {
         );
       await wait(SETTLE_MS);
       const h4ctl = await readFarmCtl(PIN_MULTI);
-      const h4Held = (h4ctl.cards.find((c) => c.currencyId === String(secondGold.id)) || { boxes: [] }).boxes.find(
+      const h4Held = (h4ctl.cards.find((c) => c.headerText === secondGold.name) || { boxes: [] }).boxes.find(
         (b) => b.label === "Held",
       );
       if (!h4Held || h4Held.value !== "500")
@@ -3109,7 +3267,7 @@ try {
         errors.push(
           `H5: the gold tier boxes did not receive the stored tier keys — ${JSON.stringify([h5.tiers.gold.heldValue, h5.tiers.gold.bonusValue])}, want ["1234","7"]`,
         );
-      const secondBoxes = (h5ctl.cards.find((c) => c.currencyId === String(secondGold.id)) || { boxes: [] }).boxes;
+      const secondBoxes = (h5ctl.cards.find((c) => c.headerText === secondGold.name) || { boxes: [] }).boxes;
       if (secondBoxes.some((b) => b.value !== "0"))
         errors.push(
           `H5: the stored "gold" figure landed on ${secondGold.name} too — ${JSON.stringify(secondBoxes)}; first-match says it belongs to ${firstGold.name} alone`,
@@ -3142,11 +3300,11 @@ try {
         errors.push(
           `H5: a stored "bronze" figure survived on an event with no bronze currency — ${JSON.stringify(h5z.tiers.bronze.heldValue)}`,
         );
-      for (const id of [String(qp.id), String(secondSilver.id)]) {
-        const boxes = (h5zctl.cards.find((c) => c.currencyId === id) || { boxes: [] }).boxes;
+      for (const cur of [qp, secondSilver]) {
+        const boxes = (h5zctl.cards.find((c) => c.headerText === cur.name) || { boxes: [] }).boxes;
         if (boxes.some((b) => b.value !== "0"))
           errors.push(
-            `H5: currency ${id} received a tier key it does not map to (${JSON.stringify(boxes)}) — "zero" is not a tier and ${secondSilver.name} is not first-match`,
+            `H5: currency ${cur.id} received a tier key it does not map to (${JSON.stringify(boxes)}) — "zero" is not a tier and ${secondSilver.name} is not first-match`,
           );
       }
       await typeInto(`#farmHeld${secondSilver.id}`, "1");
@@ -3535,8 +3693,34 @@ try {
     }
 
     /* ================= 23. viewports: no sideways overflow, modal fits, no page errors ======== */
-    for (const width of [360, 1120]) {
+    for (const width of [360, 760, 1120]) {
       await page.setViewport({ width, height: 800 });
+      /* K7: the farm grid tracks + the K5 button width behave per viewport */
+      const gridInfo = await page.evaluate(() => {
+        const g = document.getElementById("farmGrid");
+        const b = document.getElementById("calculateBtn");
+        return {
+          tracks: getComputedStyle(g).gridTemplateColumns.split(" ").map((t) => parseFloat(t)),
+          justify: getComputedStyle(g).justifyContent,
+          cardW: [...g.querySelectorAll(".farm-card")].map((c) => c.offsetWidth),
+          btnRatio: b.getBoundingClientRect().width / b.parentElement.clientWidth,
+        };
+      });
+      const trackStr = gridInfo.tracks.join(" ");
+      if (width === 1120 && trackStr !== "320 320 320")
+        errors.push(`farm grid(K7) @1120: tracks are ${trackStr}, want 320 320 320 (three centred 320px cards)`);
+      if (width === 760 && trackStr !== "320 320")
+        errors.push(`farm grid(K7) @760: tracks are ${trackStr}, want 320 320 (two centred 320px cards)`);
+      if (width === 360 && !(gridInfo.tracks.length === 1 && gridInfo.tracks[0] >= 260 && gridInfo.tracks[0] <= 320))
+        errors.push(`farm grid(K7) @360: tracks are ${trackStr}, want a single ~307px track (never over 320)`);
+      if (gridInfo.justify !== "center")
+        errors.push(`farm grid(K7) @${width}: justify-content is ${gridInfo.justify}, want center`);
+      if (gridInfo.cardW.some((w) => w > 321))
+        errors.push(`farm grid(K7) @${width}: a farm card is ${Math.max(...gridInfo.cardW)}px wide, want at most 320px`);
+      if (width < 380 ? gridInfo.btnRatio < 0.95 : !(gridInfo.btnRatio > 0 && gridInfo.btnRatio <= 0.5))
+        errors.push(
+          `btn(K5) @${width}: #calculateBtn spans ${(gridInfo.btnRatio * 100).toFixed(0)}% of its row, want ${width < 380 ? "house full-width" : "at most half"}`,
+        );
       const layout = await page.evaluate(() => {
         const doc = document.documentElement;
         const panel = document.getElementById("panel-event");
@@ -3691,5 +3875,5 @@ if (errors.length) {
 }
 
 console.log(
-  `SUCCESS: event shop [${MODE}] ${LEGACY ? "legacy stub fallback (Select Event disabled, tier-colour badges, old math, old blob, zero mockup requests)" : MULTI ? "multi-event patched copy (isolation + migration + N-currency collision + zero-bg + null-farm + secondary-null + force-latest)" : "shipped single-event snapshot (Drop Rates per Run cards, header opener, live bonus repaint, results math, modal contract)"} verified against ${url}`,
+  `SUCCESS: event shop [${MODE}] ${LEGACY ? "legacy stub fallback (Select Event disabled, 96px tier-colour badges, old math, old blob, zero mockup requests)" : MULTI ? "multi-event patched copy (isolation + migration + N-currency collision with inert headers + zero-bg + null-farm + secondary-null + force-latest)" : "shipped single-event snapshot (Drop Rates per Run cards, tier Required sole opener, inert headers, 96/48/24 art, live bonus repaint, AP-free results, K5 button parity, auto-fill farm grid, modal contract)"} verified against ${url}`,
 );

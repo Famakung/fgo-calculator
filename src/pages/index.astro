@@ -34,6 +34,105 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           </div>
           <div class="card">
             <div class="card-inner">
+              <div class="card-title">Drop Rates per Run</div>
+            <div class="base-row">
+              <div class="base-item">
+                <label class="base-label" for="baseDrop">Base</label>
+                <input
+                  type="number"
+                  class="input-field base-input"
+                  id="baseDrop"
+                  value="3"
+                  min="0"
+                  max="100"
+                />
+              </div>
+              <div class="base-item">
+                <label class="base-label" for="primaryMultiplier"
+                  >Primary %</label
+                >
+                <input
+                  type="number"
+                  class="input-field base-input"
+                  id="primaryMultiplier"
+                  value="1500"
+                  min="100"
+                  max="100000"
+                />
+              </div>
+              <div class="base-item">
+                <label class="base-label" for="secondaryMultiplier"
+                  >Secondary %</label
+                >
+                <input
+                  type="number"
+                  class="input-field base-input"
+                  id="secondaryMultiplier"
+                  value="225"
+                  min="100"
+                  max="100000"
+                />
+              </div>
+            </div>
+            <div class="quest-drops-grid grid" id="questDropsGrid">
+              <div class="quest-drops-item" data-tier="bronze">
+                <div class="quest-drops-title">Bronze Quest</div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="bronzeQuest_bronze_icon"></span>
+                  <span class="drop-material" id="bronzeQuest_bronze_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="bronzeQuest_bronze">0</span>
+                </div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="bronzeQuest_silver_icon"></span>
+                  <span class="drop-material" id="bronzeQuest_silver_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="bronzeQuest_silver">0</span>
+                </div>
+              </div>
+              <div class="quest-drops-item" data-tier="silver">
+                <div class="quest-drops-title">Silver Quest</div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="silverQuest_silver_icon"></span>
+                  <span class="drop-material" id="silverQuest_silver_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="silverQuest_silver">0</span>
+                </div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="silverQuest_gold_icon"></span>
+                  <span class="drop-material" id="silverQuest_gold_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="silverQuest_gold">0</span>
+                </div>
+              </div>
+              <div class="quest-drops-item" data-tier="gold">
+                <div class="quest-drops-title">Gold Quest</div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="goldQuest_gold_icon"></span>
+                  <span class="drop-material" id="goldQuest_gold_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="goldQuest_gold">0</span>
+                </div>
+                <div class="drop-line">
+                  <span class="mini-icon" id="goldQuest_bronze_icon"></span>
+                  <span class="drop-material" id="goldQuest_bronze_label"
+                    >3(+0)</span
+                  >
+                  <span class="drop-value" id="goldQuest_bronze">0</span>
+                </div>
+              </div>
+            </div>
+            <div class="farm-grid grid" id="farmGrid" style="display: none"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-inner">
               <div class="card-title">Shop Requirements</div>
             <div class="materials-grid grid" id="materialsGrid">
               <div class="material-card" data-tier="bronze">
@@ -154,111 +253,13 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 </div>
               </div>
             </div>
+              <div class="bond-card-actions bond-card-actions--end">
+                <button class="calculate-btn" id="calculateBtn" type="button">
+                  Calculate Quest Runs
+                </button>
+              </div>
             </div>
           </div>
-
-          <div class="card">
-            <div class="card-inner">
-              <div class="card-title">Drop Rates per Run</div>
-            <div class="base-row">
-              <div class="base-item">
-                <label class="base-label" for="baseDrop">Base</label>
-                <input
-                  type="number"
-                  class="input-field base-input"
-                  id="baseDrop"
-                  value="3"
-                  min="0"
-                  max="100"
-                />
-              </div>
-              <div class="base-item">
-                <label class="base-label" for="primaryMultiplier"
-                  >Primary %</label
-                >
-                <input
-                  type="number"
-                  class="input-field base-input"
-                  id="primaryMultiplier"
-                  value="1500"
-                  min="100"
-                  max="100000"
-                />
-              </div>
-              <div class="base-item">
-                <label class="base-label" for="secondaryMultiplier"
-                  >Secondary %</label
-                >
-                <input
-                  type="number"
-                  class="input-field base-input"
-                  id="secondaryMultiplier"
-                  value="225"
-                  min="100"
-                  max="100000"
-                />
-              </div>
-            </div>
-            <div class="quest-drops-grid grid" id="questDropsGrid">
-              <div class="quest-drops-item" data-tier="bronze">
-                <div class="quest-drops-title">Bronze Quest</div>
-                <div class="drop-line">
-                  <span class="mini-icon" id="bronzeQuest_bronze_icon"></span>
-                  <span class="drop-material" id="bronzeQuest_bronze_label"
-                    >3(+0)</span
-                  >
-                  <span class="drop-value" id="bronzeQuest_bronze">0</span>
-                </div>
-                <div class="drop-line">
-                  <span class="mini-icon" id="bronzeQuest_silver_icon"></span>
-                  <span class="drop-material" id="bronzeQuest_silver_label"
-                    >3(+0)</span
-                  >
-                  <span class="drop-value" id="bronzeQuest_silver">0</span>
-                </div>
-              </div>
-              <div class="quest-drops-item" data-tier="silver">
-                <div class="quest-drops-title">Silver Quest</div>
-                <div class="drop-line">
-                  <span class="mini-icon" id="silverQuest_silver_icon"></span>
-                  <span class="drop-material" id="silverQuest_silver_label"
-                    >3(+0)</span
-                  >
-                  <span class="drop-value" id="silverQuest_silver">0</span>
-                </div>
-                <div class="drop-line">
-                  <span class="mini-icon" id="silverQuest_gold_icon"></span>
-                  <span class="drop-material" id="silverQuest_gold_label"
-                    >3(+0)</span
-                  >
-                  <span class="drop-value" id="silverQuest_gold">0</span>
-                </div>
-              </div>
-              <div class="quest-drops-item" data-tier="gold">
-                <div class="quest-drops-title">Gold Quest</div>
-                <div class="drop-line">
-                  <span class="mini-icon" id="goldQuest_gold_icon"></span>
-                  <span class="drop-material" id="goldQuest_gold_label"
-                    >3(+0)</span
-                  >
-                  <span class="drop-value" id="goldQuest_gold">0</span>
-                </div>
-                <div class="drop-line">
-                  <span class="mini-icon" id="goldQuest_bronze_icon"></span>
-                  <span class="drop-material" id="goldQuest_bronze_label"
-                    >3(+0)</span
-                  >
-                  <span class="drop-value" id="goldQuest_bronze">0</span>
-                </div>
-              </div>
-            </div>
-            <div class="farm-grid grid" id="farmGrid" style="display: none"></div>
-            </div>
-          </div>
-
-          <button class="calculate-btn" id="calculateBtn" type="button">
-            Calculate Quest Runs
-          </button>
 
           <div class="results" id="results">
             <div class="card results-card">

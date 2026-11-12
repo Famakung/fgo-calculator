@@ -45,8 +45,9 @@ export function buildFallbackIcon(tier) {
   return fallback;
 }
 
-/* Single fg-layer img so the existing 80px/40px icon rules size it; a null icon shows the card's
-   own letter fallback directly instead of requesting the string "null". */
+/* Single fg-layer img so the icon rules size it — the tier box's own 96px height, the farm card's
+   48px header and 24px drop lines; a null icon shows the card's own letter fallback directly instead
+   of requesting the string "null". */
 export function buildCurrencyImg(currency, tier) {
   if (!currency.icon) return buildFallbackIcon(tier);
   const img = DOMFactory.createLazyImg(currency.icon + "?v=" + IMAGE_VERSION, "fg-layer", { alt: currency.name });
@@ -55,10 +56,10 @@ export function buildCurrencyImg(currency, tier) {
 }
 
 /* Click and Enter/Space open the currency modal for the id this node carries in dataset — the one
-   keydown contract, shared by the tier Required box and the farm cards' Required display
-   (Amendment H). The currency id travels as data, not as a listener closure, so re-hydrating on an
-   event switch re-points the one bound listener of a surviving node instead of stacking a new
-   listener per switch. */
+   keydown contract, and since Amendment K the only node bound to it is a tier card's Required box.
+   The currency id travels as data, not as a listener closure, so re-hydrating on an event switch
+   re-points the one bound listener of a surviving node instead of stacking a new listener per
+   switch. */
 export function bindCurrencyModalOpen(node) {
   if (node.dataset.modalBound === "1") return;
   node.dataset.modalBound = "1";
@@ -95,8 +96,8 @@ function setResultLabels(tier, name) {
 function applyEventTier({ tier, currency, card, needInput, need }) {
   const iconBox = card?.querySelector(".material-icon");
   if (iconBox) {
-    /* .material-icon carries a grey background meant for the generic bg/fg art; event currency art
-       is bordered on its own, so mark the box for the transparent-background CSS override. */
+    /* Mark the box as event-owned: the class is the marker the QA pin looks for, and it keeps the
+       box's background explicitly transparent now that the tier box carries no plate of its own. */
     iconBox.classList.add("material-icon--event");
     iconBox.replaceChildren(buildCurrencyImg(currency, tier));
   }
