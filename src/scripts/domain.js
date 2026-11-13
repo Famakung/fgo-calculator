@@ -990,15 +990,23 @@ export const EventShop = {
      allow (Amendment Q2), so the answer is that input's true minimum, never more than the greedy
      no-base walk. Surplus low-rarity currency then cascades up the
      trade chain in integer, free, unlimited conversions (bronze→silver→gold) to cover what farming
-     leaves short. All coverage pricing runs in whole micro-units of the 1e-4 figure grid — exact
+     leaves short — that full cascade is what the SEARCH prices coverage with, while the trades the plan
+     reports are the minimum that cover each shortfall (Amendment R22): a currency gives up only what
+     downstream still needs, not every spare unit. All coverage pricing runs in whole micro-units of the
+     1e-4 figure grid — exact
      integer arithmetic, no float slack — and every played quest comes from the dominance search
      pool, so an accepted plan always covers when its drops are replayed as exact integer stacks
      (Amendment Q correctness fix: the oracle's contract). Tie-breaks: least total surplus, then
      least AP. Deterministic and bounded: the
      scan stops as soon as its run count alone can no longer beat the best plan found.
      Output { plays: [{ questId, questName, recommendLv, runs, mainDropId, isAllDrop }],
-              trades: [{ fromId, toId, count }], yields: { [cid] }, surplus: { [cid] },
-              totalPlays } — totalPlays is null only when nothing can cover the deficit. */
+              trades: [{ fromId, toId, count }], yields: { [cid] }, farmed: { [cid] },
+              surplus: { [cid] }, totalPlays } — totalPlays is null only when nothing can cover
+              the deficit. farmed is the plan's runs' raw quest drops, bonus-priced and BEFORE
+              any trade — report-only, the figure the Item Receive card prints. trades, yields and
+              surplus are the minimum-cover result (Amendment R22, minCoverTrades): the fewest whole
+              trades that leave every currency at or above its deficit, the stacks left after executing
+              exactly those trades, and the surplus sitting in the bag with them. */
   farmPlan({
     totals = {},
     held = {},
@@ -1182,11 +1190,11 @@ function allCovered(deficits) {
 }
 
 function emptyFarmPlan(keys) {
-  return { plays: [], trades: [], yields: zeroMap(keys), surplus: zeroMap(keys), totalPlays: 0 };
+  return { plays: [], trades: [], yields: zeroMap(keys), farmed: zeroMap(keys), surplus: zeroMap(keys), totalPlays: 0 };
 }
 
 function infeasibleFarmPlan() {
-  return { plays: [], trades: [], yields: {}, surplus: {}, totalPlays: null };
+  return { plays: [], trades: [], yields: {}, farmed: {}, surplus: {}, totalPlays: null };
 }
 
 function zeroMap(keys) {
@@ -1236,7 +1244,7 @@ function tradeKey(id) {
    micro-units (trades in whole counts) — short is what farming and trades together still did not
    cover, the search's signal. `table` carries { deficits, chain, keys, order } — the immutable
    inputs of one farmPlan call, all in micro-units. */
-function cascadeYields(table, yields) {
+export function cascadeYields(table, yields) {
   const inUnits = {};
   const final = {};
   const short = {};
@@ -1290,6 +1298,89 @@ function cascadeOrder(keys, chain) {
   }
   for (const key of all) if (!order.includes(key)) order.push(key);
   return order;
+}
+
+/* ===...=== Minimum-cover trades (Amendment R22) ===...=== */
+
+/* What the plan REPORTS as trades: the minimum whole trades that leave every currency at or above its
+   deficit — the owner's "only minimum trades to cover", not the cascade's full sweep of the surplus.
+   The search keeps pricing coverage with the whole cascade (trading all surplus up is what makes a play
+   count provably minimal); only the finished plan is trimmed, so plays, totalPlays and the minimum-play
+   guarantee are exactly what the oracle audits.
+   Algorithm: seed the chain's rows with that full cascade (every caller reaches this only after the
+   cascade left nothing short), then walk the rows from the TOP of the chain down and drop from each row
+   the trades its destination can spare. Dropping x trades on one row hands x×costMicro back to its
+   source and takes x×getMicro off its destination alone — no other currency's stack moves — so the
+   removable number is floor(slack / getMicro) with slack = destination stack − deficit. Coverage
+   survives every step (the destination is never taken below its deficit, the source only gains) and on a
+   chain the top row lands on exactly ceil(need / get): pie 195.2456 short of 5000 → 196 donut→pie
+   trades, not the 202 the cascade makes, and the donut that frees then empties cookie→donut. Whole
+   micro-units throughout, no float slack; stale or invalid rows never join the chain (tradeChain).
+   shortcut: one property this does not chase — a branching chain (several sources into one currency) is
+   trimmed row by row, so its trade count can sit above the true global minimum. Shipped events are
+   linear bronze→silver→gold chains, where each row lands on its own exact minimum. */
+function minCoverTrades(rawYieldsMicro, deficitsMicro, chain, order) {
+  const rows = tradeRows(chain, order);
+  spendSurplusUpChain(rawYieldsMicro, deficitsMicro, rows);
+  const final = stacksAfter(rows, rawYieldsMicro, order);
+  for (let index = rows.length - 1; index >= 0; index--) trimRowToCover(rows[index], final, deficitsMicro);
+  return { trades: keptTrades(rows), final };
+}
+
+/* Every trade row the chain offers, in the order cascadeYields spends them: sources bottom-up, each
+   source's targets id ascending. Working copies — the minimum-cover pass counts trades on them, so a
+   shop that lists one pair twice still prices each row on its own figures. */
+function tradeRows(chain, order) {
+  const rows = [];
+  for (const key of order) for (const entry of chain[key] || []) rows.push({ ...entry, fromKey: key, count: 0 });
+  return rows;
+}
+
+/* Seed each row with the full cascade: every unit above a deficit pushed up the chain, the same
+   floor(max(0, free) / costMicro) walk cascadeYields applies and the search's cascadeArrays already
+   twins. A plan reaches the trim only after that cascade covered, so these rows are a covering set. */
+export function spendSurplusUpChain(rawYieldsMicro, deficitsMicro, rows) {
+  const free = {};
+  const pushed = {};
+  for (const row of rows) {
+    if (free[row.fromKey] === undefined)
+      free[row.fromKey] =
+        count(rawYieldsMicro[row.fromKey]) + count(pushed[row.fromKey]) - count(deficitsMicro[row.fromKey]);
+    row.count = Math.floor(Math.max(0, free[row.fromKey]) / row.costMicro);
+    free[row.fromKey] -= row.count * row.costMicro;
+    pushed[row.toKey] = count(pushed[row.toKey]) + row.count * row.getMicro;
+  }
+}
+
+/* Execute the rows: every node ends with what it dropped plus everything that arrived, minus what its
+   own trades cost — all in micro units, so the figure is the sum of one trade list, never a re-run of
+   the cascade. Rows run bottom-up, so a node's arrivals come from rows that trade before its own spend,
+   and a covered node (stack ≥ deficit ≥ 0) has the items to pay for the trades it makes. */
+function stacksAfter(rows, rawYieldsMicro, order) {
+  const stacks = {};
+  for (const key of order) stacks[key] = count(rawYieldsMicro[key]);
+  for (const row of rows) stacks[row.toKey] = count(stacks[row.toKey]) + row.count * row.getMicro;
+  for (const row of rows) stacks[row.fromKey] -= row.count * row.costMicro;
+  return stacks;
+}
+
+/* Drop the trades the destination can spare: its own surplus above the deficit, in whole trades. The
+   freed cost returns to the source's stack, so the surplus the cascade sent up stays in the bag. */
+function trimRowToCover(row, final, deficitsMicro) {
+  const slack = count(final[row.toKey]) - count(deficitsMicro[row.toKey]);
+  const removable = Math.min(row.count, Math.floor(Math.max(0, slack) / row.getMicro));
+  if (removable <= 0) return;
+  row.count -= removable;
+  final[row.toKey] -= removable * row.getMicro;
+  final[row.fromKey] = count(final[row.fromKey]) + removable * row.costMicro;
+}
+
+/* The rows the trim left with trades, in the cascade's order, in the shape the results card resolves
+   against the shop's ratios: { fromId, toId, count }. */
+function keptTrades(rows) {
+  return rows
+    .filter((row) => row.count > 0)
+    .map((row) => ({ fromId: Number(row.fromKey), toId: Number(row.toKey), count: row.count }));
 }
 
 /* One full greedy walk for a fixed count of priority-quest runs: seed the run vector, then
@@ -1372,19 +1463,28 @@ function sumYields(runs, quests) {
   return yields;
 }
 
-/* Assemble one feasible plan. Internal figures are micro-units; the reported yields and surplus
-   convert back to currency units. AP is a tie-break only (the results card prints runs, not AP),
-   so its total rides along as a NON-ENUMERABLE field: it never shows up in deepEqual, JSON, or the
-   frozen output shape. */
+/* Assemble one feasible plan. Internal figures are micro-units; the reported yields, farmed and
+   surplus convert back to currency units. `state` is the FULL cascade the search priced coverage with;
+   the reported trades, yields and surplus come from minCoverTrades over the same raw drops, so the card
+   lists the minimum trades that cover each shortfall (Amendment R22) while `farmed` stays the raw drops.
+   Two search-only figures ride along NON-ENUMERABLE so the tie-breaks keep pricing the plan exactly as
+   the full cascade did — AP, and the cascade's own surplus (plan.surplus is what the player is shown,
+   and must not steer which equal-run plan wins) — neither shows up in deepEqual, JSON, or the frozen
+   output shape. */
 function finishFarmPlan(table, runs, state) {
+  const rawYields = sumYields(runs, table.quests);
+  const cover = minCoverTrades(rawYields, table.deficits, table.chain, table.order);
   const plan = {
     plays: playsFromRuns(runs, table.quests, table.keys),
-    trades: state.trades,
-    yields: roundMap(state.final, table.keys),
-    surplus: roundSurplus(state.final, table.deficits, table.keys),
+    trades: cover.trades,
+    yields: roundMap(cover.final, table.keys),
+    farmed: roundMap(rawYields, table.keys),
+    surplus: roundSurplus(cover.final, table.deficits, table.keys),
     totalPlays: Object.values(runs).reduce((sum, value) => sum + count(value), 0),
   };
   Object.defineProperty(plan, "apTotal", { value: runsAp(runs, table.quests), enumerable: false });
+  const cascadeSurplus = roundSurplus(state.final, table.deficits, table.keys);
+  Object.defineProperty(plan, "cascadeSurplus", { value: cascadeSurplus, enumerable: false });
   return plan;
 }
 
@@ -1526,20 +1626,20 @@ function exactFarmPlan(table, incumbent) {
    every quest the event ships, the all-covering ones included (Amendment Q2 supersedes the N2
    top-up exclusion for the no-priority search: a global minimum has no "top-up" step to exclude
    from; N2 still rules the priority scan and the card dropdowns) — filtered by M6's farmer rule:
-   a currency the player picked a farmer for is farmed by that farmer alone, and a quest that pick
-   demoted to secondary may not re-farm that currency through some other currency's shortfall,
-   while every unchosen shortfall keeps its whole dropper list. Order stays the quest list's, so
-   ties resolve exactly as the oracle's walk resolves them. */
+   a currency the player picked a USABLE farmer for is farmed by that farmer alone, and a quest
+   that pick demoted to secondary may not re-farm that currency through some other currency's
+   shortfall, while every unchosen shortfall keeps its whole dropper list. Amendment R30 adds the
+   third case: a pick the search cannot honour (outside the pool — see usableFarmer) is absent, and
+   its currency is priced by greedy's best-rate fallback over the whole dropper list, so exact's pool
+   contains greedy's whole fallback space for that currency — the only direction over-farm hides in —
+   and the two coincide when no all-covering quest drops the key. Order stays the quest list's, so ties
+   resolve exactly as the oracle's walk resolves them. */
 function exactPool(table) {
   const shortKeys = table.keys.filter((key) => table.deficits[key] > 0);
   const farmers = selectedFarmers(table, shortKeys);
   const eligible = new Set();
   for (const key of shortKeys) {
-    const farmer = farmers[key] || null;
-    for (const quest of table.quests) {
-      if (count(quest.rates[key]) <= 0) continue;
-      if (farmer ? farmer === quest : !demotedQuest(farmers, quest)) eligible.add(quest);
-    }
+    for (const quest of keyCandidates(table, key, farmers)) eligible.add(quest);
   }
   /* ∩ poolSet: the searched pool (dominance over the FULL quest list) is exactly the space the
      oracle's replay audits plays against. A quest eligible here yet dominated by one the M6 farmer
@@ -1549,17 +1649,49 @@ function exactPool(table) {
   return table.quests.filter((quest) => eligible.has(quest) && table.poolSet.has(quest));
 }
 
+/* The quests that may farm one short currency. A farmer the search can honour farms it alone
+   (Amendment M6). An unhonourable pick leaves the currency unpinned and undemoted (Amendment R30):
+   greedyFarmPlan tops that shortfall up with the best rate among every usable dropper, so the exact
+   search must offer the same droppers — locking the fallback out made the two searches price
+   different spaces and the answer was the greedy walk's over-farm. A currency nobody picked keeps
+   M6's demotion. */
+function keyCandidates(table, key, farmers) {
+  const droppers = table.quests.filter((quest) => count(quest.rates[key]) > 0);
+  const farmer = farmers[key] || null;
+  if (farmer) return [farmer];
+  if (hasSelection(table, key)) return droppers;
+  return droppers.filter((quest) => !demotedQuest(farmers, quest));
+}
+
+/* The farmer a currency's card pick actually is (Amendment M6, R30): the selected quest only while
+   it is inside the searched pool — the same usability rule greedyFarmPlan's topUpQuest applies when
+   it filters its options by poolSet. A pick another quest replays at no more AP is dominated out of
+   the pool (farmPlan poolSet), so honouring it here would pin the shortfall to a quest the search cannot run. */
+function usableFarmer(table, key) {
+  if (!hasSelection(table, key)) return null;
+  const selected = String(table.selection[key]);
+  return (
+    table.quests.find(
+      (quest) => table.poolSet.has(quest) && count(quest.rates[key]) > 0 && String(quest.meta.questId) === selected,
+    ) || null
+  );
+}
+
 function selectedFarmers(table, shortKeys) {
   const farmers = Object.create(null);
   for (const key of shortKeys) {
-    const selected = table.selection[key];
-    if (selected === null || selected === undefined) continue;
-    const farmer = table.quests.find(
-      (quest) => count(quest.rates[key]) > 0 && String(quest.meta.questId) === String(selected),
-    );
+    const farmer = usableFarmer(table, key);
     if (farmer) farmers[key] = farmer;
   }
   return farmers;
+}
+
+/* Does this currency's card carry a pick at all? Distinguishes M6's "the player chose nothing here"
+   (secondary droppers are demoted) from R30's "the player chose, but the search cannot honour it"
+   (the shortfall falls back to greedy's best rate among all droppers). */
+function hasSelection(table, key) {
+  const selected = table.selection[key];
+  return selected !== null && selected !== undefined;
 }
 
 /* A quest that drops a currency the player assigned elsewhere is demoted from farming any
@@ -1761,16 +1893,25 @@ function cascadeIntoArrays(kernel, yields) {
   }
 }
 
-/* The winner among equal-cost plans: fewer total plays first, then less total surplus, then less
-   AP. A candidate that failed to cover anything never displaces a plan that did. */
+/* The winner among equal-cost plans: fewer total plays first, then less total surplus, then less AP.
+   A candidate that failed to cover anything never displaces a plan that did. The surplus compared is the
+   FULL cascade's (Amendment R22 moved the reported plan.surplus to the minimum-cover figures; the search
+   tie-break stays the cascade's, or equal-run plans would re-rank and every pinned play vector could
+   move). */
 function betterPlan(current, candidate) {
   if (!candidate) return current;
   if (!current) return candidate;
   if (candidate.totalPlays !== current.totalPlays)
     return candidate.totalPlays < current.totalPlays ? candidate : current;
-  const surplusDiff = surplusSum(candidate.surplus) - surplusSum(current.surplus);
+  const surplusDiff = surplusSum(tieBreakSurplus(candidate)) - surplusSum(tieBreakSurplus(current));
   if (Math.abs(surplusDiff) > SHORTFALL_EPS) return surplusDiff < 0 ? candidate : current;
   return (candidate.apTotal || 0) < (current.apTotal || 0) ? candidate : current;
+}
+
+/* The figure betterPlan ranks on: the search's own cascade surplus, falling back to the reported one for
+   any plan the optimizer assembled without it (empty and infeasible plans never enter the ranking). */
+function tieBreakSurplus(plan) {
+  return plan.cascadeSurplus || plan.surplus;
 }
 
 function surplusSum(surplus) {

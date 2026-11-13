@@ -1,111 +1,113 @@
 import { DOMFactory } from "./presentation.js";
 import { buildCurrencyImg } from "./event-shop-tier.js";
+import { buildQuestName, refreshSlidingNames } from "./event-shop-farm-names.js";
 
-/* ===...=== "Best Farm Runs" results card (Amendment L6b) ===...=== */
-/* The plan EventShop.farmPlan found, painted: a per-currency requirement block (48px art, the shop
-   "Required" spend, the "Get" final count held + farmed + traded, a ✓ when covered, and the
-   leftover surplus as a plain "+X"), then "Quests to Play" rows
-   prefixed with the quest's drop art — one icon of its main drop, or every currency icon when the
-   quest drops them all — then the "Shop Trades" the plan executes, then the total-plays footer.
-   Plays and trades are everything: AP never prints (the owner's rule since Amendment I), and the
-   whole card is createElement/textContent only, rebuilt per Calculate with one replaceChildren(). */
-
+/* ===...=== "Best Farm Runs" results card (Amendment L6b, R18) ===...=== */
+/* The plan EventShop.farmPlan found, painted: "Quests to Play" cards in the Drop Rates farm chrome —
+   each play one card, its main-drop art over the quest name and the runs number centered where the
+   drop lines sit, every currency icon when the quest drops them all, no dropdown — then "Item
+   Receive": one 320px card wearing ONE centered row of the runs' raw drops (result.farmed,
+   bonus-priced, before any trade), each whole-unit count overlaid on its own 96px art —
+   then the "Shop Trades" as per-trade farm cards with the ratio overlaid on the header icons
+   (cost→get), no separator bar, centered trade count. No total line: when held items cover every
+   deficit, zero plays renders the section header over an empty grid. Receives speak for the runs alone. AP
+   never prints (Amendment I); createElement/textContent/setAttribute only, quest names ride one sliding line (R25), rebuilt per Calculate with one replaceChildren(). */
 const RESULTS_TITLE = "Best Farm Runs";
 const PLAYS_SECTION = "Quests to Play";
+const RECEIVE_SECTION = "Item Receive";
 const TRADES_SECTION = "Shop Trades";
 const NO_PLAN_MESSAGE = "No drop data can cover this plan";
 const FIGURE_FORMAT = { maximumFractionDigits: 1 };
-const COVER_EPS = 1e-6;
 
 export function renderFarmResults(snapshot, view) {
   const inner = document.querySelector("#results .results-card .card-inner");
   if (!inner) return;
+  inner.replaceChildren(buildResultsFragment(snapshot, view));
+  refreshSlidingNames(inner);
+}
+
+function buildResultsFragment(snapshot, view) {
   const fragment = document.createDocumentFragment();
-  fragment.appendChild(buildNode(RESULTS_TITLE, "card-title"));
-  fragment.appendChild(buildCurrencyBlocks(snapshot, view));
+  fragment.appendChild(buildTitle(RESULTS_TITLE, "card-title"));
   if (view.result.totalPlays === null) {
     fragment.appendChild(buildNode(NO_PLAN_MESSAGE, "farm-res-empty"));
-  } else {
-    fragment.appendChild(buildPlaysBlock(snapshot.currencies || [], view.result));
-    fragment.appendChild(buildTradesBlock(snapshot, view.result));
-    fragment.appendChild(
-      buildNode(
-        `Total: ${formatFigure(view.result.totalPlays)} play${view.result.totalPlays === 1 ? "" : "s"}`,
-        "farm-res-total",
-      ),
-    );
+    return fragment;
   }
-  inner.replaceChildren(fragment);
-}
-
-function buildCurrencyBlocks(snapshot, view) {
-  const grid = DOMFactory.el("div", "farm-res-grid grid");
-  for (const currency of snapshot.currencies || []) grid.appendChild(buildCurrencyBlock(currency, view));
-  return grid;
-}
-
-function buildCurrencyBlock(currency, view) {
-  const key = String(currency.id);
-  const required = countFigure(view.totals[key]);
-  const get = countFigure(view.plan.held[key]) + countFigure(view.result.yields[key]);
-  const covered = view.result.totalPlays !== null && get + COVER_EPS >= required;
-  const block = DOMFactory.el("div", "farm-res-item", { "data-tier": currency.background });
-  block.replaceChildren(
-    buildIcon(currency, "mini-icon", ""),
-    buildNode(currency.name, "farm-res-name"),
-    buildNode(`Required ${formatFigure(required)}`, "farm-res-required"),
-    buildNode(`Get ${formatFigure(get)} ${covered ? "\u2713" : "\u2014"}`, "farm-res-get"),
-    buildSurplusLine({ surplus: countFigure(view.result.surplus[key]), covered }),
-  );
-  return block;
-}
-
-/* Surplus never hides (Amendment L5): a covered row with leftover prints the honest "+X". The
-   trade-up preview is gone — the trade-aware optimizer already converts every full 10-stack, so
-   the leftover is always under one trade and the annotation never printed. What the plan actually
-   traded is the "Shop Trades" block below. An uncovered row prints nothing here: its "Get" line
-   already shows the miss. */
-function buildSurplusLine(block) {
-  const { surplus, covered } = block;
-  if (!covered || surplus <= 0) return buildNode("", "farm-res-surplus");
-  return buildNode(`+${formatFigure(surplus)}`, "farm-res-surplus");
+  const currencies = snapshot.currencies || [];
+  fragment.appendChild(buildPlaysBlock(currencies, view.result));
+  fragment.appendChild(buildReceiveBlock(currencies, view.result));
+  fragment.appendChild(buildTradesBlock(snapshot, view.result));
+  return fragment;
 }
 
 function buildPlaysBlock(currencies, result) {
-  if (!result.plays.length) return document.createDocumentFragment();
   const wrap = DOMFactory.el("div", "farm-res-quests");
-  wrap.replaceChildren(
-    buildNode(PLAYS_SECTION, "quest-title"),
-    ...result.plays.map((play) => buildPlayLine(currencies, play)),
-  );
+  const grid = DOMFactory.el("div", "farm-grid");
+  for (const play of result.plays) grid.appendChild(buildPlayCard(currencies, play));
+  wrap.replaceChildren(buildTitle(PLAYS_SECTION, "quest-title"), grid);
   return wrap;
 }
 
-function buildPlayLine(currencies, play) {
-  const line = DOMFactory.el("div", "farm-res-row");
-  const parts = [...playIcons(currencies, play), buildNode(play.questName, "farm-res-quest-name")];
-  if (play.recommendLv) parts.push(buildNode(`Lv.${play.recommendLv}`, "farm-res-quest-lv"));
-  parts.push(buildNode(`${play.runs} ${play.runs === 1 ? "run" : "runs"}`, "farm-res-quest-runs"));
-  line.replaceChildren(...parts);
-  return line;
+/* Item Receive: one 320px card, ONE centered row of the runs' raw drops (R5a) — no names (the art's
+   alt carries them), no trade inflow, no Required. Each whole-unit count (R3) rides its own 96px art
+   (R1) bottom-right at 1rem, the Bond golden-fruit display (R4a). */
+function buildReceiveBlock(currencies, result) {
+  const row = DOMFactory.el("div", "farm-res-row");
+  for (const currency of currencies) row.appendChild(buildReceiveFruit(currency, result.farmed));
+  const card = DOMFactory.el("div", "farm-res-receive-card");
+  card.appendChild(row);
+  const wrap = DOMFactory.el("div", "farm-res-receive");
+  wrap.replaceChildren(buildTitle(RECEIVE_SECTION, "quest-title"), card);
+  return wrap;
 }
 
-/* Main-drop icon for a normal quest; every currency icon for an all-drop quest (Amendment L6b:
-   1 icon vs 3). Icons are 24px inline prefixes before the quest name. */
-function playIcons(currencies, play) {
-  if (play.isAllDrop) return currencies.map((currency) => buildIcon(currency, "farm-res-icon"));
+function buildReceiveFruit(currency, farmed) {
+  const fruit = DOMFactory.el("span", "farm-res-fruit");
+  fruit.replaceChildren(buildCurrencyImg(currency, currency.background));
+  const count = DOMFactory.el("span", "farm-res-fruit-count");
+  count.textContent = "×" + formatFigure(Math.round(countFigure((farmed || {})[String(currency.id)])));
+  fruit.appendChild(count);
+  return fruit;
+}
+
+/* Amendment R6: each play wears the Drop Rates farm-card chrome — centered 48px header art, quest
+   name, REC line, and the runs number centered where the drop lines sit — with no dropdown. An
+   all-drop play takes the combo card's neutral border and every currency icon, like card 4. */
+function buildPlayCard(currencies, play) {
   const main = currencies.find((currency) => String(currency.id) === String(play.mainDropId));
-  return main ? [buildIcon(main, "farm-res-icon")] : [];
+  const classes = ["quest-drops-item", "farm-card"];
+  if (play.isAllDrop) classes.push("farm-card--combo");
+  const card = DOMFactory.el("div", classes, play.isAllDrop || !main ? {} : { "data-tier": main.background });
+  card.appendChild(buildPlayCardHeader(currencies, play));
+  const lines = [buildQuestName(play.questName)];
+  if (play.recommendLv) lines.push(buildNode(`REC Lv. ${play.recommendLv}`));
+  lines.push(
+    buildNode(formatFigure(play.runs), "farm-res-play-count"),
+    buildNode(play.runs === 1 ? "run" : "runs", "farm-res-play-label"),
+  );
+  const body = DOMFactory.el("div", "farm-card-body");
+  body.replaceChildren(...lines);
+  card.appendChild(body);
+  return card;
+}
+
+function buildPlayCardHeader(currencies, play) {
+  const title = DOMFactory.el("div", play.isAllDrop ? "farm-card-title farm-card-title--icons" : "farm-card-title");
+  const icons = play.isAllDrop
+    ? currencies
+    : currencies.filter((currency) => String(currency.id) === String(play.mainDropId));
+  for (const currency of icons) title.appendChild(buildIcon(currency, "farm-card-icon"));
+  return title;
 }
 
 function buildTradesBlock(snapshot, result) {
   if (!result.trades.length) return document.createDocumentFragment();
   const byId = new Map((snapshot.currencies || []).map((currency) => [String(currency.id), currency]));
+  const grid = DOMFactory.el("div", "farm-grid");
+  for (const trade of result.trades)
+    grid.appendChild(buildTradeCard(byId, trade, resolveTradeRatio(snapshot.trades, trade)));
   const wrap = DOMFactory.el("div", "farm-res-trades");
-  wrap.replaceChildren(
-    buildNode(TRADES_SECTION, "quest-title"),
-    ...result.trades.map((trade) => buildTradeLine(byId, trade, resolveTradeRatio(snapshot.trades, trade))),
-  );
+  wrap.replaceChildren(buildTitle(TRADES_SECTION, "quest-title"), grid);
   return wrap;
 }
 
@@ -123,48 +125,69 @@ export function resolveTradeRatio(trades, trade) {
   return costAmount > 0 && getNum > 0 ? { costAmount, getNum } : null;
 }
 
-/* "{cost} {from} → {get} {to} × {count} trades" with both arts — the executed cascade of the plan.
-   A currency id the snapshot does not know (stale hand-edit) still prints its raw id, never
-   nothing: a trade the player must perform cannot be silently omitted. */
-function buildTradeLine(byId, trade, ratio) {
-  const from = byId.get(String(trade.fromId)) || {
-    id: trade.fromId,
-    name: String(trade.fromId),
-    background: "silver",
-    icon: null,
-  };
-  const to = byId.get(String(trade.toId)) || {
-    id: trade.toId,
-    name: String(trade.toId),
-    background: "silver",
-    icon: null,
-  };
-  const line = DOMFactory.el("div", "farm-res-row");
-  line.replaceChildren(
-    buildIcon(from, "farm-res-icon", ""),
-    buildNode(ratio ? `${formatFigure(ratio.costAmount)} ${from.name}` : from.name, "farm-res-trade-from"),
+function tradeCurrency(byId, id) {
+  return byId.get(String(id)) || { id, name: String(id), background: "silver", icon: null };
+}
+
+/* Amendment R18: the exchange ratio rides the header icons — cost on the from-icon, get on the
+   to-icon — in the fruit-count overlay voice; the body carries only the trade count. */
+function buildTradeIcon(currency, amount) {
+  const box = DOMFactory.el("span", "farm-card-icon");
+  box.replaceChildren(buildCurrencyImg(currency, currency.background));
+  if (amount !== null && amount !== undefined) {
+    const count = DOMFactory.el("span", "farm-res-trade-icon-count");
+    count.textContent = formatFigure(amount);
+    box.appendChild(count);
+  }
+  return box;
+}
+
+function buildTradeCardHeader(from, to, ratio) {
+  const header = DOMFactory.el("div", "farm-card-title farm-card-title--icons");
+  header.replaceChildren(
+    buildTradeIcon(from, ratio ? ratio.costAmount : null),
     buildNode("\u2192", "farm-res-trade-arrow"),
-    buildIcon(to, "farm-res-icon", ""),
-    buildNode(ratio ? `${formatFigure(ratio.getNum)} ${to.name}` : to.name, "farm-res-trade-to"),
-    buildNode(`\u00d7 ${trade.count} trade${trade.count === 1 ? "" : "s"}`, "farm-res-trade-count"),
+    buildTradeIcon(to, ratio ? ratio.getNum : null),
   );
-  return line;
+  return header;
+}
+
+function buildTradeCard(byId, trade, ratio) {
+  const from = tradeCurrency(byId, trade.fromId);
+  const to = tradeCurrency(byId, trade.toId);
+  const card = DOMFactory.el("div", ["quest-drops-item", "farm-card"], { "data-tier": to.background });
+  card.appendChild(buildTradeCardHeader(from, to, ratio));
+  const body = DOMFactory.el("div", "farm-card-body");
+  body.replaceChildren(
+    buildNode(formatFigure(trade.count), "farm-res-play-count"),
+    buildNode(trade.count === 1 ? "trade" : "trades", "farm-res-play-label"),
+  );
+  card.appendChild(body);
+  return card;
 }
 
 /* The results icons speak for themselves only where no text names the currency: an undefined alt
-   keeps the currency's name (the play rows — a quest row says which quest, not which currency),
-   while a caller whose own line already prints the name passes "" (the requirement block and the
-   trade rows, Amendment Q1) and the img reads as decoration. */
+   keeps the currency's name (the play-card headers, the trade-card headers and the receive fruit —
+   there the art is the only thing naming the currency). Amendment Q1's alt "" decorative callers
+   left with the trade rows (R17); every current caller keeps the name. */
 function buildIcon(currency, className, alt) {
   const box = DOMFactory.el("span", className);
   box.replaceChildren(buildCurrencyImg(currency, currency.background, alt));
   return box;
 }
 
+/* Stat lines carry .farm-stat (the card's monospace tabular track); titles never may — it would
+   re-price them under the stat font and break the card title's parity with every other title. */
 function buildNode(text, className) {
   const line = DOMFactory.el("div", ["farm-stat", className].filter(Boolean));
   line.textContent = text;
   return line;
+}
+
+function buildTitle(text, className) {
+  const title = DOMFactory.el("div", className);
+  title.textContent = text;
+  return title;
 }
 
 function formatFigure(value) {

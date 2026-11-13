@@ -593,22 +593,22 @@ test("bitset engine: _isSubsetMask handles bit 31 (0x80000000) correctly without
   assert.equal(overlap[0]?.ceIds.length, 32);
 });
 
-test("benchmark & verification: bitset engine on real 471 servant dataset", async () => {
+test("benchmark & verification: bitset engine on real 474 servant dataset", async () => {
   const { ServantData, TraitCEs } = await import("../src/scripts/data.js");
   const { computeCEMatchMatrix } = await import("../src/scripts/domain.js");
   ServantData.load();
 
-  assert.equal(ServantData.servants.length, 471, "dataset has 471 total playable servants");
+  assert.equal(ServantData.servants.length, 474, "dataset has 474 total playable servants");
   const matrix = computeCEMatchMatrix(ServantData.servants, TraitCEs);
   const allEntries = matrix.results;
   const allIds = ServantData.servants.map((s) => s.id);
 
-  // Benchmark buildSharedCEGroups on all 471 servants
+  // Benchmark buildSharedCEGroups on all 474 servants
   const start = globalThis.performance.now();
   const resAll = ServantComboCalculator.buildSharedCEGroups(allEntries, allIds);
   const duration = globalThis.performance.now() - start;
 
-  assert.equal(resAll.truncated, false, "all 471 servants must complete without truncation");
+  assert.equal(resAll.truncated, false, "all 474 servants must complete without truncation");
   assert.equal(resAll.groups.length, 133, "must produce exactly 133 maximal closed groups");
   assert.equal(resAll.unshared.length, 22, "exactly 22 servants have no matching bond gain CEs");
   assert.ok(resAll.unshared.includes("300700"), "300700 Cu Chulainn (Prototype) is correctly identified as unshared");

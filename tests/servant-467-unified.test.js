@@ -344,11 +344,11 @@ test("servant 467: DOM presentation, swap image, and overlap modal title", async
   assert.equal(titleEl.textContent, "Mash Kyrielight");
 });
 
-test("regression: across all 471 servants, ONLY servant 467 has altImage and altName", async () => {
+test("regression: across all 474 servants, ONLY servant 467 has altImage and altName", async () => {
   const { ServantData } = await import("../src/scripts/data.js");
   ServantData.load();
 
-  assert.equal(ServantData.servants.length, 471);
+  assert.equal(ServantData.servants.length, 474);
 
   // Check all servants: only 467 may define altImage or altName
   const withAltImage = ServantData.servants.filter((s) => s.altImage !== undefined);
@@ -387,7 +387,7 @@ test("filesystem verification: every servant image and altImage URL resolves to 
   const { ServantData } = await import("../src/scripts/data.js");
   ServantData.load();
 
-  assert.equal(ServantData.servants.length, 471);
+  assert.equal(ServantData.servants.length, 474);
 
   for (const s of ServantData.servants) {
     const defaultRel = s.image.split("?")[0];

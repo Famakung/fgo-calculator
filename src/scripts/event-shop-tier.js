@@ -2,6 +2,7 @@ import { TIERS, QUEST_DROPS, IMAGE_VERSION, TIER_COLORS } from "./constants.js";
 import { EventShop } from "./domain.js";
 import { DOMFactory } from "./presentation.js";
 import { EventShopModal } from "./event-shop-modal.js";
+import { applySlidingName, refreshSlidingNames } from "./event-shop-farm-names.js";
 
 /* ===...=== Event-native tier cards (Amendment A, per-event since Amendment G) ===...=== */
 /* Re-skins the tier cards and quest-drop icons with the selected event shop's currency art. A tier
@@ -106,7 +107,7 @@ function applyEventTier({ tier, currency, card, needInput, need }) {
     iconBox.replaceChildren(buildCurrencyImg(currency, tier));
   }
   const nameEl = card?.querySelector(".material-name");
-  if (nameEl) nameEl.textContent = currency.name;
+  if (nameEl) applySlidingName(nameEl, currency.name);
   setResultLabels(tier, currency.name);
   if (!needInput) return;
   bindRequiredDisplay(needInput, currency);
@@ -121,7 +122,7 @@ function clearEventTier({ tier, card, needInput }) {
   const iconBox = card?.querySelector(".material-icon");
   if (iconBox) iconBox.replaceChildren(buildFallbackIcon(tier));
   const nameEl = card?.querySelector(".material-name");
-  if (nameEl) nameEl.textContent = DOMFactory.capitalize(tier);
+  if (nameEl) applySlidingName(nameEl, DOMFactory.capitalize(tier));
   setResultLabels(tier, DOMFactory.capitalize(tier));
   if (!needInput) return;
   delete needInput.dataset.currencyId;
@@ -143,6 +144,7 @@ export function hydrateTierCards({ elements, container, needs = {}, snapshot }) 
     if (map[tier]) applyEventTier({ ...view, currency: map[tier], need: needs[tier] });
     else clearEventTier(view);
   }
+  if (container) refreshSlidingNames(container);
 }
 
 function applyQuestTitle(quest, map) {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EventShop, Schema } from "../src/scripts/domain.js";
+import { EventShop, Schema, cascadeYields, spendSurplusUpChain } from "../src/scripts/domain.js";
 
 /* A limited coin row from the 2026-11 event shop: 10 YAKIまんじゅう per purchase, 3 allowed. */
 const limited = {
@@ -304,11 +304,15 @@ test("farmPlan fixture A: 誓い-priority, no bonus no trades → 142 plays = 11
   assert.equal(plan.plays[1].mainDropId, 94160903);
 });
 
-/* Fixture B (Amendment L5/L8): the same needs with bonuses cookie+1 / donut+2 / pie+1 and the
-   10:1 upgrade trades. The trade-aware minimum is 104 plays = 90×誓い + 14×牛追い, whose surplus
-   cascades into 16 cookie→donut + 202 donut→pie trades; finals donut 3007.9 / cookie 4008.4 /
-   pie 5006.8 (total surplus ~23). A greedy that farmed every deficit without trades is worse. */
-test("farmPlan fixture B: trade-aware bonus plan → 104 plays, cascade 16 cookie→donut + 202 donut→pie", () => {
+/* Fixture B (Amendment L5/L8, re-pinned by R22): the same needs with bonuses cookie+1 / donut+2 /
+   pie+1 and the 10:1 upgrade trades. The trade-aware minimum is still 104 plays = 90×誓い + 14×牛追い.
+   Its raw drops cover cookie (4,168.4 over 4,000) and donut (5,011.9 over 3,000) on their own, and pie
+   is 195.2456 short, so the MINIMUM cover is 196 donut→pie trades and no cookie→donut trade at all —
+   the full cascade used to report 16 + 202 by converting every spare unit upward. Finals after the
+   minimum cover: donut 3051.965 / cookie 4168.444 / pie 5000.7544 (total surplus 221.1634, higher by
+   design — what the cascade would have traded away now stays in the bag). A greedy that farmed every
+   deficit without trades is worse. */
+test("farmPlan fixture B: trade-aware bonus plan → 104 plays, minimum cover 196 donut→pie", () => {
   const plan = EventShop.farmPlan({
     totals: B_NEEDS,
     held: {},
@@ -319,15 +323,213 @@ test("farmPlan fixture B: trade-aware bonus plan → 104 plays, cascade 16 cooki
   });
   assert.equal(plan.totalPlays, 104);
   assert.deepEqual(runsOf(plan), { 94161108: 90, 94161105: 14 });
-  assert.deepEqual(plan.trades, [
-    { fromId: 94160901, toId: 94160902, count: 16 },
-    { fromId: 94160902, toId: 94160903, count: 202 },
-  ]);
-  assert.ok(Math.abs(plan.yields["94160902"] - 3007.965) < 0.01, `donut ${plan.yields["94160902"]}`);
-  assert.ok(Math.abs(plan.yields["94160901"] - 4008.444) < 0.01, `cookie ${plan.yields["94160901"]}`);
-  assert.ok(Math.abs(plan.yields["94160903"] - 5006.7544) < 0.01, `pie ${plan.yields["94160903"]}`);
+  assert.deepEqual(plan.trades, [{ fromId: 94160902, toId: 94160903, count: 196 }]);
+  assert.ok(Math.abs(plan.yields["94160902"] - 3051.965) < 0.01, `donut ${plan.yields["94160902"]}`);
+  assert.ok(Math.abs(plan.yields["94160901"] - 4168.444) < 0.01, `cookie ${plan.yields["94160901"]}`);
+  assert.ok(Math.abs(plan.yields["94160903"] - 5000.7544) < 0.01, `pie ${plan.yields["94160903"]}`);
   const totalSurplus = Object.values(plan.surplus).reduce((sum, value) => sum + value, 0);
-  assert.ok(Math.abs(totalSurplus - 23.1634) < 0.01, `surplus ${totalSurplus}`);
+  assert.ok(Math.abs(totalSurplus - 221.1634) < 0.01, `surplus ${totalSurplus}`);
+});
+
+/* --- Amendment R1: farmPlan also reports `farmed` — the plan's runs' raw quest drops,
+   bonus-priced, BEFORE the trade cascade. The Item Receive card prints that figure, so what a
+   player reads there is what the listed runs actually produce, not what the trades move. --- */
+
+function planFixtureB() {
+  return EventShop.farmPlan({
+    totals: B_NEEDS,
+    held: {},
+    bonus: { 94160901: 1, 94160902: 2, 94160903: 1 },
+    farm: B_FARM,
+    trades: B_TRADES,
+    priorityQuestId: 94161108,
+  });
+}
+
+test("farmPlan fixture B farmed pins the runs' raw drops, pre-cascade", () => {
+  const plan = planFixtureB();
+  assert.ok(Math.abs(plan.farmed["94160901"] - 4168.444) < 1e-3, `cookie ${plan.farmed["94160901"]}`);
+  assert.ok(Math.abs(plan.farmed["94160902"] - 5011.965) < 1e-3, `donut ${plan.farmed["94160902"]}`);
+  assert.ok(Math.abs(plan.farmed["94160903"] - 4804.7544) < 1e-3, `pie ${plan.farmed["94160903"]}`);
+});
+
+test("farmPlan farmed reconciles through its reported trades to yields: farmed − spent + received", () => {
+  const plan = planFixtureB();
+  const spent = tradeFlow(plan.trades, "fromId", "costAmount");
+  const received = tradeFlow(plan.trades, "toId", "getNum");
+  for (const key of Object.keys(B_NEEDS)) {
+    const net = plan.farmed[key] - (spent[key] || 0) + (received[key] || 0);
+    assert.ok(Math.abs(net - plan.yields[key]) < 1e-6, `${key} net ${net} vs yields ${plan.yields[key]}`);
+  }
+});
+
+/* Amendment R22: the trade list is the MINIMUM that covers, so no shorter list can do the job. Pie is
+   195.2456 short of its 5,000 (fixture B above) and each donut→pie trade buys one pie, so 196 is the
+   fewest that covers; the cookie and donut stacks need no top-up of their own and trade nothing up. */
+test("farmPlan minimum cover: 196 is the fewest trades that covers, and a covered currency trades nothing", () => {
+  const plan = planFixtureB();
+  const pieNeed = B_NEEDS[94160903];
+  assert.equal(plan.trades.length, 1, "minimum cover is one trade row");
+  const [trades] = plan.trades;
+  const ratio = B_TRADES.find((row) => Number(row.fromId) === trades.fromId && Number(row.toId) === trades.toId);
+  assert.equal(trades.count, 196);
+  const oneFewer = plan.farmed["94160903"] + (trades.count - 1) * ratio.getNum;
+  assert.ok(oneFewer < pieNeed, `${oneFewer} pie after ${trades.count - 1} trades still misses ${pieNeed}`);
+  assert.ok(plan.farmed["94160903"] + trades.count * ratio.getNum >= pieNeed, "and 196 covers it");
+  assert.equal(
+    plan.yields["94160901"],
+    plan.farmed["94160901"],
+    "cookie trades nothing up: its own surplus stays in the bag",
+  );
+});
+
+/* R22 drift guard: the full-cascade walk exists three times — cascadeYields (the search's oracle),
+   cascadeIntoArrays (the fused inner kernel) and spendSurplusUpChain (the min-cover seed). Twin
+   semantics by comment, not by call. Pin per-(from, to) trade counts equal across two of them on
+   every fixture chain plus a branching one, so an edit to one twin fails here, not silently in the
+   minCoverTrades seed. CASCADE_MICRO mirrors domain.js's private CURRENCY_MICRO. */
+const CASCADE_MICRO = 10000;
+
+function microUnits(units) {
+  const map = {};
+  for (const [key, value] of Object.entries(units)) map[key] = Math.round(value * CASCADE_MICRO);
+  return map;
+}
+
+/* The valid-row subset of domain.js's tradeChain: cost/get on the micro grid, targets id ascending. */
+function chainFromShop(trades) {
+  const chain = {};
+  for (const trade of trades) {
+    const entry = {
+      toKey: String(trade.toId),
+      costMicro: trade.costAmount * CASCADE_MICRO,
+      getMicro: trade.getNum * CASCADE_MICRO,
+    };
+    (chain[String(trade.fromId)] = chain[String(trade.fromId)] || []).push(entry);
+  }
+  for (const outs of Object.values(chain)) outs.sort((a, b) => Number(a.toKey) - Number(b.toKey));
+  return chain;
+}
+
+function pairCounts(items) {
+  const counts = {};
+  for (const item of items) {
+    if (item.count <= 0) continue;
+    const key = `${Number(item.fromId)}->${Number(item.toId)}`;
+    counts[key] = (counts[key] || 0) + item.count;
+  }
+  return counts;
+}
+
+test("R22 drift guard: spendSurplusUpChain seeds exactly what cascadeYields walks, per fixture chain", () => {
+  const planA = EventShop.farmPlan({
+    totals: B_NEEDS,
+    held: {},
+    bonus: {},
+    farm: B_FARM,
+    trades: [],
+    priorityQuestId: 94161108,
+  });
+  const planC = EventShop.farmPlan({
+    totals: { 94164000: 3000, 94164001: 4000, 94164002: 5000 },
+    held: {},
+    bonus: {},
+    farm: C_FARM,
+    trades: C_TRADES,
+    priorityQuestId: null,
+  });
+  // A branching chain: two sources into one merge, then to the top; ids ascending so the numeric
+  // sort below is the bottom-up (topological) order every fixture chain walks.
+  const branchTrades = [
+    { fromId: 94169901, toId: 94169903, costAmount: 10, getNum: 1 },
+    { fromId: 94169902, toId: 94169903, costAmount: 10, getNum: 1 },
+    { fromId: 94169903, toId: 94169904, costAmount: 10, getNum: 1 },
+  ];
+  const fixtures = [
+    { name: "fixture A (empty chain)", trades: [], needs: B_NEEDS, farmed: planA.farmed, pinned: {} },
+    {
+      name: "fixture B",
+      trades: B_TRADES,
+      needs: B_NEEDS,
+      farmed: planFixtureB().farmed,
+      pinned: { "94160901->94160902": 16, "94160902->94160903": 202 },
+    },
+    {
+      name: "fixture C",
+      trades: C_TRADES,
+      needs: { 94164000: 3000, 94164001: 4000, 94164002: 5000 },
+      farmed: planC.farmed,
+      pinned: { "94164000->94164001": 3 },
+    },
+    {
+      name: "branching chain",
+      trades: branchTrades,
+      needs: { 94169901: 100, 94169902: 100, 94169903: 100, 94169904: 100 },
+      farmed: { 94169901: 120, 94169902: 150, 94169903: 120, 94169904: 0 },
+      pinned: { "94169901->94169903": 2, "94169902->94169903": 5, "94169903->94169904": 2 },
+    },
+  ];
+  for (const fixture of fixtures) {
+    const deficits = microUnits(fixture.needs);
+    const yields = microUnits(fixture.farmed);
+    const chain = chainFromShop(fixture.trades);
+    const keys = new Set([...Object.keys(deficits), ...Object.keys(chain)]);
+    for (const outs of Object.values(chain)) for (const out of outs) keys.add(out.toKey);
+    const order = [...keys].sort((a, b) => Number(a) - Number(b));
+    const table = { deficits, chain, keys: order, order };
+    const walked = pairCounts(cascadeYields(table, yields).trades);
+    // The same working rows minCoverTrades seeds via tradeRows(chain, order).
+    const rows = [];
+    for (const key of order) for (const entry of chain[key] || []) rows.push({ ...entry, fromKey: key, count: 0 });
+    spendSurplusUpChain(yields, deficits, rows);
+    const seeded = pairCounts(rows.map((row) => ({ fromId: row.fromKey, toId: row.toKey, count: row.count })));
+    assert.deepEqual(seeded, walked, `${fixture.name}: seed must equal the full cascade`);
+    assert.deepEqual(walked, fixture.pinned, `${fixture.name}: pinned full-cascade counts`);
+  }
+});
+
+/* Trade figures per currency at one end of the executed pairs: what each side sends or receives,
+   priced on the shop's own B_TRADES ratios. */
+function tradeFlow(trades, endField, figureField) {
+  const flow = {};
+  for (const trade of trades) {
+    const ratio = B_TRADES.find(
+      (candidate) => Number(candidate.fromId) === trade.fromId && Number(candidate.toId) === trade.toId,
+    );
+    const key = String(trade[endField]);
+    flow[key] = (flow[key] || 0) + trade.count * ratio[figureField];
+  }
+  return flow;
+}
+
+test("farmPlan without trades farmeds exactly what it yields", () => {
+  const plan = EventShop.farmPlan({
+    totals: B_NEEDS,
+    held: {},
+    bonus: {},
+    farm: B_FARM,
+    trades: [],
+    priorityQuestId: 94161108,
+  });
+  assert.deepEqual(plan.farmed, plan.yields, "no cascade: the raw drops ARE the finals");
+});
+
+test("farmPlan with zero deficits farmeds a 0 row on the same keys", () => {
+  const plan = EventShop.farmPlan({ totals: { 1: 5 }, held: { 1: 9 }, bonus: {}, farm: C_FARM, trades: [] });
+  assert.deepEqual(plan.farmed, plan.yields);
+  assert.equal(plan.farmed["1"], 0, "no runs, no drops");
+});
+
+test("infeasible farmPlan farmeds nothing", () => {
+  const plan = EventShop.farmPlan({
+    totals: { 1: 10 },
+    held: {},
+    bonus: {},
+    farm: { quests: [], best: {} },
+    trades: [],
+  });
+  assert.equal(plan.totalPlays, null);
+  assert.deepEqual(plan.farmed, {});
 });
 
 /* Fixture B's floor (Amendment L5): 103 plays cannot cover the plan. The four Pareto quests
@@ -374,7 +576,9 @@ function cover103(a, b, e, f, rate) {
    exact no-priority search prices the plan over the shipped snapshot's own three quests (rates and
    10:1 trade chain refreshed to the data module — the old fixture carried a stale 94164101 line and
    no trades). needs bronze 3000 / silver 4000 / gold 5000 → the oracle's brute-forced minimum is
-   306 plays = 64×だるま + 108×こんにゃく + 134×槍 + 3 bronze→silver trades. The old greedy walked
+   306 plays = 64×だるま + 108×こんにゃく + 134×槍, whose drops cover all three needs, so the R22
+   minimum cover trades nothing (the full cascade used to report 3 bronze→silver by pushing every
+   spare unit up). The old greedy walked
    334 plays and left ~800 gold of surplus (the buy-all spend, pinned in the hostile suite, was even
    worse: 498 plays with a +1084 gold surplus — the owner-reported "+1093 YAKI"). */
 const C_FARM = {
@@ -422,10 +626,10 @@ test("farmPlan fixture C: no all-covering quest → exact minimum 306 plays = 64
   });
   assert.equal(plan.totalPlays, 306, "the oracle brute-forces 306 as the minimum (was: greedy 334)");
   assert.deepEqual(runsOf(plan), { 94164102: 134, 94164101: 108, 94164100: 64 });
-  assert.deepEqual(plan.trades, [{ fromId: 94164000, toId: 94164001, count: 3 }]);
+  assert.deepEqual(plan.trades, [], "R22 minimum cover: every currency's own drops reach its need");
   assert.ok(Math.abs(plan.yields["94164002"] - 5008.8024) < 0.01, `gold ${plan.yields["94164002"]}`);
-  assert.ok(Math.abs(plan.yields["94164000"] - 3005.2728) < 0.01, `bronze ${plan.yields["94164000"]}`);
-  assert.ok(Math.abs(plan.yields["94164001"] - 4008.8568) < 0.01, `silver ${plan.yields["94164001"]}`);
+  assert.ok(Math.abs(plan.yields["94164000"] - 3035.2728) < 0.01, `bronze ${plan.yields["94164000"]}`);
+  assert.ok(Math.abs(plan.yields["94164001"] - 4005.8568) < 0.01, `silver ${plan.yields["94164001"]}`);
   assert.ok(
     plan.plays.every((play) => play.isAllDrop === false),
     "80639 ships no all-drop quest",
@@ -610,9 +814,10 @@ test("farmPlan survives a missing snapshot, junk figures and hostile bonuses wit
   assert.ok(negativeHeld.yields["94164000"] >= 105, "a negative held only makes the deficit bigger");
 });
 
-test("farmPlan trades are integer and cascade the full chain — surplus never strands upward", () => {
-  /* Needs pie 500, farms none directly: 誓い alone pays donut past 3000 and cookie past 4000,
-     and the cascade must move cookie→donut→pie in whole 10:1 trades. */
+test("farmPlan trades are integer and minimum-cover — every shortfall still gets covered", () => {
+  /* Needs pie 5000, farms none directly: 誓い alone pays donut past 3000 and cookie past 4000, so the
+     minimum cover is whole 10:1 donut→pie trades and no cookie→donut trade — the fewest that leaves
+     every currency at or above its need (Amendment R22). */
   const plan = EventShop.farmPlan({
     totals: { 94160901: 4000, 94160902: 3000, 94160903: 5000 },
     held: {},
@@ -624,6 +829,10 @@ test("farmPlan trades are integer and cascade the full chain — surplus never s
   for (const trade of plan.trades) {
     assert.ok(Number.isInteger(trade.count) && trade.count > 0, `trade ${JSON.stringify(trade)}`);
   }
+  assert.ok(
+    plan.trades.every((trade) => trade.toId === 94160903),
+    "only the short currency is fed",
+  );
   assert.ok(plan.totalPlays < 155, `trades must save plays: ${plan.totalPlays}`);
   for (const key of Object.keys(B_NEEDS)) {
     assert.ok(plan.yields[key] >= B_NEEDS[key] - 1e-6, `${key} covered: ${plan.yields[key]}`);

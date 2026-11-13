@@ -12,6 +12,7 @@ import {
   questsDroppingCurrency,
 } from "./event-shop-farm-controls.js";
 import { renderFarmResults } from "./event-shop-farm-results.js";
+import { buildQuestName, refreshSlidingNames } from "./event-shop-farm-names.js";
 
 /* ===...=== Best-quest farm view (Amendment D, L, M) ===...=== */
 /* Everything the Event tab shows instead of the legacy drop-rate model: three per-currency cards —
@@ -45,6 +46,7 @@ export function hydrateFarmGrid(event, plan, handlers = {}) {
   const covering = EventShop.allCoveringQuests(event.farm, currencyIds(view.snapshot)).sort(byRecommendLv);
   if (covering.length) fragment.appendChild(buildComboCard(view, covering));
   grid.replaceChildren(fragment);
+  refreshSlidingNames(grid);
 }
 
 function currencyIds(snapshot) {
@@ -111,7 +113,7 @@ function buildCardBody(currency, quest, view, options) {
         onChange: view.handlers.onQuestChange,
       }),
     );
-  lines.push(buildMessage(quest ? quest.questName || NO_DROP_MESSAGE : NO_DROP_MESSAGE, "farm-quest-name"));
+  lines.push(buildQuestName(quest ? quest.questName || NO_DROP_MESSAGE : NO_DROP_MESSAGE));
   if (quest && quest.recommendLv) lines.push(buildMessage(`REC Lv. ${quest.recommendLv}`));
   if (quest) lines.push(...questDropLines(currency, quest, view));
   const body = DOMFactory.el("div", "farm-card-body");
@@ -141,7 +143,7 @@ function buildComboCard(view, covering) {
   card.appendChild(buildComboHeader(view.snapshot));
   const quest = covering.find((q) => String(q.questId) === String(view.plan.farmQuest)) || covering[0];
   const select = buildFarmQuestSelect(covering, view.plan.farmQuest, view.handlers.onQuestChange);
-  const lines = [buildMessage(quest.questName, "farm-quest-name")];
+  const lines = [buildQuestName(quest.questName)];
   if (quest.recommendLv) lines.push(buildMessage(`REC Lv. ${quest.recommendLv}`));
   const drops = DOMFactory.el("div", "farm-combo-drops");
   drops.replaceChildren(buildAllDropLines(quest.drops, view.snapshot.currencies));
@@ -161,17 +163,17 @@ function buildComboHeader(snapshot) {
   return title;
 }
 
-function buildMessage(text, extraClass) {
-  const line = DOMFactory.el("div", extraClass ? ["farm-stat", extraClass] : "farm-stat");
+function buildMessage(text) {
+  const line = DOMFactory.el("div", "farm-stat");
   line.textContent = text;
   return line;
 }
 
 /* ===...=== Event-mode results and plan boxes ===...=== */
 
-/* Event mode results: the "Best Farm Runs" card — Required/Get per currency with the covered check
-   and surplus as a plain +X, the per-quest play rows, the executed shop trades and the total
-   plays footer. All of it priced by EventShop.farmPlan; this only paints (results module). */
+/* Event mode results: the "Best Farm Runs" card — Quests to Play cards, Item Receive (raw run
+   drops), the executed shop trades. All priced by EventShop.farmPlan; this only paints (results
+   module). */
 export function showFarmResults(snapshot, view) {
   view.reveal();
   renderFarmResults(snapshot, view);

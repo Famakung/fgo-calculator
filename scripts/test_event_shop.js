@@ -3,11 +3,12 @@
  * scripts/test_event_shop.js
  *
  * Browser gate for the Event Shop surfaces under Amendments D+E+F+G+H+I(final)+J. Amendment J pruned
- * every non-farm event from the shipped snapshot: EVENT_SHOP_DATA.events == [80639] ONLY (3 tier-mapped
+ * every non-farm event from the shipped snapshot; the sanctioned 2026-11-12 sync added 80632, so
+ * EVENT_SHOP_DATA.events == [80639, 80632] (scene event 80639: 3 tier-mapped
  * currencies, all with community drop data + a secondary drop). The gate therefore runs in THREE modes
  * against THREE served copies of the same fresh dist — one command per mode, every mode must exit 0:
- *   MAIN   (default)  — the shipped single-event snapshot: farm card shape + opener + drop lines,
- *                        results math, modal/clamp/commit/hostile/quota/viewport, select single option;
+ *   MAIN   (default)  — the shipped snapshot (2 events since 2026-11-12): farm card shape + opener + drop lines,
+ *                        results math, modal/clamp/commit/hostile/quota/viewport, select options;
  *   MULTI  (--multi)  — a patched copy whose events[] also carries the three pruned events (80630
  *                        single-gold null-farm, 80379 two golds / first-match, 80292 QP "zero" + two
  *                        silvers) plus a synthetic 80555 dash fixture (the live farm rows with every
@@ -25,7 +26,7 @@
  *    "Drop Rates per Run" → "Shop Requirements" → the #results "Items Needed" card; Bond-consistent
  *    .input-row > label.input-label + select.select-field; NO blank option; fresh storage
  *    FORCE-SELECTS the latest event (max startedAt == list head, both pinned); with one event the
- *    list is exactly that one option; a saved selection wins (MULTI); zero events (stub copy) →
+ *    list is exactly the snapshot events in order ([80639, 80632] since the 2026-11-12 sync); a saved selection wins (MULTI); zero events (stub copy) →
  *    one disabled "No active event" option + the legacy calculator;
  *  - per-event saves (MULTI): set a plan on A, switch to B, switch back to A → A restored
  *    byte-equal, B's edit never leaked into A; plans survive reload; the pre-G { eventId, requires }
@@ -298,10 +299,11 @@ if (!LEGACY) {
   if (!freeRow) blind.push("no bronze unlimited row");
   if (!bronzeSteppable) blind.push("no steppable bronze row");
   if (CURRENCIES.length < 3) blind.push("fewer than 3 currencies on the pinned event");
-  /* Amendment J shipped: the live snapshot carries ONLY the farm event. The pruned events exist in
+  /* Amendment J shipped: the live snapshot carried ONLY the farm event; the 2026-11-12 sync is
+     sanctioned drift — it added 80632, so MAIN truth is [80639, 80632]. The pruned events exist in
      this gate only inside the MULTI patched copy — the isolation/collision/zero-bg/null-farm scenes
      run there, never silently skipped. */
-  const wantIds = MULTI ? [80639, 80630, 80379, 80292, 80555] : [80639];
+  const wantIds = MULTI ? [80639, 80630, 80379, 80292, 80555] : [80639, 80632];
   if (EVENTS.length !== wantIds.length)
     blind.push(`${EVENTS.length} events in ${MODE} mode, want ${wantIds.length} (${wantIds.join(",")})`);
   else if (EVENTS.map((e) => e.event.id).join() !== wantIds.join())
@@ -1473,15 +1475,17 @@ try {
         }
       }
 
-      /* Amendment J: with every non-farm event pruned, the SHIPPED list is exactly one option —
-         80639, selected, enabled, no blank. (The >1-event list shapes are pinned in MULTI mode.) */
+      /* Amendment J + the sanctioned 2026-11-12 sync drift: the SHIPPED list is exactly the snapshot
+         events in list order (wantIds pins [80639, 80632] — 80639 head), selected, enabled, no blank.
+         (The >1-event patched list shapes are pinned in MULTI mode.) */
       if (!MULTI && s) {
-        if (s.options.length !== 1 || s.options[0].value !== String(PIN_LATEST))
+        const wantOpts = EVENTS.map((e) => String(e.event.id));
+        if (s.options.length !== wantOpts.length || s.options.map((o) => o.value).join() !== wantOpts.join())
           errors.push(
-            `select card(J): the shipped select holds ${JSON.stringify(s.options)}, want exactly one option ${PIN_LATEST}`,
+            `select card(J): the shipped select holds ${JSON.stringify(s.options.map((o) => o.value))}, want ${wantOpts.join(",")} in list order`,
           );
         if (s.options.some((o) => o.disabled))
-          errors.push("select card(J): the one real option is disabled — a farm event must be selectable");
+          errors.push("select card(J): a real option is disabled — a farm event must be selectable");
       }
 
       /* a saved selection WINS over the latest-event default — needs a second event to mean

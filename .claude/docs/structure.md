@@ -30,6 +30,8 @@ src/
     event-shop.js              — UIBuilder, ViewManager, EventHandler, App (tier calculator)
     event-shop-tier.js         — event-native tier skin: currency images/names, read-only Required displays
     event-shop-farm.js         — Drop Rates per Run real-data cards, event-mode results + plan box sync
+    event-shop-farm-results.js — Best Farm Runs results card: Quests to Play farm-cards, Item Receive (raw farmed drops, ×-count overlays), minimum-cover Shop Trades cards
+    event-shop-farm-names.js   — single-line quest names with a looping slide for overflow (post-render measure + one resize watcher)
     event-shop-farm-lines.js   — farm-card primary/secondary drop lines from community data (live bonus)
     event-shop-farm-controls.js— farm-card Held/Bonus plan boxes + tier-mapped currency id set
     event-shop-modal.js        — EventShopModal: per-currency draft config modal (Default/Select All/Cancel/Done)
