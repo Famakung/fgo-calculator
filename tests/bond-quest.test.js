@@ -1,7 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Quest } from "../src/scripts/domain.js";
 import { GRAND_CLASSES, GRAND_DIFFICULTIES, CLASS_FILTERS } from "../src/scripts/constants.js";
+
+const blobs = new Map();
+globalThis.localStorage = {
+  getItem: (key) => (blobs.has(key) ? blobs.get(key) : null),
+  setItem: (key, value) => blobs.set(key, String(value)),
+};
+
+const { BondApp } = await import("../src/scripts/bond-app.js");
+const KEY = "fgo_bond_calculator_data";
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("a free quest pays its own figure, and Custom pays what was typed", () => {
   assert.equal(Quest.bondPerRun({ questMain: "fq", questSub: "fq83" }), 845);
@@ -85,4 +98,94 @@ test("the party check reads the servant's own class trait", () => {
   assert.equal(Quest.matchesClass(saber, "all"), true);
   assert.equal(Quest.matchesClass([], "extra"), false);
   assert.equal(Quest.matchesClass(undefined, "0100"), false);
+});
+
+test("blank, missing, or invalid questMain in saved state defaults to Free Quest", () => {
+  for (const raw of [{ questMain: "" }, {}, { questMain: "unknown" }]) {
+    blobs.set(KEY, JSON.stringify(raw));
+    const state = BondApp.loadState();
+    assert.equal(state.questMain, "fq");
+  }
+  blobs.set(KEY, JSON.stringify({ questMain: "gd" }));
+  assert.equal(BondApp.loadState().questMain, "gd");
+  blobs.set(KEY, JSON.stringify({ selectedQuest: "gd100" }));
+  assert.equal(BondApp.loadState().questMain, "gd");
+});
+
+test("bondQuestSelect has no blank option in markup and stays unblankable in initQuestSelects", () => {
+  const html = fs.readFileSync(path.join(repoRoot, "src/pages/index.astro"), "utf8");
+  const match = html.match(/<select[^>]*id="bondQuestSelect"[^>]*>([\s\S]*?)<\/select>/);
+  assert.ok(match, "bondQuestSelect must exist in index.astro");
+  assert.equal(match[1].trim(), "", "bondQuestSelect must not ship a blank <option>");
+
+  const makeEl = (tag) => {
+    const attrs = new Map();
+    const listeners = new Map();
+    const children = [];
+    const el = {
+      tagName: tag.toUpperCase(),
+      style: {},
+      children,
+      value: "",
+      setAttribute: (k, v) => attrs.set(k, String(v)),
+      removeAttribute: (k) => attrs.delete(k),
+      getAttribute: (k) => (attrs.has(k) ? attrs.get(k) : null),
+      appendChild: (node) => {
+        if (node.children) children.push(...node.children);
+        else children.push(node);
+        return node;
+      },
+      addEventListener: (ev, fn) => listeners.set(ev, fn),
+      closest: () => ({ style: {} }),
+      trigger: (ev) => listeners.get(ev)?.(),
+    };
+    return el;
+  };
+
+  const elements = new Map([
+    ["bondQuestSelect", makeEl("select")],
+    ["bondFreeQuestSelect", makeEl("select")],
+    ["bondGrandClassSelect", makeEl("select")],
+    ["bondGrandDiffSelect", makeEl("select")],
+    ["customQuestSection", makeEl("div")],
+    ["customBondPerRun", makeEl("input")],
+    ["customApPerRun", makeEl("input")],
+  ]);
+  const docEl = makeEl("html");
+  const prevDoc = globalThis.document;
+  globalThis.document = {
+    documentElement: docEl,
+    getElementById: (id) => elements.get(id) || null,
+    createElement: (tag) => makeEl(tag),
+    createDocumentFragment: () => ({ children: [], appendChild(n) { this.children.push(n); } }),
+  };
+
+  try {
+    BondApp.state = {
+      slots: [],
+      parties: {},
+      questMain: "",
+      questSub: "",
+      questClass: "",
+      questDiff: "",
+      customBond: 0,
+      customAp: 22,
+    };
+    BondApp.initQuestSelects();
+    const main = elements.get("bondQuestSelect");
+    assert.deepEqual(
+      main.children.map((opt) => opt.getAttribute("value")),
+      ["fq", "gd"],
+    );
+    assert.equal(main.value, "fq");
+    assert.equal(BondApp.state.questMain, "fq");
+    assert.equal(docEl.getAttribute("data-bond-quest"), "fq");
+
+    main.value = "";
+    main.trigger("change");
+    assert.equal(main.value, "fq");
+    assert.equal(BondApp.state.questMain, "fq");
+  } finally {
+    globalThis.document = prevDoc;
+  }
 });

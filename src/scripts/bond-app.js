@@ -71,7 +71,7 @@ export const BondApp = {
     const saved = this.loadState();
     this.state = saved || {
       slots: Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot()),
-      questMain: "",
+      questMain: "fq",
       questSub: "",
       questClass: "",
       questDiff: "",
@@ -200,8 +200,13 @@ export const BondApp = {
     const bind = (key, select) => {
       const swaps = key === "questMain" || key === "questClass";
       select.value = this.state[key];
+      if (key === "questMain" && !select.value) {
+        select.value = "fq";
+        this.state[key] = "fq";
+      }
       select.addEventListener("change", () => {
         if (swaps) this.stashParty();
+        if (key === "questMain" && !select.value) select.value = "fq";
         this.state[key] = select.value;
         if (swaps) {
           this.applyParty();
@@ -1409,6 +1414,7 @@ export const BondApp = {
           questDiff = GRAND_DIFFICULTIES[GRAND_DIFFICULTIES.length - 1].key;
         }
       }
+      if (!questMain) questMain = "fq";
 
       /* A Grand Duel choice owns its party; `""` is the shared party Free Quest and an empty quest use.
          The party on screen is stored as `slots`, so its own key is read from `parties` only when it is
