@@ -923,3 +923,117 @@ test("event 80639 real raid optimization runs <100ms, uses >4 quests, and beats 
   assert.equal(raidPartialCe.totalPlays, 94);
   verifyPlanCoverage(raidPartialCe, totals, active, EVENT_80639_TRADES);
 });
+
+test("EventShop.activeRaidQuests excludes bosses marked raidEnded and sanitizePlans cleans raidEnded", () => {
+  const all = EventShop.activeRaidQuests(RAID_EVENT_SNAPSHOT, { raidQuest: { 920712: 94164213 } });
+  assert.deepEqual(
+    all.map((q) => q.questId),
+    [94164204, 94164209, 94164213, 94164219, 94164224, 94164229],
+  );
+
+  // Strict === true check: ended bosses excluded, non-true values ignored
+  const partial = EventShop.activeRaidQuests(RAID_EVENT_SNAPSHOT, {
+    raidQuest: { 920712: 94164213 },
+    raidEnded: { 920710: true, 920714: true, 920711: false, 920712: "true", 920715: 1 },
+  });
+  assert.deepEqual(
+    partial.map((q) => q.questId),
+    [94164209, 94164213, 94164224, 94164229],
+  );
+
+  // All ended -> empty quest pool -> infeasible farmPlan when deficits > 0
+  const allEndedMap = Object.fromEntries(EVENT_80639_RAIDS.map((b) => [String(b.bossId), true]));
+  const none = EventShop.activeRaidQuests(RAID_EVENT_SNAPSHOT, { raidEnded: allEndedMap });
+  assert.deepEqual(none, []);
+  const infeasible = EventShop.farmPlan({
+    totals: { 94164000: 100 },
+    farm: { quests: none, best: {} },
+    useAllQuests: true,
+  });
+  assert.equal(infeasible.totalPlays, null);
+  assert.deepEqual(infeasible.plays, []);
+
+  // Ending a boss excludes its quest from farmPlan optimization
+  const totals = { 94164000: 500, 94164001: 500, 94164002: 500 };
+  const withoutDuals = EventShop.activeRaidQuests(RAID_EVENT_SNAPSHOT, {
+    raidEnded: { 920714: true, 920715: true, 920716: true },
+  });
+  const plan = EventShop.farmPlan({
+    totals,
+    farm: { quests: withoutDuals, best: {} },
+    trades: EVENT_80639_TRADES,
+    useAllQuests: true,
+  });
+  assert.ok(plan.totalPlays > 0);
+  for (const play of plan.plays) {
+    assert.equal([94164219, 94164224, 94164229].includes(play.questId), false);
+  }
+  verifyPlanCoverage(plan, totals, withoutDuals, EVENT_80639_TRADES);
+
+  // sanitizePlans keeps only === true for valid drop-bearing raid bosses
+  const sanitized = EventShop.sanitizePlans(
+    {
+      selectedEventId: 80639,
+      plans: {
+        80639: {
+          questType: "raid",
+          raidEnded: {
+            920710: true,
+            920711: false,
+            920712: "true",
+            920713: true, // zero-drop boss -> omitted
+            888888: true, // unknown boss -> omitted
+            __proto__: true,
+          },
+        },
+        80630: {
+          raidEnded: { 1: true },
+        },
+      },
+    },
+    [RAID_EVENT_SNAPSHOT, NO_RAID_SNAPSHOT],
+  );
+  assert.deepEqual(sanitized.plans["80639"].raidEnded, { 920710: true });
+  assert.deepEqual(sanitized.plans["80630"].raidEnded, {});
+});
+
+test("EventPlanner raidEndedOf, setRaidEnded, persistence across reload, and activeRaidQuests exclusion", async () => {
+  const storage = fakeStorage();
+  const planner = await plannerWith(storage, [RAID_EVENT_SNAPSHOT, NO_RAID_SNAPSHOT]);
+
+  assert.equal(planner.raidEndedOf(920710), false);
+  assert.equal(planner.raidEndedOf(920713), false);
+  assert.equal(planner.raidEndedOf(999999), false);
+
+  planner.setRaidEnded(920710, true);
+  planner.setRaidEnded(920714, true);
+  // Zero-drop or unknown boss ignored
+  planner.setRaidEnded(920713, true);
+  planner.setRaidEnded(999999, true);
+
+  assert.equal(planner.raidEndedOf(920710), true);
+  assert.equal(planner.raidEndedOf(920714), true);
+  assert.equal(planner.raidEndedOf(920713), false);
+  assert.deepEqual(
+    planner.activeRaidQuests().map((q) => q.questId),
+    [94164209, 94164214, 94164224, 94164229],
+  );
+
+  // Persisted across reload
+  const reloaded = await plannerWith(storage, [RAID_EVENT_SNAPSHOT, NO_RAID_SNAPSHOT]);
+  assert.equal(reloaded.raidEndedOf(920710), true);
+  assert.equal(reloaded.raidEndedOf(920714), true);
+  assert.equal(reloaded.raidEndedOf(920711), false);
+  assert.deepEqual(
+    reloaded.activeRaidQuests().map((q) => q.questId),
+    [94164209, 94164214, 94164224, 94164229],
+  );
+
+  // Unchecking re-enables the boss
+  reloaded.setRaidEnded(920710, false);
+  assert.equal(reloaded.raidEndedOf(920710), false);
+  assert.deepEqual(
+    reloaded.activeRaidQuests().map((q) => q.questId),
+    [94164204, 94164209, 94164214, 94164224, 94164229],
+  );
+});

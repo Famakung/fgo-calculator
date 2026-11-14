@@ -255,7 +255,10 @@ export const App = {
      card resolves its own selected quest through it) and closes visible results until Calculate is
      clicked again. */
   _farmHandlers() {
-    return { onQuestChange: () => this.onFarmQuestChanged() };
+    return {
+      onQuestChange: () => this.onFarmQuestChanged(),
+      onRaidEndedChange: () => ViewManager.resetResults(),
+    };
   },
 
   onFarmQuestChanged() {

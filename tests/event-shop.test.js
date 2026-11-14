@@ -1028,6 +1028,7 @@ test("sanitizePlans keeps one plan per event and starts unseen events empty", ()
     ceEquipLimit: 6,
     questType: "free",
     raidQuest: {},
+    raidEnded: {},
   });
   assert.deepEqual(state.plans["80630"], {
     requires: {},
@@ -1039,6 +1040,7 @@ test("sanitizePlans keeps one plan per event and starts unseen events empty", ()
     ceEquipLimit: 6,
     questType: "free",
     raidQuest: {},
+    raidEnded: {},
   });
 });
 
@@ -1106,6 +1108,7 @@ test("sanitizePlans survives junk blobs and an absent event list", () => {
         ceEquipLimit: 6,
         questType: "free",
         raidQuest: {},
+        raidEnded: {},
       },
     },
   });
@@ -1272,6 +1275,7 @@ test("EventPlanner isolates plans: committing to the selected event never touche
       ceEquipLimit: 6,
       questType: "free",
       raidQuest: {},
+      raidEnded: {},
     },
     "event A is exactly what it was before the switch",
   );

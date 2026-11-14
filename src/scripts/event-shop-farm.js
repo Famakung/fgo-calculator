@@ -10,6 +10,7 @@ import {
   buildFarmQuestSelect,
   buildCurrencyQuestSelect,
   buildRaidQuestSelect,
+  buildRaidEndedToggle,
   questsDroppingCurrency,
 } from "./event-shop-farm-controls.js";
 import { renderFarmResults } from "./event-shop-farm-results.js";
@@ -181,20 +182,37 @@ function buildRaidBossCard(boss, view) {
   });
   if (!dropped.length) return null;
 
+  const endedMap = view.plan?.raidEnded || {};
+  const isEnded = Object.hasOwn(endedMap, String(boss.bossId)) && endedMap[String(boss.bossId)] === true;
+
   const classes = ["quest-drops-item", "farm-card"];
   if (dropped.length !== 1) classes.push("farm-card--combo");
+  if (isEnded) classes.push("farm-card--raid-ended");
   const card = DOMFactory.el("div", classes, dropped.length === 1 ? { "data-tier": dropped[0].background } : {});
-  card.appendChild(buildRaidCardHeader(dropped));
 
-  const lines = [buildQuestName(boss.bossName)];
-  lines.push(
-    buildRaidQuestSelect({
+  const select = buildRaidQuestSelect({
+    boss,
+    quests,
+    selectedQuestId: quest.questId,
+    disabled: isEnded,
+    onChange: view.handlers.onQuestChange,
+  });
+
+  card.appendChild(
+    buildRaidEndedToggle({
       boss,
-      quests,
-      selectedQuestId: quest.questId,
-      onChange: view.handlers.onQuestChange,
+      checked: isEnded,
+      onToggle: (ended) => {
+        card.classList.toggle("farm-card--raid-ended", ended);
+        select.disabled = ended;
+        if (view.handlers.onRaidEndedChange) view.handlers.onRaidEndedChange();
+        else if (view.handlers.onQuestChange) view.handlers.onQuestChange();
+      },
     }),
   );
+  card.appendChild(buildRaidCardHeader(dropped));
+
+  const lines = [buildQuestName(boss.bossName), select];
   if (quest.recommendLv) lines.push(buildMessage(`REC Lv. ${quest.recommendLv}`));
   for (const currency of dropped) lines.push(buildCurrencyDropLine(currency, drops[String(currency.id)]));
   const body = DOMFactory.el("div", "farm-card-body");

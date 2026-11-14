@@ -207,23 +207,29 @@ export const EventPlanner = {
     this._mutatePlan({ raidQuest: { ...this.activePlan().raidQuest, [key]: choice } });
   },
 
-  activeRaidQuests() {
+  raidEndedOf(bossId) {
     const event = this.activeEvent();
-    const raids = (event && event.farm && event.farm.raids) || [];
-    if (!Array.isArray(raids) || !raids.length) return [];
-    const currencyIds = currencyIdsOf(event);
-    const savedMap = this.activePlan().raidQuest || {};
-    const selected = [];
-    for (const boss of raids) {
-      const quests = EventShop.raidBossQuests(boss, currencyIds);
-      if (!quests.length) continue;
-      const key = String(boss.bossId);
-      const saved = Object.hasOwn(savedMap, key) ? savedMap[key] : undefined;
-      const questId = EventShop.sanitizedRaidQuest(boss, saved, currencyIds);
-      const quest = quests.find((entry) => entry.questId === questId);
-      if (quest) selected.push(quest);
-    }
-    return selected;
+    const boss = findRaidBoss(event, bossId);
+    if (!boss) return false;
+    const savedMap = this.activePlan().raidEnded || {};
+    const key = String(boss.bossId);
+    return Object.hasOwn(savedMap, key) && savedMap[key] === true;
+  },
+
+  setRaidEnded(bossId, ended) {
+    const event = this.activeEvent();
+    const boss = findRaidBoss(event, bossId);
+    if (!boss) return;
+    if (!EventShop.raidBossQuests(boss, currencyIdsOf(event)).length) return;
+    const key = String(boss.bossId);
+    const next = { ...this.activePlan().raidEnded };
+    if (ended) next[key] = true;
+    else delete next[key];
+    this._mutatePlan({ raidEnded: next });
+  },
+
+  activeRaidQuests() {
+    return EventShop.activeRaidQuests(this.activeEvent(), this.activePlan());
   },
 
   _mutatePlan(patch) {

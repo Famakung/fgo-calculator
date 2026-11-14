@@ -1202,6 +1202,28 @@ export const EventShop = {
     return this.defaultRaidQuest(boss, currencyIds);
   },
 
+  activeRaidQuests(snapshot, plan = {}) {
+    const raids = (snapshot && snapshot.farm && snapshot.farm.raids) || [];
+    if (!Array.isArray(raids) || !raids.length) return [];
+    const currencyIds = snapshotCurrencyIds(snapshot);
+    const filterIds = currencyIds.length ? currencyIds : null;
+    const savedMap = (plan && plan.raidQuest && typeof plan.raidQuest === "object" && plan.raidQuest) || {};
+    const endedMap = (plan && plan.raidEnded && typeof plan.raidEnded === "object" && plan.raidEnded) || {};
+    const selected = [];
+    for (const boss of raids) {
+      if (!boss || boss.bossId === undefined || boss.bossId === null) continue;
+      const key = String(boss.bossId);
+      if (Object.hasOwn(endedMap, key) && endedMap[key] === true) continue;
+      const quests = this.raidBossQuests(boss, filterIds);
+      if (!quests.length) continue;
+      const saved = Object.hasOwn(savedMap, key) ? savedMap[key] : undefined;
+      const questId = this.sanitizedRaidQuest(boss, saved, filterIds);
+      const quest = quests.find((entry) => entry.questId === questId);
+      if (quest) selected.push(quest);
+    }
+    return selected;
+  },
+
   /* Multi-event storage blob (Amendment G) → { selectedEventId, plans }. The old single-event
      { eventId, requires } shape migrates into plans[eventId]; a plan whose event is not in the
      snapshot list is dropped, and every surviving plan is sanitized against that event's own
@@ -2100,6 +2122,7 @@ function sanitizeEventPlan(plan, snapshot) {
     ceEquipLimit: EventShop.clampCeEquipLimit((plan || {}).ceEquipLimit),
     questType: sanitizeQuestType((plan || {}).questType, snapshot),
     raidQuest: sanitizeRaidQuests((plan || {}).raidQuest, snapshot),
+    raidEnded: sanitizeRaidEnded((plan || {}).raidEnded, snapshot),
   };
 }
 
@@ -2169,6 +2192,23 @@ function sanitizeRaidQuests(saved, snapshot) {
     const rawSaved = Object.hasOwn(raw, key) ? raw[key] : undefined;
     const choice = EventShop.sanitizedRaidQuest(boss, rawSaved, filterIds);
     if (choice !== null) clean[key] = choice;
+  }
+  return clean;
+}
+
+function sanitizeRaidEnded(saved, snapshot) {
+  const raids = (snapshot && snapshot.farm && snapshot.farm.raids) || [];
+  if (!Array.isArray(raids) || !raids.length) return {};
+  const currencyIds = snapshotCurrencyIds(snapshot);
+  const filterIds = currencyIds.length ? currencyIds : null;
+  const raw = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  const clean = {};
+  for (const boss of raids) {
+    if (!boss || boss.bossId === undefined || boss.bossId === null) continue;
+    const key = String(boss.bossId);
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+    if (EventShop.defaultRaidQuest(boss, filterIds) === null) continue;
+    if (Object.hasOwn(raw, key) && raw[key] === true) clean[key] = true;
   }
   return clean;
 }
