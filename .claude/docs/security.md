@@ -35,7 +35,7 @@ Inline scripts in `<head>` (BaseLayout.astro):
 | Trusted Types policy | Passthrough `default` policy (runs before any module) |
 | Service-worker & cache cleanup | Purges active service workers and legacy caches from pre-migration visitors |
 | Build-etag poller | Checks deployment ETag against `fgo_build_etag` in sessionStorage, shows reload banner on update |
-| Tab-init + image preloads | Read localStorage active tab and `data-subtab`, preload LCP images via `createElement("link")` |
+| Tab-init + image preloads | Read localStorage active tab, `data-subtab`, `data-bond-quest`, `data-bond-custom`, and `data-event-combo`; preload LCP images via `createElement("link")` |
 
 All use only safe DOM APIs. No `innerHTML`, `eval`, `document.write`.
 

@@ -63,6 +63,7 @@ dist/                         — Static site output for GitHub Pages
   _astro/                      — Hashed JS/CSS chunks (Vite output)
   servants/                   — Servant portraits (copied from public/)
   craft_essences/              — CE images (copied from public/)
+  event_shop/                  — Event shop icons (copied from public/)
   icons/                       — UI icons (copied from public/)
   favicon.svg, manifest.json, robots.txt, .nojekyll
 
@@ -76,7 +77,7 @@ dist/                         — Static site output for GitHub Pages
 2. Inline `<script>` in `<head>` — Trusted Types policy (passthrough)
 3. Inline `<script>` in `<head>` — Service-worker/cache cleanup
 4. Inline `<script>` in `<head>` — Build-etag poller (`fgo_build_etag`, "new version available" banner)
-5. Inline `<script>` in `<head>` — Tab init (reads localStorage, sets `data-tab`, `data-bond-quest` / `data-bond-custom` for zero-CLS pre-paint quest row display, preloads LCP images; Bond Gain CE preload list = **first row only** — first servants ordered by collectionNo matching `CEFilterApp._getCols()` — high-priority image preloads outrank tab's own chunks, 39-link list pushed LCP 1684 ms to 2944 ms under 1.6 Mbps / CPU 4x. `plain` skips list when saved `cePicks` or Servant Select sub-tab renders a different first page)
+5. Inline `<script>` in `<head>` — Tab init (reads localStorage, sets `data-tab`, `data-subtab`, `data-bond-quest`, `data-bond-custom`, and `data-event-combo` for zero-CLS pre-paint display, preloads LCP images; Bond Gain CE preload list = **first row only** — first servants ordered by collectionNo matching `CEFilterApp._getCols()` — high-priority image preloads outrank tab's own chunks, 39-link list pushed LCP 1684 ms to 2944 ms under 1.6 Mbps / CPU 4x. `plain` skips list when saved `cePicks` or Servant Select sub-tab renders a different first page)
 6. `<script type="module">` — Astro entry chunk (imports main-entry + shared chunks eager)
 7. Lazy chunks via dynamic `import()` on tab switch (bond-lazy, event-lazy)
 8. Web Worker (`ce-match-worker.js`) spawned by CEFilterApp for first trait match compute
@@ -96,7 +97,7 @@ dist/                         — Static site output for GitHub Pages
 - Worker: `ce-match-worker` — own chunk for Web Worker
 
 ## Architecture (3 layers)
-- **Layer 1 — Domain** (`domain.js`): Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, ServantFilters, ServantSort. Pure logic, no DOM
+- **Layer 1 — Domain** (`domain.js`): Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, Teapot, Quest, ServantFilters, ServantSort, EventShop, cascadeYields, spendSurplusUpChain. Pure logic, no DOM
 - **Layer 2 — Application** (`state.js`, `*-app.js`, `ce-servant-select.js`): StateManager, Persistence, App, BondApp, CEFilterApp, ServantSelect, CEFilterStore; state + orchestration; circular deps via callback injection in `main.js`
 - **Layer 3 — Presentation** (`presentation.js`, `selectors.js`, `filter-sections.js`, `tab-navigator.js`): DOMFactory, CollapsibleFactory, FilterSections, FilterModalController, ComboCardRenderer, selectors, DOM only; selectors get callbacks at `open()`/`init()`
 

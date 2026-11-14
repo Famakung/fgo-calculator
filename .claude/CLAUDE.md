@@ -31,7 +31,7 @@ FGO Calculator — Astro static site on GitHub Pages. Three tools:
 - Base drops + primary/secondary drop multipliers config
 - Optimal quest runs from material deficits
 - LocalStorage persistence
-- **Event Shop planner**: Select Event card (#eventSelectCard, Bond Select Quest pattern, no blank option, force-latest default) switches between ALL active event shops (EVENT_SHOP_DATA.events[], synced per event); per-event plans {requires, held, bonus} under EVENT_SHOP_STORAGE_KEY with migration + isolation; tier cards wear event currency art, Required read-only opens per-currency config modal #eventShopModal (Default/Select All/Cancel/OK, sole mutation surface via EventPlanner.applyRequires); event mode hides base/primary/secondary config, shows the Drop Rates per Run cards (best-drop quest per currency from nice quest .drops community data: quest name, REC Lv., Required display, and two drop lines — the card's currency plus that quest's second-best shop-currency drop, `—` when none — each stack(+bonus) × dropExpected per run, repainted live when that currency's Bonus is edited; AP and sampleRuns stay in the data, undisplayed; perRun = dropExpected×(num+bonus), runs = ceil(deficit/perRun) still priced per currency, secondary is display-only); names NA→EN→JP; costume items show the real costume face; stub → legacy calculator byte-identical; EventShop (domain.js) math, EventPlanner state-only, event-shop-farm.js farm cards + event-shop-farm-lines.js drop lines, event-shop-tier.js tier skin + result labels, EventShopModal draft controller
+- **Event Shop planner**: Select Event card (#eventSelectCard, Bond Select Quest pattern, no blank option, force-latest default) switches between ALL active event shops (`EVENT_SHOP_DATA.events[]`, synced per event); per-event plans `{requires, held, bonus}` under `EVENT_SHOP_STORAGE_KEY` with migration + isolation; tier cards wear event currency art, Required read-only opens per-currency config modal `#eventShopModal` (Default/Select All/Cancel/OK, sole mutation surface via `EventPlanner.applyRequires`); event mode hides legacy base/primary/secondary config (zero-CLS via pre-rendered `.farm-card--pre` cards in `#farmGrid`, initial CSS hiding `.base-row`/`#questDropsGrid`/`.farm-card--pre-combo`, and `html[data-event-combo="1"]` resolved in `<head>`) and shows Drop Rates per Run cards (centered 64px `.farm-card-icon` header with no currency name or modal opener, quest `<select>` dropdown sorted by REC Lv, sliding quest name, optional REC Lv., and up to two `.drop-line` entries with 32px icons — own currency plus that quest's second-best shop-currency drop, omitted when none — each `stack(+bonus)  amount / run` repainted live on Bonus edit, plus conditional 4th combo card for all-covering quests); `Best Farm Runs` renders `Quests to Play`, `Item Receive`, and `Shop Trades` (AP and `sampleRuns` remain in data and never display); names NA→EN→JP; costume items show real costume face; empty snapshot falls back via `showLegacyCard()` to legacy calculator byte-identical; `EventShop` (`domain.js`) math, `EventPlanner` state-only, `event-shop-farm*.js` farm/results/name/line/control builders, `event-shop-tier.js` tier skin, `EventShopModal` draft controller
 
 **Bond Calculator:**
 - ≤6 servant slots, drag-to-reorder, class icon multi-select filter (15 classes)
@@ -122,7 +122,7 @@ No npm script, no project dependency — run ad hoc against served build: `npx l
 
 | Layer | Modules | Role |
 |-------|---------|------|
-| **Domain** | Schema, Validator, Calculator, TraitMatcher, ServantComboCalculator, SlotCEs | Pure business logic, no DOM |
+| **Domain** | Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, Teapot, Quest, ServantFilters, ServantSort, EventShop, cascadeYields, spendSurplusUpChain | Pure business logic, no DOM |
 | **Application** | StateManager, Persistence, BondApp, CEFilterApp, EventShop App | State coordination |
 | **Presentation** | DOMFactory, selectors, modals, UIBuilder | DOM manipulation, events |
 
@@ -140,9 +140,8 @@ No npm script, no project dependency — run ad hoc against served build: `npx l
 - `src/scripts/event-shop.js` — Event Shop tier calculator controller
 - `src/scripts/event-shop-tier.js` — event-native tier skin (currency images, read-only Required)
 - `src/scripts/event-shop-modal.js` — EventShopModal per-currency draft config modal
-- `src/scripts/event-shop-farm.js` — Drop Rates per Run real-data cards + event-mode results/plan box sync
-- `src/scripts/event-planner.js` — EventPlanner: multi-event state (selectedEventId + plans), persistence + migration, applyRequires (state-only, no DOM)
-- `src/scripts/event-planner-parts.js` — pure builders for the modal draft rows (buildDraftRow chain)
+- `src/scripts/event-shop-farm.js`, `event-shop-farm-results.js`, `event-shop-farm-names.js`, `event-shop-farm-lines.js`, `event-shop-farm-controls.js` — Drop Rates per Run cards, Best Farm Runs results, sliding quest names, live drop lines, Held/Bonus controls
+- `src/scripts/event-planner.js`, `event-planner-state.js`, `event-planner-parts.js` — EventPlanner multi-event state, migration, pure plan helpers, and modal draft row builders
 
 ### Lazy Loading
 
@@ -162,7 +161,7 @@ Bond Gain CE uses Web Worker (`ce-match-worker.js`) for trait matching off main 
 - **content-visibility: auto** — skip rendering off-screen servant/CE grids
 - **Double rAF yield** — `requestAnimationFrame(() => requestAnimationFrame(() => {...}))` before heavy DOM ops
 - **Zero web fonts**: native system font stacks (`system-ui`, `ui-monospace`) eliminate FOUT, FOIT, font download latency, and 144 KB static payload
-- **CLS prevention**: `min-width` + `tabular-nums` on numeric inputs, explicit image dimensions
+- **CLS prevention**: `<script is:inline>` pre-paint attributes (`data-tab`, `data-subtab`, `data-bond-quest`, `data-bond-custom`, `data-event-combo`), Event Shop `.farm-card--pre` pre-rendered skeleton, `min-width` + `tabular-nums` on numeric inputs, explicit image dimensions
 - **Critical CSS**: no separate stylesheet at all — `src/layouts/BaseLayout.astro` holds entire site CSS as one `<style is:inline>` line, `dist/` ships exactly one `<style>` block + zero `.css` assets. `src/styles/` deleted 2026-11-04, so that block is only place CSS exists. See Known Issues
 - **Lazy tab init**: Bond/Event tabs load JS only on first visit
 - **CE match cache**: `CEFilterApp._allCEMatchesCache` — populated on first filter, computed in Worker
@@ -242,7 +241,7 @@ Bond Gain CE uses Web Worker (`ce-match-worker.js`) for trait matching off main 
 - **`__vite__injectQuery has already been declared` in browser console on localhost:3000 is same mount, not Astro version** — reproduces on cold `node_modules/.vite` with Astro 5.18.2 + Vite 6.4.2 and Astro 7 + Vite 8, from optimized-dep chunk (`node_modules/.vite/deps/`). Page still works: cards, slots, pagination render.
 - **Working arrangement (chosen 2026-11-03): build + run dev from `/home/famakung/dev/fgo-calculator`** (`cd` there first — `astro` is project-local bin, use `npm run dev` for server (`package.json` passes `--port 3000`, `astro.config.mjs` sets `server.port`/`preview.port` to 3000, bare `npx astro dev` lands on 3000 too; explicit `--port` still wins, which browser gate 4173 relies on), `npx astro dev status|logs|stop` for daemon controls), clone of `develop` on btrfs, `origin` = GitHub. Everything works there on Astro 7 — `npm run build`, `npm run check:build`, `npm run lint`, browser gate (`npx astro preview`, then `node scripts/verify_render.js`), `npm run dev` with zero page errors. This `/mnt/storage` checkout stays editor-side copy: `package.json` + lock declare `^7.4.5`, `node_modules` here holds Astro 5.18.2 installed `--no-save` so dev server still runs, copy that shows `__vite__injectQuery` console error. Two clones = two git dirs: commit + push from native one, then `git -C /mnt/storage/Dev/Projects/fgo-calculator pull` to catch editor copy up.
 - Astro 7 makes `astro dev` + `astro preview` **detached daemons**: command returns immediately, server keeps running. Controls `astro dev stop|status|logs`, `astro preview stop|status|logs`. Second `astro preview --port N` prints `already running at <first port>` + exits 0 instead of serving N, so `npm run preview` no longer binds server to terminal.
-- Generated data gitignored — fresh clone needs `src/scripts/data/*.js`, `public/servants/`, `public/craft_essences/` copied in (or `npm run data:sync`) before `prebuild` `ensure_data.js` stops trying to sync.
+- Generated data gitignored — fresh clone needs `src/scripts/data/*.js`, `public/servants/`, `public/craft_essences/`, `public/event_shop/` copied in (or `npm run data:sync`) before `prebuild` `ensure_data.js` stops trying to sync.
 - Node: default runtime now **v22.23.4** — upgraded in place inside `~/.local/node` (`~/.local/bin/node` symlink puts it on `PATH`), no `PATH=` prefix needed anywhere. Old 22.14.0 files in `~/.local/node-22.14.0-backup/` (`bin/node`, `lib/node_modules/{npm,corepack}`), tarball copy at `~/.local/node-v22.23.4/`. Roll back by moving those three paths back into `~/.local/node`. `npm` only *warns* on `EBADENGINE`, so always check `node --version` before trusting build.
 
 ## Common Patterns
@@ -254,7 +253,7 @@ Add servant/CE → push `null` to state → open modal → cancel removes null e
 `CEFilterApp._allCEMatchesCache` — populated on first filter, computed in Worker
 
 ### Tab Init
-Head inline `<script>` sets `data-tab` on `<html>` + preloads LCP images before DOMContentLoaded
+Head inline `<script>` sets `data-tab`, `data-subtab`, `data-bond-quest`, `data-bond-custom`, and `data-event-combo` on `<html>` + preloads LCP images before DOMContentLoaded
 
 ### Trusted Types
 `BaseLayout.astro` defines inline Trusted Types policy (`default`) in `<head>` before any scripts load. All DOM sinks (`innerHTML`, `insertAdjacentHTML`, etc.) need policy-wrapped values.

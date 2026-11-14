@@ -11,7 +11,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 - **Per-event plans**: each event keeps its own Required/Held/Bonus save (`fgo_event_shop_data`); switching swaps plans, old saves migrate automatically
 - Per-currency **config modal**: click a Required display on a tier card to open that currency's shop items; steppers per item, then **Default** (clear), **Select All** (buy out every limited item), **Cancel** (discard), or **OK** (apply)
 - Required fields are read-only displays showing the live per-currency total (Σ require × price); Held and Bonus stay directly editable
-- **Drop Rates per Run**: each currency gets its own card with a quest dropdown (every quest dropping that currency, REC Lv order, community drop data via Atlas) — quest name, REC Lv., and two real-data drop lines `stack(+bonus)  amount / run` (amount = dropExpected × stack size): the card's own currency, then the quest's second-best shop-currency drop, `—` when it has none, event points and QP never offered. A fourth card appears when a quest drops every shop currency. Editing that currency's Bonus moves its lines live. AP stays in the data but off every card
+- **Drop Rates per Run**: each currency gets its own card with a quest dropdown (every non-all-covering quest dropping that currency, REC Lv order, community drop data via Atlas) — quest name (single-line slide on overflow), optional `REC Lv.`, and up to two real-data drop lines `stack(+bonus)  amount / run` (amount = dropExpected × (stack size + bonus)): the card's own currency, plus the quest's second-best shop-currency drop when present (omitted when the quest drops only the card's own currency; event points and QP never offered). A fourth card appears when a quest drops every shop currency. Editing a currency's Bonus moves its lines live. AP stays in the data but off every card
 - **Best Farm Runs** results: the trade-aware optimizer finds the minimum-play plan and only the minimum trades needed to cover each shortfall. The card shows **Quests to Play** (farm-style cards with the run count; long quest names slide on a single line), then **Item Receive** (one card with each currency's raw drops from the runs as `×`-counts overlaid on the art — held items and trade results excluded), then **Shop Trades** (per-trade cards with the exchange ratio overlaid on the from/to icons). Required totals live in the Shop Requirements boxes, not the results card
 - Item names in English where available (NA server → Atlas EN translation → JP fallback); costume items show the actual costume face
 - Tier cards wear event currency images and names; between events the tab falls back to the legacy generic calculator (badges, editable Required, base/primary/secondary drop config)
@@ -74,7 +74,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 3. Set how many of each item you want to buy (steppers clamp at the shop limit); **Select All** buys out every limited item, **Default** clears the draft
 4. **OK** applies the plan — Required displays and totals update; **Cancel** discards
 5. Enter current holdings (Held) and drop Bonus (plussed into each drop's base amount)
-6. Click "Calculate Quest Runs" — runs and AP per currency, based on the best-drop quest
+6. Click "Calculate Quest Runs" — **Best Farm Runs** displays **Quests to Play** (cards + run counts), **Item Receive** (raw run drops before trades), and **Shop Trades** (minimum exchange steps)
 
 ### Bond Calculator
 1. Add servants and select from the portrait modal
@@ -211,7 +211,7 @@ Astro produces optimized chunks via Vite:
 - Automated build-time data sync pipeline (`scripts/sync_atlas_data.py`) with polite rate limiting (`0.1s`), automatic multi-ascension detection, full-auto Craft Essence data detection & series grouping, dynamic bordered icon synchronization, and bond point tables converted from Atlas' running totals into per-level-step costs (471 playable servants deduped into 76 shared tables)
 - Zero-commit binary assets architecture: servant, CE, and event shop images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v6`), and synced at build time
 - PWA manifest with standalone display mode
-- Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, critical CSS inlined, zero web-font network overhead, CLS prevention with `min-width` and `tabular-nums`
+- Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, critical CSS inlined, zero web-font network overhead, CLS prevention with pre-paint `<html>` attributes (`data-tab`, `data-subtab`, `data-bond-quest`, `data-bond-custom`, `data-event-combo`), Event Shop pre-rendered farm-card skeleton, `min-width`, and `tabular-nums`
 
 ## Git
 
