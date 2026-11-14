@@ -58,8 +58,8 @@ function syncQuestTypeSelect(select = document.getElementById("questTypeSelect")
   if (!select) return;
   const event = EventPlanner.activeEvent();
   const hasRaids = EventShop.hasAvailableRaids(event);
-  const row = select.closest(".input-row");
-  if (row) row.hidden = !hasRaids;
+  select.disabled = !hasRaids;
+  select.tabIndex = hasRaids ? 0 : -1;
   const raidOption = select.querySelector('option[value="raid"]');
   if (raidOption) raidOption.disabled = !hasRaids;
   select.value = hasRaids ? EventPlanner.questType() : "free";
