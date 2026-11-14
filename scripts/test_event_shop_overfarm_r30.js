@@ -58,45 +58,31 @@ import { EventShop } from "../src/scripts/domain.js";
      pinned key   = the farmer alone
      unhonoured   = every quest dropping the currency (greedy's best-rate fallback space, R30)
      unchosen     = every dropper except quests that also drop a currency farmed by another farmer */
-function buildSpace(deficitQuests, deficits, picks) {
-  const fullPool = new Set(buildKernel({ deficits, quests: deficitQuests, trades: [] }).pool.map((quest) => quest.id));
+function pinnedPlan(deficitQuests, deficits, picks, priority, bound) {
   const droppersOf = (key) => deficitQuests.filter((quest) => (quest.rates || {})[key] > 0);
-  const farmers = {};
-  for (const key of Object.keys(deficits).filter((short) => deficits[short] > 0)) {
-    const selected = picks[key];
-    if (selected === null || selected === undefined) continue;
-    const farmer = droppersOf(key).find((quest) => String(quest.id) === String(selected) && fullPool.has(quest.id));
-    if (farmer) farmers[key] = farmer;
-  }
-  return { deficitQuests, deficits, picks, fullPool, farmers, droppersOf };
-}
-
-/* M6: a picked, honoured currency farms with its farmer alone. Unchosen: droppers minus the demoted
-   ones. R30 unhonourable pick: every dropper, so greedy's best-rate fallback stays priced. */
-function keyCandidates(space, key) {
-  const farmer = space.farmers[key] || null;
-  if (farmer) return [farmer];
-  if (space.picks[key] !== null && space.picks[key] !== undefined) return space.droppersOf(key);
-  return space.droppersOf(key).filter((quest) => !demoted(space.farmers, quest));
-}
-
-function demoted(farmers, quest) {
-  return Object.keys(farmers).some((key) => farmers[key] !== quest && (quest.rates || {})[key] > 0);
-}
-
-function pinnedPoolQuests(space) {
-  const shortKeys = Object.keys(space.deficits).filter((key) => space.deficits[key] > 0);
   const eligible = new Set();
-  for (const key of shortKeys) for (const quest of keyCandidates(space, key)) eligible.add(quest);
-  return space.deficitQuests.filter((quest) => eligible.has(quest) && space.fullPool.has(quest.id));
-}
-
-/* The exhaustive minimum inside the farmer-rule space; its own pool filter runs over the pinned quest
-   list, exactly as the app's second nondominated pass does. */
-function pinnedPlan(space, bound) {
-  const poolQuests = pinnedPoolQuests(space);
+  for (const key of Object.keys(deficits).filter((short) => deficits[short] > 0)) {
+    const options = droppersOf(key);
+    if (!options.length) continue;
+    const selected = picks ? picks[key] : null;
+    const chosen =
+      selected !== null && selected !== undefined
+        ? options.find((quest) => String(quest.id) === String(selected))
+        : null;
+    const best =
+      chosen ||
+      options.reduce((a, b) =>
+        (a.rates[key] || 0) !== (b.rates[key] || 0) ? (a.rates[key] > b.rates[key] ? a : b) : a.id <= b.id ? a : b,
+      );
+    eligible.add(best);
+  }
+  if (priority !== null && priority !== undefined) {
+    const extra = deficitQuests.find((quest) => String(quest.id) === String(priority));
+    if (extra) eligible.add(extra);
+  }
+  const poolQuests = deficitQuests.filter((quest) => eligible.has(quest));
   if (!poolQuests.length) return null;
-  return oraclePlan({ deficits: space.deficits, quests: poolQuests, trades: snapshot.trades }, bound);
+  return oraclePlan({ deficits, quests: poolQuests, trades: snapshot.trades }, bound);
 }
 
 const QUEST_IDS = snapshot.farm.quests.map((quest) => quest.questId);
@@ -130,8 +116,7 @@ function runCase(
      own quest outside the farmer-rule space, so picked+priority cases keep the loose CONTRACT bucket.
      Bound = the app's own answer: its play vector would itself witness a covering mix, so a null at
      that bound means the app played OUTSIDE the pool its picks allow, not that a bound ran out. */
-  const pinned =
-    picks && !priority ? pinnedPlan(buildSpace(input.quests, deficits, picks), plan.totalPlays ?? oracleBound) : null;
+  const pinned = pinnedPlan(input.quests, deficits, picks, priority, plan.totalPlays ?? oracleBound);
   const audit = auditAppPlan(plan, input);
   const total = plan.totalPlays;
   const row = {

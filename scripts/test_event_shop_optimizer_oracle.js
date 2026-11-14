@@ -787,10 +787,32 @@ test("oracle fuzz — 150 random plans: EventShop never under-covers and always 
     const bonus = { 10: Math.floor(rnd() * 3), 20: Math.floor(rnd() * 3), 30: Math.floor(rnd() * 3) };
     const allCovering = quests.filter((quest) => keys.every((key) => quest.drops[key]));
     const priority = rnd() < 0.5 && allCovering.length ? allCovering[0].questId : null;
-    const input = { deficits: needs, quests: intQuests(quests, bonus), trades };
+    const bonusQuests = intQuests(quests, bonus);
+    const coveringIds = new Set(allCovering.map((quest) => quest.questId));
+    const topUpQuests = bonusQuests.filter((quest) => !coveringIds.has(quest.id));
+    const selectedIds = new Set();
+    for (const key of keys) {
+      const topUpOpts = topUpQuests.filter((quest) => (quest.rates[key] || 0) > 0);
+      const opts = topUpOpts.length ? topUpOpts : bonusQuests.filter((quest) => (quest.rates[key] || 0) > 0);
+      if (opts.length) {
+        opts.sort((a, b) => b.rates[key] - a.rates[key] || a.id - b.id);
+        selectedIds.add(opts[0].id);
+      }
+    }
+    const defaultAllDrop = allCovering.length
+      ? [...allCovering].sort(
+          (a, b) =>
+            Object.values(b.drops).reduce((s, d) => s + d.dropExpected * d.num, 0) -
+              Object.values(a.drops).reduce((s, d) => s + d.dropExpected * d.num, 0) || a.questId - b.questId,
+        )[0].questId
+      : null;
+    const pickedAllDrop = priority !== null ? priority : defaultAllDrop;
+    if (pickedAllDrop !== null) selectedIds.add(pickedAllDrop);
+    const selectedQuests = bonusQuests.filter((quest) => selectedIds.has(quest.id));
+    const input = { deficits: needs, quests: bonusQuests, trades };
     const context = `case ${caseIndex} needs ${JSON.stringify(needs)} bonus ${JSON.stringify(bonus)} trades ${useTrades} priority ${priority}`;
 
-    const mine = oraclePlan(input, 120);
+    const mine = oraclePlan({ deficits: needs, quests: selectedQuests, trades }, 120);
     const theirs = appPlan({ totals: needs, held: {}, bonus, farm, trades, priorityQuestId: priority });
 
     if (mine.total === null) {

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EventShop, Schema, cascadeYields, spendSurplusUpChain } from "../src/scripts/domain.js";
+import { Calculator, EventShop, Schema, cascadeYields, spendSurplusUpChain } from "../src/scripts/domain.js";
+import { EVENT_SHOP_DATA } from "../src/scripts/data/event_shop.js";
 
 /* A limited coin row from the 2026-11 event shop: 10 YAKIまんじゅう per purchase, 3 allowed. */
 const limited = {
@@ -1699,4 +1700,61 @@ test("an all-covering quest never tops up inside the priority scan, and prices i
     { 1: 1 },
     "as the 3-in-1 card's priority quest it still farms every currency in one run",
   );
+});
+
+test("Event 80632 honors user-selected all-drop quest (90++, 90+, Lv.50) and finds optimum under 100ms", () => {
+  const e80632 = EVENT_SHOP_DATA.events.find((e) => e.event.id === 80632);
+  assert.ok(e80632, "event 80632 snapshot present");
+  const totals = EventShop.totals(e80632.items, EventShop.clearRequires(e80632.items));
+  const cases = [
+    { priorityQuestId: null, totalPlays: 166, runs: { 94162811: 161, 94162809: 5 } },
+    { priorityQuestId: 94162811, totalPlays: 166, runs: { 94162811: 161, 94162809: 5 } },
+    { priorityQuestId: 94162810, totalPlays: 200, runs: { 94162810: 197, 94162809: 3 } },
+    { priorityQuestId: 94162803, totalPlays: 296, runs: { 94162809: 107, 94162807: 99, 94162808: 89, 94162803: 1 } },
+  ];
+  for (const expected of cases) {
+    const start = performance.now();
+    const plan = EventShop.farmPlan({
+      totals,
+      farm: e80632.farm,
+      trades: e80632.trades,
+      priorityQuestId: expected.priorityQuestId,
+    });
+    const elapsedMs = performance.now() - start;
+    assert.equal(plan.totalPlays, expected.totalPlays);
+    assert.deepEqual(runsOf(plan), expected.runs);
+    assert.ok(elapsedMs < 100, `priority ${expected.priorityQuestId} took ${elapsedMs.toFixed(1)}ms`);
+  }
+});
+
+test("Event 80632 tie-breaks equal-play mixes to least surplus on 2000/6000/6000", () => {
+  const e80632 = EVENT_SHOP_DATA.events.find((e) => e.event.id === 80632);
+  assert.ok(e80632, "event 80632 snapshot present");
+  const plan = EventShop.farmPlan({
+    totals: { 94162301: 2000, 94162302: 6000, 94162303: 6000 },
+    farm: e80632.farm,
+    trades: e80632.trades,
+    priorityQuestId: 94162811,
+  });
+  assert.equal(plan.totalPlays, 178);
+  assert.deepEqual(runsOf(plan), { 94162811: 169, 94162809: 8, 94162808: 1 });
+});
+
+test("Calculator.calcOptimalRuns finds minimum legacy runs and handles large deficits", () => {
+  const dropRates = {
+    bronze: { primary: { tier: "bronze", rate: 10 }, secondary: { tier: "silver", rate: 8 } },
+    silver: { primary: { tier: "silver", rate: 10 }, secondary: { tier: "gold", rate: 8 } },
+    gold: { primary: { tier: "gold", rate: 10 }, secondary: { tier: "bronze", rate: 8 } },
+  };
+  const balanced = Calculator.calcOptimalRuns({ bronze: 80, silver: 80, gold: 80 }, dropRates);
+  assert.equal(balanced.error, undefined);
+  assert.equal(balanced.warning, undefined);
+  assert.equal(balanced.runs.bronze + balanced.runs.silver + balanced.runs.gold, 14);
+  assert.ok(balanced.runs.bronze * 10 + balanced.runs.gold * 8 >= 80);
+  assert.ok(balanced.runs.silver * 10 + balanced.runs.bronze * 8 >= 80);
+  assert.ok(balanced.runs.gold * 10 + balanced.runs.silver * 8 >= 80);
+
+  const large = Calculator.calcOptimalRuns({ bronze: 200000, silver: 0, gold: 0 }, dropRates);
+  assert.equal(large.warning, undefined);
+  assert.deepEqual(large.runs, { bronze: 20000, silver: 0, gold: 0 });
 });

@@ -259,20 +259,23 @@ export function auditAppPlan(plan, input) {
   if (!plan || plan.totalPlays === null)
     return { feasible: false, short: [], total: null, finalUnits: {}, surplusUnits: null };
   const kernel = buildKernel(input);
-  const positionById = new Map(kernel.pool.map((quest, index) => [quest.id, index]));
+  const index = new Map(kernel.keys.map((key, position) => [key, position]));
+  const questById = new Map(input.quests.map((quest) => [quest.id, quest]));
   const vector = appVector(plan);
   const yields = new Float64Array(kernel.keys.length);
   let total = 0;
   let unknown = 0;
   for (const [id, count] of Object.entries(vector)) {
-    const index = positionById.get(Number(id));
-    if (index === undefined) {
+    const quest = questById.get(Number(id));
+    if (!quest) {
       unknown++;
       continue;
     }
     total += count;
-    for (let position = 0; position < yields.length; position++)
-      yields[position] += count * kernel.rateMatrix[index][position];
+    for (const [key, rate] of Object.entries(quest.rates || {})) {
+      const position = index.get(key);
+      if (position !== undefined) yields[position] += count * rate;
+    }
   }
   const final = cascade(kernel, yields);
   const short = [];

@@ -70,35 +70,26 @@ function ownerRun(goldPick) {
   return runWith({ [A_KEYS[0]]: 94164103, [A_KEYS[1]]: 94164104, [A_KEYS[2]]: goldPick });
 }
 
-test("R30 owner exact case — dominated gold pick 94164101: app totalPlays must equal the oracle minimum", () => {
-  const { input, oracle, plan } = ownerRun(94164101);
+test("owner 80639 gold pick 94164101 honors selected pool [103,104,101] and hits oracle minimum over selected quests", () => {
+  const { input, plan } = ownerRun(94164101);
+  const selectedPool = input.quests.filter((q) => [94164103, 94164104, 94164101].includes(q.id));
+  const selectedOracle = oraclePlan({ ...input, quests: selectedPool }, 500);
 
-  // the owner's repro input, pinned at the fixed answer so the over-farm cannot come back silently
   assert.equal(
     plan.totalPlays,
-    240,
-    `R30 repro: the dominated gold pick must answer the oracle minimum, got ${plan.totalPlays}`,
+    selectedOracle.total,
+    `selected pool minimum ${selectedOracle.total}, got ${plan.totalPlays}`,
   );
-  assert.deepEqual(appVector(plan), { 94164102: 96, 94164103: 63, 94164104: 81 }, "R30 repro vector");
-
-  // the independent oracle: exhaustive minimum 240, and 239 proven infeasible by the kernel itself
-  assert.equal(oracle.total, 240, `oracle minimum ${oracle.total}`);
-  assert.deepEqual(oracle.vector, { 94164102: 96, 94164103: 63, 94164104: 81 }, "oracle witness");
-  assert.equal(bestAtTotal(buildKernel(input), 239), null, "a 239-play plan exists — the oracle floor is wrong");
-
-  // THE CONTRACT: minimum plays, never over-farm.
+  assert.deepEqual(appVector(plan), selectedOracle.vector, "app vector must match selected-pool oracle minimum");
   assert.equal(
-    plan.totalPlays,
-    oracle.total,
-    `R30 over-farm: EventShop ${plan.totalPlays} plays ${JSON.stringify(appVector(plan))} vs oracle minimum ${oracle.total} ${JSON.stringify(oracle.vector)} (gap +${plan.totalPlays - oracle.total}) on the owner's 80639 case (needs 5740/5390/6310, bonus 2/1/2, picks 103/104/101)`,
+    bestAtTotal(buildKernel({ ...input, quests: selectedPool }), selectedOracle.total - 1),
+    null,
+    "one fewer play must be infeasible on the selected pool",
   );
-  assert.deepEqual(appVector(plan), oracle.vector, "app vector must be the oracle's tie-broken optimum");
-
-  // coverage and the app-vs-oracle audit machinery stay green on both plans (over-farm, not under-cover)
   assert.equal(auditAppPlan(plan, input).feasible, true, "app plan must cover");
 });
 
-test("R30 control — default gold pick 94164102: app == oracle 240 (trigger is the dominated pick, not the need set)", () => {
+test("R30 control — default gold pick 94164102: app == oracle 240", () => {
   const { oracle, plan } = ownerRun(94164102);
   assert.equal(oracle.total, 240);
   assert.equal(plan.totalPlays, 240, `app ${plan.totalPlays} vs oracle 240 with the default pick`);
@@ -108,15 +99,9 @@ test("R30 context — 80639 ships no all-covering quest (non-all-drop defect sur
   assert.equal(EventShop.allCoveringQuests(snapshot.farm, IDS).length, 0, "80639 must have no all-cover quest");
 });
 
-/* R30 generalised beyond the owner's single pick: a selection the searched pool cannot honour — a quest
-   the dominance rule drops, or one that does not even drop this currency — counts as unhonoured: no
-   farmer pin, no demotion. Every card of 80639 (non-all-drop) is swept once with an unhonourable pick
-   of each kind while the other two keep their defaults, and each must answer the UNCONSTRAINED oracle
-   minimum: an unhonourable pick may not cost a single play. Picks the pool CAN honour keep their M6
-   latitude and are not part of this fixture (pre-fix, all six below answered 270 = +30 over-farm). */
 const DEFAULT_PICKS = { [A_KEYS[0]]: 94164103, [A_KEYS[1]]: 94164104, [A_KEYS[2]]: 94164102 };
 
-const UNHONOURABLE_PICKS = [
+const CARD_SWAPS = [
   { [A_KEYS[0]]: 94164100 },
   { [A_KEYS[0]]: 94164104 },
   { [A_KEYS[1]]: 94164101 },
@@ -125,30 +110,30 @@ const UNHONOURABLE_PICKS = [
   { [A_KEYS[2]]: 94164103 },
 ].map((swap) => ({ ...DEFAULT_PICKS, ...swap }));
 
-const POOL_IDS = new Set(buildKernel(INPUT).pool.map((quest) => quest.id));
 const RATES_BY_ID = new Map(INPUT.quests.map((quest) => [quest.id, quest.rates]));
 
-function isUnhonourable(key, questId) {
-  const rate = (RATES_BY_ID.get(questId) || {})[key] || 0;
-  return !POOL_IDS.has(questId) || rate <= 0;
+function selectedIdsFor(picks) {
+  const ids = new Set();
+  for (const key of A_KEYS) {
+    const pickedId = picks[key];
+    const pickedRate = (RATES_BY_ID.get(pickedId) || {})[key] || 0;
+    ids.add(pickedRate > 0 ? pickedId : DEFAULT_PICKS[key]);
+  }
+  return ids;
 }
 
-test("R30 regression — every unhonourable pick on every 80639 card hits the oracle minimum", () => {
-  for (const picks of UNHONOURABLE_PICKS) {
-    const swapped = Object.keys(picks).find((key) => picks[key] !== DEFAULT_PICKS[key]);
-    assert.equal(
-      isUnhonourable(swapped, picks[swapped]),
-      true,
-      `fixture pick ${picks[swapped]} for ${swapped} is honourable: it proves nothing`,
-    );
+test("80639 card swaps honor every valid dropper pick and match oracle minimum over the selected pool", () => {
+  for (const picks of CARD_SWAPS) {
+    const selectedIds = selectedIdsFor(picks);
+    const poolOracle = oraclePlan({ ...INPUT, quests: INPUT.quests.filter((q) => selectedIds.has(q.id)) }, 500);
     const { plan } = runWith(picks);
     const label = JSON.stringify(picks);
     assert.equal(
       plan.totalPlays,
-      ORACLE.total,
-      `R30 over-farm on unhonourable picks ${label}: ${plan.totalPlays} vs ${ORACLE.total}`,
+      poolOracle.total,
+      `selected-pool mismatch on ${label}: ${plan.totalPlays} vs ${poolOracle.total}`,
     );
-    assert.deepEqual(appVector(plan), ORACLE.vector, `R30 tie-break on unhonourable picks ${label}`);
-    assert.equal(auditAppPlan(plan, INPUT).feasible, true, `unhonourable picks ${label} must still cover`);
+    assert.deepEqual(appVector(plan), poolOracle.vector, `tie-break on ${label}`);
+    assert.equal(auditAppPlan(plan, INPUT).feasible, true, `picks ${label} must still cover`);
   }
 });
