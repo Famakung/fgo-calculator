@@ -135,13 +135,13 @@ try {
       localStorage.setItem("fgo_active_tab", "bond");
       localStorage.setItem("fgo_bond_calculator_data", JSON.stringify({
         questMain: "fq",
-        questSub: "fq83",
+        customRecLv: 83,
       }));
     });
     await page.goto(baseUrl, { waitUntil: "networkidle0" });
 
     // Wait for bond-lazy initialization
-    await page.waitForFunction(() => document.getElementById("bondFreeQuestSelect")?.value === "fq83", { timeout: 10000 });
+    await page.waitForFunction(() => document.getElementById("freeQuestRecLv")?.value === "83", { timeout: 10000 });
 
     // 1. Servant Modal (#servantModal)
     const slot0 = await page.$('.servant-slot[data-slot-index="0"]');
@@ -417,7 +417,7 @@ try {
       await sPage.evaluate(() => {
         localStorage.setItem("fgo_bond_calculator_data", JSON.stringify({
           questMain: "fq",
-          questSub: "fq83",
+          customRecLv: 83,
         }));
       });
       await sPage.goto(baseUrl, { waitUntil: "networkidle0" });
@@ -515,7 +515,7 @@ try {
       await new Promise((r) => setTimeout(r, 150));
 
       // Wait for bond-lazy and populate a slot to calculate
-      await sPage.waitForFunction(() => document.getElementById("bondFreeQuestSelect")?.value === "fq83", { timeout: 10000 });
+      await sPage.waitForFunction(() => document.getElementById("freeQuestRecLv")?.value === "83", { timeout: 10000 });
       await sPage.click('.servant-slot[data-slot-index="0"]');
       await sPage.waitForSelector("#servantModal.open", { timeout: 5000 });
       const firstServant = await sPage.waitForSelector("#servantModal .servant-picker-item", { timeout: 5000 });

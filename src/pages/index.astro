@@ -346,56 +346,60 @@ import BaseLayout from '../layouts/BaseLayout.astro';
             <div class="card-inner">
               <div class="card-title">Select Quest</div>
             <div class="input-row">
-              <label class="input-label" for="bondQuestSelect">Main</label>
+              <label class="input-label" for="bondQuestSelect">Quest</label>
               <select class="select-field" id="bondQuestSelect"></select>
-            </div>
-            <div class="input-row bond-quest-row--free">
-              <label class="input-label" for="bondFreeQuestSelect">Quest</label>
-              <select class="select-field" id="bondFreeQuestSelect">
-                <option value="">-- Select --</option>
-              </select>
             </div>
             <div class="input-row bond-quest-row--grand">
               <label class="input-label" for="bondGrandClassSelect">Class</label>
-              <select class="select-field" id="bondGrandClassSelect">
-                <option value="">-- Select --</option>
-              </select>
+              <select class="select-field" id="bondGrandClassSelect"></select>
             </div>
             <div class="input-row bond-quest-row--grand">
-              <label class="input-label" for="bondGrandDiffSelect">Difficulty</label>
-              <select class="select-field" id="bondGrandDiffSelect">
-                <option value="">-- Select --</option>
-              </select>
+              <label class="input-label" for="grandApPerRun">AP/Run</label>
+              <input type="number" class="input-field" id="grandApPerRun" value="40" disabled tabindex="-1" />
             </div>
-            <div id="customQuestSection" class="custom-quest-section">
-              <div class="input-row">
-                <label class="input-label" for="customBondPerRun"
-                  >Bond/Run</label
-                >
-                <input
-                  type="number"
-                  class="input-field"
-                  id="customBondPerRun"
-                  min="0"
-                  max="99999"
-                  value="0"
-                  disabled
-                />
-              </div>
-              <div class="input-row">
-                <label class="input-label" for="customApPerRun"
-                  >AP/Run</label
-                >
-                <input
-                  type="number"
-                  class="input-field"
-                  id="customApPerRun"
-                  min="0"
-                  max="999"
-                  value="22"
-                  disabled
-                />
-              </div>
+            <div class="input-row bond-quest-row--grand">
+              <label class="input-label" for="grandRecLv">REC Lv.</label>
+              <input type="number" class="input-field" id="grandRecLv" value="100" disabled tabindex="-1" />
+            </div>
+            <div class="input-row bond-quest-row--grand">
+              <label class="input-label" for="bondGrandDiffSelect">Plus / Star</label>
+              <select class="select-field" id="bondGrandDiffSelect"></select>
+            </div>
+            <div class="input-row bond-quest-row--grand">
+              <label class="input-label" for="grandBondDisplay">Bond/Run</label>
+              <input type="text" class="input-field" id="grandBondDisplay" value="3164" disabled tabindex="-1" />
+            </div>
+            <div class="input-row bond-quest-row--free">
+              <label class="input-label" for="customApPerRun">AP/Run</label>
+              <input type="number" class="input-field" id="customApPerRun" min="0" max="999" value="22" />
+            </div>
+            <div class="input-row bond-quest-row--free">
+              <label class="input-label" for="freeQuestRecLv">REC Lv.</label>
+              <input type="number" class="input-field" id="freeQuestRecLv" min="1" max="100" value="84" />
+            </div>
+            <div class="input-row bond-quest-row--free">
+              <label class="input-label" for="freeQuestTierSelect">Plus / Star</label>
+              <select class="select-field" id="freeQuestTierSelect"></select>
+            </div>
+            <div class="input-row bond-quest-row--free">
+              <label class="input-label" for="freeQuestBondDisplay">Bond/Run</label>
+              <input type="text" class="input-field" id="freeQuestBondDisplay" value="855" disabled tabindex="-1" />
+            </div>
+            <div class="input-row bond-quest-row--raid">
+              <label class="input-label" for="raidApPerRun">AP/Run</label>
+              <input type="number" class="input-field" id="raidApPerRun" min="0" max="999" value="40" />
+            </div>
+            <div class="input-row bond-quest-row--raid">
+              <label class="input-label" for="raidRecLv">REC Lv.</label>
+              <input type="number" class="input-field" id="raidRecLv" min="1" max="100" value="90" />
+            </div>
+            <div class="input-row bond-quest-row--raid">
+              <label class="input-label" for="raidTierSelect">Plus / Star</label>
+              <select class="select-field" id="raidTierSelect"></select>
+            </div>
+            <div class="input-row bond-quest-row--raid">
+              <label class="input-label" for="raidBondDisplay">Bond/Run</label>
+              <input type="text" class="input-field" id="raidBondDisplay" value="1830" disabled tabindex="-1" />
             </div>
             </div>
           </div>

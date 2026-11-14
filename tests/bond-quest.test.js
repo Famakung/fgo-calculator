@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Quest } from "../src/scripts/domain.js";
-import { GRAND_CLASSES, GRAND_DIFFICULTIES, CLASS_FILTERS } from "../src/scripts/constants.js";
+import { GRAND_CLASSES, GRAND_DIFFICULTIES, CLASS_FILTERS, QUEST_TIERS } from "../src/scripts/constants.js";
 
 const blobs = new Map();
 globalThis.localStorage = {
@@ -16,20 +16,34 @@ const { BondApp } = await import("../src/scripts/bond-app.js");
 const KEY = "fgo_bond_calculator_data";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("a free quest pays its own figure, and Custom pays what was typed", () => {
-  assert.equal(Quest.bondPerRun({ questMain: "fq", questSub: "fq83" }), 845);
-  assert.equal(Quest.bondPerRun({ questMain: "fq", questSub: "fq84" }), 855);
-  assert.equal(Quest.bondPerRun({ questMain: "fq", questSub: "custom" }, 1234), 1234);
-  // past the input's ceiling the box clamps it back
-  assert.equal(Quest.bondPerRun({ questMain: "fq", questSub: "custom" }, 999999), 99999);
+test("freeQuestBond and Free Quest bondPerRun compute recLv * 10 + 15 with clamping", () => {
+  assert.equal(Quest.freeQuestBond(83), 845);
+  assert.equal(Quest.freeQuestBond(84), 855);
+  assert.equal(Quest.freeQuestBond(90), 915);
+  assert.equal(Quest.freeQuestBond(0), 25);
+  assert.equal(Quest.freeQuestBond(-10), 25);
+  assert.equal(Quest.freeQuestBond(9999), 1015);
+  assert.equal(Quest.freeQuestBond(83.9), 845);
+  assert.equal(Quest.bondPerRun({ questMain: "fq" }), 855);
+  assert.equal(Quest.bondPerRun({ questMain: "fq" }, 83), 845);
+  assert.equal(Quest.bondPerRun({ questMain: "fq" }, 90), 915);
+  assert.equal(Quest.bondPerRun({ questMain: "fq" }, 9999), 1015);
+  assert.equal(Quest.freeQuestBond(90, ""), 915);
+  assert.equal(Quest.freeQuestBond(90, "+"), 1098);
+  assert.equal(Quest.freeQuestBond(90, "++"), 1318);
+  assert.equal(Quest.freeQuestBond(90, "+++"), 1582);
+  assert.equal(Quest.freeQuestBond(90, "★"), 1582);
+  assert.equal(Quest.freeQuestBond(90, "★★"), 1899);
+  assert.equal(Quest.freeQuestBond(90, "★★★"), 2279);
+  assert.equal(Quest.bondPerRun({ questMain: "fq", customTier: "★" }, 90), 1582);
+  assert.equal(QUEST_TIERS[0].label, "None");
 });
 
-test("a free quest costs 22 AP, grand duel costs 40 AP, and Custom costs what was typed", () => {
-  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "fq83" }), 22);
-  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "fq84" }), 22);
-  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "custom" }), 22);
-  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "custom" }, 30), 30);
-  assert.equal(Quest.apPerRun({ questMain: "fq", questSub: "custom" }, 9999), 999);
+test("a free quest uses customAp (defaulting to 22 AP), grand duel costs 40 AP", () => {
+  assert.equal(Quest.apPerRun({ questMain: "fq" }), 22);
+  assert.equal(Quest.apPerRun({ questMain: "fq" }, 30), 30);
+  assert.equal(Quest.apPerRun({ questMain: "fq" }, 0), 0);
+  assert.equal(Quest.apPerRun({ questMain: "fq" }, 9999), 999);
   assert.equal(Quest.apPerRun({ questMain: "gd", questClass: "0100", questDiff: "1" }), 40);
   assert.equal(Quest.apPerRun({ questMain: "gd" }), 40);
   assert.equal(Quest.apPerRun({ questMain: "" }), 0);
@@ -49,7 +63,6 @@ test("a grand duel pays its difficulty whatever the class, and nothing pays zero
   assert.equal(Quest.bondPerRun({ questMain: "gd", questClass: "extra", questDiff: "7" }), 4748);
   assert.equal(Quest.bondPerRun({ questMain: "gd", questDiff: "" }), 0);
   assert.equal(Quest.bondPerRun({ questMain: "" }), 0);
-  assert.equal(Quest.bondPerRun({ questMain: "fq", questSub: "gone" }), 0);
 });
 
 test("the difficulties rise with their level, seven steps from Lv.100 to Lv.100★★★", () => {
@@ -106,17 +119,75 @@ test("blank, missing, or invalid questMain in saved state defaults to Free Quest
     const state = BondApp.loadState();
     assert.equal(state.questMain, "fq");
   }
+  blobs.set(KEY, JSON.stringify({ questMain: "fq", customTier: "★★" }));
+  assert.equal(BondApp.loadState().customTier, "★★");
+  blobs.set(KEY, JSON.stringify({ questMain: "fq", customTier: "invalid" }));
+  assert.equal(BondApp.loadState().customTier, "");
   blobs.set(KEY, JSON.stringify({ questMain: "gd" }));
   assert.equal(BondApp.loadState().questMain, "gd");
+  blobs.set(KEY, JSON.stringify({ questMain: "rb", raidAp: 30, raidRecLv: 90, raidTier: "★" }));
+  const rbState = BondApp.loadState();
+  assert.equal(rbState.questMain, "rb");
+  assert.equal(rbState.raidAp, 30);
+  assert.equal(rbState.raidRecLv, 90);
+  assert.equal(rbState.raidTier, "★");
   blobs.set(KEY, JSON.stringify({ selectedQuest: "gd100" }));
   assert.equal(BondApp.loadState().questMain, "gd");
 });
 
-test("bondQuestSelect has no blank option in markup and stays unblankable in initQuestSelects", () => {
+test("blank, missing, or invalid questClass and questDiff in saved state default to first choice", () => {
+  for (const raw of [{}, { questClass: "", questDiff: "" }, { questClass: "nope", questDiff: "99" }]) {
+    blobs.set(KEY, JSON.stringify(raw));
+    const state = BondApp.loadState();
+    assert.equal(state.questClass, GRAND_CLASSES[0].key);
+    assert.equal(state.questDiff, GRAND_DIFFICULTIES[0].key);
+  }
+  blobs.set(KEY, JSON.stringify({ questMain: "gd", questClass: "0100", questDiff: "5" }));
+  const saved = BondApp.loadState();
+  assert.equal(saved.questClass, "0100");
+  assert.equal(saved.questDiff, "5");
+});
+
+test("raidQuestBond, bondPerRun, and apPerRun compute Raid Boss / Storm Pod values", () => {
+  assert.equal(Quest.raidQuestBond(90, ""), 1830);
+  assert.equal(Quest.raidQuestBond(90, "+"), 2196);
+  assert.equal(Quest.raidQuestBond(90, "++"), 2636);
+  assert.equal(Quest.raidQuestBond(90, "+++"), 3164);
+  assert.equal(Quest.raidQuestBond(90, "★"), 3164);
+  assert.equal(Quest.raidQuestBond(90, "★★"), 3797);
+  assert.equal(Quest.raidQuestBond(90, "★★★"), 4557);
+  assert.equal(Quest.raidQuestBond(90, "invalid"), 1830);
+  assert.equal(Quest.bondPerRun({ questMain: "rb" }), 1830);
+  assert.equal(Quest.bondPerRun({ questMain: "rb", raidRecLv: 90, raidTier: "★" }), 3164);
+  assert.equal(Quest.bondPerRun({ questMain: "rb", raidRecLv: 90, raidTier: "★★★" }), 4557);
+  assert.equal(Quest.apPerRun({ questMain: "rb" }), 40);
+  assert.equal(Quest.apPerRun({ questMain: "rb", raidAp: 20 }), 20);
+  assert.equal(Quest.apPerRun({ questMain: "rb", raidAp: 9999 }), 999);
+});
+
+test("Raid Boss / Storm Pod does not trigger Grand Duel party or class locks", () => {
+  BondApp.state = {
+    slots: [],
+    parties: {},
+    questMain: "rb",
+    questClass: "0100",
+    questDiff: "1",
+  };
+  assert.deepEqual(BondApp._pickerOptions(), {});
+  assert.equal(BondApp._partyKey(), "");
+});
+
+test("bondQuestSelect, bondGrandClassSelect, and bondGrandDiffSelect have no blank option in markup and stay unblankable in initQuestSelects", () => {
   const html = fs.readFileSync(path.join(repoRoot, "src/pages/index.astro"), "utf8");
-  const match = html.match(/<select[^>]*id="bondQuestSelect"[^>]*>([\s\S]*?)<\/select>/);
-  assert.ok(match, "bondQuestSelect must exist in index.astro");
-  assert.equal(match[1].trim(), "", "bondQuestSelect must not ship a blank <option>");
+  for (const id of ["bondQuestSelect", "bondGrandClassSelect", "bondGrandDiffSelect"]) {
+    const match = html.match(new RegExp(`<select[^>]*id="${id}"[^>]*>([\\s\\S]*?)<\\/select>`));
+    assert.ok(match, `${id} must exist in index.astro`);
+    assert.equal(match[1].trim(), "", `${id} must not ship a blank <option>`);
+  }
+  assert.ok(
+    html.includes('<label class="input-label" for="bondQuestSelect">Quest</label>'),
+    'bondQuestSelect label must be "Quest"',
+  );
 
   const makeEl = (tag) => {
     const attrs = new Map();
@@ -144,12 +215,17 @@ test("bondQuestSelect has no blank option in markup and stays unblankable in ini
 
   const elements = new Map([
     ["bondQuestSelect", makeEl("select")],
-    ["bondFreeQuestSelect", makeEl("select")],
     ["bondGrandClassSelect", makeEl("select")],
     ["bondGrandDiffSelect", makeEl("select")],
-    ["customQuestSection", makeEl("div")],
-    ["customBondPerRun", makeEl("input")],
+    ["freeQuestRecLv", makeEl("input")],
+    ["freeQuestTierSelect", makeEl("select")],
+    ["freeQuestBondDisplay", makeEl("input")],
     ["customApPerRun", makeEl("input")],
+    ["raidTierSelect", makeEl("select")],
+    ["raidRecLv", makeEl("input")],
+    ["raidBondDisplay", makeEl("input")],
+    ["raidApPerRun", makeEl("input")],
+    ["grandBondDisplay", makeEl("input")],
   ]);
   const docEl = makeEl("html");
   const prevDoc = globalThis.document;
@@ -157,7 +233,12 @@ test("bondQuestSelect has no blank option in markup and stays unblankable in ini
     documentElement: docEl,
     getElementById: (id) => elements.get(id) || null,
     createElement: (tag) => makeEl(tag),
-    createDocumentFragment: () => ({ children: [], appendChild(n) { this.children.push(n); } }),
+    createDocumentFragment: () => ({
+      children: [],
+      appendChild(n) {
+        this.children.push(n);
+      },
+    }),
   };
 
   try {
@@ -165,26 +246,75 @@ test("bondQuestSelect has no blank option in markup and stays unblankable in ini
       slots: [],
       parties: {},
       questMain: "",
-      questSub: "",
       questClass: "",
       questDiff: "",
-      customBond: 0,
+      customRecLv: 84,
       customAp: 22,
+      customTier: "",
+      raidAp: 40,
+      raidRecLv: 90,
+      raidTier: "",
     };
     BondApp.initQuestSelects();
     const main = elements.get("bondQuestSelect");
     assert.deepEqual(
       main.children.map((opt) => opt.getAttribute("value")),
-      ["fq", "gd"],
+      ["fq", "rb", "gd"],
     );
     assert.equal(main.value, "fq");
     assert.equal(BondApp.state.questMain, "fq");
     assert.equal(docEl.getAttribute("data-bond-quest"), "fq");
+    assert.equal(elements.get("freeQuestBondDisplay").value, "855");
+    assert.equal(elements.get("raidBondDisplay").value, "1830");
+
+    const recLvInput = elements.get("freeQuestRecLv");
+    recLvInput.value = "90";
+    recLvInput.trigger("input");
+    assert.equal(BondApp.state.customRecLv, 90);
+    assert.equal(elements.get("freeQuestBondDisplay").value, "915");
+
+    const freeTier = elements.get("freeQuestTierSelect");
+    freeTier.value = "★";
+    freeTier.trigger("change");
+    assert.equal(BondApp.state.customTier, "★");
+    assert.equal(elements.get("freeQuestBondDisplay").value, "1582");
+
+    main.value = "rb";
+    main.trigger("change");
+    assert.equal(BondApp.state.questMain, "rb");
+    assert.equal(docEl.getAttribute("data-bond-quest"), "rb");
+    const raidTier = elements.get("raidTierSelect");
+    raidTier.value = "★";
+    raidTier.trigger("change");
+    assert.equal(BondApp.state.raidTier, "★");
+    assert.equal(elements.get("raidBondDisplay").value, "3164");
 
     main.value = "";
     main.trigger("change");
     assert.equal(main.value, "fq");
     assert.equal(BondApp.state.questMain, "fq");
+
+    const gdClass = elements.get("bondGrandClassSelect");
+    const gdDiff = elements.get("bondGrandDiffSelect");
+    assert.equal(gdClass.value, GRAND_CLASSES[0].key);
+    assert.equal(BondApp.state.questClass, GRAND_CLASSES[0].key);
+    assert.equal(gdDiff.value, GRAND_DIFFICULTIES[0].key);
+    assert.equal(BondApp.state.questDiff, GRAND_DIFFICULTIES[0].key);
+
+    gdClass.value = "";
+    gdClass.trigger("change");
+    assert.equal(gdClass.value, GRAND_CLASSES[0].key);
+    assert.equal(BondApp.state.questClass, GRAND_CLASSES[0].key);
+
+    gdDiff.value = "";
+    gdDiff.trigger("change");
+    assert.equal(gdDiff.value, GRAND_DIFFICULTIES[0].key);
+    assert.equal(BondApp.state.questDiff, GRAND_DIFFICULTIES[0].key);
+    assert.equal(elements.get("grandBondDisplay").value, "3164");
+
+    gdDiff.value = "7";
+    gdDiff.trigger("change");
+    assert.equal(elements.get("grandBondDisplay").value, "4748");
   } finally {
     globalThis.document = prevDoc;
   }

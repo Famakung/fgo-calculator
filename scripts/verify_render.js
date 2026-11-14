@@ -1201,8 +1201,8 @@ try {
           { servantId: "800100", bondNeeded: 5000, type: "normal", bondLevel: 0, targetLevel: 1, ces: ["0910"] },
           { servantId: "100100", type: "support", ces: ["0910"] },
         ],
-        selectedQuest: "custom",
-        customBond: 1000,
+        questMain: "fq",
+        customRecLv: 99,
       }),
     ),
   );
@@ -1262,8 +1262,8 @@ try {
       "fgo_bond_calculator_data",
       JSON.stringify({
         slots: [{ servantId: "800100", bondNeeded: 2500, type: "normal", bondLevel: 0, targetLevel: 3, ces: [] }],
-        selectedQuest: "custom",
-        customBond: 1000,
+        questMain: "fq",
+        customRecLv: 99,
       }),
     ),
   );
@@ -1444,11 +1444,11 @@ try {
     page.evaluate(() => {
       const shown = (id) => document.getElementById(id).closest(".input-row").style.display !== "none";
       return {
-        free: shown("bondFreeQuestSelect"),
+        ap: shown("customApPerRun"),
+        recLv: shown("freeQuestRecLv"),
+        bondDisplay: shown("freeQuestBondDisplay"),
         gdClass: shown("bondGrandClassSelect"),
         gdDiff: shown("bondGrandDiffSelect"),
-        custom: document.getElementById("customQuestSection").style.display !== "none",
-        customDisabled: document.getElementById("customBondPerRun").disabled,
       };
     });
 
@@ -1547,30 +1547,15 @@ try {
 
   await page.select("#bondQuestSelect", "fq");
   const fqRows = await questRowFlags();
-  await page.select("#bondFreeQuestSelect", "custom");
-  const customRows = await questRowFlags();
-  await page.select("#bondFreeQuestSelect", "fq83");
-  const presetRows = await questRowFlags();
-  if (
-    !fqRows.free ||
-    fqRows.gdClass ||
-    fqRows.gdDiff ||
-    !customRows.custom ||
-    presetRows.custom ||
-    customRows.customDisabled !== false ||
-    presetRows.customDisabled !== true
-  ) {
-    errors.push(
-      `quest cascade: Free Quest drew ${JSON.stringify([fqRows, customRows, presetRows])}, ` +
-        `want only the quest row, its Custom box on then off and disabled again`,
-    );
+  if (!fqRows.ap || !fqRows.recLv || !fqRows.bondDisplay || fqRows.gdClass || fqRows.gdDiff) {
+    errors.push(`quest cascade: Free Quest drew ${JSON.stringify(fqRows)}, want AP, REC Lv., Bond/Run rows only`);
   }
 
   await page.select("#bondQuestSelect", "gd");
   const grandRows = await questRowFlags();
   await page.select("#bondGrandClassSelect", "extra1");
   await page.select("#bondGrandDiffSelect", "1");
-  if (!grandRows.gdClass || !grandRows.gdDiff || grandRows.free) {
+  if (!grandRows.gdClass || !grandRows.gdDiff || grandRows.ap || grandRows.recLv || grandRows.bondDisplay) {
     errors.push(`quest cascade: Grand Duel drew ${JSON.stringify(grandRows)}, want class and difficulty rows only`);
   }
 
@@ -1949,7 +1934,7 @@ try {
     data.slots = mash;
     data.parties = { all: mash.map((s) => ({ ...s })) };
     data.questMain = "fq";
-    data.questSub = "fq83";
+    data.customRecLv = 83;
     localStorage.setItem("fgo_bond_calculator_data", JSON.stringify(data));
   });
   await page.reload({ waitUntil: "networkidle0" });

@@ -121,10 +121,9 @@ const mkSlot = (servantId, bondNeeded) => ({ ...emptySlot(), servantId, bondNeed
 const makeState = (over = {}) => ({
   slots: Array.from({ length: 6 }, () => emptySlot()),
   questMain: "",
-  questSub: "",
   questClass: "",
   questDiff: "",
-  customBond: 0,
+  customRecLv: 84,
   customAp: 22,
   maxAp: 152,
   teapotCount: 0,
@@ -337,7 +336,7 @@ try {
   console.log("============================================================");
 
   /* fq83 bond 845 + frontline floor(169) = eff 1014; 10140 -> 10 runs -> 220 AP -> ceil(220/152) = 2. */
-  const fq83 = { questMain: "fq", questSub: "fq83" };
+  const fq83 = { questMain: "fq", customRecLv: 83 };
   const ac1Slots = [mkSlot("800100", 10140), ...Array.from({ length: 5 }, emptySlot)];
   const a1 = await seedAndCalculate({ ...fq83, slots: ac1Slots });
   assert(a1.cards.length === 1, `AC1 exactly one result card (got: ${a1.cards.length})`);
@@ -473,8 +472,7 @@ try {
   console.log("============================================================");
   const d1 = await seedAndCalculate({
     questMain: "fq",
-    questSub: "custom",
-    customBond: 845,
+    customRecLv: 83,
     customAp: 0,
     slots: ac1Slots,
   });
@@ -603,8 +601,7 @@ try {
   assert(localeOk, `B3 page default locale groups like en-US (oracle precondition)`);
   const i1 = await seedAndCalculate({
     questMain: "fq",
-    questSub: "custom",
-    customBond: 100,
+    customRecLv: 9,
     customAp: 999,
     slots: [mkSlot("800100", 9999960), ...Array.from({ length: 5 }, emptySlot)],
   });
@@ -830,8 +827,7 @@ try {
      maxAp 1 (clamp floor) -> fruit = 8,123 -> overlay "x8,123" ~58px at 1rem. */
   const mState = {
     questMain: "fq",
-    questSub: "custom",
-    customBond: 100,
+    customRecLv: 9,
     customAp: 1,
     maxAp: 1,
     slots: [mkSlot("800100", 974760), ...Array.from({ length: 5 }, emptySlot)],

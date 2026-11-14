@@ -96,7 +96,7 @@ test("a shared party loses grand and the second essence, a Grand Duel party keep
       slots: rack,
       parties: { all: rack.map((s) => ({ ...s })) },
       questMain: "fq",
-      questSub: "fq83",
+      customRecLv: 83,
     }),
   );
   const state = BondApp.loadState();

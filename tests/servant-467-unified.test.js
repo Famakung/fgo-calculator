@@ -486,7 +486,7 @@ test("BondApp: party setup slot and result card render swap display for 467", as
 
   // Test result card creation for 467
   BondApp.state.questMain = "fq";
-  BondApp.state.questSub = "fq83";
+  BondApp.state.customRecLv = 83;
   BondApp.state.teapotCount = 0;
   BondApp.calculate();
   const resultContent = getMockElement("bondResultContent");

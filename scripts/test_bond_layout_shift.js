@@ -59,7 +59,6 @@ try {
       const grid = document.getElementById("servantGrid");
       const freeRow = document.querySelector(".bond-quest-row--free");
       const grandRow = document.querySelector(".bond-quest-row--grand");
-      const customSec = document.getElementById("customQuestSection");
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
@@ -67,7 +66,6 @@ try {
         gridChildren: grid ? grid.children.length : 0,
         freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
         grandDisplay: grandRow ? getComputedStyle(grandRow).display : "",
-        customDisplay: customSec ? getComputedStyle(customSec).display : "",
       };
     });
 
@@ -79,7 +77,6 @@ try {
       const grid = document.getElementById("servantGrid");
       const freeRow = document.querySelector(".bond-quest-row--free");
       const grandRow = document.querySelector(".bond-quest-row--grand");
-      const customSec = document.getElementById("customQuestSection");
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
@@ -87,7 +84,6 @@ try {
         gridChildren: grid ? grid.children.length : 0,
         freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
         grandDisplay: grandRow ? getComputedStyle(grandRow).display : "",
-        customDisplay: customSec ? getComputedStyle(customSec).display : "",
       };
     });
 
@@ -103,12 +99,11 @@ try {
     assert(settledMetrics.gridChildren === 8, `Settled grid maintains exactly 8 children`);
     assert(initialMetrics.freeDisplay === "none" && settledMetrics.freeDisplay === "none", `Free quest row is hidden both initial and settled`);
     assert(initialMetrics.grandDisplay === "none" && settledMetrics.grandDisplay === "none", `Grand duel rows are hidden both initial and settled`);
-    assert(initialMetrics.customDisplay === "none" && settledMetrics.customDisplay === "none", `Custom quest section is hidden both initial and settled`);
 
     await page.close();
   }
 
-  console.log("\n=== TEST SUITE 2: Saved Free Quest (questMain: 'fq', questSub: 'fq83') ===");
+  console.log("\n=== TEST SUITE 2: Saved Free Quest (questMain: 'fq', customRecLv: 83) ===");
   {
     const page = await browser.newPage();
     await page.setViewport({ width: 375, height: 812 });
@@ -119,7 +114,7 @@ try {
       localStorage.setItem("fgo_active_tab", "bond");
       localStorage.setItem("fgo_bond_calculator_data", JSON.stringify({
         questMain: "fq",
-        questSub: "fq83",
+        customRecLv: 83,
       }));
     });
 
@@ -139,33 +134,29 @@ try {
       const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
       const freeRow = document.querySelector(".bond-quest-row--free");
       const grandRow = document.querySelector(".bond-quest-row--grand");
-      const customSec = document.getElementById("customQuestSection");
       const htmlAttr = document.documentElement.getAttribute("data-bond-quest");
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
         freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
         grandDisplay: grandRow ? getComputedStyle(grandRow).display : "",
-        customDisplay: customSec ? getComputedStyle(customSec).display : "",
         dataBondQuest: htmlAttr,
       };
     });
 
     // Wait for bond-lazy to settle
-    await page.waitForFunction(() => document.getElementById("bondFreeQuestSelect").value === "fq83", { timeout: 10000 });
+    await page.waitForFunction(() => document.getElementById("freeQuestRecLv").value === "83", { timeout: 10000 });
 
     const settled = await page.evaluate(() => {
       const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
       const freeRow = document.querySelector(".bond-quest-row--free");
       const grandRow = document.querySelector(".bond-quest-row--grand");
-      const customSec = document.getElementById("customQuestSection");
       const htmlAttr = document.documentElement.getAttribute("data-bond-quest");
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
         freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
         grandDisplay: grandRow ? getComputedStyle(grandRow).display : "",
-        customDisplay: customSec ? getComputedStyle(customSec).display : "",
         dataBondQuest: htmlAttr,
       };
     });
@@ -178,12 +169,11 @@ try {
     assert(initial.dataBondQuest === "fq", `Initial data-bond-quest attribute is synchronously restored to 'fq'`);
     assert(initial.freeDisplay === "flex" && settled.freeDisplay === "flex", `Free quest row is display:flex immediately from initial paint`);
     assert(initial.grandDisplay === "none" && settled.grandDisplay === "none", `Grand duel rows are hidden`);
-    assert(initial.customDisplay === "none" && settled.customDisplay === "none", `Custom quest section is hidden`);
 
     await page.close();
   }
 
-  console.log("\n=== TEST SUITE 3: Saved Free Quest with Custom (questMain: 'fq', questSub: 'custom') ===");
+  console.log("\n=== TEST SUITE 3: Saved Free Quest with Custom AP/REC (questMain: 'fq', customRecLv: 90, customAp: 25) ===");
   {
     const page = await browser.newPage();
     await page.setViewport({ width: 375, height: 812 });
@@ -193,8 +183,7 @@ try {
       localStorage.setItem("fgo_active_tab", "bond");
       localStorage.setItem("fgo_bond_calculator_data", JSON.stringify({
         questMain: "fq",
-        questSub: "custom",
-        customBond: 1200,
+        customRecLv: 90,
         customAp: 25,
       }));
     });
@@ -213,33 +202,27 @@ try {
     const initial = await page.evaluate(() => {
       const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
       const freeRow = document.querySelector(".bond-quest-row--free");
-      const customSec = document.getElementById("customQuestSection");
       const de = document.documentElement;
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
         freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
-        customDisplay: customSec ? getComputedStyle(customSec).display : "",
         dataBondQuest: de.getAttribute("data-bond-quest"),
-        dataBondCustom: de.getAttribute("data-bond-custom"),
       };
     });
 
     // Wait for bond-lazy
-    await page.waitForFunction(() => document.getElementById("bondFreeQuestSelect").value === "custom", { timeout: 10000 });
+    await page.waitForFunction(() => document.getElementById("freeQuestRecLv").value === "90", { timeout: 10000 });
 
     const settled = await page.evaluate(() => {
       const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
       const freeRow = document.querySelector(".bond-quest-row--free");
-      const customSec = document.getElementById("customQuestSection");
       const de = document.documentElement;
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
         freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
-        customDisplay: customSec ? getComputedStyle(customSec).display : "",
         dataBondQuest: de.getAttribute("data-bond-quest"),
-        dataBondCustom: de.getAttribute("data-bond-custom"),
       };
     });
 
@@ -249,9 +232,7 @@ try {
     const shift = Math.abs(initial.questCardH - settled.questCardH);
     assert(shift < 1.0, `Custom FQ Select Quest card height shift is < 1px (actual: ${shift.toFixed(2)}px, initial: ${initial.questCardH}px, settled: ${settled.questCardH}px)`);
     assert(initial.dataBondQuest === "fq", `data-bond-quest is 'fq'`);
-    assert(initial.dataBondCustom === "1", `data-bond-custom is '1'`);
     assert(initial.freeDisplay === "flex" && settled.freeDisplay === "flex", `Free quest row is display:flex`);
-    assert(initial.customDisplay === "block" && settled.customDisplay === "block", `Custom quest section is display:block`);
 
     await page.close();
   }
@@ -286,16 +267,13 @@ try {
       const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
       const freeRow = document.querySelector(".bond-quest-row--free");
       const grandRows = Array.from(document.querySelectorAll(".bond-quest-row--grand"));
-      const customSec = document.getElementById("customQuestSection");
       const de = document.documentElement;
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
         freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
         grandDisplays: grandRows.map((r) => getComputedStyle(r).display),
-        customDisplay: customSec ? getComputedStyle(customSec).display : "",
         dataBondQuest: de.getAttribute("data-bond-quest"),
-        dataBondCustom: de.getAttribute("data-bond-custom"),
       };
     });
 
@@ -306,16 +284,13 @@ try {
       const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
       const freeRow = document.querySelector(".bond-quest-row--free");
       const grandRows = Array.from(document.querySelectorAll(".bond-quest-row--grand"));
-      const customSec = document.getElementById("customQuestSection");
       const de = document.documentElement;
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
         freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
         grandDisplays: grandRows.map((r) => getComputedStyle(r).display),
-        customDisplay: customSec ? getComputedStyle(customSec).display : "",
         dataBondQuest: de.getAttribute("data-bond-quest"),
-        dataBondCustom: de.getAttribute("data-bond-custom"),
       };
     });
 
@@ -325,13 +300,11 @@ try {
     const shift = Math.abs(initial.questCardH - settled.questCardH);
     assert(shift < 1.0, `Grand Duel Select Quest card height shift is < 1px (actual: ${shift.toFixed(2)}px, initial: ${initial.questCardH}px, settled: ${settled.questCardH}px)`);
     assert(initial.dataBondQuest === "gd", `data-bond-quest is 'gd'`);
-    assert(initial.dataBondCustom === null, `data-bond-custom is null`);
     assert(initial.freeDisplay === "none" && settled.freeDisplay === "none", `Free quest row is hidden`);
     assert(
       initial.grandDisplays.every((d) => d === "flex") && settled.grandDisplays.every((d) => d === "flex"),
       `Both Grand Duel rows (class & difficulty) are display:flex initial and settled`,
     );
-    assert(initial.customDisplay === "none" && settled.customDisplay === "none", `Custom quest section is hidden`);
 
     await page.close();
   }
@@ -346,14 +319,14 @@ try {
       localStorage.setItem("fgo_active_tab", "bond");
       localStorage.setItem("fgo_bond_calculator_data", JSON.stringify({
         questMain: "fq",
-        questSub: "fq83",
+        customRecLv: 83,
       }));
     });
 
     await page.goto(baseUrl, { waitUntil: "networkidle0" });
 
     // Wait for bond-lazy initialization
-    await page.waitForFunction(() => document.getElementById("bondFreeQuestSelect").value === "fq83", { timeout: 10000 });
+    await page.waitForFunction(() => document.getElementById("freeQuestRecLv").value === "83", { timeout: 10000 });
 
     // Click slot 0 (empty slot)
     const slot0 = await page.$('.servant-slot[data-slot-index="0"]');
@@ -415,12 +388,12 @@ try {
       localStorage.setItem("fgo_active_tab", "bond");
       localStorage.setItem("fgo_bond_calculator_data", JSON.stringify({
         questMain: "fq",
-        questSub: "fq83",
+        customRecLv: 83,
       }));
     });
 
     await page.goto(baseUrl, { waitUntil: "networkidle0" });
-    await page.waitForFunction(() => document.getElementById("bondFreeQuestSelect").value === "fq83", { timeout: 10000 });
+    await page.waitForFunction(() => document.getElementById("freeQuestRecLv").value === "83", { timeout: 10000 });
 
     const viewports = [320, 375, 800, 1200, 1600];
     for (const w of viewports) {
@@ -471,9 +444,9 @@ try {
       { name: "primitive number", raw: "12345" },
       { name: "primitive string", raw: '"hello"' },
       { name: "array instead of object", raw: "[]" },
-      { name: "unknown questMain", raw: JSON.stringify({ questMain: "invalid_quest", questSub: "custom" }) },
-      { name: "custom questSub but questMain is gd", raw: JSON.stringify({ questMain: "gd", questSub: "custom" }) },
-      { name: "slots is a string", raw: JSON.stringify({ questMain: "fq", questSub: "fq83", slots: "not-an-array" }) },
+      { name: "unknown questMain", raw: JSON.stringify({ questMain: "invalid_quest", customRecLv: 90 }) },
+      { name: "customRecLv but questMain is gd", raw: JSON.stringify({ questMain: "gd", customRecLv: 90 }) },
+      { name: "slots is a string", raw: JSON.stringify({ questMain: "fq", customRecLv: 83, slots: "not-an-array" }) },
     ];
 
     for (const tc of testCases) {

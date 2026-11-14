@@ -2,9 +2,9 @@ import {
   BOND_CONSTANTS,
   SERVANT_MAX_SLOTS,
   QUEST_FAMILIES,
-  FREE_QUESTS,
   GRAND_CLASSES,
   GRAND_DIFFICULTIES,
+  QUEST_TIERS,
   BOND_STORAGE_KEY,
 } from "./constants.js";
 import { Validator, TraitMatcher, SlotCEs, Teapot, Quest } from "./domain.js";
@@ -72,11 +72,14 @@ export const BondApp = {
     this.state = saved || {
       slots: Array.from({ length: SERVANT_MAX_SLOTS }, () => defaultSlot()),
       questMain: "fq",
-      questSub: "",
-      questClass: "",
-      questDiff: "",
-      customBond: 0,
+      questClass: GRAND_CLASSES[0].key,
+      questDiff: GRAND_DIFFICULTIES[0].key,
+      customRecLv: BOND_CONSTANTS.DEFAULT_REC_LV,
       customAp: BOND_CONSTANTS.DEFAULT_CUSTOM_AP,
+      customTier: "",
+      raidAp: BOND_CONSTANTS.DEFAULT_RAID_AP,
+      raidRecLv: BOND_CONSTANTS.DEFAULT_RAID_REC_LV,
+      raidTier: "",
       maxAp: BOND_CONSTANTS.DEFAULT_MAX_AP,
       teapotCount: 0,
       teapotOn: false,
@@ -150,17 +153,20 @@ export const BondApp = {
   /* ============================================
      QUEST SELECTS
      ============================================ */
-  /* The Select Quest card cascades: a family first (Free Quest or Grand Duel), then the choice inside it —
-     one of the two free quests or a custom figure, or a class group plus a Rank-Up Training Battle level.
-     Every label and every bond figure comes from constants.js, so a number has one home. */
+  /* The Select Quest card cascades: a family first (Free Quest or Grand Duel), then either the
+     Free Quest AP/Run and REC Lv. inputs (auto-computing Bond/Run = recLv * 10 + 15) or a Grand Duel
+     class group plus a Rank-Up Training Battle level. */
   initQuestSelects() {
     const main = document.getElementById("bondQuestSelect");
-    const free = document.getElementById("bondFreeQuestSelect");
     const gdClass = document.getElementById("bondGrandClassSelect");
     const gdDiff = document.getElementById("bondGrandDiffSelect");
-    const customInput = document.getElementById("customBondPerRun");
+    const recLvInput = document.getElementById("freeQuestRecLv");
+    const freeTierSelect = document.getElementById("freeQuestTierSelect");
     const customApInput = document.getElementById("customApPerRun");
-    if (!main || !free || !gdClass || !gdDiff) return;
+    const raidTierSelect = document.getElementById("raidTierSelect");
+    const raidRecLvInput = document.getElementById("raidRecLv");
+    const raidApInput = document.getElementById("raidApPerRun");
+    if (!main || !gdClass || !gdDiff) return;
 
     const addOptions = (select, items) => {
       const frag = document.createDocumentFragment();
@@ -176,10 +182,6 @@ export const BondApp = {
       main,
       QUEST_FAMILIES.map((f) => ({ value: f.key, label: f.name })),
     );
-    addOptions(free, [
-      ...FREE_QUESTS.map((q) => ({ value: q.key, label: `${q.name} (${q.bond} pts)` })),
-      { value: "custom", label: "-- Custom --" },
-    ]);
     addOptions(
       gdClass,
       GRAND_CLASSES.map((c) => ({ value: c.key, label: c.name })),
@@ -188,75 +190,176 @@ export const BondApp = {
       gdDiff,
       GRAND_DIFFICULTIES.map((d) => ({
         value: d.key,
-        label: `Rank-Up Training Battle ${d.roman} ${d.lv} (${d.bond} pts)`,
+        label: d.tier,
       })),
     );
 
-    this._questSelects = { main, free, gdClass, gdDiff };
+    this._questSelects = { main, gdClass, gdDiff };
 
     /* Each select owns one state field and saves it on change — the class limit has to survive a reload
        even if the player never presses Calculate. The two fields that decide which party is on screen
        also swap it, so the old one is put away before the new one is named. */
-    const bind = (key, select) => {
+    const bind = (key, select, fallback) => {
       const swaps = key === "questMain" || key === "questClass";
       select.value = this.state[key];
-      if (key === "questMain" && !select.value) {
-        select.value = "fq";
-        this.state[key] = "fq";
+      if (!select.value) {
+        select.value = fallback;
+        this.state[key] = fallback;
       }
       select.addEventListener("change", () => {
         if (swaps) this.stashParty();
-        if (key === "questMain" && !select.value) select.value = "fq";
+        if (!select.value) select.value = fallback;
         this.state[key] = select.value;
         if (swaps) {
           this.applyParty();
           this._refs?.ServantSelector?.resetFilters?.();
         }
         this.saveState();
+        this.syncGrandBondDisplay();
         this.syncQuestRows();
       });
     };
-    bind("questMain", main);
-    bind("questSub", free);
-    bind("questClass", gdClass);
-    bind("questDiff", gdDiff);
+    bind("questMain", main, "fq");
+    bind("questClass", gdClass, GRAND_CLASSES[0].key);
+    bind("questDiff", gdDiff, GRAND_DIFFICULTIES[0].key);
 
-    if (customInput) customInput.value = this.state.customBond;
-    if (customApInput) customApInput.value = this.state.customAp;
+    if (recLvInput) {
+      recLvInput.value = this.state.customRecLv;
+      recLvInput.addEventListener("input", () => {
+        const parsed = parseFloat(recLvInput.value);
+        if (!isNaN(parsed)) {
+          this.state.customRecLv = Math.floor(
+            Validator.clamp(parsed, BOND_CONSTANTS.MIN_REC_LV, BOND_CONSTANTS.MAX_REC_LV),
+          );
+          this.saveState();
+        }
+        this.syncFreeQuestBondDisplay(isNaN(parsed) ? BOND_CONSTANTS.MIN_REC_LV : this.state.customRecLv);
+      });
+      recLvInput.addEventListener("change", () => {
+        this.state.customRecLv = Math.floor(
+          Validator.clamp(recLvInput.value, BOND_CONSTANTS.MIN_REC_LV, BOND_CONSTANTS.MAX_REC_LV),
+        );
+        recLvInput.value = this.state.customRecLv;
+        this.syncFreeQuestBondDisplay();
+        this.saveState();
+      });
+    }
+    if (freeTierSelect) {
+      addOptions(
+        freeTierSelect,
+        QUEST_TIERS.map((t) => ({ value: t.key, label: t.label })),
+      );
+      freeTierSelect.value = this.state.customTier ?? "";
+      freeTierSelect.addEventListener("change", () => {
+        this.state.customTier = freeTierSelect.value;
+        this.syncFreeQuestBondDisplay();
+        this.saveState();
+      });
+    }
+    if (customApInput) {
+      customApInput.value = this.state.customAp;
+      customApInput.addEventListener("change", () => {
+        this.state.customAp = Validator.clamp(customApInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
+        customApInput.value = this.state.customAp;
+        this.saveState();
+      });
+    }
+    if (raidTierSelect) {
+      addOptions(
+        raidTierSelect,
+        QUEST_TIERS.map((t) => ({ value: t.key, label: t.label })),
+      );
+      raidTierSelect.value = this.state.raidTier ?? "";
+      raidTierSelect.addEventListener("change", () => {
+        this.state.raidTier = raidTierSelect.value;
+        this.syncRaidBondDisplay();
+        this.saveState();
+      });
+    }
+    if (raidRecLvInput) {
+      raidRecLvInput.value = this.state.raidRecLv ?? BOND_CONSTANTS.DEFAULT_RAID_REC_LV;
+      raidRecLvInput.addEventListener("input", () => {
+        const parsed = parseFloat(raidRecLvInput.value);
+        if (!isNaN(parsed)) {
+          this.state.raidRecLv = Math.floor(
+            Validator.clamp(parsed, BOND_CONSTANTS.MIN_REC_LV, BOND_CONSTANTS.MAX_REC_LV),
+          );
+          this.saveState();
+        }
+        this.syncRaidBondDisplay(isNaN(parsed) ? BOND_CONSTANTS.MIN_REC_LV : this.state.raidRecLv);
+      });
+      raidRecLvInput.addEventListener("change", () => {
+        this.state.raidRecLv = Math.floor(
+          Validator.clamp(raidRecLvInput.value, BOND_CONSTANTS.MIN_REC_LV, BOND_CONSTANTS.MAX_REC_LV),
+        );
+        raidRecLvInput.value = this.state.raidRecLv;
+        this.syncRaidBondDisplay();
+        this.saveState();
+      });
+    }
+    if (raidApInput) {
+      raidApInput.value = this.state.raidAp ?? BOND_CONSTANTS.DEFAULT_RAID_AP;
+      raidApInput.addEventListener("change", () => {
+        this.state.raidAp = Validator.clamp(raidApInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
+        raidApInput.value = this.state.raidAp;
+        this.saveState();
+      });
+    }
+    this.syncFreeQuestBondDisplay();
+    this.syncRaidBondDisplay();
+    this.syncGrandBondDisplay();
     this.syncQuestRows();
   },
 
-  /* Only the rows belonging to the chosen family show, and the custom bond box only under Custom.
-     `hidden` cannot do this job: `.input-row` declares a display, which outranks the UA rule. */
-  syncQuestRows() {
-    const { free, gdClass, gdDiff } = this._questSelects;
-    const customRow = document.getElementById("customQuestSection");
-    const customInput = document.getElementById("customBondPerRun");
-    const customApInput = document.getElementById("customApPerRun");
-    const freeOn = this.state.questMain === "fq";
-    const grandOn = this.state.questMain === "gd";
-    this._syncQuestAttributes(freeOn, grandOn);
-    free.closest(".input-row").style.display = freeOn ? "flex" : "none";
-    gdClass.closest(".input-row").style.display = grandOn ? "flex" : "none";
-    gdDiff.closest(".input-row").style.display = grandOn ? "flex" : "none";
-    const customOn = freeOn && this.state.questSub === "custom";
-    if (customInput) customInput.disabled = !customOn;
-    if (customApInput) customApInput.disabled = !customOn;
-    if (customRow) customRow.style.display = customOn ? "block" : "none";
+  syncFreeQuestBondDisplay(recLv = this.state.customRecLv, tier = this.state.customTier) {
+    const bondDisplay = document.getElementById("freeQuestBondDisplay");
+    if (bondDisplay) {
+      bondDisplay.value = String(Quest.freeQuestBond(recLv, tier));
+    }
   },
 
-  _syncQuestAttributes(freeOn, grandOn) {
+  syncRaidBondDisplay(recLv = this.state.raidRecLv, tier = this.state.raidTier) {
+    const bondDisplay = document.getElementById("raidBondDisplay");
+    if (bondDisplay) {
+      bondDisplay.value = String(Quest.raidQuestBond(recLv, tier));
+    }
+  },
+
+  syncGrandBondDisplay(questDiff = this.state.questDiff) {
+    const bondDisplay = document.getElementById("grandBondDisplay");
+    if (bondDisplay) {
+      bondDisplay.value = String(Quest.bondPerRun({ questMain: "gd", questDiff }));
+    }
+  },
+
+  /* Only the rows belonging to the chosen family show.
+     `hidden` cannot do this job: `.input-row` declares a display, which outranks the UA rule. */
+  syncQuestRows() {
+    const { gdClass, gdDiff } = this._questSelects;
+    const freeOn = this.state.questMain === "fq";
+    const grandOn = this.state.questMain === "gd";
+    const raidOn = this.state.questMain === "rb";
+    this._syncQuestAttributes(freeOn, grandOn, raidOn);
+    document.querySelectorAll?.(".bond-quest-row--free").forEach((row) => {
+      row.style.display = freeOn ? "flex" : "none";
+    });
+    document.querySelectorAll?.(".bond-quest-row--raid").forEach((row) => {
+      row.style.display = raidOn ? "flex" : "none";
+    });
+    gdClass.closest(".input-row").style.display = grandOn ? "flex" : "none";
+    gdDiff.closest(".input-row").style.display = grandOn ? "flex" : "none";
+  },
+
+  _syncQuestAttributes(freeOn, grandOn, raidOn = false) {
     const de = document.documentElement;
     if (freeOn) {
       de.setAttribute("data-bond-quest", "fq");
-      if (this.state.questSub === "custom") de.setAttribute("data-bond-custom", "1");
-      else de.removeAttribute("data-bond-custom");
     } else if (grandOn) {
       de.setAttribute("data-bond-quest", "gd");
-      de.removeAttribute("data-bond-custom");
+    } else if (raidOn) {
+      de.setAttribute("data-bond-quest", "rb");
     } else {
       de.removeAttribute("data-bond-quest");
-      de.removeAttribute("data-bond-custom");
     }
   },
 
@@ -830,23 +933,40 @@ export const BondApp = {
   },
 
   calculate() {
-    // Determine quest bond/run: the selects own the choice, the custom box owns its own figure.
-    const customInput = document.getElementById("customBondPerRun");
+    // Determine quest bond/run: Free Quest computes from REC Lv., Grand Duel reads difficulty,
+    // Raid Boss / Storm Pod scales Free Quest * 2 by its tier steps.
+    const recLvInput = document.getElementById("freeQuestRecLv");
     const customApInput = document.getElementById("customApPerRun");
+    const raidRecLvInput = document.getElementById("raidRecLv");
+    const raidApInput = document.getElementById("raidApPerRun");
     const maxApInput = document.getElementById("maxApInput");
-    if (customInput) {
-      this.state.customBond = Validator.clamp(customInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND);
-      customInput.value = this.state.customBond;
+    if (recLvInput) {
+      this.state.customRecLv = Math.floor(
+        Validator.clamp(recLvInput.value, BOND_CONSTANTS.MIN_REC_LV, BOND_CONSTANTS.MAX_REC_LV),
+      );
+      recLvInput.value = this.state.customRecLv;
+      this.syncFreeQuestBondDisplay();
     }
     if (customApInput) {
       this.state.customAp = Validator.clamp(customApInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
       customApInput.value = this.state.customAp;
     }
+    if (raidRecLvInput) {
+      this.state.raidRecLv = Math.floor(
+        Validator.clamp(raidRecLvInput.value, BOND_CONSTANTS.MIN_REC_LV, BOND_CONSTANTS.MAX_REC_LV),
+      );
+      raidRecLvInput.value = this.state.raidRecLv;
+      this.syncRaidBondDisplay();
+    }
+    if (raidApInput) {
+      this.state.raidAp = Validator.clamp(raidApInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
+      raidApInput.value = this.state.raidAp;
+    }
     if (maxApInput) {
       this.state.maxAp = Validator.clamp(maxApInput.value, 1, BOND_CONSTANTS.MAX_PLAYER_AP);
       maxApInput.value = this.state.maxAp;
     }
-    const bondPerRun = Quest.bondPerRun(this.state, this.state.customBond);
+    const bondPerRun = Quest.bondPerRun(this.state, this.state.customRecLv);
     const apPerRun = Quest.apPerRun(this.state, this.state.customAp);
 
     if (bondPerRun <= 0) {
@@ -1384,7 +1504,6 @@ export const BondApp = {
         data.questMain,
         QUEST_FAMILIES.map((f) => f.key),
       );
-      let questSub = oneOf(data.questSub, [...FREE_QUESTS.map((q) => q.key), "custom"]);
       let questClass = oneOf(
         data.questClass,
         GRAND_CLASSES.map((c) => c.key),
@@ -1397,24 +1516,15 @@ export const BondApp = {
       // A save from before the family selects spelled the whole quest as one key; land it in the new fields.
       if (!questMain) {
         const legacy = data.selectedQuest;
-        if (legacy === "custom") {
-          questMain = "fq";
-          questSub = "custom";
-        } else if (
-          oneOf(
-            legacy,
-            FREE_QUESTS.map((q) => q.key),
-          )
-        ) {
-          questMain = "fq";
-          questSub = legacy;
-        } else if (legacy === "gd100") {
+        if (legacy === "gd100") {
           questMain = "gd";
           questClass = "all";
           questDiff = GRAND_DIFFICULTIES[GRAND_DIFFICULTIES.length - 1].key;
         }
       }
       if (!questMain) questMain = "fq";
+      if (!questClass) questClass = GRAND_CLASSES[0].key;
+      if (!questDiff) questDiff = GRAND_DIFFICULTIES[0].key;
 
       /* A Grand Duel choice owns its party; `""` is the shared party Free Quest and an empty quest use.
          The party on screen is stored as `slots`, so its own key is read from `parties` only when it is
@@ -1429,19 +1539,50 @@ export const BondApp = {
       const slots = parties[liveKey] || partyOf(data.slots, liveKey !== "");
       delete parties[liveKey];
 
+      const fallbackRecLv = data.questSub === "fq83" ? 83 : BOND_CONSTANTS.DEFAULT_REC_LV;
+      const customRecLv = Math.floor(
+        Validator.clamp(
+          data.customRecLv !== undefined ? data.customRecLv : fallbackRecLv,
+          BOND_CONSTANTS.MIN_REC_LV,
+          BOND_CONSTANTS.MAX_REC_LV,
+        ),
+      );
+      const customTier = oneOf(
+        data.customTier,
+        QUEST_TIERS.map((t) => t.key),
+      );
+      const raidRecLv = Math.floor(
+        Validator.clamp(
+          data.raidRecLv !== undefined ? data.raidRecLv : BOND_CONSTANTS.DEFAULT_RAID_REC_LV,
+          BOND_CONSTANTS.MIN_REC_LV,
+          BOND_CONSTANTS.MAX_REC_LV,
+        ),
+      );
+      const raidTier = oneOf(
+        data.raidTier,
+        QUEST_TIERS.map((t) => t.key),
+      );
+
       return {
         slots,
         parties,
         questMain,
-        questSub,
         questClass,
         questDiff,
-        customBond: Validator.clamp(data.customBond || 0, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND),
+        customRecLv,
         customAp: Validator.clamp(
           data.customAp !== undefined ? data.customAp : BOND_CONSTANTS.DEFAULT_CUSTOM_AP,
           0,
           BOND_CONSTANTS.MAX_CUSTOM_AP,
         ),
+        customTier,
+        raidAp: Validator.clamp(
+          data.raidAp !== undefined ? data.raidAp : BOND_CONSTANTS.DEFAULT_RAID_AP,
+          0,
+          BOND_CONSTANTS.MAX_CUSTOM_AP,
+        ),
+        raidRecLv,
+        raidTier,
         maxAp: Validator.clamp(
           data.maxAp !== undefined ? data.maxAp : BOND_CONSTANTS.DEFAULT_MAX_AP,
           1,

@@ -7,9 +7,9 @@ import {
   CLASS_FILTERS,
   CLASS_GROUPS,
   ALIGNMENT_GBE_FILTERS,
-  FREE_QUESTS,
   GRAND_CLASSES,
   GRAND_DIFFICULTIES,
+  QUEST_TIERS,
 } from "./constants.js";
 
 export const Schema = {
@@ -666,35 +666,61 @@ export const ServantComboCalculator = {
    QUEST (Bond tab quest picker)
    ============================================ */
 export const Quest = {
-  /* What one run of the quest the player picked pays in bond points. A Grand Duel plan pays its
-     difficulty's figure whatever the class is; only the Free Quest family carries a custom figure, and
-     that comes from `customBond`. 0 means nothing is chosen yet. */
-  bondPerRun({ questMain = "", questSub = "", questDiff = "" }, customBond = 0) {
+  /* Apply `Math.ceil(bond * 1.2)` `steps` times for the chosen `+` / `★` tier. */
+  _applyTier(baseBond, tier = "") {
+    let bond = baseBond;
+    const entry = QUEST_TIERS.find((t) => t.key === tier);
+    const steps = entry ? entry.steps : 0;
+    for (let i = 0; i < steps; i++) {
+      bond = Math.ceil(bond * BOND_CONSTANTS.RAID_TIER_STEP_MULTIPLIER);
+    }
+    return bond;
+  },
+
+  /* Bond points paid by a Free Quest of the given recommended level (`recLv * 10 + 15`),
+     scaled by the chosen `+` / `★` tier if any. */
+  freeQuestBond(recLv = BOND_CONSTANTS.DEFAULT_REC_LV, tier = "") {
+    const lv = Math.floor(Validator.clamp(recLv, BOND_CONSTANTS.MIN_REC_LV, BOND_CONSTANTS.MAX_REC_LV));
+    return this._applyTier(lv * BOND_CONSTANTS.FREE_QUEST_BOND_PER_LV + BOND_CONSTANTS.FREE_QUEST_BOND_BASE, tier);
+  },
+
+  /* Bond points paid by a Raid Boss/Bleached Earth quest: `freeQuestBond(recLv) * 2`,
+     then `Math.ceil(bond * 1.2)` applied `steps` times for the chosen `+` / `★` tier. */
+  raidQuestBond(recLv = BOND_CONSTANTS.DEFAULT_RAID_REC_LV, tier = "") {
+    return this._applyTier(this.freeQuestBond(recLv) * BOND_CONSTANTS.RAID_BOND_MULTIPLIER, tier);
+  },
+
+  /* What one run of the quest the player picked pays in bond points. Free Quest computes
+     `recLv * 10 + 15` (plus tier steps); Grand Duel pays its difficulty's figure whatever the class is;
+     Raid Boss/Bleached Earth scales `freeQuestBond * 2` by its tier steps. */
+  bondPerRun(
+    { questMain = "", questDiff = "", customTier = "", raidRecLv = BOND_CONSTANTS.DEFAULT_RAID_REC_LV, raidTier = "" },
+    customRecLv = BOND_CONSTANTS.DEFAULT_REC_LV,
+  ) {
     if (questMain === "fq") {
-      if (questSub === "custom") {
-        return Validator.clamp(customBond, 0, BOND_CONSTANTS.MAX_CUSTOM_BOND);
-      }
-      const quest = FREE_QUESTS.find((q) => q.key === questSub);
-      return quest ? quest.bond : 0;
+      return this.freeQuestBond(customRecLv, customTier);
     }
     if (questMain === "gd") {
       const difficulty = GRAND_DIFFICULTIES.find((d) => d.key === questDiff);
       return difficulty ? difficulty.bond : 0;
     }
+    if (questMain === "rb") {
+      return this.raidQuestBond(raidRecLv, raidTier);
+    }
     return 0;
   },
 
-  /* What one run of the quest costs in AP. Free Quest is 22 AP (or customAp when custom is chosen),
-     Grand Duel is 40 AP. 0 means no quest family is chosen yet. */
-  apPerRun({ questMain = "", questSub = "" }, customAp = BOND_CONSTANTS.DEFAULT_CUSTOM_AP) {
+  /* What one run of the quest costs in AP. Free Quest uses customAp (defaulting to 22 AP),
+     Grand Duel is 40 AP, Raid Boss / Storm Pod uses raidAp (defaulting to 40 AP). */
+  apPerRun({ questMain = "", raidAp = BOND_CONSTANTS.DEFAULT_RAID_AP }, customAp = BOND_CONSTANTS.DEFAULT_CUSTOM_AP) {
     if (questMain === "fq") {
-      if (questSub === "custom") {
-        return Validator.clamp(customAp, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
-      }
-      return BOND_CONSTANTS.FREE_QUEST_AP;
+      return Validator.clamp(customAp, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
     }
     if (questMain === "gd") {
       return BOND_CONSTANTS.GRAND_DUEL_AP;
+    }
+    if (questMain === "rb") {
+      return Validator.clamp(raidAp, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
     }
     return 0;
   },
