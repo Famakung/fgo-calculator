@@ -5,6 +5,8 @@ Never fails the workflow: any network/parse problem yields CHECK=UNKNOWN (contin
 """
 
 import argparse
+import gzip
+import hashlib
 import json
 import os
 import sys
@@ -13,7 +15,9 @@ import urllib.error
 import urllib.request
 
 DEFAULT_URL = "https://api.atlasacademy.io/info"
+DEFAULT_API_BASE = "https://api.atlasacademy.io"
 DEFAULT_VERSION_FILE = os.path.join(".ci-baselines", "data_version.txt")
+DEFAULT_SHOP_PROBE_FILE = os.path.join(".ci-baselines", "shop_probe.json")
 TIMEOUT_SECONDS = 10
 ATTEMPTS = 2
 RETRY_DELAY_SECONDS = 3
@@ -66,10 +70,84 @@ def _write_version(path, jp, na):
         f.write(f"JP {jp}\nNA {na}\n")
 
 
+def _drops_digest(drops):
+    """16-hex-char SHA-256 of canonical (objectId, num, dropExpected, runs) tuples with positive drops."""
+    canonical = sorted(
+        (
+            int(d.get("objectId") or 0),
+            int(d.get("num") or 0),
+            round(float(d.get("dropExpected") or 0), 4),
+            int(d.get("runs") or 0),
+        )
+        for d in (drops or [])
+        if isinstance(d, dict) and (d.get("dropExpected") or 0) > 0 and (d.get("num") or 0) > 0
+    )
+    return hashlib.sha256(json.dumps(canonical, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+
+
+def _fetch_quest_drops(url, etag=None):
+    """GET quest detail URL; return ('NOT_MODIFIED', None), ('OK', drops), or ('ERROR', None)."""
+    headers = {"User-Agent": "fgo-calculator-ci", "Accept-Encoding": "gzip"}
+    if etag:
+        headers["If-None-Match"] = etag
+    for attempt in range(ATTEMPTS):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+                raw = resp.read()
+                if resp.headers.get("Content-Encoding") == "gzip":
+                    raw = gzip.decompress(raw)
+                data = json.loads(raw.decode("utf-8"))
+                if not isinstance(data, dict):
+                    return ("ERROR", None)
+                return ("OK", data.get("drops") or [])
+        except urllib.error.HTTPError as e:
+            if e.code == 304:
+                return ("NOT_MODIFIED", None)
+            if attempt < ATTEMPTS - 1:
+                time.sleep(RETRY_DELAY_SECONDS)
+        except Exception:
+            if attempt < ATTEMPTS - 1:
+                time.sleep(RETRY_DELAY_SECONDS)
+    return ("ERROR", None)
+
+
+def check_shop_probe(probe_path, api_base=DEFAULT_API_BASE, now=None):
+    """Check whether active event window transitions or quest drop submissions changed."""
+    try:
+        with open(probe_path, "r", encoding="utf-8") as f:
+            probe = json.load(f)
+        if not isinstance(probe, dict):
+            return "CHANGED"
+    except Exception:
+        return "CHANGED"
+
+    moment = int(time.time()) if now is None else now
+    next_ts = probe.get("nextTransitionAt")
+    if isinstance(next_ts, int) and moment >= next_ts:
+        return "CHANGED"
+
+    base = api_base.rstrip("/")
+    for q in probe.get("activeQuests") or []:
+        qid = q.get("id")
+        phase = q.get("phase")
+        url = f"{base}/nice/JP/quest/{qid}/{phase}?lang=en"
+        state, drops = _fetch_quest_drops(url, etag=q.get("etag"))
+        if state == "ERROR":
+            return "UNKNOWN"
+        if state == "NOT_MODIFIED":
+            continue
+        if _drops_digest(drops) != q.get("dropsHash"):
+            return "CHANGED"
+    return "UNCHANGED"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Check Atlas Academy data version (JP + NA) via /info")
     parser.add_argument("--version-file", default=DEFAULT_VERSION_FILE)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--check-shop", action="store_true")
+    parser.add_argument("--shop-probe-file", default=DEFAULT_SHOP_PROBE_FILE)
     args = parser.parse_args(argv)
 
     url = os.environ.get("ATLAS_INFO_URL", DEFAULT_URL)
@@ -80,6 +158,9 @@ def main(argv=None):
 
     if status == "CHANGED":
         _write_version(args.version_file, latest[0], latest[1])
+    elif status == "UNCHANGED" and args.check_shop:
+        api_base = os.environ.get("ATLAS_API_BASE", DEFAULT_API_BASE)
+        status = check_shop_probe(args.shop_probe_file, api_base=api_base)
 
     print(f"DATA_VERSION=JP:{latest[0] or '-'}|NA:{latest[1] or '-'}")
     print(f"CHECK={status}")

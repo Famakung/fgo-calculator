@@ -22,6 +22,7 @@ Fetches data from Atlas Academy API:
 
 import argparse
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -41,6 +42,7 @@ TRAITS_JS = os.path.join(DATA_DIR, "traits.js")
 CE_DATA_JS = os.path.join(DATA_DIR, "craft_essences.js")
 BOND_GROWTH_JS = os.path.join(DATA_DIR, "bond_growth.js")
 EVENT_SHOP_JS = os.path.join(DATA_DIR, "event_shop.js")
+DEFAULT_SHOP_PROBE_FILE = os.path.join(BASE_DIR, ".ci-baselines", "shop_probe.json")
 PUBLIC_SERVANTS_DIR = os.path.join(BASE_DIR, "public", "servants")
 PUBLIC_EVENT_SHOP_DIR = os.path.join(BASE_DIR, "public", "event_shop")
 
@@ -1844,6 +1846,7 @@ def _farm_quest(quest: dict, detail: dict) -> dict:
     once on first clear but never dropped again is not something the quest can be farmed for."""
     return {
         "questId": quest.get("id"),
+        "phase": max(quest.get("phases") or [0]),
         "questName": detail.get("name") or quest.get("name") or "",
         "recommendLv": detail.get("recommendLv") or quest.get("recommendLv") or "",
         "ap": int(detail.get("consume") or quest.get("consume") or 0),
@@ -2237,6 +2240,79 @@ def _collect_event_snapshot(cache_dir: str, event: dict, item_map: Dict[int, dic
     }
 
 
+def _drops_digest(drops: Optional[list]) -> str:
+    """16-hex-char SHA-256 of canonical (objectId, num, dropExpected, runs) tuples with positive drops."""
+    canonical = sorted(
+        (
+            int(d.get("objectId") or 0),
+            int(d.get("num") or 0),
+            round(float(d.get("dropExpected") or 0), 4),
+            int(d.get("runs") or 0),
+        )
+        for d in (drops or [])
+        if isinstance(d, dict) and (d.get("dropExpected") or 0) > 0 and (d.get("num") or 0) > 0
+    )
+    return hashlib.sha256(json.dumps(canonical, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+
+
+def _write_shop_probe(
+    cache_dir: str,
+    basic_events: List[dict],
+    now: Optional[int] = None,
+    probe_path: Optional[str] = None,
+    force: bool = False,
+):
+    """Persist active event-shop window and repeatable quest drop digests into .ci-baselines/shop_probe.json
+    when the parent directory (.ci-baselines) exists."""
+    if probe_path is None:
+        probe_path = DEFAULT_SHOP_PROBE_FILE
+    parent = os.path.dirname(probe_path)
+    if parent and not os.path.isdir(parent):
+        return
+    moment = int(time.time()) if now is None else now
+    events = basic_events if isinstance(basic_events, list) else []
+    future_ts = [
+        t
+        for e in events
+        if isinstance(e, dict) and e.get("type") == "eventQuest"
+        for t in (e.get("startedAt"), e.get("finishedAt"))
+        if isinstance(t, int) and t > moment
+    ]
+    next_transition = min(future_ts) if future_ts else None
+    open_events = select_events(events, now=moment)
+    open_ids = [e.get("id") for e in open_events if e.get("id")]
+    seen_quests = set()
+    active_quests = []
+    for event in open_events:
+        try:
+            detail = _event_detail(cache_dir, event, force=force)
+            if not _shop_currency_ids(_shop_entries(detail)):
+                continue
+            war_ids = (detail or {}).get("warIds") or event.get("warIds") or []
+            quests = _collect_farm_quests(cache_dir, war_ids, force=force)
+        except Exception:
+            continue
+        for q in quests:
+            qid = q.get("questId")
+            phase = q.get("phase") or 0
+            if not qid or phase <= 0 or (qid, phase) in seen_quests:
+                continue
+            seen_quests.add((qid, phase))
+            active_quests.append({
+                "id": qid,
+                "phase": phase,
+                "etag": _stored_etag(cache_dir, f"nice_quest_{qid}_{phase}.json"),
+                "dropsHash": _drops_digest(q.get("drops")),
+            })
+    probe = {
+        "openIds": open_ids,
+        "nextTransitionAt": next_transition,
+        "activeQuests": active_quests,
+    }
+    with open(probe_path, "w", encoding="utf-8") as f:
+        json.dump(probe, f, ensure_ascii=False, indent=2)
+
+
 def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: bool = False, dry_run: bool = False) -> dict:
     """Build the full EVENT_SHOP_DATA payload from the live API (all fetches ETag-cached).
 
@@ -2255,6 +2331,8 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
     else:
         events = _select_farm_events(cache_dir, basic, force=force)
     if not events:
+        if event_id is None and not dry_run:
+            _write_shop_probe(cache_dir, basic, force=force)
         print("  [WARN] No farmable event shop found; writing an empty event shop list.", file=sys.stderr)
         return json.loads(json.dumps(EVENT_SHOP_STUB))
 
@@ -2273,6 +2351,8 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
             snapshots.append(snapshot)
     if failures and not snapshots:
         raise RuntimeError(f"all {failures} open event shop fetch(es) failed")
+    if event_id is None and not dry_run:
+        _write_shop_probe(cache_dir, basic, force=force)
     return {"events": snapshots}
 
 

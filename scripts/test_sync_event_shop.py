@@ -896,6 +896,29 @@ def check_icon_candidates():
     return 6
 
 
+def check_shop_probe_write():
+    """_write_shop_probe writes active window & drop digests only when parent dir exists."""
+    with Sandbox() as s:
+        basic_events = fixture_json(s.tmp, "basic_event.json", "")
+        missing_dir_probe = os.path.join(s.tmp, "missing_ci_dir", "shop_probe.json")
+        m._write_shop_probe(s.tmp, basic_events, now=NOW, probe_path=missing_dir_probe)
+        assert not os.path.exists(missing_dir_probe), "probe write skips when parent dir is absent"
+
+        ci_dir = os.path.join(s.tmp, ".ci-baselines")
+        os.makedirs(ci_dir, exist_ok=True)
+        probe_path = os.path.join(ci_dir, "shop_probe.json")
+        with patch.object(m.time, "time", lambda: NOW), patch.object(m, "DEFAULT_SHOP_PROBE_FILE", probe_path):
+            m.sync_event_shop(cache_dir=s.tmp)
+        assert os.path.exists(probe_path), "sync_event_shop persists shop_probe.json when dir exists"
+        probe = json.loads(open(probe_path, "r", encoding="utf-8").read())
+        assert probe["openIds"] == [80639, 80379, 80642, 80630], probe["openIds"]
+        assert probe["nextTransitionAt"] == 1796788799, probe["nextTransitionAt"]
+        qids = {q["id"] for q in probe["activeQuests"]}
+        assert {94164100, 94164101, 94164102}.issubset(qids), qids
+        assert all(len(q["dropsHash"]) == 16 for q in probe["activeQuests"])
+    return 1
+
+
 def main():
     n = 0
     for check in (
@@ -915,6 +938,7 @@ def main():
         check_lore_not_fetched_unless_needed,
         check_outage_policy,
         check_icon_candidates,
+        check_shop_probe_write,
     ):
         n += check()
     print(f"{n} tests passed")

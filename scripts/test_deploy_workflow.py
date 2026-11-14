@@ -149,9 +149,9 @@ def main():
     n += 1
 
     # 7. generated data dir is cached and NOT wiped, so the targeted drift path
-    #    (revalidate_servant_traits) runs in CI instead of a full regen; the
-    #    cache key must keep hashing sync_atlas_data.py so a format change
-    #    invalidates the data cache
+    #    (revalidate_servant_traits) runs in CI instead of a full regen; asset cache
+    #    runs only when DO_WORK is true, hashes both sync scripts + version baseline,
+    #    data_version checks active shop state (--check-shop), and data-hash covers all 5 data files
     spec = yaml.safe_load(open(os.path.normpath(WF), encoding="utf-8"))
     steps = spec["jobs"]["build"]["steps"]
     cache_step = next(s for s in steps if s.get("name") == "Restore Atlas Data & Asset Cache")
@@ -161,9 +161,15 @@ def main():
     assert "src/scripts/data/" in cache_path, "data dir not in cache path"
     assert "public/event_shop/" in cache_path, "event shop icons not in cache path"
     assert "rm -f" not in sync_run, "sync still wipes generated data"
+    assert cache_step.get("if") == "steps.do_work.outputs.DO_WORK == 'true'", "asset cache restore must skip on idle runs"
     assert "sync_atlas_data.py" in cache_key, "cache key must hash sync_atlas_data.py"
+    assert "fetch_bordered_ces.py" in cache_key, "cache key must hash fetch_bordered_ces.py"
+    assert "data_version.txt" in cache_key, "cache key must hash .ci-baselines/data_version.txt"
+    check_run = next(s for s in steps if s.get("name") == "Check Atlas data version")["run"]
+    assert "--check-shop" in check_run, "Check Atlas data version must pass --check-shop"
     cat_run = next(s for s in steps if s.get("name") == "Check if generated data changed")["run"]
-    assert "event_shop.js" in cat_run, "event_shop.js missing from the data-hash cat"
+    for data_file in ("servants.js", "craft_essences.js", "traits.js", "bond_growth.js", "event_shop.js"):
+        assert data_file in cat_run, f"{data_file} missing from the data-hash cat"
     n += 1
 
     # 8. self-test job runs all suites on every code change (push/dispatch)
@@ -173,7 +179,16 @@ def main():
     st_if = st.get("if") or ""
     assert "schedule" in st_if, "self-test must be skipped on schedule"
     st_runs = " ".join(s["run"] for s in st["steps"] if s.get("run"))
-    for script in ("test_check_data_version.py", "test_deploy_workflow.py", "test_drift.py", "test_sync_event_shop.py"):
+    assert "Pillow" in st_runs, "self-test job must install Pillow"
+    for script in (
+        "test_check_data_version.py",
+        "test_deploy_workflow.py",
+        "test_drift.py",
+        "test_sync_event_shop.py",
+        "test_sync_event_shop_adversarial.py",
+        "test_image_webp_lossless.py",
+        "test_repro_action_versions.py",
+    ):
         assert script in st_runs, f"self-test job does not run {script}"
     n += 1
 
