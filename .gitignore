@@ -4,13 +4,15 @@ AGENTS.md
 .plans
 design-docs
 node_modules/
-docs/
+/docs/
 dist/
 .astro/
 .cache/
 .ci-baselines/
 public/servants/
 public/craft_essences/
+public/event_shop/*
+!public/event_shop/.gitkeep
 src/scripts/data/*.js
 !src/scripts/data/.gitkeep
 __pycache__/
@@ -28,6 +30,7 @@ styles.min.css
 
 # Temp/test files
 lighthouse-runner.js
+.bin/
 
 # develop-only release tooling, keeps itself off this branch
 scripts/merge_code_only.sh

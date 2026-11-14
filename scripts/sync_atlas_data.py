@@ -11,10 +11,18 @@ Fetches data from Atlas Academy API:
     downloads bordered face WebP icons to public/craft_essences/{id}.webp.
   - Writes src/scripts/data/bond_growth.js from the same cached servant export: the bond point cost of every
     bond level, deduped into shared tables.
+  - Snapshots every farmable JP event shop (active ones, plus the latest ended farm event; or one
+    event of any kind with --event-id) into src/scripts/data/event_shop.js as
+    EVENT_SHOP_DATA.events[], each with item/currency/equip/costume icons as WebP under
+    public/event_shop/, NA-first item names, the farm quest list with per-currency repeat drops
+    and best quest ids from Atlas' community drop submissions, and the shop's upgrade trades.
+    An API outage keeps the previous file, or writes an empty
+    list stub so the build never dies.
 """
 
 import argparse
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -33,7 +41,10 @@ SERVANTS_JS = os.path.join(DATA_DIR, "servants.js")
 TRAITS_JS = os.path.join(DATA_DIR, "traits.js")
 CE_DATA_JS = os.path.join(DATA_DIR, "craft_essences.js")
 BOND_GROWTH_JS = os.path.join(DATA_DIR, "bond_growth.js")
+EVENT_SHOP_JS = os.path.join(DATA_DIR, "event_shop.js")
+DEFAULT_SHOP_PROBE_FILE = os.path.join(BASE_DIR, ".ci-baselines", "shop_probe.json")
 PUBLIC_SERVANTS_DIR = os.path.join(BASE_DIR, "public", "servants")
+PUBLIC_EVENT_SHOP_DIR = os.path.join(BASE_DIR, "public", "event_shop")
 
 API_BASE = "https://api.atlasacademy.io"
 STATIC_BASE = "https://static.atlasacademy.io"
@@ -41,6 +52,16 @@ EQUIP_EXPORT_URL = f"{API_BASE}/export/JP/nice_equip_lang_en.json"
 NA_NICE_TRAIT_URL = f"{API_BASE}/export/NA/nice_trait.json"
 BASIC_SERVANT_URL = f"{API_BASE}/export/JP/basic_servant.json"
 NICE_SERVANT_URL = f"{API_BASE}/export/JP/nice_servant_lore_lang_en.json"
+BASIC_EVENT_URL = f"{API_BASE}/export/JP/basic_event.json"
+NICE_ITEM_EXPORT_URL = f"{API_BASE}/export/JP/nice_item.json"
+# Event shop name chain (Amendment E): NA item names first, then Atlas' JP-EN translations, then JP.
+NA_NICE_ITEM_EXPORT_URL = f"{API_BASE}/export/NA/nice_item.json"
+JP_ITEM_LANG_EN_EXPORT_URL = f"{API_BASE}/export/JP/nice_item_lang_en.json"
+NA_BASIC_EQUIP_EXPORT_URL = f"{API_BASE}/export/NA/basic_equip.json"
+
+# Event shop icon sizing: faces render at the card frame, item icons stay native up to this cap
+EVENT_ICON_MAX_PX = 160
+FACE_ICON_SIZE = (142, 155)
 
 # Atlas bondGrowth is a 16-entry running total (levels 0..15); the app stores the step costs
 BOND_GROWTH_LEVELS = 16
@@ -1531,7 +1552,7 @@ def update_craft_essences_js(ce_entries: List[dict], dry_run: bool = False):
 def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), force: bool = False, dry_run: bool = False):
     """Synchronize all permanent Craft Essences, trait registry, and their icons."""
     print("Checking Atlas Academy API for latest Craft Essence data...")
-    na_url = f"{API_BASE}/export/NA/basic_equip.json"
+    na_url = NA_BASIC_EQUIP_EXPORT_URL
     na_names = {}
     try:
         na_data = get_cached_json(cache_dir, "na_basic_equip.json", na_url, force=force)
@@ -1562,6 +1583,815 @@ def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas
         print(f"Warning: CE icon sync failed: {e}", file=sys.stderr)
 
 
+# ==============================================================================
+# Event Shop Synchronization Engine
+# ==============================================================================
+#
+# Amendment G: every event shop open right now is snapshotted (newest first) so the site can offer
+# an Event Select instead of one hidden auto-pick. Inside each snapshot, Amendment E resolves names
+# through the NA -> JP-EN -> JP chain, and Amendment F points a costume row at that costume's own
+# face instead of the servant's 1st-ascension one. Amendment J prunes shops nobody can farm: an
+# event is a farm event when a repeatable quest of its wars reports community drops for one of its
+# shop currencies. Amendment L replaces the per-currency best-only farm map with the full quest
+# list (every repeatable quest that pays a shop currency on REPEAT runs, first-time-only challenge
+# rewards excluded), the per-currency best quest id, and the shop's upgrade trades (bronze -> silver
+# -> gold exchanges read straight from the shop rows); the Event Select also carries the LATEST 1
+# past farm event (capped newest-first scan) so players can plan high-level quests after a rerun.
+
+EVENT_SHOP_STUB = {"events": []}
+
+# A quest the game closes after one clear is not farmable; only these two repeat.
+REPEATABLE_AFTER_CLEAR = ("repeatLast", "repeat")
+
+# Amendment L1 past-event scan: how many ended events the newest-first scan reads before giving up.
+FARM_FALLBACK_SCAN_CAP = 30
+
+# The lore export is the only source naming a servant's costume details and it is 195 MB, so it is
+# read at most once per run, and only when a servant ships more than one costume.
+LORE_EXPORT_FILENAME = "nice_servant_lore_lang_en.json"
+
+# Icon files already produced this run, keyed "kind_id" -> site-relative path (unique URLs fetched once)
+_event_icon_results: Dict[str, Optional[str]] = {}
+# servant id -> lore entry, built only when a costume detail has to be named; None means "not read"
+_servant_lore: Optional[Dict[int, dict]] = None
+# Event details and farmable quests already read this run (Amendment J): the farm-event test runs
+# before the snapshot and --force re-downloads uncached reads, so both share one fetch per file.
+_event_detail_results: Dict[int, dict] = {}
+_farm_quests_results: Dict[tuple, List[dict]] = {}
+
+
+def _atlas_asset_url(path: str) -> str:
+    """Absolute CDN URL for an Atlas asset path like 'JP/Items/1604.png' (leading slash tolerated)."""
+    clean = str(path).lstrip("/")
+    return clean if clean.startswith("http") else f"{STATIC_BASE}/{clean}"
+
+
+def load_nice_item_map(cache_dir: str, force: bool = False) -> Dict[int, dict]:
+    """Atlas JP item export keyed by id. Icon paths vary (coins live under JP/Coins/), so the map — not
+    a filename pattern — is the only reliable id -> icon source for purchaseType "item"."""
+    data = get_cached_json(cache_dir, "nice_item.json", NICE_ITEM_EXPORT_URL, force=force)
+    entries = data.values() if isinstance(data, dict) else data
+    return {it.get("id"): it for it in entries if it.get("id")}
+
+
+def select_events(basic_events: List[dict], override_id: Optional[int] = None, now: Optional[int] = None) -> List[dict]:
+    """The events to snapshot: --event-id takes only that event, else every eventQuest whose shop
+    window is open right now, newest startedAt first. Python's sort is stable, so events sharing a
+    startedAt keep the API's own list order."""
+    events = basic_events if isinstance(basic_events, list) else []
+    if override_id is not None:
+        return [e for e in events if e.get("id") == override_id]
+    moment = int(time.time()) if now is None else now
+    return sorted((e for e in events if _shop_window_open(e, moment)), key=lambda e: -(e.get("startedAt") or 0))
+
+
+def _shop_window_open(event: dict, moment: int) -> bool:
+    """startedAt <= now < finishedAt on an eventQuest. An event with no finishedAt has no window."""
+    return (
+        event.get("type") == "eventQuest"
+        and (event.get("startedAt") or 0) <= moment
+        and moment < (event.get("finishedAt") or 0)
+    )
+
+
+def _select_farm_events(cache_dir: str, basic_events: List[dict], now: Optional[int] = None, force: bool = False) -> List[dict]:
+    """Amendment L1 selection: every ACTIVE farm event plus the LATEST 1 past farm event.
+
+    A farm-event fetch that raises skips only that event on the active pass — its open siblings
+    still ship. The past scan raises when nothing active passed: there the caller could not prove
+    nothing farmable exists, and writing the stub would replace a good previous file on one hiccup.
+    With at least one active farm event shipping, a past-scan hiccup only loses the history entry."""
+    moment = int(time.time()) if now is None else now
+    passing = []
+    for event in select_events(basic_events, now=moment):
+        try:
+            if _farm_event_passes(cache_dir, event, force=force):
+                passing.append(event)
+        except Exception as e:
+            print(f"  [WARN] Event {event.get('id')} farm test fetch failed, skipped: {e}", file=sys.stderr)
+    live_ids = {event.get("id") for event in passing}
+    past = None
+    try:
+        past = _latest_past_farm_event(cache_dir, basic_events, moment, live_ids, force=force)
+    except Exception as e:
+        if not passing:
+            raise
+        print(f"  [WARN] Past farm event scan failed, history entry skipped: {e}", file=sys.stderr)
+    if past:
+        passing.append(past)
+    return sorted(passing, key=lambda e: -(e.get("startedAt") or 0))
+
+
+def _latest_past_farm_event(
+    cache_dir: str, basic_events: List[dict], now: int, live_ids: Set[int], force: bool = False
+) -> Optional[dict]:
+    """Amendment L1: the newest ENDED eventQuest that passes the farm-event test, scanned
+    newest-startedAt-first and capped at FARM_FALLBACK_SCAN_CAP. Atlas keeps historical drop
+    data, so a closed event stays a usable farm reference for the planner."""
+    events = basic_events if isinstance(basic_events, list) else []
+    ended = sorted(
+        (
+            e
+            for e in events
+            if isinstance(e, dict)
+            and e.get("type") == "eventQuest"
+            and e.get("id") not in live_ids
+            and (e.get("finishedAt") or 0)
+            and (e.get("finishedAt") or 0) <= now
+        ),
+        key=lambda e: -(e.get("startedAt") or 0),
+    )
+    for event in ended[:FARM_FALLBACK_SCAN_CAP]:
+        if _farm_event_passes(cache_dir, event, force=force):
+            return event
+    return None
+
+
+def _farm_event_passes(cache_dir: str, event: dict, force: bool = False) -> bool:
+    """Amendment J farm-event test: the event's shop has rows, and at least one repeatable quest
+    (afterClear repeatLast|repeat) in its wars reports community drops for at least one of the
+    shop's own currencies on REPEAT runs — the same quests the snapshot ships (Amendment L's
+    challenge exclusion included). A campaign exchange shop (no war) and a memorial battle (quests
+    without submissions) both fail it. Reads the same event/war/quest files the snapshot's farm
+    collection reads, once per run; a fetch that cannot be read raises, never a silent prune."""
+    detail = _event_detail(cache_dir, event, force=force)
+    currency_ids = _shop_currency_ids(_shop_entries(detail))
+    if not currency_ids:
+        return False
+    war_ids = (detail or {}).get("warIds") or event.get("warIds") or []
+    quests = _collect_farm_quests(cache_dir, war_ids, force=force, strict=True)
+    return any(_farm_quest_entry(quest, currency_ids) for quest in quests)
+
+
+def _shop_currency_ids(entries: List[dict]) -> List[int]:
+    """Distinct cost.item ids of the raw shop rows — the currencies the farm test prices."""
+    ids = []
+    for entry in entries:
+        cid = ((entry.get("cost") or {}).get("item") or {}).get("id")
+        if cid and cid not in ids:
+            ids.append(cid)
+    return ids
+
+
+def _shop_trades(entries: List[dict], currency_ids: List[int]) -> List[dict]:
+    """Upgrade trades (Amendment L8): shop rows that sell one currency in exchange for another —
+    purchaseType "item" whose target is a shop currency, paid for with a different shop currency.
+    The in-game exchange rate is costAmount per getNum (10 bronze for 1 silver), the rows are
+    unlimited, and trading costs no AP — the optimizer treats the chain as a free coverage source.
+    Sorted (fromId, toId) so the generated file is byte-stable across syncs."""
+    currencies = set(currency_ids)
+    trades = []
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("purchaseType") != "item":
+            continue
+        cost = entry.get("cost") or {}
+        from_id = (cost.get("item") or {}).get("id")
+        targets = entry.get("targetIds") or []
+        to_id = targets[0] if targets else None
+        cost_amount = int(cost.get("amount") or 0)
+        get_num = int(entry.get("setNum") or 0)
+        if not from_id or from_id == to_id or to_id not in currencies or cost_amount <= 0 or get_num <= 0:
+            continue
+        trades.append({"fromId": from_id, "toId": to_id, "costAmount": cost_amount, "getNum": get_num})
+    return sorted(trades, key=lambda t: (t["fromId"], t["toId"]))
+
+
+def _export_by_id(cache_dir: str, filename: str, url: str, force: bool = False) -> Dict[int, dict]:
+    """One Atlas export keyed by id. A source the name chain reads is optional: an outage leaves the
+    map empty and the chain falls through to the next language rather than killing the sync."""
+    try:
+        data = get_cached_json(cache_dir, filename, url, force=force)
+    except Exception as e:
+        print(f"  [WARN] {filename} unavailable, name chain falls back: {e}", file=sys.stderr)
+        return {}
+    entries = data.values() if isinstance(data, dict) else data
+    return {it.get("id"): it for it in entries if it.get("id")}
+
+
+def load_event_name_maps(cache_dir: str, item_map: Dict[int, dict], force: bool = False) -> Dict[str, Dict[int, dict]]:
+    """Every export the shop name chains read (Amendment E). The JP item map is the one the sync
+    already loaded for icons, so it is passed in rather than fetched twice."""
+    return {
+        "na": _export_by_id(cache_dir, "na_nice_item.json", NA_NICE_ITEM_EXPORT_URL, force=force),
+        "jpEn": _export_by_id(cache_dir, "nice_item_lang_en.json", JP_ITEM_LANG_EN_EXPORT_URL, force=force),
+        "jp": item_map,
+        "naEquips": _export_by_id(cache_dir, "na_basic_equip.json", NA_BASIC_EQUIP_EXPORT_URL, force=force),
+    }
+
+
+def resolve_item_name(item_id: Optional[int], na_map: dict, jp_en_map: dict, jp_map: dict) -> str:
+    """Amendment E chain: NA name -> Atlas JP-EN name -> JP name, "" when no map knows the id.
+    Atlas' JP-EN export carries the Japanese text for an untranslated item, so an event currency
+    nobody has translated simply comes back with the same name the JP export gives it."""
+    for source in (na_map, jp_en_map, jp_map):
+        name = ((source or {}).get(item_id) or {}).get("name")
+        if name:
+            return name
+    return ""
+
+
+def resolve_equip_name(equip_id: Optional[int], entry: dict, names: Dict[str, Dict[int, dict]], detail: dict) -> str:
+    """Craft-essence and servant rows: NA equip name -> the per-id lang=en name -> the shop entry's
+    own name. Event CEs are absent from the NA export, so the detail name carries them."""
+    for source in ((names.get("naEquips") or {}).get(equip_id), detail, entry):
+        name = (source or {}).get("name")
+        if name:
+            return name
+    return ""
+
+
+# --- Farm model (Amendment L): every repeatable quest that pays a shop currency on repeat runs ---
+
+
+def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, strict: bool = False) -> List[dict]:
+    """Quests of one war the game reopens after a clear; a war that cannot be read has none. Strict
+    is the farm-event test's call: there an unreadable war raises, because a swallowed read looks
+    exactly like an event with no repeatable quests and would silently prune a good shop."""
+    try:
+        war = get_cached_json(cache_dir, f"nice_war_{war_id}.json", f"{API_BASE}/nice/JP/war/{war_id}?lang=en", force=force)
+    except Exception as e:
+        if strict:
+            raise
+        print(f"  [WARN] War {war_id} unavailable, farm data skipped: {e}", file=sys.stderr)
+        return []
+    spots = war.get("spots") if isinstance(war, dict) else None
+    return [
+        quest
+        for spot in (spots or [])
+        for quest in (spot.get("quests") or [])
+        if quest.get("afterClear") in REPEATABLE_AFTER_CLEAR
+    ]
+
+
+def _quest_phase_detail(cache_dir: str, quest: dict, force: bool = False, strict: bool = False) -> Optional[dict]:
+    """Drops are published per released phase, so the highest phase is the quest players farm today.
+    The war payload lists the phases a quest has, and the detail carries the community submissions.
+    Strict (the farm-event test) lets the read failure through for the same reason as the war read."""
+    quest_id = quest.get("id")
+    phase = max(quest.get("phases") or [0])
+    try:
+        return get_cached_json(
+            cache_dir, f"nice_quest_{quest_id}_{phase}.json", f"{API_BASE}/nice/JP/quest/{quest_id}/{phase}?lang=en", force=force
+        )
+    except Exception as e:
+        if strict:
+            raise
+        print(f"  [WARN] Quest {quest_id} phase {phase} unavailable: {e}", file=sys.stderr)
+        return None
+
+
+def _farm_quest(quest: dict, detail: dict) -> dict:
+    """The farm candidate: what the quest asks and pays, plus its repeat drop lines and first-clear
+    gifts. The gifts matter to the challenge exclusion (Amendment L2): a shop currency handed out
+    once on first clear but never dropped again is not something the quest can be farmed for."""
+    return {
+        "questId": quest.get("id"),
+        "phase": max(quest.get("phases") or [0]),
+        "questName": detail.get("name") or quest.get("name") or "",
+        "recommendLv": detail.get("recommendLv") or quest.get("recommendLv") or "",
+        "ap": int(detail.get("consume") or quest.get("consume") or 0),
+        "drops": detail.get("drops") or [],
+        "gifts": detail.get("gifts") or [],
+    }
+
+
+def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False, strict: bool = False) -> List[dict]:
+    """Every farmable quest of the event, with drops — read once per distinct war-id set per run
+    (Amendment J): the farm-event test walks the wars first and the snapshot's farm collection
+    gets the same list from the memo instead of a second download of every war and quest.
+    strict marks the test path: a war or quest that cannot be read raises rather than contributing
+    an empty list, so an outage is never mistaken for "not a farm event" and pruned. The snapshot
+    stays lenient (an empty quest list), and a raise leaves this memo untouched."""
+    key = tuple(war_ids or [])
+    if key not in _farm_quests_results:
+        quests = []
+        for war_id in key:
+            for quest in _war_repeatable_quests(cache_dir, war_id, force=force, strict=strict):
+                detail = _quest_phase_detail(cache_dir, quest, force=force, strict=strict)
+                if detail:
+                    quests.append(_farm_quest(quest, detail))
+        _farm_quests_results[key] = quests
+    return _farm_quests_results[key]
+
+
+def _drop_rows(quests: List[dict], currency_id: int) -> List[dict]:
+    """Every reported drop line of one currency, ranked by items per run.
+
+    A quest can list the same currency at several stack sizes (600/700/1000/2000 of an item), and
+    each line is its own community figure, so each is a candidate: amount per run is dropExpected
+    (stacks per run) times num (units per stack)."""
+    rows = []
+    for quest in quests:
+        for drop in quest["drops"]:
+            row = _drop_row(quest, drop, currency_id)
+            if row:
+                rows.append(row)
+    rows.sort(key=lambda row: (-row["amount"], row["questId"]))
+    return rows
+
+
+def _drop_row(quest: dict, drop: dict, currency_id: int) -> Optional[dict]:
+    """One drop line as a farm candidate; None when it is another item or has no submissions yet."""
+    if drop.get("objectId") != currency_id:
+        return None
+    expected = drop.get("dropExpected")
+    num = drop.get("num") or 0
+    if not isinstance(expected, (int, float)) or expected <= 0 or num <= 0:
+        return None
+    return {
+        "questId": quest["questId"],
+        "questName": quest["questName"],
+        "recommendLv": quest["recommendLv"],
+        "ap": quest["ap"],
+        "dropExpected": round(float(expected), 4),
+        "num": int(num),
+        "sampleRuns": int(drop.get("runs") or 0),
+        "amount": float(expected) * num,
+    }
+
+
+def _first_time_only_reward(quest: dict, shop_currency_ids: List[int], drops: Dict[str, dict]) -> bool:
+    """Amendment L2 challenge exclusion: the quest pays a shop currency once on first clear (it is in
+    the gifts) but never again on a repeat run (it is not in the repeat drops), so its farm-item
+    reward is first-time-only and the quest is not farmable for the shop."""
+    gift_ids = {
+        gift.get("objectId")
+        for gift in quest.get("gifts") or []
+        if gift.get("objectId") in shop_currency_ids
+    }
+    return any(str(currency_id) not in drops for currency_id in gift_ids)
+
+
+def _farm_quest_entry(quest: dict, shop_currency_ids: List[int]) -> Optional[dict]:
+    """The shipped farm card for one quest: its per-currency repeat drops plus the reported-run
+    count. None when the quest repeats no shop currency at all, or when a gift-only shop-currency
+    reward marks it a challenge quest (Amendment L2). sampleRuns is the highest run count among the
+    drop lines the card ships."""
+    rows = {str(currency_id): (_drop_rows([quest], currency_id) or [None])[0] for currency_id in shop_currency_ids}
+    drops = {key: {"dropExpected": row["dropExpected"], "num": row["num"]} for key, row in rows.items() if row}
+    if not drops or _first_time_only_reward(quest, shop_currency_ids, drops):
+        return None
+    return {
+        "questId": quest["questId"],
+        "questName": quest["questName"],
+        "recommendLv": quest["recommendLv"],
+        "ap": quest["ap"],
+        "sampleRuns": max(row["sampleRuns"] for row in rows.values() if row),
+        "drops": drops,
+    }
+
+
+def _farm_best(quests: List[dict], shop_currency_ids: List[int]) -> Dict[str, int]:
+    """{ currencyId: questId } — the quest dropping this currency most per run (dropExpected×num),
+    ties to the lower quest id. A currency no shipped quest drops has no key at all: the site reads
+    a missing key as "no best quest" rather than a null entry."""
+    best = {}
+    for currency_id in shop_currency_ids:
+        key = str(currency_id)
+        candidates = [quest for quest in quests if key in quest["drops"]]
+        if not candidates:
+            continue
+        top = min(candidates, key=lambda quest: (-quest["drops"][key]["dropExpected"] * quest["drops"][key]["num"], quest["questId"]))
+        best[key] = top["questId"]
+    return best
+
+
+def _collect_farm(cache_dir: str, war_ids: List[int], currency_ids: List[int], force: bool = False) -> dict:
+    """farm = { quests: [repeat-drop quests], best: { currencyId: questId } } (Amendment L2), the
+    shop's own currencies only. An event with no wars simply has no quests."""
+    quests = _collect_farm_quests(cache_dir, war_ids, force=force) if war_ids else []
+    shipped = [entry for entry in (_farm_quest_entry(quest, currency_ids) for quest in quests) if entry]
+    return {"quests": shipped, "best": _farm_best(shipped, currency_ids)}
+
+
+# --- Costume faces (Amendment F): the costume detail, not the servant's base face ---
+
+
+def _servant_lore_map(cache_dir: str) -> Dict[int, dict]:
+    """servant id -> lore entry, read from the cache when it is there and fetched only when it is
+    not. The export is 195 MB and is never re-downloaded on --force: the servants step of a full
+    sync keeps it current, and this is only reached for a servant with more than one costume."""
+    global _servant_lore
+    if _servant_lore is not None:
+        return _servant_lore
+    cached = _load_cached(os.path.join(cache_dir, LORE_EXPORT_FILENAME))
+    data = cached if cached is not None else get_cached_json(cache_dir, LORE_EXPORT_FILENAME, NICE_SERVANT_URL)
+    _servant_lore = {s.get("id"): s for s in (data if isinstance(data, list) else []) if s.get("id")}
+    return _servant_lore
+
+
+def _costume_material_keys(servant_id: int, cache_dir: str, force: bool = False) -> List[str]:
+    """costumeMaterials keys of a servant — the costume DETAIL ids its costume release can hand out."""
+    try:
+        servant = get_cached_json(
+            cache_dir, f"nice_servant_{servant_id}.json", f"{API_BASE}/nice/JP/servant/{servant_id}?lang=en", force=force
+        )
+    except Exception as e:
+        print(f"  [WARN] Servant {servant_id} detail unavailable, costume face unresolved: {e}", file=sys.stderr)
+        return []
+    return list((servant.get("costumeMaterials") or {}).keys())
+
+
+def _costume_detail_from_lore(servant_id: int, costume_limit: int, cache_dir: str) -> Optional[str]:
+    """profile.costume is keyed by costume detail id and each entry carries the costumeLimit as id,
+    which is the last two digits of the shop's costumeRelease target."""
+    entry = _servant_lore_map(cache_dir).get(servant_id) or {}
+    costumes = (entry.get("profile") or {}).get("costume") or {}
+    for detail_id, costume in costumes.items():
+        if (costume or {}).get("id") == costume_limit:
+            return str(detail_id)
+    return None
+
+
+def _costume_detail_id(target: int, cache_dir: str, force: bool = False) -> Optional[str]:
+    """Which costume face this release target buys: one material key is unambiguous, several need the
+    lore export to name the limit the shop sold."""
+    servant_id = target // 100
+    keys = _costume_material_keys(servant_id, cache_dir, force=force)
+    if len(keys) == 1:
+        return str(keys[0])
+    if len(keys) > 1:
+        return _costume_detail_from_lore(servant_id, target % 100, cache_dir)
+    return None
+
+
+def _costume_asset_path(target: int, cache_dir: str, force: bool = False) -> str:
+    """Atlas asset path for a costume release: the costume face, or the servant base face plus a
+    WARN when Atlas gives nothing to disambiguate it with."""
+    detail_id = _costume_detail_id(target, cache_dir, force=force)
+    servant_id = target // 100
+    if not detail_id:
+        print(f"  [WARN] Costume {target}: no costume face resolved, keeping servant {servant_id} base face", file=sys.stderr)
+        return f"JP/Faces/f_{servant_id}0.png"
+    return f"JP/Faces/f_{detail_id}0.png"
+
+
+def _equip_detail(equip_id: int, cache_dir: str, force: bool = False) -> dict:
+    """Per-id equip detail (cached): faces for the icon, name for the chain. An event CE is not in
+    the NA export, so this is where its readable name comes from."""
+    try:
+        return get_cached_json(cache_dir, f"nice_equip_{equip_id}.json", f"{API_BASE}/nice/JP/equip/{equip_id}?lang=en", force=force)
+    except Exception as e:
+        print(f"  [WARN] Equip {equip_id} detail fetch failed: {e}", file=sys.stderr)
+        return {}
+
+
+def _equip_face_asset_path(equip: dict) -> Optional[str]:
+    """Face path from an equip detail: equip faces first, then any other face group (hero crystals
+    and materials carry faces.ascension, CEs carry faces.equip)."""
+    faces = (equip.get("extraAssets") or {}).get("faces") or {}
+    ordered_groups = sorted(faces, key=lambda g: g != "equip")
+    for group in ordered_groups:
+        entries = faces[group] or {}
+        ordered = sorted(entries, key=lambda k: int(k) if str(k).isdigit() else 99)
+        if ordered:
+            return entries[ordered[0]]
+    return None
+
+
+def _resolve_entry_icon(entry: dict, item_map: Dict[int, dict], cache_dir: str, targets: Optional[list] = None, force: bool = False) -> Optional[Tuple[str, int, str]]:
+    """(kind, id, Atlas asset path) for a shop entry's reward icon, or None when unresolvable.
+
+    targets may be pre-extracted by the caller (_shop_item needs targetIds for the name fallback
+    anyway); None re-reads them from the entry for standalone callers. Costume rows resolve through
+    _costume_asset_path, which falls back to the servant base face when Atlas gives no detail id."""
+    purchase_type = entry.get("purchaseType")
+    if targets is None:
+        targets = entry.get("targetIds") or []
+    target = targets[0] if targets else None
+    if target is None:
+        return None
+    if purchase_type == "item":
+        return ("item", target, (item_map.get(target) or {}).get("icon"))
+    if purchase_type in ("servant", "equip"):
+        return ("equip", target, _equip_face_asset_path(_equip_detail(target, cache_dir, force=force)))
+    if purchase_type == "costumeRelease":
+        return ("costume", target, _costume_asset_path(target, cache_dir, force=force))
+    return None
+
+
+def _make_event_icon(asset_path: str, dest: str, kind: str):
+    """Fetch one Atlas asset and encode it as lossless WebP (faces 142x155, item icons capped 160px).
+
+    Bordered variant first (user directive); the plain variant of the SAME asset is fetched only
+    when the bordered URL 404s (coins have no bordered art). Any other fetch error — 5xx, timeout —
+    re-raises instead of falling back: _event_icon_file never re-fetches an existing dest, so a
+    transient failure would otherwise permanently ship a borderless icon. The caller's WARN fires
+    and no file is written, so the next sync retries the bordered asset."""
+    bordered = re.sub(r"\.png$", "_bordered.png", asset_path)
+    try:
+        raw, _ = fetch_url(_atlas_asset_url(bordered), timeout=10, retries=2)
+    except Exception as e:
+        # Match the HTTPError phrase, not bare "404": the message embeds the URL, and asset ids
+        # like f_94045200 contain "404", which would misread a bordered 5xx/timeout as a 404.
+        if "HTTP Error 404" not in str(e):
+            raise
+        print(f"  [INFO] plain-variant fallback for {asset_path}")
+        raw, _ = fetch_url(_atlas_asset_url(asset_path), timeout=10, retries=2)
+    img = Image.open(io.BytesIO(raw)).convert("RGBA")
+    if kind == "item":
+        if max(img.size) > EVENT_ICON_MAX_PX:
+            img.thumbnail((EVENT_ICON_MAX_PX, EVENT_ICON_MAX_PX), Image.Resampling.LANCZOS)
+    else:
+        img = img.resize(FACE_ICON_SIZE, Image.Resampling.LANCZOS)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    img.save(dest, "WEBP", lossless=True, method=6)
+
+
+def _event_icon_file(kind: str, ident: int, asset_path: Optional[str], force: bool = False, dry_run: bool = False) -> Optional[str]:
+    """Ensure public/event_shop/{kind}_{id}.webp exists; return the site-relative path or None."""
+    if not asset_path:
+        return None
+    cache_key = f"{kind}_{ident}"
+    if cache_key in _event_icon_results:
+        return _event_icon_results[cache_key]
+    dest = os.path.join(PUBLIC_EVENT_SHOP_DIR, f"{cache_key}.webp")
+    if dry_run:
+        print(f"  [DRY-RUN] Would fetch {asset_path} -> event_shop/{cache_key}.webp")
+        return f"event_shop/{cache_key}.webp"
+    if not os.path.exists(dest) or force:
+        try:
+            _make_event_icon(asset_path, dest, kind)
+        except Exception as e:
+            print(f"  [WARN] Event icon fetch failed for {asset_path}: {e}", file=sys.stderr)
+    result = f"event_shop/{cache_key}.webp" if os.path.exists(dest) else None
+    _event_icon_results[cache_key] = result
+    return result
+
+
+def _entry_icon(entry: dict, item_map: Dict[int, dict], cache_dir: str, targets: Optional[list], force: bool, dry_run: bool) -> Optional[str]:
+    resolved = _resolve_entry_icon(entry, item_map, cache_dir, targets=targets, force=force)
+    if not resolved:
+        return None
+    kind, ident, asset_path = resolved
+    return _event_icon_file(kind, ident, asset_path, force=force, dry_run=dry_run)
+
+
+def _shop_currency(entry: dict, currencies: Dict[int, dict], names: Dict[str, Dict[int, dict]], force: bool = False, dry_run: bool = False):
+    """Register one shop entry's payment currency (embedded in cost.item) if not seen yet.
+
+    The currency's own name goes through the NA-first chain: an event currency no one has
+    translated comes back as the Japanese text, which is what the game really shows."""
+    cost_item = (entry.get("cost") or {}).get("item") or {}
+    cid = cost_item.get("id")
+    if not cid or cid in currencies:
+        return
+    currencies[cid] = {
+        "id": cid,
+        "name": resolve_item_name(cid, names.get("na"), names.get("jpEn"), names.get("jp")) or cost_item.get("name") or "",
+        "background": cost_item.get("background") or "silver",
+        "icon": _event_icon_file("item", cid, cost_item.get("icon"), force=force, dry_run=dry_run),
+    }
+
+
+def _shop_item(entry: dict, item_map: Dict[int, dict], cache_dir: str, force: bool = False, dry_run: bool = False, names: Optional[Dict[str, Dict[int, dict]]] = None) -> Optional[dict]:
+    """Map one Atlas shop entry to the slim snapshot item shape; None when not purchasable.
+
+    names is the Amendment E export bundle; without it (standalone callers) the row keeps the shop
+    entry's own name and the JP item map, which is the pre-chain behavior."""
+    cost = entry.get("cost") or {}
+    cost_item = cost.get("item") or {}
+    amount = cost.get("amount") or 0
+    if not cost_item.get("id") or amount <= 0:
+        return None
+    targets = entry.get("targetIds") or []
+    bundle = names or {"na": {}, "jpEn": {}, "jp": item_map, "naEquips": {}}
+    return {
+        "id": entry.get("id"),
+        "name": _shop_item_name(entry, targets, item_map, cache_dir, bundle, force=force),
+        "purchaseType": entry.get("purchaseType") or "",
+        "cost": {"itemId": cost_item.get("id"), "amount": amount},
+        "limitNum": entry.get("limitNum") or 0,
+        "setNum": entry.get("setNum") or 1,
+        "priority": entry.get("priority") or 0,
+        "icon": _entry_icon(entry, item_map, cache_dir, targets, force, dry_run),
+    }
+
+
+def _shop_item_name(entry: dict, targets: list, item_map: Dict[int, dict], cache_dir: str, names: Dict[str, Dict[int, dict]], force: bool = False) -> str:
+    """Name a row by purchaseType: shop items through the item chain, CE/servant rows through the
+    equip chain, everything else (costumeRelease, unknown types) the shop entry's own name."""
+    target = targets[0] if targets else None
+    purchase_type = entry.get("purchaseType")
+    if target is None:
+        return entry.get("name") or ""
+    if purchase_type == "item":
+        return resolve_item_name(target, names.get("na"), names.get("jpEn"), names.get("jp")) or entry.get("name") or ""
+    if purchase_type in ("servant", "equip"):
+        return resolve_equip_name(target, entry, names, _equip_detail(target, cache_dir, force=force))
+    return entry.get("name") or ""
+
+
+def _event_window(event: dict) -> dict:
+    return {
+        "id": event.get("id"),
+        "name": event.get("name") or "",
+        "shortName": event.get("shortName") or event.get("name") or "",
+        "startedAt": event.get("startedAt"),
+        "endedAt": event.get("endedAt"),
+    }
+
+
+def _map_shop_entries(cache_dir: str, entries: List[dict], item_map: Dict[int, dict], names: Dict[str, Dict[int, dict]], force: bool, dry_run: bool):
+    """Currencies and items of one shop. A currency is registered only on a kept row: one seen
+    solely on amount<=0 (free) entries would otherwise yield a ghost chip with an empty group."""
+    currencies: Dict[int, dict] = {}
+    items = []
+    for entry in entries:
+        item = _shop_item(entry, item_map, cache_dir, force=force, dry_run=dry_run, names=names)
+        if item:
+            _shop_currency(entry, currencies, names, force=force, dry_run=dry_run)
+            items.append(item)
+    return currencies, items
+
+
+def _event_detail(cache_dir: str, event: dict, force: bool = False) -> dict:
+    """One event's nice detail, fetched once per run (Amendment J): the farm-event test reads the
+    shop rows and war ids first, and the snapshot step reuses the same result."""
+    event_id = event["id"]
+    if event_id not in _event_detail_results:
+        _event_detail_results[event_id] = get_cached_json(
+            cache_dir, f"nice_event_{event_id}.json", f"{API_BASE}/nice/JP/event/{event_id}?lang=en", force=force
+        )
+    return _event_detail_results[event_id]
+
+
+def _shop_entries(detail: dict) -> List[dict]:
+    """The detail's shop rows; a detail that came back empty simply has none."""
+    return [e for e in ((detail or {}).get("shop") or []) if isinstance(e, dict)]
+
+
+def _collect_event_snapshot(cache_dir: str, event: dict, item_map: Dict[int, dict], names: Dict[str, Dict[int, dict]], force: bool = False, dry_run: bool = False) -> Optional[dict]:
+    """One event's snapshot, or None when it has no shop to snapshot (the G1 non-empty filter)."""
+    detail = _event_detail(cache_dir, event, force=force)
+    entries = _shop_entries(detail)
+    if not entries:
+        return None
+    currencies, items = _map_shop_entries(cache_dir, entries, item_map, names, force, dry_run)
+    if not items:
+        return None
+    war_ids = detail.get("warIds") or event.get("warIds") or []
+    return {
+        "event": _event_window(event),
+        "currencies": [currencies[cid] for cid in sorted(currencies)],
+        "items": sorted(items, key=lambda it: (it["priority"], it["id"])),
+        "farm": _collect_farm(cache_dir, war_ids, sorted(currencies), force=force),
+        "trades": _shop_trades(entries, sorted(currencies)),
+    }
+
+
+def _drops_digest(drops: Optional[list]) -> str:
+    """16-hex-char SHA-256 of canonical (objectId, num, dropExpected, runs) tuples with positive drops."""
+    canonical = sorted(
+        (
+            int(d.get("objectId") or 0),
+            int(d.get("num") or 0),
+            round(float(d.get("dropExpected") or 0), 4),
+            int(d.get("runs") or 0),
+        )
+        for d in (drops or [])
+        if isinstance(d, dict) and (d.get("dropExpected") or 0) > 0 and (d.get("num") or 0) > 0
+    )
+    return hashlib.sha256(json.dumps(canonical, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+
+
+def _write_shop_probe(
+    cache_dir: str,
+    basic_events: List[dict],
+    now: Optional[int] = None,
+    probe_path: Optional[str] = None,
+    force: bool = False,
+):
+    """Persist active event-shop window and repeatable quest drop digests into .ci-baselines/shop_probe.json
+    when the parent directory (.ci-baselines) exists."""
+    if probe_path is None:
+        probe_path = DEFAULT_SHOP_PROBE_FILE
+    parent = os.path.dirname(probe_path)
+    if parent and not os.path.isdir(parent):
+        return
+    moment = int(time.time()) if now is None else now
+    events = basic_events if isinstance(basic_events, list) else []
+    future_ts = [
+        t
+        for e in events
+        if isinstance(e, dict) and e.get("type") == "eventQuest"
+        for t in (e.get("startedAt"), e.get("finishedAt"))
+        if isinstance(t, int) and t > moment
+    ]
+    next_transition = min(future_ts) if future_ts else None
+    open_events = select_events(events, now=moment)
+    open_ids = [e.get("id") for e in open_events if e.get("id")]
+    seen_quests = set()
+    active_quests = []
+    for event in open_events:
+        try:
+            detail = _event_detail(cache_dir, event, force=force)
+            if not _shop_currency_ids(_shop_entries(detail)):
+                continue
+            war_ids = (detail or {}).get("warIds") or event.get("warIds") or []
+            quests = _collect_farm_quests(cache_dir, war_ids, force=force)
+        except Exception:
+            continue
+        for q in quests:
+            qid = q.get("questId")
+            phase = q.get("phase") or 0
+            if not qid or phase <= 0 or (qid, phase) in seen_quests:
+                continue
+            seen_quests.add((qid, phase))
+            active_quests.append({
+                "id": qid,
+                "phase": phase,
+                "etag": _stored_etag(cache_dir, f"nice_quest_{qid}_{phase}.json"),
+                "dropsHash": _drops_digest(q.get("drops")),
+            })
+    probe = {
+        "openIds": open_ids,
+        "nextTransitionAt": next_transition,
+        "activeQuests": active_quests,
+    }
+    with open(probe_path, "w", encoding="utf-8") as f:
+        json.dump(probe, f, ensure_ascii=False, indent=2)
+
+
+def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: bool = False, dry_run: bool = False) -> dict:
+    """Build the full EVENT_SHOP_DATA payload from the live API (all fetches ETag-cached).
+
+    --event-id snapshots exactly that event with every Amendment J filter skipped; otherwise the
+    farmable shops ship: active farm events plus the latest past farm event (Amendment L1). One
+    event failing does not sink the run: it is skipped with a WARN and the others still ship.
+    When every open event failed, the caller's outage policy keeps the previous file instead."""
+    _event_icon_results.clear()
+    _event_detail_results.clear()
+    _farm_quests_results.clear()
+    global _servant_lore
+    _servant_lore = None
+    basic = get_cached_json(cache_dir, "basic_event.json", BASIC_EVENT_URL, force=force)
+    if event_id is not None:
+        events = select_events(basic, event_id)
+    else:
+        events = _select_farm_events(cache_dir, basic, force=force)
+    if not events:
+        if event_id is None and not dry_run:
+            _write_shop_probe(cache_dir, basic, force=force)
+        print("  [WARN] No farmable event shop found; writing an empty event shop list.", file=sys.stderr)
+        return json.loads(json.dumps(EVENT_SHOP_STUB))
+
+    item_map = load_nice_item_map(cache_dir, force=force)
+    names = load_event_name_maps(cache_dir, item_map, force=force)
+
+    snapshots, failures = [], 0
+    for event in events:
+        try:
+            snapshot = _collect_event_snapshot(cache_dir, event, item_map, names, force=force, dry_run=dry_run)
+        except Exception as e:
+            failures += 1
+            print(f"  [WARN] Event {event.get('id')} shop fetch failed: {e}", file=sys.stderr)
+            continue
+        if snapshot:
+            snapshots.append(snapshot)
+    if failures and not snapshots:
+        raise RuntimeError(f"all {failures} open event shop fetch(es) failed")
+    if event_id is None and not dry_run:
+        _write_shop_probe(cache_dir, basic, force=force)
+    return {"events": snapshots}
+
+
+def _event_shop_js_text(data: dict) -> str:
+    """Serialize EVENT_SHOP_DATA as a valid-JS, JSON-parseable module body (quoted keys, indent 2)."""
+    body = json.dumps(data, ensure_ascii=False, indent=2)
+    return f"export const EVENT_SHOP_DATA = {body};\n"
+
+
+def _write_event_shop_js(data: dict, dry_run: bool = False):
+    snapshots = data.get("events") or []
+    item_count = sum(len(snap.get("items", [])) for snap in snapshots)
+    if dry_run:
+        print(f"[DRY-RUN] Would write {len(snapshots)} event shops / {item_count} items to {EVENT_SHOP_JS}")
+        return
+    os.makedirs(os.path.dirname(EVENT_SHOP_JS), exist_ok=True)
+    with open(EVENT_SHOP_JS, "w", encoding="utf-8") as f:
+        f.write(_event_shop_js_text(data))
+    listed = ", ".join(str((snap.get("event") or {}).get("id")) for snap in snapshots) or "(empty)"
+    print(f"Successfully synchronized {len(snapshots)} event shop(s) [{listed}] / {item_count} items into {EVENT_SHOP_JS}")
+
+
+def sync_event_shop(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), event_id: Optional[int] = None, force: bool = False, dry_run: bool = False):
+    """Generate src/scripts/data/event_shop.js + public/event_shop/ icons for every farmable event shop.
+
+    Outage policy: a fetch failure keeps the previously generated file; with none, an empty stub is
+    written so `ensure_data.js` sees the file as present and the build never dies on an API hiccup."""
+    print("Checking Atlas Academy API for the open event shops...")
+    try:
+        data = _collect_event_shops(cache_dir, event_id, force=force, dry_run=dry_run)
+    except Exception as e:
+        print(f"  [WARN] Event shop sync failed: {e}", file=sys.stderr)
+        if os.path.exists(EVENT_SHOP_JS):
+            print("  [INFO] Keeping the existing event_shop.js.")
+            return
+        data = json.loads(json.dumps(EVENT_SHOP_STUB))
+    _write_event_shop_js(data, dry_run=dry_run)
+
+
 def cleanup_cache_dir(cache_dir: str):
     """Remove cache directory and any empty parent directory."""
     if os.path.exists(cache_dir):
@@ -1586,6 +2416,8 @@ def main():
     parser.add_argument("--skip-servants", action="store_true", help="Skip servant synchronization")
     parser.add_argument("--skip-ces", action="store_true", help="Skip Craft Essence synchronization")
     parser.add_argument("--skip-traits", action="store_true", help="Skip trait synchronization")
+    parser.add_argument("--skip-event-shop", action="store_true", help="Skip event shop synchronization")
+    parser.add_argument("--event-id", type=int, help="Snapshot only this event id (default: every event shop open now)")
     args = parser.parse_args()
 
     # Configure global rate limiter delay
@@ -1603,6 +2435,10 @@ def main():
         sync_craft_essences(cache_dir=args.cache_dir, force=args.force, dry_run=args.dry_run)
     elif not args.skip_traits:
         sync_traits_js(cache_dir=args.cache_dir, force=args.force, dry_run=args.dry_run)
+
+    # 3. Sync Event Shop (current JP event + icons)
+    if not args.skip_event_shop:
+        sync_event_shop(cache_dir=args.cache_dir, event_id=args.event_id, force=args.force, dry_run=args.dry_run)
 
     if args.clean_cache:
         cleanup_cache_dir(args.cache_dir)

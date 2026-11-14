@@ -23,170 +23,15 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
       <main id="main-content">
         <section class="tab-panel" id="panel-event">
-          <div class="card">
+          <div class="card" id="eventSelectCard">
             <div class="card-inner">
-              <div class="card-title">Shop Requirements</div>
-            <div class="materials-grid grid" id="materialsGrid">
-              <div class="material-card" data-tier="bronze">
-                <div class="material-icon-wrapper">
-                  <div class="material-icon" id="bronzeIcon">
-                    <img
-                      class="bg-layer"
-                      src="icons/materials/bronze_bg.webp"
-                      alt=""
-                      loading="lazy"
-                    />
-                    <img
-                      class="fg-layer"
-                      src="icons/materials/bronze_fg.webp"
-                      alt="Bronze material icon"
-                      loading="lazy"
-                    />
-                  </div>
-                </div>
-                <div class="material-name">Bronze</div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="bronzeNeed">Required</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="bronzeNeed"
-                    min="0"
-                    max="999999"
-                    value="0"
-                  />
-                </div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="bronzeHave">Held</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="bronzeHave"
-                    min="0"
-                    max="999999"
-                    value="0"
-                  />
-                </div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="bronzeBonus">Bonus</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="bronzeBonus"
-                    min="0"
-                    max="1000"
-                    value="0"
-                  />
-                </div>
+              <div class="card-title">Select Event</div>
+              <div class="input-row">
+                <label class="input-label" for="eventSelect">Event</label>
+                <select class="select-field" id="eventSelect"></select>
               </div>
-              <div class="material-card" data-tier="silver">
-                <div class="material-icon-wrapper">
-                  <div class="material-icon" id="silverIcon">
-                    <img
-                      class="bg-layer"
-                      src="icons/materials/silver_bg.webp"
-                      alt=""
-                      loading="lazy"
-                    />
-                    <img
-                      class="fg-layer"
-                      src="icons/materials/silver_fg.webp"
-                      alt="Silver material icon"
-                      loading="lazy"
-                    />
-                  </div>
-                </div>
-                <div class="material-name">Silver</div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="silverNeed">Required</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="silverNeed"
-                    min="0"
-                    max="999999"
-                    value="0"
-                  />
-                </div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="silverHave">Held</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="silverHave"
-                    min="0"
-                    max="999999"
-                    value="0"
-                  />
-                </div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="silverBonus">Bonus</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="silverBonus"
-                    min="0"
-                    max="1000"
-                    value="0"
-                  />
-                </div>
-              </div>
-              <div class="material-card" data-tier="gold">
-                <div class="material-icon-wrapper">
-                  <div class="material-icon" id="goldIcon">
-                    <img
-                      class="bg-layer"
-                      src="icons/materials/gold_bg.webp"
-                      alt=""
-                      loading="lazy"
-                    />
-                    <img
-                      class="fg-layer"
-                      src="icons/materials/gold_fg.webp"
-                      alt="Gold material icon"
-                      loading="lazy"
-                    />
-                  </div>
-                </div>
-                <div class="material-name">Gold</div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="goldNeed">Required</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="goldNeed"
-                    min="0"
-                    max="999999"
-                    value="0"
-                  />
-                </div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="goldHave">Held</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="goldHave"
-                    min="0"
-                    max="999999"
-                    value="0"
-                  />
-                </div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="goldBonus">Bonus</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="goldBonus"
-                    min="0"
-                    max="1000"
-                    value="0"
-                  />
-                </div>
-              </div>
-            </div>
             </div>
           </div>
-
           <div class="card">
             <div class="card-inner">
               <div class="card-title">Drop Rates per Run</div>
@@ -233,40 +78,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="quest-drops-item" data-tier="bronze">
                 <div class="quest-drops-title">Bronze Quest</div>
                 <div class="drop-line">
-                  <span class="mini-icon" id="bronzeQuest_bronze_icon">
-                    <img
-                      class="bg-layer"
-                      src="icons/materials/bronze_bg.webp"
-                      alt=""
-                      loading="lazy"
-                    />
-                    <img
-                      class="fg-layer"
-                      src="icons/materials/bronze_fg.webp"
-                      alt="Bronze material icon"
-                      loading="lazy"
-                    />
-                  </span>
+                  <span class="mini-icon" id="bronzeQuest_bronze_icon"></span>
                   <span class="drop-material" id="bronzeQuest_bronze_label"
                     >3(+0)</span
                   >
                   <span class="drop-value" id="bronzeQuest_bronze">0</span>
                 </div>
                 <div class="drop-line">
-                  <span class="mini-icon" id="bronzeQuest_silver_icon">
-                    <img
-                      class="bg-layer"
-                      src="icons/materials/silver_bg.webp"
-                      alt=""
-                      loading="lazy"
-                    />
-                    <img
-                      class="fg-layer"
-                      src="icons/materials/silver_fg.webp"
-                      alt="Silver material icon"
-                      loading="lazy"
-                    />
-                  </span>
+                  <span class="mini-icon" id="bronzeQuest_silver_icon"></span>
                   <span class="drop-material" id="bronzeQuest_silver_label"
                     >3(+0)</span
                   >
@@ -276,40 +95,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="quest-drops-item" data-tier="silver">
                 <div class="quest-drops-title">Silver Quest</div>
                 <div class="drop-line">
-                  <span class="mini-icon" id="silverQuest_silver_icon">
-                    <img
-                      class="bg-layer"
-                      src="icons/materials/silver_bg.webp"
-                      alt=""
-                      loading="lazy"
-                    />
-                    <img
-                      class="fg-layer"
-                      src="icons/materials/silver_fg.webp"
-                      alt="Silver material icon"
-                      loading="lazy"
-                    />
-                  </span>
+                  <span class="mini-icon" id="silverQuest_silver_icon"></span>
                   <span class="drop-material" id="silverQuest_silver_label"
                     >3(+0)</span
                   >
                   <span class="drop-value" id="silverQuest_silver">0</span>
                 </div>
                 <div class="drop-line">
-                  <span class="mini-icon" id="silverQuest_gold_icon">
-                    <img
-                      class="bg-layer"
-                      src="icons/materials/gold_bg.webp"
-                      alt=""
-                      loading="lazy"
-                    />
-                    <img
-                      class="fg-layer"
-                      src="icons/materials/gold_fg.webp"
-                      alt="Gold material icon"
-                      loading="lazy"
-                    />
-                  </span>
+                  <span class="mini-icon" id="silverQuest_gold_icon"></span>
                   <span class="drop-material" id="silverQuest_gold_label"
                     >3(+0)</span
                   >
@@ -319,40 +112,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="quest-drops-item" data-tier="gold">
                 <div class="quest-drops-title">Gold Quest</div>
                 <div class="drop-line">
-                  <span class="mini-icon" id="goldQuest_gold_icon">
-                    <img
-                      class="bg-layer"
-                      src="icons/materials/gold_bg.webp"
-                      alt=""
-                      loading="lazy"
-                    />
-                    <img
-                      class="fg-layer"
-                      src="icons/materials/gold_fg.webp"
-                      alt="Gold material icon"
-                      loading="lazy"
-                    />
-                  </span>
+                  <span class="mini-icon" id="goldQuest_gold_icon"></span>
                   <span class="drop-material" id="goldQuest_gold_label"
                     >3(+0)</span
                   >
                   <span class="drop-value" id="goldQuest_gold">0</span>
                 </div>
                 <div class="drop-line">
-                  <span class="mini-icon" id="goldQuest_bronze_icon">
-                    <img
-                      class="bg-layer"
-                      src="icons/materials/bronze_bg.webp"
-                      alt=""
-                      loading="lazy"
-                    />
-                    <img
-                      class="fg-layer"
-                      src="icons/materials/bronze_fg.webp"
-                      alt="Bronze material icon"
-                      loading="lazy"
-                    />
-                  </span>
+                  <span class="mini-icon" id="goldQuest_bronze_icon"></span>
                   <span class="drop-material" id="goldQuest_bronze_label"
                     >3(+0)</span
                   >
@@ -360,12 +127,139 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 </div>
               </div>
             </div>
+            <div class="farm-grid grid" id="farmGrid" style="display: none"></div>
             </div>
           </div>
 
-          <button class="calculate-btn" id="calculateBtn" type="button">
-            Calculate Quest Runs
-          </button>
+          <div class="card">
+            <div class="card-inner">
+              <div class="card-title">Shop Requirements</div>
+            <div class="materials-grid grid" id="materialsGrid">
+              <div class="material-card" data-tier="bronze">
+                <div class="material-icon-wrapper">
+                  <div class="material-icon" id="bronzeIcon"></div>
+                </div>
+                <div class="material-name">Bronze</div>
+                <div class="material-input-box">
+                  <label class="material-input-box-label" for="bronzeNeed">Required</label>
+                  <input
+                    type="number"
+                    class="material-input-box-field"
+                    id="bronzeNeed"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="material-input-box">
+                  <label class="material-input-box-label" for="bronzeHave">Held</label>
+                  <input
+                    type="number"
+                    class="material-input-box-field"
+                    id="bronzeHave"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="material-input-box">
+                  <label class="material-input-box-label" for="bronzeBonus">Bonus</label>
+                  <input
+                    type="number"
+                    class="material-input-box-field"
+                    id="bronzeBonus"
+                    min="0"
+                    max="1000"
+                    value="0"
+                  />
+                </div>
+              </div>
+              <div class="material-card" data-tier="silver">
+                <div class="material-icon-wrapper">
+                  <div class="material-icon" id="silverIcon"></div>
+                </div>
+                <div class="material-name">Silver</div>
+                <div class="material-input-box">
+                  <label class="material-input-box-label" for="silverNeed">Required</label>
+                  <input
+                    type="number"
+                    class="material-input-box-field"
+                    id="silverNeed"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="material-input-box">
+                  <label class="material-input-box-label" for="silverHave">Held</label>
+                  <input
+                    type="number"
+                    class="material-input-box-field"
+                    id="silverHave"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="material-input-box">
+                  <label class="material-input-box-label" for="silverBonus">Bonus</label>
+                  <input
+                    type="number"
+                    class="material-input-box-field"
+                    id="silverBonus"
+                    min="0"
+                    max="1000"
+                    value="0"
+                  />
+                </div>
+              </div>
+              <div class="material-card" data-tier="gold">
+                <div class="material-icon-wrapper">
+                  <div class="material-icon" id="goldIcon"></div>
+                </div>
+                <div class="material-name">Gold</div>
+                <div class="material-input-box">
+                  <label class="material-input-box-label" for="goldNeed">Required</label>
+                  <input
+                    type="number"
+                    class="material-input-box-field"
+                    id="goldNeed"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="material-input-box">
+                  <label class="material-input-box-label" for="goldHave">Held</label>
+                  <input
+                    type="number"
+                    class="material-input-box-field"
+                    id="goldHave"
+                    min="0"
+                    max="999999"
+                    value="0"
+                  />
+                </div>
+                <div class="material-input-box">
+                  <label class="material-input-box-label" for="goldBonus">Bonus</label>
+                  <input
+                    type="number"
+                    class="material-input-box-field"
+                    id="goldBonus"
+                    min="0"
+                    max="1000"
+                    value="0"
+                  />
+                </div>
+              </div>
+            </div>
+              <div class="bond-card-actions bond-card-actions--end">
+                <button class="calculate-btn" id="calculateBtn" type="button">
+                  Calculate Quest Runs
+                </button>
+              </div>
+            </div>
+          </div>
 
           <div class="results" id="results">
             <div class="card results-card">
@@ -1073,6 +967,36 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               <div class="cefilter-modal-footer-right">
                 <button type="button" class="cefilter-footer-btn" id="ceOverlapFilterCancelBtn">Cancel</button>
                 <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="ceOverlapFilterOkBtn">OK</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Event Shop Currency Modal (per-currency shop editor). The row list keeps the house
+             .cefilter-modal-body class as well as .eshop-modal-list: main.js whitelists that
+             selector in the modal background-scroll lock, so a wheel or touch gesture inside the
+             draft rows scrolls the list instead of the page behind it. -->
+        <div class="servant-modal" id="eventShopModal" role="dialog" aria-modal="true" aria-labelledby="eventShopModalTitle">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <span class="ascension-modal-title" id="eventShopModalTitle"></span>
+              <button
+                class="servant-modal-close"
+                id="eventShopModalClose"
+                type="button"
+                aria-label="Close"
+              >
+                &#10005;
+              </button>
+            </div>
+            <div class="cefilter-modal-body eshop-modal-list" id="eventShopModalList"></div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="eventShopModalDefaultBtn">Default</button>
+                <button type="button" class="cefilter-footer-btn" id="eventShopModalSelectAllBtn">Select All</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="eventShopModalCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="eventShopModalDoneBtn">OK</button>
               </div>
             </div>
           </div>

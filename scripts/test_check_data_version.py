@@ -13,8 +13,25 @@ import check_data_version as m  # noqa: E402
 
 class Handler(BaseHTTPRequestHandler):
     body = b'{"JP": {"hash": "abc123"}, "NA": {"hash": "def456"}}'
+    quest_drops = [{"objectId": 94164000, "num": 3, "dropExpected": 1.5, "runs": 100}]
+    quest_etag = '"q-v1"'
 
     def do_GET(self):
+        if self.path.startswith("/nice/JP/quest/"):
+            inm = self.headers.get("If-None-Match")
+            if inm and self.quest_etag and inm == self.quest_etag:
+                self.send_response(304)
+                self.end_headers()
+                return
+            payload = json.dumps({"drops": self.quest_drops}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            if self.quest_etag:
+                self.send_header("ETag", self.quest_etag)
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(self.body)))
@@ -29,15 +46,24 @@ def start_server():
     server = HTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    return server, f"http://127.0.0.1:{server.server_address[1]}/info"
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+    return server, f"{base}/info", base
 
 
-def run_cli(url, version_file, force=False):
+def run_cli(url, version_file, force=False, check_shop=False, shop_probe_file=None, api_base=None):
     """Run main() in-process, capture stdout, return (returncode, stdout)."""
     env = dict(os.environ)
     env["ATLAS_INFO_URL"] = url
+    if api_base:
+        env["ATLAS_API_BASE"] = api_base
     env.pop("GITHUB_OUTPUT", None)
-    argv = ["--version-file", version_file] + (["--force"] if force else [])
+    argv = ["--version-file", version_file]
+    if force:
+        argv.append("--force")
+    if check_shop:
+        argv.append("--check-shop")
+    if shop_probe_file:
+        argv.extend(["--shop-probe-file", shop_probe_file])
     real_environ, real_stdout = os.environ, sys.stdout
     import io
     captured = io.StringIO()
@@ -70,7 +96,7 @@ def main():
     assert m.decide((None, None), (None, None), True) == "UNKNOWN"
     n += 1
 
-    server, url = start_server()
+    server, url, api_base = start_server()
     tmpdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".tmp_version_tests")
     os.makedirs(tmpdir, exist_ok=True)
 
@@ -144,6 +170,53 @@ def main():
         assert rc == 0, f"rc={rc}"
         assert "CHECK=UNKNOWN" in out, out
         assert not os.path.exists(vf), "no file on UNKNOWN"
+        n += 1
+
+        # --- shop probe (--check-shop) ---
+        vf = os.path.join(tmpdir, "shop_version.txt")
+        with open(vf, "w") as f:
+            f.write("JP abc123\nNA def456\n")
+        probe_file = os.path.join(tmpdir, "shop_probe.json")
+
+        # 1) Missing probe -> CHANGED
+        if os.path.exists(probe_file):
+            os.remove(probe_file)
+        rc, out = run_cli(url, vf, check_shop=True, shop_probe_file=probe_file, api_base=api_base)
+        assert rc == 0 and "CHECK=CHANGED" in out, out
+
+        # 2) nextTransitionAt elapsed -> CHANGED
+        with open(probe_file, "w") as f:
+            json.dump({"openIds": [80639], "nextTransitionAt": 1000, "activeQuests": []}, f)
+        assert m.check_shop_probe(probe_file, api_base=api_base, now=1000) == "CHANGED"
+
+        # 3) 304 Not Modified -> UNCHANGED
+        drops_hash = m._drops_digest(Handler.quest_drops)
+        with open(probe_file, "w") as f:
+            json.dump({
+                "openIds": [80639],
+                "nextTransitionAt": 9999999999,
+                "activeQuests": [{"id": 94164100, "phase": 1, "etag": '"q-v1"', "dropsHash": drops_hash}],
+            }, f)
+        rc, out = run_cli(url, vf, check_shop=True, shop_probe_file=probe_file, api_base=api_base)
+        assert rc == 0 and "CHECK=UNCHANGED" in out, out
+
+        # 4) 200 OK with same dropsHash -> UNCHANGED
+        with open(probe_file, "w") as f:
+            json.dump({
+                "openIds": [80639],
+                "nextTransitionAt": 9999999999,
+                "activeQuests": [{"id": 94164100, "phase": 1, "etag": '"stale"', "dropsHash": drops_hash}],
+            }, f)
+        rc, out = run_cli(url, vf, check_shop=True, shop_probe_file=probe_file, api_base=api_base)
+        assert rc == 0 and "CHECK=UNCHANGED" in out, out
+
+        # 5) 200 OK with changed drops -> CHANGED
+        Handler.quest_drops = [{"objectId": 94164000, "num": 3, "dropExpected": 2.25, "runs": 150}]
+        rc, out = run_cli(url, vf, check_shop=True, shop_probe_file=probe_file, api_base=api_base)
+        assert rc == 0 and "CHECK=CHANGED" in out, out
+
+        # 6) Quest fetch error -> UNKNOWN
+        assert m.check_shop_probe(probe_file, api_base="http://127.0.0.1:9", now=500) == "UNKNOWN"
         n += 1
     finally:
         server.shutdown()

@@ -47,28 +47,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Restore cached images and API payloads
-      - name: Restore Atlas Data & Asset Cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            .cache/atlas/
-            public/servants/
-            public/craft_essences/
-            src/scripts/data/
-          # Primary key only (no restore-keys): when the sync script changes we
-          # want a fully clean rebuild, not the previous script version's blob.
-          # This blob holds regenerable bytes only: downloaded images, the raw
-          # API JSON + ETags under .cache/atlas/, and the generated
-          # src/scripts/data/ JS (so the drift path revalidates in place). The
-          # gate's comparison baselines do NOT live here: actions/cache never
-          # re-saves a blob on an exact-key hit, so state that changes with the
-          # game data would freeze at the value from the last miss — the
-          # "CHECK=CHANGED forever" failure that made runs #60/#61 (2026-10-20)
-          # redo the full sync. They live in .ci-baselines/, round-tripped by
-          # the run-scoped restore/save pair below.
-          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py') }}
-
       # Baselines must persist even when the asset cache HITS, so they sit in a
       # cache keyed on github.run_id + run_attempt (unique per attempt: a
       # re-run would otherwise collide with its own saved key, and cache/save
@@ -89,7 +67,7 @@ jobs:
         id: data_version
         run: |
           FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
-          python3 scripts/check_data_version.py $FORCE_FLAG
+          python3 scripts/check_data_version.py --check-shop $FORCE_FLAG
 
       # Decide once whether to run the SYNC. (The post-sync build/deploy decision
       # is DEPLOY, computed separately in the data-change step.)
@@ -112,6 +90,23 @@ jobs:
             echo "DO_WORK=false" >> "$GITHUB_OUTPUT"
             echo "Atlas data unchanged and no force requested (event=$EVENT). Nothing to do."
           fi
+
+      # Restore cached images and API payloads only when doing work.
+      # Keyed on both sync scripts + version baseline so script changes rebuild cleanly
+      # while new game versions incrementally restore prior assets and re-save under the new key.
+      - name: Restore Atlas Data & Asset Cache
+        if: steps.do_work.outputs.DO_WORK == 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            .cache/atlas/
+            public/servants/
+            public/craft_essences/
+            public/event_shop/
+            src/scripts/data/
+          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/fetch_bordered_ces.py') }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
+          restore-keys: |
+            fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/fetch_bordered_ces.py') }}-
 
       # Every step below is skipped when DO_WORK=false (idle poll / no-force dispatch)
       - name: Set up Python
@@ -140,6 +135,7 @@ jobs:
       - name: Sync latest game data from Atlas Academy
         if: steps.do_work.outputs.DO_WORK == 'true'
         run: |
+          mkdir -p .ci-baselines
           FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
           python3 scripts/sync_atlas_data.py $FORCE_FLAG
 
@@ -150,7 +146,7 @@ jobs:
         run: |
           mkdir -p .ci-baselines
           HASH_FILE=".ci-baselines/data_hash.txt"
-          NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js | sha256sum | cut -d' ' -f1)
+          NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js src/scripts/data/bond_growth.js src/scripts/data/event_shop.js | sha256sum | cut -d' ' -f1)
           DIRTY=true
           if [ -f "$HASH_FILE" ] && [ "$(cat "$HASH_FILE")" = "$NEW_HASH" ]; then
             DIRTY=false
@@ -250,9 +246,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - run: pip install pyyaml
+      - run: pip install pyyaml Pillow
       - name: Run self-check suites
         run: |
           python3 scripts/test_check_data_version.py
           python3 scripts/test_deploy_workflow.py
           python3 scripts/test_drift.py
+          python3 scripts/test_sync_event_shop.py
+          python3 scripts/test_sync_event_shop_adversarial.py
+          python3 scripts/test_image_webp_lossless.py
+          python3 scripts/test_repro_action_versions.py
