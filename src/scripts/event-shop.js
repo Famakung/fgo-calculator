@@ -4,8 +4,14 @@ import { StateManager, Persistence } from "./state.js";
 import { debounce } from "./presentation.js";
 import { EventPlanner } from "./event-planner.js";
 import { eventTierNeeds, hydrateTierCards, hydrateQuestIcons, buildFallbackIcon } from "./event-shop-tier.js";
-import { refreshFarmDropLines } from "./event-shop-farm-lines.js";
-import { hydrateFarmGrid, showFarmResults, syncPlanBoxes, showFarmCard } from "./event-shop-farm.js";
+import { hydrateFarmGrid, showFarmResults, syncPlanBoxes, showFarmCard, showLegacyCard } from "./event-shop-farm.js";
+import {
+  hydrateBonusCeGrid,
+  commitBonusCeInputs,
+  syncCeEquipInput,
+  bindCeEquipInput,
+  commitCeEquipInput,
+} from "./event-shop-ce.js";
 
 /* ============================================
    PRESENTATION LAYER - UI Builder
@@ -142,8 +148,12 @@ export const EventHandler = {
     const calcBtn = document.getElementById("calculateBtn");
     if (calcBtn) calcBtn.addEventListener("click", () => app.calculate());
 
-    if (EventPlanner.activeEvent()) this.bindPlanBoxes();
-    else this.bindLegacyBoxes(app);
+    if (EventPlanner.activeEvent()) {
+      this.bindPlanBoxes();
+      bindCeEquipInput();
+    } else {
+      this.bindLegacyBoxes(app);
+    }
   },
 
   /* Tier Held and Bonus boxes edit the plan figure of the currency mapped to that tier (Amendment H),
@@ -153,10 +163,6 @@ export const EventHandler = {
   bindPlanBoxes() {
     TIERS.forEach((tier) => {
       bindPlanBox(tier, "Have", (currencyId, value) => EventPlanner.setHeld(currencyId, value));
-      bindPlanBox(tier, "Bonus", (currencyId, value) => {
-        EventPlanner.setBonus(currencyId, value);
-        refreshFarmDropLines();
-      });
     });
   },
 
@@ -212,6 +218,9 @@ export const App = {
   /* Legacy calculator (empty snapshot list): exactly the flow the page shipped before the planner.
      #farmGrid ships hidden in the markup, so the legacy card needs no chrome change here. */
   _initLegacyMode() {
+    showLegacyCard();
+    hydrateBonusCeGrid(null, {});
+    syncCeEquipInput(null);
     UIBuilder.buildMaterialsGrid(document.getElementById("materialsGrid"), this.state);
     ViewManager.syncInputsFromState(this.state, this._eventNeeds());
     UIBuilder.loadQuestIcons();
@@ -230,10 +239,13 @@ export const App = {
   rehydrate() {
     const snapshot = EventPlanner.activeEvent();
     if (!snapshot) return;
+    const plan = EventPlanner.activePlan();
     UIBuilder.buildMaterialsGrid(document.getElementById("materialsGrid"), this.state);
+    hydrateBonusCeGrid(snapshot, plan);
+    syncCeEquipInput(snapshot);
     showFarmCard();
     UIBuilder.loadQuestIcons();
-    hydrateFarmGrid(snapshot, EventPlanner.activePlan(), this._farmHandlers());
+    hydrateFarmGrid(snapshot, plan, this._farmHandlers());
     ViewManager.resetResults();
     this.refreshNeeds();
   },
@@ -243,7 +255,7 @@ export const App = {
      card resolves its own selected quest through it) and closes visible results until Calculate is
      clicked again. */
   _farmHandlers() {
-    return { onBonusChange: refreshFarmDropLines, onQuestChange: () => this.onFarmQuestChanged() };
+    return { onQuestChange: () => this.onFarmQuestChanged() };
   },
 
   onFarmQuestChanged() {
@@ -271,7 +283,6 @@ export const App = {
     this._writePlanBoxes();
     if (!EventPlanner.activeEvent()) return;
     ViewManager.resetResults();
-    refreshFarmDropLines();
   },
 
   _eventNeeds() {
@@ -295,19 +306,25 @@ export const App = {
     const snapshot = EventPlanner.activeEvent();
     this._commitTierBoxes();
     this._commitFarmBoxes(snapshot);
+    commitBonusCeInputs(snapshot);
+    commitCeEquipInput();
     const plan = EventPlanner.activePlan();
     const totals = EventShop.totals(snapshot.items, plan.requires);
+    const isRaid = EventPlanner.questType() === "raid";
     const result = EventShop.farmPlan({
       totals,
       held: plan.held,
-      bonus: plan.bonus,
-      farm: snapshot.farm,
+      bonus: {},
+      farm: isRaid ? { quests: EventPlanner.activeRaidQuests(), best: {} } : snapshot.farm,
       trades: snapshot.trades || [],
-      priorityQuestId: plan.farmQuest,
-      currencyQuest: plan.currencyQuest,
+      priorityQuestId: isRaid ? null : plan.farmQuest,
+      currencyQuest: isRaid ? {} : plan.currencyQuest,
+      useAllQuests: isRaid,
       currencyIds: (snapshot.currencies || []).map((currency) => currency.id),
+      bonusCes: snapshot.bonusCes || [],
+      ceOwned: plan.ceOwned || {},
+      ceEquipLimit: plan.ceEquipLimit,
     });
-    refreshFarmDropLines();
     showFarmResults(snapshot, { plan, totals, result, reveal: revealResults });
   },
 
@@ -320,6 +337,8 @@ export const App = {
     if (!snapshot) return;
     this._commitTierBoxes();
     this._commitFarmBoxes(snapshot);
+    commitBonusCeInputs(snapshot);
+    commitCeEquipInput();
   },
 
   /* Commit what the boxes hold into the plan before pricing it: typing into a box and pressing
@@ -331,20 +350,16 @@ export const App = {
       const currency = EventShop.currencyForTier(currencies, tier);
       if (!currency) return;
       EventPlanner.setHeld(currency.id, boxValue(`${tier}Have`));
-      EventPlanner.setBonus(currency.id, boxValue(`${tier}Bonus`));
     });
   },
 
-  /* Farm Held/Bonus boxes (currencies no tier card owns) persist through a trailing debounce, so
-     Calculate commits their live values too — the same clamp path as the tier flush above. The
-     later debounce write repeats the same figure and is harmless. */
+  /* Farm Held boxes (currencies no tier card owns) persist through a trailing debounce, so
+     Calculate commits their live values too — the same clamp path as the tier flush above. */
   _commitFarmBoxes(snapshot) {
     for (const currency of snapshot.currencies) {
       const key = String(currency.id);
       const held = document.getElementById(`farmHeld${key}`);
-      const bonus = document.getElementById(`farmBonus${key}`);
       if (held) EventPlanner.setHeld(key, held.value);
-      if (bonus) EventPlanner.setBonus(key, bonus.value);
     }
   },
 
@@ -437,11 +452,9 @@ function bindPlanBox(tier, field, write) {
 function planTierValues() {
   const currencies = EventPlanner.activeEvent()?.currencies;
   const held = {};
-  const bonus = {};
   TIERS.forEach((tier) => {
     const currency = EventShop.currencyForTier(currencies, tier);
     held[tier] = currency ? EventPlanner.heldOf(currency.id) : 0;
-    bonus[tier] = currency ? EventPlanner.bonusOf(currency.id) : 0;
   });
-  return { held, bonus };
+  return { held };
 }

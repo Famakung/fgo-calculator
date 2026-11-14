@@ -1,5 +1,6 @@
 import { DOMFactory } from "./presentation.js";
 import { buildCurrencyImg } from "./event-shop-tier.js";
+import { buildCeImg } from "./event-shop-ce.js";
 import { buildQuestName, refreshSlidingNames } from "./event-shop-farm-names.js";
 
 /* ===...=== "Best Farm Runs" results card (Amendment L6b, R18) ===...=== */
@@ -34,16 +35,29 @@ function buildResultsFragment(snapshot, view) {
     return fragment;
   }
   const currencies = snapshot.currencies || [];
-  fragment.appendChild(buildPlaysBlock(currencies, view.result));
+  const bonusCes = snapshot.bonusCes || [];
+  const raidQuestById = buildRaidQuestMap(snapshot);
+  fragment.appendChild(buildPlaysBlock(currencies, bonusCes, raidQuestById, view.result));
   fragment.appendChild(buildReceiveBlock(currencies, view.result));
   fragment.appendChild(buildTradesBlock(snapshot, view.result));
   return fragment;
 }
 
-function buildPlaysBlock(currencies, result) {
+function buildRaidQuestMap(snapshot) {
+  const map = new Map();
+  for (const boss of snapshot.farm?.raids || []) {
+    for (const quest of boss.quests || []) {
+      if (quest && quest.questId !== undefined && quest.questId !== null) map.set(String(quest.questId), quest);
+    }
+  }
+  return map;
+}
+
+function buildPlaysBlock(currencies, bonusCes, raidQuestById, result) {
   const wrap = DOMFactory.el("div", "farm-res-quests");
   const grid = DOMFactory.el("div", "farm-grid");
-  for (const play of result.plays) grid.appendChild(buildPlayCard(currencies, play));
+  const ceById = new Map(bonusCes.map((ce) => [String(ce.id), ce]));
+  for (const play of result.plays) grid.appendChild(buildPlayCard(currencies, ceById, raidQuestById, play));
   wrap.replaceChildren(buildTitle(PLAYS_SECTION, "quest-title"), grid);
   return wrap;
 }
@@ -73,29 +87,71 @@ function buildReceiveFruit(currency, farmed) {
 /* Amendment R6: each play wears the Drop Rates farm-card chrome — centered 48px header art, quest
    name, REC line, and the runs number centered where the drop lines sit — with no dropdown. An
    all-drop play takes the combo card's neutral border and every currency icon, like card 4. */
-function buildPlayCard(currencies, play) {
-  const main = currencies.find((currency) => String(currency.id) === String(play.mainDropId));
+function playDroppedCurrencies(currencies, raidQuestById, play) {
+  if (play.isAllDrop) return currencies;
+  const raidQuest = raidQuestById.get(String(play.questId));
+  if (raidQuest && raidQuest.drops) {
+    const dropped = currencies.filter((currency) => Boolean(raidQuest.drops[String(currency.id)]));
+    if (dropped.length > 0) return dropped;
+  }
+  return currencies.filter((currency) => String(currency.id) === String(play.mainDropId));
+}
+
+function buildPlayCard(currencies, ceById, raidQuestById, play) {
+  const icons = playDroppedCurrencies(currencies, raidQuestById, play);
+  const isCombo = play.isAllDrop || icons.length > 1;
+  const main = icons.find((currency) => String(currency.id) === String(play.mainDropId)) || icons[0];
   const classes = ["quest-drops-item", "farm-card"];
-  if (play.isAllDrop) classes.push("farm-card--combo");
-  const card = DOMFactory.el("div", classes, play.isAllDrop || !main ? {} : { "data-tier": main.background });
-  card.appendChild(buildPlayCardHeader(currencies, play));
+  if (isCombo) classes.push("farm-card--combo");
+  const card = DOMFactory.el("div", classes, isCombo || !main ? {} : { "data-tier": main.background });
+  card.appendChild(buildPlayCardHeader(icons, isCombo));
   const lines = [buildQuestName(play.questName)];
   if (play.recommendLv) lines.push(buildNode(`REC Lv. ${play.recommendLv}`));
   lines.push(
     buildNode(formatFigure(play.runs), "farm-res-play-count"),
     buildNode(play.runs === 1 ? "run" : "runs", "farm-res-play-label"),
   );
+  const ceList = buildCeComboList(play.ceCombo, ceById);
+  if (ceList) lines.push(ceList);
   const body = DOMFactory.el("div", "farm-card-body");
   body.replaceChildren(...lines);
   card.appendChild(body);
   return card;
 }
 
-function buildPlayCardHeader(currencies, play) {
-  const title = DOMFactory.el("div", play.isAllDrop ? "farm-card-title farm-card-title--icons" : "farm-card-title");
-  const icons = play.isAllDrop
-    ? currencies
-    : currencies.filter((currency) => String(currency.id) === String(play.mainDropId));
+function buildCeComboList(ceCombo, ceById) {
+  const entries = (Array.isArray(ceCombo) ? ceCombo : []).filter(
+    (entry) => entry && ((entry.limitBreak || 0) > 0 || (entry.nonLimitBreak || 0) > 0),
+  );
+  if (!entries.length) return null;
+  const list = DOMFactory.el("div", "farm-res-ce-list");
+  for (const entry of entries) {
+    const ce = ceById.get(String(entry.ceId)) || { id: entry.ceId, name: String(entry.ceId), rarity: null, icon: null };
+    const chip = DOMFactory.el("div", "farm-res-ce-chip", { title: ce.name });
+    chip.appendChild(buildCeImg(ce, "farm-res-ce-img", "farm-res-ce-fallback"));
+    const counts = DOMFactory.el("div", "farm-res-ce-counts");
+    if ((entry.limitBreak || 0) > 0) {
+      const lb = DOMFactory.el("span", ["farm-res-ce-count", "farm-res-ce-count--lb"], {
+        title: `Limit Break: ${entry.limitBreak}`,
+      });
+      lb.textContent = `LB \u00d7${entry.limitBreak}`;
+      counts.appendChild(lb);
+    }
+    if ((entry.nonLimitBreak || 0) > 0) {
+      const nlb = DOMFactory.el("span", ["farm-res-ce-count", "farm-res-ce-count--nlb"], {
+        title: `Non-Limit Break: ${entry.nonLimitBreak}`,
+      });
+      nlb.textContent = `NLB \u00d7${entry.nonLimitBreak}`;
+      counts.appendChild(nlb);
+    }
+    chip.appendChild(counts);
+    list.appendChild(chip);
+  }
+  return list;
+}
+
+function buildPlayCardHeader(icons, isCombo) {
+  const title = DOMFactory.el("div", isCombo ? "farm-card-title farm-card-title--icons" : "farm-card-title");
   for (const currency of icons) title.appendChild(buildIcon(currency, "farm-card-icon"));
   return title;
 }

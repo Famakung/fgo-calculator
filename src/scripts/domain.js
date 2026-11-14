@@ -22,6 +22,8 @@ export const Schema = {
   primaryMultiplier: { min: 100, max: 100000, default: 1500 },
   secondaryMultiplier: { min: 100, max: 100000, default: 225 },
   shopRequire: { min: 0, max: 999999, default: 0 },
+  ceOwned: { min: 0, max: 99, default: 0 },
+  ceEquipLimit: { min: 1, max: 6, default: 6 },
 };
 
 export const Validator = {
@@ -940,6 +942,14 @@ export const EventShop = {
     return Math.floor(Validator.clamp(value, Schema.shopRequire.min, this.maxRequire(item)));
   },
 
+  clampCeOwned(value) {
+    return clampSchemaInteger(value, Schema.ceOwned);
+  },
+
+  clampCeEquipLimit(value) {
+    return clampSchemaInteger(value, Schema.ceEquipLimit);
+  },
+
   rowCost(item, require) {
     return require * item.cost.amount;
   },
@@ -1058,29 +1068,55 @@ export const EventShop = {
     priorityQuestId = null,
     currencyQuest = {},
     currencyIds = null,
+    bonusCes = [],
+    ceOwned = {},
+    ceEquipLimit = Schema.ceEquipLimit.default,
+    useAllQuests = false,
   } = {}) {
     const deficits = planDeficits(totals, held, farm);
     const keys = Object.keys(deficits);
     if (!keys.length || allCovered(deficits)) return emptyFarmPlan(keys);
     const quests = planQuests(farm, bonus);
     if (!quests.length) return infeasibleFarmPlan();
-    const selection = currencyQuest && typeof currencyQuest === "object" ? currencyQuest : {};
+    const selection = !useAllQuests && currencyQuest && typeof currencyQuest === "object" ? currencyQuest : {};
     const coveringIds = new Set(
       this.allCoveringQuests(farm, currencyIds === null ? keys : currencyIds).map((quest) => String(quest.questId)),
     );
     const chain = tradeChain(trades);
     const defaultAllDropId = this.defaultFarmQuest(farm, currencyIds === null ? keys : currencyIds);
+    const equipLimit = this.clampCeEquipLimit(ceEquipLimit);
+    const normalizedCes = normalizeBonusCes(bonusCes, ceOwned, equipLimit);
     const table = {
       deficits,
       keys,
+      bonus: bonus && typeof bonus === "object" ? bonus : {},
       chain,
       order: cascadeOrder(keys, chain),
       quests,
       selection,
       defaultAllDropId,
       topUps: quests.filter((quest) => !coveringIds.has(String(quest.meta.questId))),
+      coveringIds,
     };
-    return bestFarmPlan(table, priorityQuestId) || infeasibleFarmPlan();
+    const plan = normalizedCes.length
+      ? bestCeFarmPlan(table, priorityQuestId, normalizedCes, equipLimit, useAllQuests)
+      : bestFarmPlan(table, priorityQuestId, useAllQuests);
+    return plan || infeasibleFarmPlan();
+  },
+
+  hasDropData(quest, currencyIds = null) {
+    return hasDropData(quest, currencyIds);
+  },
+
+  raidBossQuests(boss, currencyIds = null) {
+    const quests = boss && Array.isArray(boss.quests) ? boss.quests : [];
+    return quests.filter(
+      (quest) => quest && quest.questId !== undefined && quest.questId !== null && hasDropData(quest, currencyIds),
+    );
+  },
+
+  hasAvailableRaids(snapshot) {
+    return hasNonEmptyRaids(snapshot);
   },
 
   /* The quests the 3-in-1 farm card can offer (Amendment L3): those dropping EVERY shop currency
@@ -1090,7 +1126,7 @@ export const EventShop = {
     const keys = (Array.isArray(currencyIds) ? currencyIds : []).map(String);
     if (!keys.length) return [];
     const quests = farm && Array.isArray(farm.quests) ? farm.quests : [];
-    return quests.filter((quest) => quest && quest.drops && keys.every((key) => Object.hasOwn(quest.drops, key)));
+    return quests.filter((quest) => quest && quest.drops && keys.every((key) => hasPositiveDrop(quest.drops[key])));
   },
 
   /* The farmQuest default (Amendment L4): the all-covering quest with the highest total
@@ -1112,7 +1148,9 @@ export const EventShop = {
     const key = String(currencyKey);
     const covering = new Set(this.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
     const quests = farm && Array.isArray(farm.quests) ? farm.quests : [];
-    const droppers = quests.filter((quest) => quest && (quest.drops || {})[key] && !covering.has(quest.questId));
+    const droppers = quests.filter(
+      (quest) => quest && hasPositiveDrop((quest.drops || {})[key]) && !covering.has(quest.questId),
+    );
     const best = droppers.reduce((top, quest) => {
       if (!top) return quest;
       const amount = dropAmount(quest.drops[key]);
@@ -1132,8 +1170,36 @@ export const EventShop = {
     const covering = new Set(this.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
     const quests = Array.isArray(farm.quests) ? farm.quests : [];
     const id = Number(saved);
-    const kept = quests.some((quest) => quest.questId === id && (quest.drops || {})[key] && !covering.has(id));
+    const kept = quests.some(
+      (quest) => quest && quest.questId === id && hasPositiveDrop((quest.drops || {})[key]) && !covering.has(id),
+    );
     return kept ? id : this.defaultCurrencyQuest(farm, currencyIds, key);
+  },
+
+  recLvRank(recommendLv) {
+    return recLvRank(recommendLv);
+  },
+
+  byRecommendLv(a, b) {
+    return byRecommendLv(a, b);
+  },
+
+  defaultRaidQuest(boss, currencyIds = null) {
+    const quests = this.raidBossQuests(boss, currencyIds);
+    if (!quests.length) return null;
+    const ranked = [...quests].sort(byRecommendLv);
+    return ranked[0].questId;
+  },
+
+  sanitizedRaidQuest(boss, saved, currencyIds = null) {
+    const quests = this.raidBossQuests(boss, currencyIds);
+    if (!quests.length) return null;
+    const isScalar = typeof saved === "number" || (typeof saved === "string" && saved.trim() !== "");
+    const id = isScalar ? Number(saved) : NaN;
+    if (Number.isInteger(id) && quests.some((quest) => quest.questId === id)) {
+      return id;
+    }
+    return this.defaultRaidQuest(boss, currencyIds);
   },
 
   /* Multi-event storage blob (Amendment G) → { selectedEventId, plans }. The old single-event
@@ -1426,16 +1492,20 @@ function keptTrades(rows) {
 /* One full greedy walk over the selected quest pool: repeatedly farm the widest remaining
    post-cascade shortfall with that currency's selected quest (or best dropper in the pool) until
    nothing is short. */
-function greedyFarmPlan(table, pool) {
+function greedyFarmPlan(table, pool, ceCombosByQuestId = null) {
   const seed = greedyCandidate(table, pool);
-  return seed ? finishFarmPlan(table, seed.runs, seed.state, seed.rawYields) : null;
+  return seed ? finishFarmPlan(table, seed.runs, seed.state, seed.rawYields, ceCombosByQuestId) : null;
 }
 
 function greedyCandidate(table, pool) {
-  const runs = {};
-  const rawYields = {};
-  let totalPlays = 0;
-  let apTotal = 0;
+  return greedyFromStart(table, pool, { runs: {}, rawYields: {}, totalPlays: 0, apTotal: 0 });
+}
+
+function greedyFromStart(table, pool, start) {
+  const runs = { ...start.runs };
+  const rawYields = { ...start.rawYields };
+  let totalPlays = start.totalPlays;
+  let apTotal = start.apTotal;
   for (let guard = table.keys.length + 1; guard > 0; guard--) {
     const state = cascadeYields(table, rawYields);
     if (!hasShortfall(state.short)) {
@@ -1486,11 +1556,17 @@ function widestShortfall(short, keys) {
   return best;
 }
 
-function bestRateQuest(options, target) {
+function bestRateQuest(options, target, rateOf = defaultRateOf) {
   return options.reduce((a, b) => {
-    if (a.rates[target] !== b.rates[target]) return a.rates[target] > b.rates[target] ? a : b;
+    const rateA = rateOf(a, target);
+    const rateB = rateOf(b, target);
+    if (rateA !== rateB) return rateA > rateB ? a : b;
     return a.meta.questId <= b.meta.questId ? a : b;
   });
+}
+
+function defaultRateOf(quest, key) {
+  return count(quest.rates[key]);
 }
 
 /* The quest a currency's shortfall farms with (Amendment M6): that currency's selected quest while
@@ -1498,12 +1574,12 @@ function bestRateQuest(options, target) {
    nor an all-covering quest is ever a candidate — the scan prices every use of the priority quest
    through its run count, and card-4 quests are excluded from top-ups altogether (Amendment N2), so
    a selection naming one of them falls back exactly as an absent one does. */
-function topUpQuest(options, target, selectedId) {
+function topUpQuest(options, target, selectedId, rateOf = defaultRateOf) {
   const chosen =
     selectedId === null || selectedId === undefined
       ? null
       : options.find((quest) => String(quest.meta.questId) === String(selectedId));
-  return chosen || bestRateQuest(options, target);
+  return chosen || bestRateQuest(options, target, rateOf);
 }
 
 function sumYields(runs, quests) {
@@ -1524,10 +1600,10 @@ function sumYields(runs, quests) {
    the full cascade did — AP, and the cascade's own surplus (plan.surplus is what the player is shown,
    and must not steer which equal-run plan wins) — neither shows up in deepEqual, JSON, or the frozen
    output shape. */
-function finishFarmPlan(table, runs, state, rawYields = sumYields(runs, table.quests)) {
+function finishFarmPlan(table, runs, state, rawYields = sumYields(runs, table.quests), ceCombosByQuestId = null) {
   const cover = minCoverTrades(rawYields, table.deficits, table.chain, table.order);
   const plan = {
-    plays: playsFromRuns(runs, table.quests, table.keys),
+    plays: playsFromRuns(runs, table.quests, table.keys, ceCombosByQuestId),
     trades: cover.trades,
     yields: roundMap(cover.final, table.keys),
     farmed: roundMap(rawYields, table.keys),
@@ -1568,7 +1644,7 @@ function runsAp(runs, quests) {
    needs — the quest's own data-module figures, its run count, its main-drop currency (highest
    dropExpected×num on the plain figures, ties to the lower id) and whether it drops every shop
    currency (three icons, not one). */
-function playsFromRuns(runs, quests, keys) {
+function playsFromRuns(runs, quests, keys, ceCombosByQuestId = null) {
   return quests
     .filter((quest) => count(runs[String(quest.meta.questId)]) > 0)
     .map((quest) => ({
@@ -1578,6 +1654,7 @@ function playsFromRuns(runs, quests, keys) {
       runs: count(runs[String(quest.meta.questId)]),
       mainDropId: mainDropCurrencyId(quest),
       isAllDrop: keys.every((key) => Object.hasOwn(quest.rates, key)),
+      ceCombo: (ceCombosByQuestId && ceCombosByQuestId.get(String(quest.meta.questId))) || [],
     }))
     .sort((a, b) => b.runs - a.runs || a.questId - b.questId);
 }
@@ -1596,11 +1673,26 @@ function dropAmount(drop) {
 
 /* Best farm plan over the user's selected quests across the currency cards and optional all-drop
    card: compute the greedy incumbent over that selected pool, then run exact search bounded by it. */
-function bestFarmPlan(table, priorityQuestId) {
-  const pool = nondominatedQuests(selectedPool(table, priorityQuestId));
+function bestFarmPlan(table, priorityQuestId, useAllQuests = false) {
+  const candidatePool = useAllQuests ? table.quests : selectedPool(table, priorityQuestId);
+  const pool = nondominatedQuests(candidatePool);
+  return bestFarmPlanForPool(table, pool);
+}
+
+const LARGE_POOL_EXACT_NODES = 400000;
+
+function bestFarmPlanForPool(table, pool, ceCombosByQuestId = null) {
   if (!pool.length) return null;
-  const greedy = greedyFarmPlan(table, pool);
-  return betterPlan(greedy, exactFarmPlan(table, pool, greedy));
+  const greedy = greedyFarmPlan(table, pool, ceCombosByQuestId);
+  if (pool.length <= 4) {
+    return betterPlan(greedy, exactFarmPlan(table, pool, greedy, ceCombosByQuestId));
+  }
+  const lpSeed = lpSeedCandidate(table, pool, 0, ceCombosByQuestId);
+  const incumbent = betterPlan(greedy, lpSeed.plan);
+  return betterPlan(
+    incumbent,
+    exactFarmPlan(table, pool, incumbent, ceCombosByQuestId, lpSeed.lpLb, LARGE_POOL_EXACT_NODES),
+  );
 }
 
 function selectedPool(table, priorityQuestId) {
@@ -1628,15 +1720,22 @@ function selectedAllDropQuest(table, priorityQuestId) {
 }
 
 /* Exact minimum-play search over the user-selected quest pool, tie-broken by least surplus then least AP. */
-function exactFarmPlan(table, pool, incumbent) {
+function exactFarmPlan(
+  table,
+  pool,
+  incumbent,
+  ceCombosByQuestId = null,
+  minTotalHint = 0,
+  maxSearchNodes = MAX_EXACT_SEARCH_NODES,
+) {
   const kernel = buildExactKernel(table, pool);
   const bound = incumbent && incumbent.totalPlays !== null ? incumbent.totalPlays : MAX_PLAN_SCAN;
-  const minTotal = minExactTotal(kernel, bound);
-  const budget = { nodes: MAX_EXACT_SEARCH_NODES };
+  const minTotal = Math.max(minTotalHint || 0, minExactTotal(kernel, bound));
+  const budget = { nodes: maxSearchNodes };
   for (let total = minTotal; total <= bound; total++) {
     if (!hopelessMix(kernel, 0, total, kernel.zeroYields, null)) {
       const best = searchExactTotal(kernel, total, budget);
-      if (best) return finishExactPlan(table, pool, best);
+      if (best) return finishExactPlan(table, pool, best, ceCombosByQuestId);
     }
     if (budget.nodes <= 0) return null;
   }
@@ -1676,26 +1775,29 @@ function positiveRateKeys(quest) {
 /* One priced total: every composition of `total` runs across the pool, the front rows counted down
    and the last row absorbing the rest — the oracle's walk order — keeping the least-surplus,
    then least-AP covering mix. Each evaluated mix costs one budget node. */
-function searchExactTotal(kernel, total, budget) {
+function searchExactTotal(kernel, total, budget, baseState = null) {
   const rowCount = kernel.rates.length;
-  const yields = kernel.zeroYields.slice();
-  const cYields = kernel.cTargets.map(() => 0);
-  const runs = kernel.rates.map(() => 0);
+  const yields = baseState ? baseState.yields.slice() : kernel.zeroYields.slice();
+  const cYields = baseState ? baseState.cYields.slice() : kernel.cTargets.map(() => 0);
+  const runs = baseState ? baseState.runs.slice() : kernel.rates.map(() => 0);
+  const offset = baseState ? 1 : 0;
+  const remainingTotal = baseState ? total - baseState.fixedCount : total;
+  if (remainingTotal < 0) return null;
   const walk = (row, left) => {
-    if (row === rowCount - 1) return leafMix(kernel, yields, runs, row, left, budget);
+    if (row === rowCount - 1) return leafMix(kernel, yields, runs, row, left, budget, offset);
     const [lo, hi] = rowValueBounds(kernel, cYields, row, left);
     let winner = null;
     for (let value = hi; value >= lo && budget.nodes > 0; value--) {
-      runs[row] = value;
+      runs[row] = offset + value;
       applyRow(kernel, yields, cYields, row, value, 1);
       if (!hopelessMix(kernel, row + 1, left - value, yields, cYields))
         winner = betterMix(winner, walk(row + 1, left - value));
       applyRow(kernel, yields, cYields, row, value, -1);
-      runs[row] = 0;
+      runs[row] = offset;
     }
     return winner;
   };
-  return walk(0, total);
+  return walk(0, remainingTotal);
 }
 
 function rowValueBounds(kernel, cYields, row, left) {
@@ -1719,15 +1821,15 @@ function rowValueBounds(kernel, cYields, row, left) {
   return [lo, hi];
 }
 
-function leafMix(kernel, yields, runs, row, left, budget) {
-  runs[row] = left;
+function leafMix(kernel, yields, runs, row, left, budget, offset = 0) {
+  runs[row] = offset + left;
   const base = kernel.rates[row];
   for (let position = 0; position < yields.length; position++) yields[position] += left * base[position];
   budget.nodes -= 1;
   const surplus = cascadeArrays(kernel, yields);
   const mix = surplus === null ? null : { runs: runs.slice(), surplus, ap: sumRunsAp(kernel, runs) };
   for (let position = 0; position < yields.length; position++) yields[position] -= left * base[position];
-  runs[row] = 0;
+  runs[row] = offset;
   return mix;
 }
 
@@ -1781,15 +1883,15 @@ function sumRunsAp(kernel, runs) {
    search's array twin only decides which mix wins, never what the plan reports. If the shared
    cascade sees a shortfall the twin somehow missed, the mix does not ship: greedy stays the
    answer rather than an unproven plan. */
-function finishExactPlan(table, pool, best) {
+function finishExactPlan(table, pool, best, ceCombosByQuestId = null) {
   const runs = {};
   pool.forEach((quest, row) => {
     if (best.runs[row] > 0) runs[String(quest.meta.questId)] = best.runs[row];
   });
-  const rawYields = sumYields(runs, table.quests);
+  const rawYields = sumYields(runs, pool);
   const state = cascadeYields(table, rawYields);
   if (hasShortfall(state.short)) return null;
-  return finishFarmPlan(table, runs, state, rawYields);
+  return finishFarmPlan(table, runs, state, rawYields, ceCombosByQuestId);
 }
 
 /* The search kernel: the table's cascade expressed over indexed arrays in the shared node order.
@@ -1994,7 +2096,81 @@ function sanitizeEventPlan(plan, snapshot) {
     bonus: sanitizeCurrencyValues((plan || {}).bonus, snapshot.currencies, Schema.tier.Bonus),
     farmQuest: sanitizeFarmQuest((plan || {}).farmQuest, snapshot),
     currencyQuest: sanitizeCurrencyQuests((plan || {}).currencyQuest, snapshot),
+    ceOwned: sanitizeCeOwned((plan || {}).ceOwned, snapshot.bonusCes),
+    ceEquipLimit: EventShop.clampCeEquipLimit((plan || {}).ceEquipLimit),
+    questType: sanitizeQuestType((plan || {}).questType, snapshot),
+    raidQuest: sanitizeRaidQuests((plan || {}).raidQuest, snapshot),
   };
+}
+
+const REC_SUFFIX_RANK = { "": 0, "+": 1, "++": 2, "+++": 3, "★": 4 };
+const UNKNOWN_REC_SUFFIX_RANK = 5;
+const REC_RANK_STRIDE = 8;
+
+function recLvRank(recommendLv) {
+  if (recommendLv === null || recommendLv === undefined) return Infinity;
+  const text = String(recommendLv).trim();
+  if (!text) return Infinity;
+  const match = /^(\d+)(.*)$/.exec(text);
+  if (!match) return Infinity;
+  const num = Number(match[1]);
+  const suffix = match[2].trim();
+  const suffixRank = Object.hasOwn(REC_SUFFIX_RANK, suffix) ? REC_SUFFIX_RANK[suffix] : UNKNOWN_REC_SUFFIX_RANK;
+  return num * REC_RANK_STRIDE + suffixRank;
+}
+
+function byRecommendLv(a, b) {
+  const rankA = recLvRank(a && a.recommendLv);
+  const rankB = recLvRank(b && b.recommendLv);
+  if (rankA !== rankB) {
+    if (!Number.isFinite(rankA)) return 1;
+    if (!Number.isFinite(rankB)) return -1;
+    return rankB - rankA;
+  }
+  return ((a && a.questId) || 0) - ((b && b.questId) || 0);
+}
+
+function hasPositiveDrop(drop) {
+  return Boolean(drop && typeof drop === "object" && count(drop.dropExpected) > 0 && count(drop.num) > 0);
+}
+
+function hasDropData(quest, currencyIds = null) {
+  if (!quest || typeof quest !== "object" || !quest.drops || typeof quest.drops !== "object") return false;
+  const keys = Array.isArray(currencyIds) ? currencyIds.map(String) : Object.keys(quest.drops);
+  return keys.some((key) => Object.hasOwn(quest.drops, key) && hasPositiveDrop(quest.drops[key]));
+}
+
+function snapshotCurrencyIds(snapshot) {
+  return (Array.isArray(snapshot && snapshot.currencies) ? snapshot.currencies : []).map((currency) => currency.id);
+}
+
+function hasNonEmptyRaids(snapshot) {
+  const raids = (snapshot && snapshot.farm && snapshot.farm.raids) || [];
+  if (!Array.isArray(raids) || !raids.length) return false;
+  const currencyIds = snapshotCurrencyIds(snapshot);
+  return raids.some((boss) => EventShop.defaultRaidQuest(boss, currencyIds.length ? currencyIds : null) !== null);
+}
+
+function sanitizeQuestType(saved, snapshot) {
+  return hasNonEmptyRaids(snapshot) && saved === "raid" ? "raid" : "free";
+}
+
+function sanitizeRaidQuests(saved, snapshot) {
+  const raids = (snapshot && snapshot.farm && snapshot.farm.raids) || [];
+  if (!Array.isArray(raids) || !raids.length) return {};
+  const currencyIds = snapshotCurrencyIds(snapshot);
+  const filterIds = currencyIds.length ? currencyIds : null;
+  const raw = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  const clean = {};
+  for (const boss of raids) {
+    if (!boss || boss.bossId === undefined || boss.bossId === null) continue;
+    const key = String(boss.bossId);
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+    const rawSaved = Object.hasOwn(raw, key) ? raw[key] : undefined;
+    const choice = EventShop.sanitizedRaidQuest(boss, rawSaved, filterIds);
+    if (choice !== null) clean[key] = choice;
+  }
+  return clean;
 }
 
 /* The 3-in-1 card's quest pick (Amendment L4): a saved id survives only if that event's farm list
@@ -2003,11 +2179,17 @@ function sanitizeEventPlan(plan, snapshot) {
    all-covering quest has no plan pick at all (null → per-currency best everywhere). */
 function sanitizeFarmQuest(saved, snapshot) {
   const quests = (snapshot.farm || {}).quests || [];
+  const currencyIds = snapshotCurrencyIds(snapshot);
+  const filterIds = currencyIds.length ? currencyIds : null;
   const id = Number(saved);
-  if (saved !== null && saved !== undefined && Number.isInteger(id) && quests.some((quest) => quest.questId === id)) {
+  if (
+    saved !== null &&
+    saved !== undefined &&
+    Number.isInteger(id) &&
+    quests.some((quest) => quest && quest.questId === id && hasDropData(quest, filterIds))
+  ) {
     return id;
   }
-  const currencyIds = (Array.isArray(snapshot.currencies) ? snapshot.currencies : []).map((currency) => currency.id);
   return EventShop.defaultFarmQuest(snapshot.farm || {}, currencyIds);
 }
 
@@ -2069,4 +2251,802 @@ function pickSelectedEventId(savedId, snapshots) {
   const known = snapshots.some((snap) => snap.event.id === savedId);
   if (known) return savedId;
   return snapshots.length > 0 ? snapshots[0].event.id : null;
+}
+
+/* ===...=== Event Shop Bonus CE Combo Optimizer (domain-private) ===...=== */
+
+const MAX_CE_BNB_NODES = 8000;
+const MAX_CE_LEAF_EVALS = 1000;
+const LARGE_CE_BNB_NODES = 800;
+const LARGE_CE_LEAF_EVALS = 80;
+const LARGE_POOL_SEED_EXACT_NODES = 300000;
+const LARGE_CE_LEAF_EXACT_NODES = 20000;
+
+function clampSchemaInteger(value, schema) {
+  if (typeof value !== "number" && typeof value !== "string") return schema.default;
+  if (typeof value === "string" && value.trim() === "") return schema.default;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return schema.default;
+  return Math.min(schema.max, Math.max(schema.min, Math.floor(num)));
+}
+
+function sanitizeCeOwned(saved, bonusCes) {
+  const list = Array.isArray(bonusCes) ? bonusCes : [];
+  const raw = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  const clean = {};
+  for (const ce of list) {
+    if (!ce || ce.id === undefined || ce.id === null) continue;
+    const key = String(ce.id);
+    const entry = Object.hasOwn(raw, key) ? raw[key] : null;
+    const obj = entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {};
+    clean[key] = {
+      limitBreak: EventShop.clampCeOwned(obj.limitBreak),
+      nonLimitBreak: EventShop.clampCeOwned(obj.nonLimitBreak),
+    };
+  }
+  return clean;
+}
+
+function normalizeBonusCes(bonusCes, ceOwned, equipLimit) {
+  const ownedMap = ceOwned && typeof ceOwned === "object" && !Array.isArray(ceOwned) ? ceOwned : {};
+  const normalized = [];
+  for (const ce of Array.isArray(bonusCes) ? bonusCes : []) {
+    if (!ce || ce.id === null || ce.id === undefined) continue;
+    if (!ce.bonuses || typeof ce.bonuses !== "object" || Array.isArray(ce.bonuses)) continue;
+    const key = String(ce.id);
+    const entry = Object.hasOwn(ownedMap, key) ? ownedMap[key] : null;
+    const obj = entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {};
+    const maxLB = Math.min(equipLimit, EventShop.clampCeOwned(obj.limitBreak));
+    const maxNLB = Math.min(equipLimit, EventShop.clampCeOwned(obj.nonLimitBreak));
+    if (maxLB <= 0 && maxNLB <= 0) continue;
+    const bonuses = {};
+    let hasBoost = false;
+    for (const [cid, spec] of Object.entries(ce.bonuses)) {
+      if (!spec || typeof spec !== "object" || Array.isArray(spec)) continue;
+      const lb = Math.max(0, count(spec.limitBreak));
+      const nlb = Math.max(0, count(spec.nonLimitBreak));
+      if (lb <= 0 && nlb <= 0) continue;
+      bonuses[String(cid)] = { limitBreak: lb, nonLimitBreak: nlb };
+      hasBoost = true;
+    }
+    if (hasBoost) normalized.push({ id: ce.id, maxLB, maxNLB, bonuses });
+  }
+  return normalized;
+}
+
+function microRateWithCe(drop, flatBonusRaw, ceBonus) {
+  if (!drop) return 0;
+  if (ceBonus <= 0) return micro(EventShop.dropPerRun(drop, flatBonusRaw));
+  const flatBonus = Validator.validate(flatBonusRaw, Schema.tier.Bonus);
+  return micro(count(drop.dropExpected) * (count(drop.num) + flatBonus + ceBonus));
+}
+
+function bestCeFarmPlan(table, priorityQuestId, normalizedCes, equipLimit, useAllQuests = false) {
+  const maxRatesByQuestId = buildMaxRatesByQuest(table.quests, table.bonus, normalizedCes, equipLimit);
+  const selected = useAllQuests
+    ? table.quests.filter((quest) =>
+        Object.values(maxRatesByQuestId.get(String(quest.meta.questId)) || {}).some((rate) => count(rate) > 0),
+      )
+    : selectCePool(table, priorityQuestId, maxRatesByQuestId);
+  if (!selected.length) return null;
+  const usefulSet = usefulCurrencySet(table);
+  const combosByQuest = selected.map((quest) =>
+    buildQuestParetoCombos(quest, table.bonus, normalizedCes, equipLimit, usefulSet),
+  );
+  if (combosByQuest.every((list) => list.length === 1)) {
+    const fixedPool = selected.map((quest, index) => ({
+      meta: quest.meta,
+      rates: combosByQuest[index][0].rates,
+    }));
+    const ceCombos = new Map(
+      selected.map((quest, index) => [String(quest.meta.questId), combosByQuest[index][0].ceCombo]),
+    );
+    return bestFarmPlanForPool(table, nondominatedQuests(fixedPool), ceCombos);
+  }
+  return solveCeBranchAndBound(table, selected, combosByQuest);
+}
+
+/* Currencies that can reach at least one positive deficit via the trade DAG; CEs boosting only
+   non-useful currencies never shorten runs and must not win tie-breaks by inflating surplus. */
+function usefulCurrencySet(table) {
+  const nodes = table.order;
+  const indexOf = new Map(nodes.map((key, pos) => [key, pos]));
+  const edges = nodes.map((key) =>
+    (table.chain[key] || [])
+      .map((trade) => ({ to: indexOf.get(trade.toKey), cost: trade.costMicro, get: trade.getMicro }))
+      .filter((edge) => edge.to !== undefined),
+  );
+  const upstream = buildUpstream(nodes, edges);
+  const useful = new Set();
+  for (let pos = 0; pos < nodes.length; pos++) {
+    if (count(table.deficits[nodes[pos]]) <= 0) continue;
+    for (const src of upstream[pos]) useful.add(nodes[src]);
+  }
+  return useful;
+}
+
+function buildMaxRatesByQuest(quests, bonus, normalizedCes, equipLimit) {
+  const map = new Map();
+  for (const quest of quests) {
+    const maxRates = {};
+    for (const key of Object.keys(quest.meta.drops || {})) {
+      maxRates[key] = maxQuestCurrencyRate(quest, key, bonus[key], normalizedCes, equipLimit);
+    }
+    map.set(String(quest.meta.questId), maxRates);
+  }
+  return map;
+}
+
+function maxQuestCurrencyRate(quest, key, flatBonusRaw, normalizedCes, equipLimit) {
+  const drop = quest.meta.drops ? quest.meta.drops[key] : null;
+  if (!drop || !(count(drop.dropExpected) > 0)) return 0;
+  const slots = [];
+  for (const ce of normalizedCes) {
+    const spec = ce.bonuses[key];
+    if (!spec) continue;
+    if (ce.maxLB > 0 && spec.limitBreak > 0) slots.push({ boost: spec.limitBreak, count: ce.maxLB });
+    if (ce.maxNLB > 0 && spec.nonLimitBreak > 0) slots.push({ boost: spec.nonLimitBreak, count: ce.maxNLB });
+  }
+  slots.sort((a, b) => b.boost - a.boost);
+  let ceBonus = 0;
+  let left = equipLimit;
+  for (const slot of slots) {
+    if (left <= 0) break;
+    const take = Math.min(left, slot.count);
+    ceBonus += take * slot.boost;
+    left -= take;
+  }
+  return microRateWithCe(drop, flatBonusRaw, ceBonus);
+}
+
+function selectCePool(table, priorityQuestId, maxRatesByQuestId) {
+  const picked = new Set();
+  const maxRateOf = (quest, key) => {
+    const entry = maxRatesByQuestId.get(String(quest.meta.questId));
+    return entry ? count(entry[key]) : 0;
+  };
+  for (const key of table.keys) {
+    if (table.deficits[key] <= 0) continue;
+    const topUpOptions = table.topUps.filter((quest) => maxRateOf(quest, key) > 0);
+    const options = topUpOptions.length ? topUpOptions : table.quests.filter((quest) => maxRateOf(quest, key) > 0);
+    if (options.length) picked.add(topUpQuest(options, key, table.selection[key], maxRateOf));
+  }
+  const allDrop = selectedAllDropQuest(table, priorityQuestId);
+  if (allDrop) picked.add(allDrop);
+  return table.quests.filter((quest) => picked.has(quest));
+}
+
+function buildQuestParetoCombos(quest, bonus, normalizedCes, equipLimit, usefulSet) {
+  const drops = quest.meta.drops || {};
+  const dropKeys = Object.keys(drops).filter((key) => drops[key] && count(drops[key].dropExpected) > 0);
+  const usefulKeys = dropKeys.filter((key) => usefulSet.has(key));
+  const relevant = [];
+  for (const ce of normalizedCes) {
+    const nlbVec = usefulKeys.map((key) => (ce.bonuses[key] ? ce.bonuses[key].nonLimitBreak : 0));
+    const lbVec = usefulKeys.map((key) => (ce.bonuses[key] ? ce.bonuses[key].limitBreak : 0));
+    if (nlbVec.some((value) => value > 0) || lbVec.some((value) => value > 0)) {
+      relevant.push({ ce, nlbVec, lbVec });
+    }
+  }
+  if (!relevant.length) return [{ rates: { ...quest.rates }, ceCombo: [] }];
+  let states = [{ slots: 0, vec: usefulKeys.map(() => 0), vecSum: 0, lbTotal: 0, counts: relevant.map(() => [0, 0]) }];
+  for (let i = 0; i < relevant.length; i++) {
+    states = expandParetoStep(states, relevant[i], i, usefulKeys.length, equipLimit);
+  }
+  states.sort(compareParetoState);
+  const pareto = [];
+  for (const candidate of states) {
+    if (!pareto.some((kept) => dominatesVec(kept.vec, candidate.vec))) pareto.push(candidate);
+  }
+  return pareto.map((state) => finalizeQuestCombo(drops, dropKeys, bonus, relevant, state));
+}
+
+function expandParetoStep(states, item, itemIdx, vecLen, equipLimit) {
+  const options = [];
+  for (let lb = 0; lb <= item.ce.maxLB; lb++) {
+    for (let nlb = 0; nlb <= item.ce.maxNLB && lb + nlb <= equipLimit; nlb++) {
+      const vec = new Array(vecLen);
+      for (let k = 0; k < vecLen; k++) vec[k] = lb * item.lbVec[k] + nlb * item.nlbVec[k];
+      options.push({ slots: lb + nlb, lb, nlb, vec });
+    }
+  }
+  const byKey = new Map();
+  for (const st of states) {
+    for (const opt of options) {
+      const nextSlots = st.slots + opt.slots;
+      if (nextSlots > equipLimit) continue;
+      let vecSum = 0;
+      const vec = new Array(vecLen);
+      for (let k = 0; k < vecLen; k++) {
+        const val = st.vec[k] + opt.vec[k];
+        vec[k] = val;
+        vecSum += val;
+      }
+      const key = `${nextSlots}|${vec.join(",")}`;
+      const lbTotal = st.lbTotal + opt.lb;
+      const prev = byKey.get(key);
+      if (
+        !prev ||
+        lbTotal > prev.lbTotal ||
+        (lbTotal === prev.lbTotal && betterCePrefixCounts(st.counts, itemIdx, opt.lb, opt.nlb, prev.counts))
+      ) {
+        const counts = st.counts.slice();
+        counts[itemIdx] = [opt.lb, opt.nlb];
+        byKey.set(key, { slots: nextSlots, vec, vecSum, lbTotal, counts });
+      }
+    }
+  }
+  const sorted = [...byKey.values()].sort(compareParetoState);
+  const pruned = [];
+  for (const candidate of sorted) {
+    if (!pruned.some((kept) => kept.slots <= candidate.slots && dominatesVec(kept.vec, candidate.vec))) {
+      pruned.push(candidate);
+    }
+  }
+  return pruned;
+}
+
+function dominatesVec(a, b) {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] < b[i]) return false;
+  }
+  return true;
+}
+
+function compareParetoState(a, b) {
+  if (b.vecSum !== a.vecSum) return b.vecSum - a.vecSum;
+  if (a.slots !== b.slots) return a.slots - b.slots;
+  if (b.lbTotal !== a.lbTotal) return b.lbTotal - a.lbTotal;
+  return compareCeCounts(a.counts, b.counts);
+}
+
+function betterCePrefixCounts(prefixCounts, idx, lb, nlb, prevCounts) {
+  for (let i = 0; i < idx; i++) {
+    const sa = prefixCounts[i][0] + prefixCounts[i][1];
+    const sb = prevCounts[i][0] + prevCounts[i][1];
+    if (sa !== sb) return sa > sb;
+    if (prefixCounts[i][0] !== prevCounts[i][0]) return prefixCounts[i][0] > prevCounts[i][0];
+  }
+  const curSlots = lb + nlb;
+  const prevSlots = prevCounts[idx][0] + prevCounts[idx][1];
+  if (curSlots !== prevSlots) return curSlots > prevSlots;
+  return lb > prevCounts[idx][0];
+}
+
+function compareCeCounts(a, b) {
+  for (let i = 0; i < a.length; i++) {
+    const sa = a[i][0] + a[i][1];
+    const sb = b[i][0] + b[i][1];
+    if (sa !== sb) return sb - sa;
+    if (a[i][0] !== b[i][0]) return b[i][0] - a[i][0];
+  }
+  return 0;
+}
+
+function finalizeQuestCombo(drops, dropKeys, bonus, relevant, state) {
+  const ceCombo = [];
+  for (let i = 0; i < relevant.length; i++) {
+    const [lb, nlb] = state.counts[i];
+    if (lb > 0 || nlb > 0) ceCombo.push({ ceId: relevant[i].ce.id, limitBreak: lb, nonLimitBreak: nlb });
+  }
+  const ceBonusByKey = {};
+  for (let i = 0; i < relevant.length; i++) {
+    const [lb, nlb] = state.counts[i];
+    if (lb <= 0 && nlb <= 0) continue;
+    for (const [cid, spec] of Object.entries(relevant[i].ce.bonuses)) {
+      ceBonusByKey[cid] = (ceBonusByKey[cid] || 0) + lb * spec.limitBreak + nlb * spec.nonLimitBreak;
+    }
+  }
+  const rates = {};
+  for (const key of dropKeys) rates[key] = microRateWithCe(drops[key], bonus[key], ceBonusByKey[key] || 0);
+  return { rates, ceCombo };
+}
+
+function nondominatedCeQuests(pool, combosByQuest) {
+  const positiveCombos = combosByQuest.map((list) =>
+    list.filter((combo) => Object.values(combo.rates).some((rate) => rate > 0)),
+  );
+  const keptQuests = [];
+  const keptCombos = [];
+  for (let bIdx = 0; bIdx < pool.length; bIdx++) {
+    if (!positiveCombos[bIdx].length) continue;
+    const questB = pool[bIdx];
+    const dominated = pool.some((questA, aIdx) => {
+      if (aIdx === bIdx || count(questA.meta.ap) > count(questB.meta.ap)) return false;
+      return positiveCombos[bIdx].every((comboB) =>
+        positiveCombos[aIdx].some((comboA) => dominatesComboRates(comboA.rates, comboB.rates)),
+      );
+    });
+    if (!dominated) {
+      keptQuests.push(questB);
+      keptCombos.push(positiveCombos[bIdx]);
+    }
+  }
+  return { pool: keptQuests, combosByQuest: keptCombos };
+}
+
+function dominatesComboRates(ratesA, ratesB) {
+  const keysB = Object.keys(ratesB).filter((key) => count(ratesB[key]) > 0);
+  if (!keysB.every((key) => count(ratesA[key]) >= count(ratesB[key]))) return false;
+  const keysA = Object.keys(ratesA).filter((key) => count(ratesA[key]) > 0);
+  return keysB.some((key) => count(ratesA[key]) > count(ratesB[key])) || keysA.length > keysB.length;
+}
+
+function solveCeBranchAndBound(table, rawPool, rawCombos) {
+  const { pool, combosByQuest } = nondominatedCeQuests(rawPool, rawCombos);
+  if (!pool.length) return null;
+  if (combosByQuest.every((list) => list.length <= 1)) {
+    const fixedPool = pool.map((quest, idx) => ({ meta: quest.meta, rates: combosByQuest[idx][0].rates }));
+    const ceCombos = new Map(pool.map((quest, idx) => [String(quest.meta.questId), combosByQuest[idx][0].ceCombo]));
+    return bestFarmPlanForPool(table, fixedPool, ceCombos);
+  }
+  const largePool = pool.length > 4;
+  const ctx = buildCeLpContext(table, pool, combosByQuest);
+  const root = certifiedLpBound(ctx, [], ctx.allIndices);
+  if (root.lb === Infinity) return null;
+  let best = seedCeIncumbent(ctx, root, largePool);
+  let nodeBudget = largePool ? LARGE_CE_BNB_NODES : MAX_CE_BNB_NODES;
+  let leafBudget = largePool ? LARGE_CE_LEAF_EVALS : MAX_CE_LEAF_EVALS;
+
+  const branch = (fixedPairs, undecidedQs, precomputedLp) => {
+    if (nodeBudget <= 0) return;
+    nodeBudget--;
+    const lp = precomputedLp || certifiedLpBound(ctx, fixedPairs, undecidedQs);
+    if (lp.lb === Infinity || (best && (largePool ? lp.lb >= best.totalPlays : lp.lb > best.totalPlays))) return;
+    if (!undecidedQs.length) {
+      if (!fixedPairs.length || leafBudget <= 0) return;
+      leafBudget--;
+      const activeQuests = fixedPairs.map(({ qi, ci }) => ({
+        meta: ctx.pool[qi].meta,
+        rates: ctx.combosByQuest[qi][ci].rates,
+        ceCombo: ctx.combosByQuest[qi][ci].ceCombo,
+      }));
+      best = betterPlan(best, exactCeLeafPlan(ctx.table, activeQuests, lp.lb, best, largePool));
+      return;
+    }
+    const { pickQ, maxWeight, orderedCombos } = pickBranchQuest(ctx, undecidedQs, lp);
+    const rest = undecidedQs.filter((qi) => qi !== pickQ);
+    if (maxWeight > 1e-6) {
+      for (const { ci } of orderedCombos) branch([...fixedPairs, { qi: pickQ, ci }], rest, null);
+      branch(fixedPairs, rest, null);
+    } else {
+      branch(fixedPairs, rest, null);
+      for (const { ci } of orderedCombos) branch([...fixedPairs, { qi: pickQ, ci }], rest, null);
+    }
+  };
+
+  branch([], ctx.allIndices, root);
+  return best;
+}
+
+function buildTradeEdges(table) {
+  const nodes = table.order;
+  const indexOf = new Map(nodes.map((key, pos) => [key, pos]));
+  const scale = 1 / CURRENCY_MICRO;
+  const edges = [];
+  for (let fromPos = 0; fromPos < nodes.length; fromPos++) {
+    for (const trade of table.chain[nodes[fromPos]] || []) {
+      const toPos = indexOf.get(trade.toKey);
+      if (toPos !== undefined && toPos > fromPos) {
+        edges.push({
+          fromPos,
+          toPos,
+          costMicro: trade.costMicro,
+          getMicro: trade.getMicro,
+          costUnit: trade.costMicro * scale,
+          getUnit: trade.getMicro * scale,
+        });
+      }
+    }
+  }
+  const baseRhs = nodes.map((key) => count(table.deficits[key]) * scale);
+  return { nodes, edges, baseRhs, scale };
+}
+
+function solvePoolLp(table, pool, baseRunsCount = 0) {
+  const { nodes, edges, baseRhs, scale } = buildTradeEdges(table);
+  const m = nodes.length;
+  const rhs = baseRhs.slice();
+  const cols = pool.map((quest) => Float64Array.from(nodes, (key) => count(quest.rates[key]) * scale));
+  if (baseRunsCount > 0) {
+    for (const vec of cols) {
+      for (let i = 0; i < m; i++) rhs[i] -= baseRunsCount * vec[i];
+    }
+  }
+  const nQuestCols = cols.length;
+  if (nQuestCols === 0 && !edges.length) {
+    const infeasible = rhs.some((val) => val > 1e-9);
+    return {
+      status: infeasible ? "infeasible" : "ok",
+      lb: infeasible ? Infinity : baseRunsCount * pool.length,
+      primal: new Float64Array(0),
+    };
+  }
+  const totalCols = nQuestCols + edges.length;
+  const costs = new Float64Array(totalCols);
+  costs.fill(1, 0, nQuestCols);
+  const lp = solveMinLp(m, cols, edges, rhs, costs);
+  if (lp.status === "infeasible") return { status: "infeasible", lb: Infinity, primal: new Float64Array(0) };
+  if (lp.status !== "ok") {
+    return { status: lp.status, lb: baseRunsCount * pool.length, primal: new Float64Array(nQuestCols) };
+  }
+  const dualDot = certifiedDualDot(m, cols, nQuestCols, edges, lp.dual, rhs);
+  const slack = 1e-9 * Math.max(1, Math.abs(dualDot));
+  const lb = baseRunsCount * pool.length + Math.max(0, Math.ceil(dualDot - slack));
+  return { status: "ok", lb, primal: lp.primal };
+}
+
+function lpSeedCandidate(table, pool, baseRunsCount = 0, ceCombosByQuestId = null) {
+  const lp = solvePoolLp(table, pool, baseRunsCount);
+  if (lp.status !== "ok") return { lpLb: lp.lb, plan: null };
+  const runs = {};
+  const rawYields = {};
+  let totalPlays = 0;
+  let apTotal = 0;
+  for (let j = 0; j < pool.length; j++) {
+    const quest = pool[j];
+    const countRuns = baseRunsCount + Math.floor(Math.max(0, lp.primal[j] || 0));
+    if (countRuns <= 0) continue;
+    runs[String(quest.meta.questId)] = countRuns;
+    addQuestYields(rawYields, quest, countRuns);
+    totalPlays += countRuns;
+    apTotal += countRuns * count(quest.meta.ap);
+  }
+  const seed = greedyFromStart(table, pool, { runs, rawYields, totalPlays, apTotal });
+  return {
+    lpLb: lp.lb,
+    plan: seed ? finishFarmPlan(table, seed.runs, seed.state, seed.rawYields, ceCombosByQuestId) : null,
+  };
+}
+
+function buildCeLpContext(table, pool, combosByQuest) {
+  const { nodes, edges, baseRhs, scale } = buildTradeEdges(table);
+  const lpRates = combosByQuest.map((list) =>
+    list.map((combo) => Float64Array.from(nodes, (key) => count(combo.rates[key]) * scale)),
+  );
+  return { table, pool, combosByQuest, nodes, edges, baseRhs, lpRates, allIndices: pool.map((_, idx) => idx) };
+}
+
+function seedCeIncumbent(ctx, root, largePool = false) {
+  const picked = new Map();
+  for (let j = 0; j < root.meta.length; j++) {
+    const val = root.primal[j];
+    if (val <= 1e-6) continue;
+    const { qi, ci } = root.meta[j];
+    const prev = picked.get(qi);
+    if (!prev || val > prev.val) picked.set(qi, { ci, val });
+  }
+  let best = null;
+  if (picked.size > 0) {
+    const lpQuests = [...picked.entries()].map(([qi, { ci }]) => ({
+      meta: ctx.pool[qi].meta,
+      rates: ctx.combosByQuest[qi][ci].rates,
+      ceCombo: ctx.combosByQuest[qi][ci].ceCombo,
+    }));
+    best = exactCeLeafPlan(ctx.table, lpQuests, root.lb, null, largePool, true);
+  }
+  const mainTarget = widestShortfall(ctx.table.deficits, ctx.table.keys);
+  const greedyPool = ctx.pool.map((quest, qi) => {
+    const chosen = ctx.combosByQuest[qi].reduce((a, b) =>
+      count(b.rates[mainTarget]) > count(a.rates[mainTarget]) ? b : a,
+    );
+    return { meta: quest.meta, rates: chosen.rates, ceCombo: chosen.ceCombo };
+  });
+  const ceCombos = new Map(greedyPool.map((q) => [String(q.meta.questId), q.ceCombo]));
+  const greedySeed = greedyFarmPlan(ctx.table, greedyPool, ceCombos);
+  return betterPlan(best, greedySeed);
+}
+
+function pickBranchQuest(ctx, undecidedQs, lp) {
+  const totalW = new Map(undecidedQs.map((qi) => [qi, 0]));
+  const comboScores = new Map(undecidedQs.map((qi) => [qi, ctx.combosByQuest[qi].map((_, ci) => ({ ci, w: 0 }))]));
+  for (let j = 0; j < lp.meta.length; j++) {
+    const { qi, ci, fixed } = lp.meta[j];
+    if (fixed) continue;
+    const w = lp.primal[j];
+    totalW.set(qi, totalW.get(qi) + w);
+    comboScores.get(qi)[ci].w = w;
+  }
+  let pickQ = undecidedQs[0];
+  let maxWeight = -1;
+  for (const qi of undecidedQs) {
+    const w = totalW.get(qi);
+    if (w > maxWeight) {
+      maxWeight = w;
+      pickQ = qi;
+    }
+  }
+  const orderedCombos = comboScores
+    .get(pickQ)
+    .slice()
+    .sort((a, b) => b.w - a.w || a.ci - b.ci);
+  return { pickQ, maxWeight, orderedCombos };
+}
+
+function certifiedLpBound(ctx, fixedPairs, undecidedQs) {
+  const m = ctx.nodes.length;
+  const rhs = ctx.baseRhs.slice();
+  const cols = [];
+  const meta = [];
+  for (const { qi, ci } of fixedPairs) {
+    const vec = ctx.lpRates[qi][ci];
+    for (let i = 0; i < m; i++) rhs[i] -= vec[i];
+    cols.push(vec);
+    meta.push({ qi, ci, fixed: true });
+  }
+  for (const qi of undecidedQs) {
+    const list = ctx.lpRates[qi];
+    for (let ci = 0; ci < list.length; ci++) {
+      cols.push(list[ci]);
+      meta.push({ qi, ci, fixed: false });
+    }
+  }
+  const nQuestCols = cols.length;
+  if (nQuestCols === 0 && !ctx.edges.length) {
+    return { lb: rhs.some((val) => val > 1e-9) ? Infinity : fixedPairs.length, primal: new Float64Array(0), meta };
+  }
+  const totalCols = nQuestCols + ctx.edges.length;
+  const costs = new Float64Array(totalCols);
+  costs.fill(1, 0, nQuestCols);
+  const lp = solveMinLp(m, cols, ctx.edges, rhs, costs);
+  if (lp.status === "infeasible") return { lb: Infinity, primal: new Float64Array(0), meta };
+  if (lp.status !== "ok") return { lb: fixedPairs.length, primal: new Float64Array(nQuestCols), meta };
+  const dualDot = certifiedDualDot(m, cols, nQuestCols, ctx.edges, lp.dual, rhs);
+  const slack = 1e-9 * Math.max(1, Math.abs(dualDot));
+  const lb = fixedPairs.length + Math.max(0, Math.ceil(dualDot - slack));
+  return { lb, primal: lp.primal, meta };
+}
+
+function certifiedDualDot(m, questCols, nQuestCols, edges, rawDual, rhs) {
+  const y = rawDual.slice();
+  const edgesByFrom = Array.from({ length: m }, () => []);
+  for (const edge of edges) edgesByFrom[edge.fromPos].push(edge);
+  for (let pos = m - 1; pos >= 0; pos--) {
+    for (const edge of edgesByFrom[pos]) {
+      const req = (edge.getMicro / edge.costMicro) * y[edge.toPos] * (1 + 1e-11);
+      if (req > y[pos]) y[pos] = req;
+    }
+  }
+  let maxDot = 1;
+  for (let j = 0; j < nQuestCols; j++) {
+    let dot = 0;
+    const col = questCols[j];
+    for (let i = 0; i < m; i++) dot += y[i] * col[i];
+    if (dot > maxDot) maxDot = dot;
+  }
+  const denom = maxDot * (1 + 1e-11);
+  let dualDot = 0;
+  for (let i = 0; i < m; i++) dualDot += (y[i] / denom) * rhs[i];
+  return dualDot;
+}
+
+/* Two-Phase Simplex for min c^T x s.t. A x >= rhs, x >= 0 over the currency DAG (<=6 rows). */
+function solveMinLp(m, questCols, edges, rhs, costs) {
+  const k = questCols.length + edges.length;
+  if (m === 0) return { status: "ok", primal: new Float64Array(k), dual: new Float64Array(0) };
+  const slackCols = new Int32Array(m);
+  const artCols = new Int32Array(m);
+  const rowType = new Int8Array(m);
+  const basis = new Int32Array(m);
+  let nCols = k;
+  for (let i = 0; i < m; i++) {
+    if (rhs[i] <= 0) {
+      rowType[i] = 0;
+      slackCols[i] = nCols;
+      basis[i] = nCols++;
+    } else {
+      rowType[i] = 1;
+      slackCols[i] = nCols++;
+    }
+  }
+  const firstArt = nCols;
+  for (let i = 0; i < m; i++) {
+    if (rowType[i] === 1) {
+      artCols[i] = nCols;
+      basis[i] = nCols++;
+    } else {
+      artCols[i] = -1;
+    }
+  }
+  const stride = nCols + 1;
+  const bCol = nCols;
+  const tableau = new Float64Array((m + 2) * stride);
+  fillLpTableau(tableau, m, stride, bCol, questCols, edges, rhs, costs, slackCols, artCols, rowType);
+  const runner = makeSimplexRunner(tableau, m, stride, bCol, firstArt, basis);
+  if (firstArt < nCols) {
+    if (runner.run(m + 1, m + 2, nCols, false) !== "optimal") return { status: "failed" };
+    if (-tableau[(m + 1) * stride + bCol] > 1e-6) return { status: "infeasible" };
+    for (let i = 0; i < m; i++) {
+      if (basis[i] < firstArt) continue;
+      for (let j = 0; j < firstArt; j++) {
+        if (Math.abs(tableau[i * stride + j]) > 1e-9) {
+          runner.pivot(i, j, m + 2);
+          break;
+        }
+      }
+    }
+  }
+  if (runner.run(m, m + 1, firstArt, true) !== "optimal") return { status: "failed" };
+  const primal = new Float64Array(k);
+  const dual = new Float64Array(m);
+  for (let i = 0; i < m; i++) {
+    if (basis[i] < k) primal[basis[i]] = Math.max(0, tableau[i * stride + bCol]);
+  }
+  const objRow = m * stride;
+  for (let i = 0; i < m; i++) dual[i] = Math.max(0, tableau[objRow + slackCols[i]]);
+  return { status: "ok", primal, dual };
+}
+
+function fillLpTableau(tableau, m, stride, bCol, questCols, edges, rhs, costs, slackCols, artCols, rowType) {
+  const nQuest = questCols.length;
+  for (let i = 0; i < m; i++) {
+    const off = i * stride;
+    const sign = rowType[i] === 0 ? -1 : 1;
+    for (let j = 0; j < nQuest; j++) tableau[off + j] = sign * questCols[j][i];
+    for (let eIdx = 0; eIdx < edges.length; eIdx++) {
+      const edge = edges[eIdx];
+      let coeff = 0;
+      if (edge.fromPos === i) coeff -= edge.costUnit;
+      if (edge.toPos === i) coeff += edge.getUnit;
+      tableau[off + nQuest + eIdx] = sign * coeff;
+    }
+    if (rowType[i] === 0) {
+      tableau[off + slackCols[i]] = 1;
+      tableau[off + bCol] = -rhs[i];
+    } else {
+      tableau[off + slackCols[i]] = -1;
+      tableau[off + artCols[i]] = 1;
+      tableau[off + bCol] = rhs[i];
+    }
+  }
+  const objRow = m * stride;
+  const p1Row = (m + 1) * stride;
+  for (let j = 0; j < costs.length; j++) tableau[objRow + j] = costs[j];
+  for (let i = 0; i < m; i++) {
+    if (rowType[i] !== 1) continue;
+    tableau[p1Row + artCols[i]] = 1;
+    const off = i * stride;
+    for (let j = 0; j <= bCol; j++) tableau[p1Row + j] -= tableau[off + j];
+  }
+}
+
+function makeSimplexRunner(tableau, m, stride, bCol, firstArt, basis) {
+  const pivot = (r, c, activeRows) => {
+    const rOff = r * stride;
+    const inv = 1 / tableau[rOff + c];
+    for (let j = 0; j <= bCol; j++) tableau[rOff + j] *= inv;
+    tableau[rOff + c] = 1;
+    for (let i = 0; i < activeRows; i++) {
+      if (i === r) continue;
+      const iOff = i * stride;
+      const factor = tableau[iOff + c];
+      if (Math.abs(factor) < 1e-14) continue;
+      for (let j = 0; j <= bCol; j++) tableau[iOff + j] -= factor * tableau[rOff + j];
+      tableau[iOff + c] = 0;
+    }
+    basis[r] = c;
+  };
+  const run = (costIdx, activeRows, maxCol, forbidArt) => {
+    for (let iter = 0; iter < 600; iter++) {
+      const cOff = costIdx * stride;
+      const useBland = iter >= 40;
+      let enter = -1;
+      let bestRc = -1e-9;
+      for (let j = 0; j < maxCol; j++) {
+        if (forbidArt && j >= firstArt) continue;
+        const rc = tableau[cOff + j];
+        if (rc < -1e-9) {
+          if (useBland) {
+            enter = j;
+            break;
+          }
+          if (rc < bestRc) {
+            bestRc = rc;
+            enter = j;
+          }
+        }
+      }
+      if (enter === -1) return "optimal";
+      let leave = -1;
+      let minRatio = Infinity;
+      for (let i = 0; i < m; i++) {
+        const a = tableau[i * stride + enter];
+        if (a <= 1e-11) continue;
+        const ratio = Math.max(0, tableau[i * stride + bCol]) / a;
+        if (
+          leave === -1 ||
+          ratio < minRatio - 1e-12 ||
+          (Math.abs(ratio - minRatio) <= 1e-12 && basis[i] < basis[leave])
+        ) {
+          minRatio = ratio;
+          leave = i;
+        }
+      }
+      if (leave === -1) return "unbounded";
+      pivot(leave, enter, activeRows);
+    }
+    return "timeout";
+  };
+  return { pivot, run };
+}
+
+function exactCeLeafPlan(table, activeQuests, minTotalHint, incumbent, largePool = false, isSeed = false) {
+  if (!activeQuests.length) return null;
+  const ceCombos = new Map(activeQuests.map((quest) => [String(quest.meta.questId), quest.ceCombo || []]));
+  const greedy = greedyCeLeafPlan(table, activeQuests, ceCombos);
+  const lpSeed = largePool || activeQuests.length > 4 ? lpSeedCandidate(table, activeQuests, 1, ceCombos) : null;
+  const seedPlan = lpSeed ? betterPlan(greedy, lpSeed.plan) : greedy;
+  const localBest = betterPlan(incumbent, seedPlan);
+  const bound = localBest && localBest.totalPlays !== null ? localBest.totalPlays : MAX_PLAN_SCAN;
+  const lpMin = lpSeed ? lpSeed.lpLb : 0;
+  if (
+    largePool &&
+    !isSeed &&
+    incumbent &&
+    Math.max(activeQuests.length, minTotalHint || 0, lpMin) >= incumbent.totalPlays
+  ) {
+    return seedPlan;
+  }
+  const kernel = buildExactKernel(table, activeQuests);
+  const baseState = buildFixedBaseState(kernel);
+  const minTotal = Math.max(
+    baseState.fixedCount,
+    minTotalHint || baseState.fixedCount,
+    lpMin,
+    minExactBaseTotal(kernel, baseState, bound),
+  );
+  const upperTotal = largePool && !isSeed && incumbent ? Math.min(incumbent.totalPlays - 1, bound) : bound;
+  const budget = {
+    nodes: largePool ? (isSeed ? LARGE_POOL_SEED_EXACT_NODES : LARGE_CE_LEAF_EXACT_NODES) : MAX_EXACT_SEARCH_NODES,
+  };
+  let winner = seedPlan;
+  for (let total = minTotal; total <= upperTotal; total++) {
+    const remaining = total - baseState.fixedCount;
+    if (!hopelessMix(kernel, 0, remaining, baseState.yields, baseState.cYields)) {
+      const mix = searchExactTotal(kernel, total, budget, baseState);
+      if (mix) {
+        winner = betterPlan(winner, finishExactPlan(table, activeQuests, mix, ceCombos));
+        break;
+      }
+    }
+    if (budget.nodes <= 0) break;
+  }
+  return winner;
+}
+
+function greedyCeLeafPlan(table, activeQuests, ceCombos) {
+  const runs = {};
+  const rawYields = {};
+  let totalPlays = 0;
+  let apTotal = 0;
+  for (const quest of activeQuests) {
+    const id = String(quest.meta.questId);
+    runs[id] = 1;
+    addQuestYields(rawYields, quest, 1);
+    totalPlays += 1;
+    apTotal += count(quest.meta.ap);
+  }
+  const seed = greedyFromStart(table, activeQuests, { runs, rawYields, totalPlays, apTotal });
+  return seed ? finishFarmPlan(table, seed.runs, seed.state, seed.rawYields, ceCombos) : null;
+}
+
+function buildFixedBaseState(kernel) {
+  const fixedCount = kernel.rates.length;
+  const yields = kernel.zeroYields.slice();
+  const cYields = kernel.cTargets.map(() => 0);
+  const runs = kernel.rates.map(() => 1);
+  for (let row = 0; row < fixedCount; row++) applyRow(kernel, yields, cYields, row, 1, 1);
+  return { fixedCount, yields, cYields, runs };
+}
+
+function minExactBaseTotal(kernel, baseState, bound) {
+  let lo = baseState.fixedCount;
+  const cBest = kernel.cSuffixBest[0];
+  for (let c = 0; c < kernel.cTargets.length; c++) {
+    const deficit = kernel.cTargets[c] - baseState.cYields[c];
+    if (deficit <= 0) continue;
+    if (cBest[c] <= 0) return bound + 1;
+    lo = Math.max(lo, baseState.fixedCount + Math.ceil(deficit / cBest[c]));
+  }
+  return lo;
 }

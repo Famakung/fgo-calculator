@@ -30,6 +30,13 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 <label class="input-label" for="eventSelect">Event</label>
                 <select class="select-field" id="eventSelect"></select>
               </div>
+              <div class="input-row">
+                <label class="input-label" for="questTypeSelect">Quest</label>
+                <select class="select-field" id="questTypeSelect">
+                  <option value="free">Free Quest</option>
+                  <option value="raid">Raid Boss</option>
+                </select>
+              </div>
             </div>
           </div>
           <div class="card">
@@ -127,7 +134,55 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                 </div>
               </div>
             </div>
-            <div class="farm-grid grid" id="farmGrid" style="display: none"></div>
+            <div class="farm-grid grid" id="farmGrid">
+              <div class="quest-drops-item farm-card farm-card--pre" data-tier="bronze">
+                <div class="farm-card-title"><span class="farm-card-icon"></span></div>
+                <div class="farm-card-body">
+                  <select class="select-field farm-quest-select" aria-label="Farm quest" disabled></select>
+                  <div class="farm-stat farm-quest-name"></div>
+                  <div class="farm-stat"></div>
+                  <div class="drop-line"><span class="mini-icon"></span></div>
+                  <div class="drop-line"><span class="mini-icon"></span></div>
+                </div>
+              </div>
+              <div class="quest-drops-item farm-card farm-card--pre" data-tier="silver">
+                <div class="farm-card-title"><span class="farm-card-icon"></span></div>
+                <div class="farm-card-body">
+                  <select class="select-field farm-quest-select" aria-label="Farm quest" disabled></select>
+                  <div class="farm-stat farm-quest-name"></div>
+                  <div class="farm-stat"></div>
+                  <div class="drop-line"><span class="mini-icon"></span></div>
+                  <div class="drop-line"><span class="mini-icon"></span></div>
+                </div>
+              </div>
+              <div class="quest-drops-item farm-card farm-card--pre" data-tier="gold">
+                <div class="farm-card-title"><span class="farm-card-icon"></span></div>
+                <div class="farm-card-body">
+                  <select class="select-field farm-quest-select" aria-label="Farm quest" disabled></select>
+                  <div class="farm-stat farm-quest-name"></div>
+                  <div class="farm-stat"></div>
+                  <div class="drop-line"><span class="mini-icon"></span></div>
+                  <div class="drop-line"><span class="mini-icon"></span></div>
+                </div>
+              </div>
+              <div class="quest-drops-item farm-card farm-card--combo farm-card--pre farm-card--pre-combo">
+                <div class="farm-card-title farm-card-title--icons">
+                  <span class="farm-card-icon"></span>
+                  <span class="farm-card-icon"></span>
+                  <span class="farm-card-icon"></span>
+                </div>
+                <div class="farm-card-body">
+                  <select class="select-field farm-quest-select" aria-label="Farm quest" disabled></select>
+                  <div class="farm-stat farm-quest-name"></div>
+                  <div class="farm-stat"></div>
+                  <div class="farm-combo-drops">
+                    <div class="drop-line"><span class="mini-icon"></span></div>
+                    <div class="drop-line"><span class="mini-icon"></span></div>
+                    <div class="drop-line"><span class="mini-icon"></span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
             </div>
           </div>
 
@@ -162,17 +217,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                     value="0"
                   />
                 </div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="bronzeBonus">Bonus</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="bronzeBonus"
-                    min="0"
-                    max="1000"
-                    value="0"
-                  />
-                </div>
               </div>
               <div class="material-card" data-tier="silver">
                 <div class="material-icon-wrapper">
@@ -198,17 +242,6 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                     id="silverHave"
                     min="0"
                     max="999999"
-                    value="0"
-                  />
-                </div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="silverBonus">Bonus</label>
-                  <input
-                    type="number"
-                    class="material-input-box-field"
-                    id="silverBonus"
-                    min="0"
-                    max="1000"
                     value="0"
                   />
                 </div>
@@ -240,20 +273,23 @@ import BaseLayout from '../layouts/BaseLayout.astro';
                     value="0"
                   />
                 </div>
-                <div class="material-input-box">
-                  <label class="material-input-box-label" for="goldBonus">Bonus</label>
+              </div>
+            </div>
+              <div class="bonus-ce-grid grid" id="bonusCeGrid"></div>
+              <div class="bond-card-actions bond-card-actions--end">
+                <div class="material-input-box eshop-ce-equip-box" id="ceBonusEquipWrap">
+                  <label class="material-input-box-label" for="ceBonusEquipInput">CE Bonus Equip</label>
                   <input
                     type="number"
                     class="material-input-box-field"
-                    id="goldBonus"
-                    min="0"
-                    max="1000"
-                    value="0"
+                    id="ceBonusEquipInput"
+                    min="1"
+                    max="6"
+                    step="1"
+                    value="6"
+                    inputmode="numeric"
                   />
                 </div>
-              </div>
-            </div>
-              <div class="bond-card-actions bond-card-actions--end">
                 <button class="calculate-btn" id="calculateBtn" type="button">
                   Calculate Quest Runs
                 </button>

@@ -281,19 +281,26 @@ function validateEventShopFarm(farm, currencyIds, ctx) {
   const questIds = new Set();
   farm.quests.forEach((quest) => validateFarmQuest(ctx, quest, currencyIds, questIds));
   validateFarmBest(ctx, farm.best, currencyIds, questIds);
+  if (farm.raids !== undefined) {
+    validateFarmRaids(ctx, farm.raids, currencyIds);
+  }
 }
 
-function validateFarmQuest(ctx, quest, currencyIds, questIds) {
-  const what = `${ctx} farm quest ${quest && quest.questId}`;
+function validateFarmQuest(ctx, quest, currencyIds, questIds, opts = {}) {
+  const { requireDrops = true, checkDifficultyLabel = false, label = "farm quest" } = opts;
+  const what = `${ctx} ${label} ${quest && quest.questId}`;
   if (!quest || typeof quest !== "object" || Array.isArray(quest)) {
-    errors.push(`${what}: farm quest must be an object (got ${JSON.stringify(quest)})`);
+    errors.push(`${what}: ${label} must be an object (got ${JSON.stringify(quest)})`);
     return;
   }
   if (!Number.isInteger(quest.questId) || quest.questId <= 0)
     errors.push(`${what}: questId must be a positive integer`);
-  if (questIds.has(quest.questId)) errors.push(`${what}: duplicate farm questId`);
+  if (questIds.has(quest.questId)) errors.push(`${what}: duplicate ${label}Id`);
   questIds.add(quest.questId);
   if (typeof quest.questName !== "string") errors.push(`${what}: questName must be a string`);
+  if (checkDifficultyLabel && quest.difficultyLabel !== undefined && typeof quest.difficultyLabel !== "string") {
+    errors.push(`${what}: difficultyLabel must be a string`);
+  }
   if (typeof quest.recommendLv !== "string" && typeof quest.recommendLv !== "number") {
     errors.push(`${what}: recommendLv must be a string or number (got ${JSON.stringify(quest.recommendLv)})`);
   }
@@ -302,7 +309,40 @@ function validateFarmQuest(ctx, quest, currencyIds, questIds) {
       errors.push(`${what}: ${field} must be a non-negative integer`);
   }
   const keys = validateFarmDrops(what, quest.drops, currencyIds);
-  if (!keys.length) errors.push(`${what}: drops must carry at least one shop currency`);
+  if (requireDrops && !keys.length) errors.push(`${what}: drops must carry at least one shop currency`);
+}
+
+function validateFarmRaids(ctx, raids, currencyIds) {
+  if (!Array.isArray(raids)) {
+    errors.push(`${ctx}: farm.raids must be an array (got ${JSON.stringify(raids)})`);
+    return;
+  }
+  const bossIds = new Set();
+  const raidQuestIds = new Set();
+  raids.forEach((boss, index) => {
+    const bossCtx = `${ctx} farm raid ${boss && boss.bossId}`;
+    if (!boss || typeof boss !== "object" || Array.isArray(boss)) {
+      errors.push(`${ctx}: farm.raids[${index}] must be an object (got ${JSON.stringify(boss)})`);
+      return;
+    }
+    if (!Number.isInteger(boss.bossId) || boss.bossId <= 0) {
+      errors.push(`${bossCtx}: bossId must be a positive integer`);
+    }
+    if (bossIds.has(boss.bossId)) errors.push(`${bossCtx}: duplicate bossId`);
+    bossIds.add(boss.bossId);
+    if (typeof boss.bossName !== "string") errors.push(`${bossCtx}: bossName must be a string`);
+    if (!Array.isArray(boss.quests) || boss.quests.length === 0) {
+      errors.push(`${bossCtx}: quests must be a non-empty array`);
+      return;
+    }
+    boss.quests.forEach((quest) =>
+      validateFarmQuest(bossCtx, quest, currencyIds, raidQuestIds, {
+        requireDrops: false,
+        checkDifficultyLabel: true,
+        label: "raid quest",
+      }),
+    );
+  });
 }
 
 function validateFarmDrops(what, drops, currencyIds) {
@@ -363,6 +403,60 @@ function validateEventShopTrades(trades, currencyIds, ctx) {
   });
 }
 
+function validateEventShopBonusCes(bonusCes, currencyIds, ctx) {
+  if (!Array.isArray(bonusCes)) {
+    errors.push(`${ctx}: bonusCes must be an array (got ${JSON.stringify(bonusCes)})`);
+    return;
+  }
+  const ceIds = new Set();
+  bonusCes.forEach((ce, i) => {
+    const what = `${ctx} bonus CE ${ce && ce.id}`;
+    if (!ce || typeof ce !== "object" || Array.isArray(ce)) {
+      errors.push(`${ctx}: bonusCes[${i}] must be an object`);
+      return;
+    }
+    if (!Number.isInteger(ce.id) || ce.id <= 0) {
+      errors.push(`${what}: id must be a positive integer`);
+    }
+    if (ceIds.has(ce.id)) errors.push(`${what}: duplicate bonus CE id`);
+    ceIds.add(ce.id);
+    if (!Number.isInteger(ce.rarity) || ce.rarity < 1 || ce.rarity > 5) {
+      errors.push(`${what}: rarity must be an integer 1..5 (got ${JSON.stringify(ce.rarity)})`);
+    }
+    if (i > 0) {
+      const prev = bonusCes[i - 1];
+      if (prev.rarity > ce.rarity || (prev.rarity === ce.rarity && prev.id >= ce.id)) {
+        errors.push(`${ctx}: bonusCes not sorted by (rarity asc, id asc) at ${ce.id}`);
+      }
+    }
+    checkShopName(ce, "bonus CE");
+    checkShopIcon(ce, "bonus CE");
+    if (!ce.bonuses || typeof ce.bonuses !== "object" || Array.isArray(ce.bonuses)) {
+      errors.push(`${what}: bonuses must be an object`);
+      return;
+    }
+    const bonusEntries = Object.entries(ce.bonuses);
+    if (!bonusEntries.length) {
+      errors.push(`${what}: bonuses must include at least one shop currency`);
+    }
+    for (const [cidKey, bonus] of bonusEntries) {
+      if (!currencyIds.has(Number(cidKey))) {
+        errors.push(`${what}.bonuses: key ${cidKey} is not a shop currency`);
+      }
+      if (!bonus || typeof bonus !== "object" || Array.isArray(bonus)) {
+        errors.push(`${what}.bonuses[${cidKey}]: must be an object`);
+        continue;
+      }
+      if (!Number.isInteger(bonus.nonLimitBreak) || bonus.nonLimitBreak <= 0) {
+        errors.push(`${what}.bonuses[${cidKey}]: nonLimitBreak must be a positive integer`);
+      }
+      if (!Number.isInteger(bonus.limitBreak) || bonus.limitBreak < (bonus.nonLimitBreak || 1)) {
+        errors.push(`${what}.bonuses[${cidKey}]: limitBreak must be an integer >= nonLimitBreak`);
+      }
+    }
+  });
+}
+
 function validateEventShopSnapshot(snapshot, index, total) {
   if (!snapshot || typeof snapshot.event !== "object" || snapshot.event === null) {
     errors.push(`Event Shop: events[${index}].event must be an object (got ${JSON.stringify(snapshot)})`);
@@ -378,6 +472,7 @@ function validateEventShopSnapshot(snapshot, index, total) {
   validateEventShopItems(snapshot.items, currencyIds, ctx);
   validateEventShopFarm(snapshot.farm, currencyIds, ctx);
   validateEventShopTrades(snapshot.trades, currencyIds, ctx);
+  validateEventShopBonusCes(snapshot.bonusCes, currencyIds, ctx);
   if (index > 0) {
     const prev = total[index - 1];
     if ((prev.event.startedAt || 0) < (event.startedAt || 0)) {

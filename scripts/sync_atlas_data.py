@@ -1709,11 +1709,11 @@ def _latest_past_farm_event(
 
 def _farm_event_passes(cache_dir: str, event: dict, force: bool = False) -> bool:
     """Amendment J farm-event test: the event's shop has rows, and at least one repeatable quest
-    (afterClear repeatLast|repeat) in its wars reports community drops for at least one of the
-    shop's own currencies on REPEAT runs — the same quests the snapshot ships (Amendment L's
-    challenge exclusion included). A campaign exchange shop (no war) and a memorial battle (quests
-    without submissions) both fail it. Reads the same event/war/quest files the snapshot's farm
-    collection reads, once per run; a fetch that cannot be read raises, never a silent prune."""
+    (afterClear repeatLast|repeat, free or raid) in its wars reports community drops for at least
+    one of the shop's own currencies on REPEAT runs — the same quests the snapshot ships (Amendment
+    L's challenge exclusion included). A campaign exchange shop (no war) and a memorial battle
+    (quests without submissions) both fail it. Reads the same event/war/quest files the snapshot's
+    farm collection reads, once per run; a fetch that cannot be read raises, never a silent prune."""
     detail = _event_detail(cache_dir, event, force=force)
     currency_ids = _shop_currency_ids(_shop_entries(detail))
     if not currency_ids:
@@ -1803,10 +1803,10 @@ def resolve_equip_name(equip_id: Optional[int], entry: dict, names: Dict[str, Di
 # --- Farm model (Amendment L): every repeatable quest that pays a shop currency on repeat runs ---
 
 
-def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, strict: bool = False) -> List[dict]:
-    """Quests of one war the game reopens after a clear; a war that cannot be read has none. Strict
-    is the farm-event test's call: there an unreadable war raises, because a swallowed read looks
-    exactly like an event with no repeatable quests and would silently prune a good shop."""
+def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, strict: bool = False) -> List[Tuple[dict, dict]]:
+    """(spot, quest) pairs of one war the game reopens after a clear; a war that cannot be read has
+    none. Strict is the farm-event test's call: there an unreadable war raises, because a swallowed
+    read looks exactly like an event with no repeatable quests and would silently prune a good shop."""
     try:
         war = get_cached_json(cache_dir, f"nice_war_{war_id}.json", f"{API_BASE}/nice/JP/war/{war_id}?lang=en", force=force)
     except Exception as e:
@@ -1816,7 +1816,7 @@ def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, str
         return []
     spots = war.get("spots") if isinstance(war, dict) else None
     return [
-        quest
+        (spot, quest)
         for spot in (spots or [])
         for quest in (spot.get("quests") or [])
         if quest.get("afterClear") in REPEATABLE_AFTER_CLEAR
@@ -1840,18 +1840,22 @@ def _quest_phase_detail(cache_dir: str, quest: dict, force: bool = False, strict
         return None
 
 
-def _farm_quest(quest: dict, detail: dict) -> dict:
-    """The farm candidate: what the quest asks and pays, plus its repeat drop lines and first-clear
-    gifts. The gifts matter to the challenge exclusion (Amendment L2): a shop currency handed out
-    once on first clear but never dropped again is not something the quest can be farmed for."""
+def _farm_quest(quest: dict, detail: dict, spot: Optional[dict] = None) -> dict:
+    """The farm candidate: what the quest asks and pays, plus its repeat drop lines, first-clear
+    gifts, and raid/boss grouping metadata."""
+    quest_name = detail.get("name") or quest.get("name") or ""
+    spot_obj = spot or {}
     return {
         "questId": quest.get("id"),
         "phase": max(quest.get("phases") or [0]),
-        "questName": detail.get("name") or quest.get("name") or "",
+        "questName": quest_name,
         "recommendLv": detail.get("recommendLv") or quest.get("recommendLv") or "",
         "ap": int(detail.get("consume") or quest.get("consume") or 0),
         "drops": detail.get("drops") or [],
         "gifts": detail.get("gifts") or [],
+        "isRaid": "raid" in (quest.get("flags") or []),
+        "bossId": spot_obj.get("id") or quest.get("spotId") or quest.get("id"),
+        "bossName": spot_obj.get("name") or detail.get("spotName") or quest_name,
     }
 
 
@@ -1866,10 +1870,10 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
     if key not in _farm_quests_results:
         quests = []
         for war_id in key:
-            for quest in _war_repeatable_quests(cache_dir, war_id, force=force, strict=strict):
+            for spot, quest in _war_repeatable_quests(cache_dir, war_id, force=force, strict=strict):
                 detail = _quest_phase_detail(cache_dir, quest, force=force, strict=strict)
                 if detail:
-                    quests.append(_farm_quest(quest, detail))
+                    quests.append(_farm_quest(quest, detail, spot=spot))
         _farm_quests_results[key] = quests
     return _farm_quests_results[key]
 
@@ -1922,13 +1926,24 @@ def _first_time_only_reward(quest: dict, shop_currency_ids: List[int], drops: Di
     return any(str(currency_id) not in drops for currency_id in gift_ids)
 
 
+_REC_SUFFIX_RANK = {"": 0, "+": 1, "++": 2, "+++": 3, "★": 4}
+_REC_LV_RE = re.compile(r"^\s*(\d+)\s*(.*)$")
+
+
+def _quest_shop_drops(quest: dict, shop_currency_ids: List[int]) -> Tuple[Dict[str, dict], int]:
+    """Best repeat-drop line per shop currency for one quest, plus max sampleRuns (0 when none)."""
+    rows = {str(currency_id): (_drop_rows([quest], currency_id) or [None])[0] for currency_id in shop_currency_ids}
+    drops = {key: {"dropExpected": row["dropExpected"], "num": row["num"]} for key, row in rows.items() if row}
+    sample_runs = max((row["sampleRuns"] for row in rows.values() if row), default=0)
+    return drops, sample_runs
+
+
 def _farm_quest_entry(quest: dict, shop_currency_ids: List[int]) -> Optional[dict]:
     """The shipped farm card for one quest: its per-currency repeat drops plus the reported-run
     count. None when the quest repeats no shop currency at all, or when a gift-only shop-currency
     reward marks it a challenge quest (Amendment L2). sampleRuns is the highest run count among the
     drop lines the card ships."""
-    rows = {str(currency_id): (_drop_rows([quest], currency_id) or [None])[0] for currency_id in shop_currency_ids}
-    drops = {key: {"dropExpected": row["dropExpected"], "num": row["num"]} for key, row in rows.items() if row}
+    drops, sample_runs = _quest_shop_drops(quest, shop_currency_ids)
     if not drops or _first_time_only_reward(quest, shop_currency_ids, drops):
         return None
     return {
@@ -1936,9 +1951,70 @@ def _farm_quest_entry(quest: dict, shop_currency_ids: List[int]) -> Optional[dic
         "questName": quest["questName"],
         "recommendLv": quest["recommendLv"],
         "ap": quest["ap"],
-        "sampleRuns": max(row["sampleRuns"] for row in rows.values() if row),
+        "sampleRuns": sample_runs,
         "drops": drops,
     }
+
+
+def _raid_difficulty_label(quest_name: str, boss_name: str) -> str:
+    """Strip leading bossName + whitespace from questName; fall back to questName if empty."""
+    if boss_name and quest_name.startswith(boss_name):
+        stripped = quest_name[len(boss_name) :].lstrip()
+        if stripped:
+            return stripped
+    return quest_name
+
+
+def _rec_lv_sort_key(quest: dict) -> Tuple[int, int, int, int]:
+    """Sort key for REC Lv descending (numeric desc, suffix rank desc, missing last, tie questId asc)."""
+    raw = quest.get("recommendLv")
+    text = "" if raw is None else str(raw).strip()
+    match = _REC_LV_RE.match(text)
+    if not match:
+        return (1, 0, 0, quest["questId"])
+    level = int(match.group(1))
+    suffix = match.group(2).strip()
+    suffix_rank = _REC_SUFFIX_RANK.get(suffix, 5)
+    return (0, -level, -suffix_rank, quest["questId"])
+
+
+def _raid_quest_entry(quest: dict, shop_currency_ids: List[int]) -> Optional[dict]:
+    """One raid difficulty entry; kept even when drops is {} and sampleRuns is 0, unless first-time-only."""
+    drops, sample_runs = _quest_shop_drops(quest, shop_currency_ids)
+    if _first_time_only_reward(quest, shop_currency_ids, drops):
+        return None
+    rec_lv = quest.get("recommendLv")
+    return {
+        "questId": quest["questId"],
+        "questName": quest["questName"],
+        "difficultyLabel": _raid_difficulty_label(quest["questName"], quest.get("bossName") or ""),
+        "recommendLv": "" if rec_lv is None else str(rec_lv),
+        "ap": quest["ap"],
+        "sampleRuns": sample_runs,
+        "drops": drops,
+    }
+
+
+def _collect_raids(quests: List[dict], currency_ids: List[int]) -> List[dict]:
+    """Group repeatable raid-flagged quests by boss spot, sorted by bossId asc and REC Lv desc."""
+    bosses: Dict[int, dict] = {}
+    for quest in quests:
+        if not quest.get("isRaid"):
+            continue
+        entry = _raid_quest_entry(quest, currency_ids)
+        if not entry:
+            continue
+        boss_id = quest.get("bossId") or quest["questId"]
+        boss_name = quest.get("bossName") or quest["questName"]
+        if boss_id not in bosses:
+            bosses[boss_id] = {"bossId": boss_id, "bossName": boss_name, "quests": []}
+        bosses[boss_id]["quests"].append(entry)
+    result = []
+    for boss_id in sorted(bosses):
+        boss = bosses[boss_id]
+        boss["quests"].sort(key=_rec_lv_sort_key)
+        result.append(boss)
+    return result
 
 
 def _farm_best(quests: List[dict], shop_currency_ids: List[int]) -> Dict[str, int]:
@@ -1957,11 +2033,13 @@ def _farm_best(quests: List[dict], shop_currency_ids: List[int]) -> Dict[str, in
 
 
 def _collect_farm(cache_dir: str, war_ids: List[int], currency_ids: List[int], force: bool = False) -> dict:
-    """farm = { quests: [repeat-drop quests], best: { currencyId: questId } } (Amendment L2), the
-    shop's own currencies only. An event with no wars simply has no quests."""
+    """farm = { quests: [repeat-drop free quests], best: { currencyId: questId }, raids: [boss groups] }.
+    Free Quests and Raid Bosses are separated by the 'raid' quest flag; an event with no wars has
+    empty lists and an empty best map."""
     quests = _collect_farm_quests(cache_dir, war_ids, force=force) if war_ids else []
-    shipped = [entry for entry in (_farm_quest_entry(quest, currency_ids) for quest in quests) if entry]
-    return {"quests": shipped, "best": _farm_best(shipped, currency_ids)}
+    free_quests = [quest for quest in quests if not quest.get("isRaid")]
+    shipped = [entry for entry in (_farm_quest_entry(quest, currency_ids) for quest in free_quests) if entry]
+    return {"quests": shipped, "best": _farm_best(shipped, currency_ids), "raids": _collect_raids(quests, currency_ids)}
 
 
 # --- Costume faces (Amendment F): the costume detail, not the servant's base face ---
@@ -2221,7 +2299,95 @@ def _shop_entries(detail: dict) -> List[dict]:
     return [e for e in ((detail or {}).get("shop") or []) if isinstance(e, dict)]
 
 
-def _collect_event_snapshot(cache_dir: str, event: dict, item_map: Dict[int, dict], names: Dict[str, Dict[int, dict]], force: bool = False, dry_run: bool = False) -> Optional[dict]:
+def _load_equip_export(cache_dir: str, force: bool = False) -> List[dict]:
+    """Bulk JP equip export (shared with CE sync); an outage warns and skips bonus CEs."""
+    try:
+        data = get_cached_json(cache_dir, "nice_equip_lang_en.json", EQUIP_EXPORT_URL, force=force)
+    except Exception as e:
+        print(f"  [WARN] nice_equip_lang_en.json unavailable, bonus CEs skipped: {e}", file=sys.stderr)
+        return []
+    return data if isinstance(data, list) else []
+
+
+def _currency_individuality_map(currency_ids: List[int], item_map: Dict[int, dict]) -> Dict[int, int]:
+    """Map each shop currency's Atlas drop individuality id -> currency item id."""
+    ind_to_currency: Dict[int, int] = {}
+    for cid in currency_ids:
+        item = (item_map or {}).get(cid) or {}
+        for ind in item.get("individuality") or []:
+            ind_id = ind.get("id") if isinstance(ind, dict) else ind
+            if isinstance(ind_id, int) and ind_id > 0:
+                ind_to_currency[ind_id] = cid
+    return ind_to_currency
+
+
+def _equip_event_bonuses(equip: dict, event_id: int, ind_to_currency: Dict[int, int]) -> Dict[str, dict]:
+    """Extract {str(currencyId): {nonLimitBreak, limitBreak}} from eventDropUp skills for event_id."""
+    adds_by_currency: Dict[int, List[int]] = {}
+    for skill in equip.get("skills") or []:
+        if not isinstance(skill, dict):
+            continue
+        for fn in skill.get("functions") or []:
+            if not isinstance(fn, dict) or fn.get("funcType") != "eventDropUp":
+                continue
+            for sv in fn.get("svals") or []:
+                if not isinstance(sv, dict) or sv.get("EventId") != event_id:
+                    continue
+                cid = ind_to_currency.get(sv.get("Individuality"))
+                add = sv.get("AddCount")
+                if cid and isinstance(add, int) and add > 0:
+                    adds_by_currency.setdefault(cid, []).append(add)
+    return {
+        str(cid): {"nonLimitBreak": min(adds), "limitBreak": max(adds)}
+        for cid, adds in sorted(adds_by_currency.items())
+    }
+
+
+def _collect_bonus_ces(
+    event_id: int,
+    currency_ids: List[int],
+    item_map: Dict[int, dict],
+    equips: Optional[List[dict]],
+    names: Dict[str, Dict[int, dict]],
+    force: bool = False,
+    dry_run: bool = False,
+) -> List[dict]:
+    """Discover event bonus CEs boosting at least one shop currency, sorted (rarity, id)."""
+    ind_to_currency = _currency_individuality_map(currency_ids, item_map)
+    if not ind_to_currency or not equips:
+        return []
+    bonus_ces = []
+    for equip in equips:
+        if not isinstance(equip, dict):
+            continue
+        eid = equip.get("id")
+        if not isinstance(eid, int) or eid <= 0:
+            continue
+        bonuses = _equip_event_bonuses(equip, event_id, ind_to_currency)
+        if not bonuses:
+            continue
+        rarity = equip.get("rarity")
+        rarity = rarity if isinstance(rarity, int) and 1 <= rarity <= 5 else 3
+        bonus_ces.append({
+            "id": eid,
+            "name": resolve_equip_name(eid, {}, names, equip),
+            "rarity": rarity,
+            "icon": _event_icon_file("equip", eid, _equip_face_asset_path(equip), force=force, dry_run=dry_run),
+            "bonuses": bonuses,
+        })
+    bonus_ces.sort(key=lambda ce: (ce["rarity"], ce["id"]))
+    return bonus_ces
+
+
+def _collect_event_snapshot(
+    cache_dir: str,
+    event: dict,
+    item_map: Dict[int, dict],
+    names: Dict[str, Dict[int, dict]],
+    equips: Optional[List[dict]] = None,
+    force: bool = False,
+    dry_run: bool = False,
+) -> Optional[dict]:
     """One event's snapshot, or None when it has no shop to snapshot (the G1 non-empty filter)."""
     detail = _event_detail(cache_dir, event, force=force)
     entries = _shop_entries(detail)
@@ -2230,13 +2396,23 @@ def _collect_event_snapshot(cache_dir: str, event: dict, item_map: Dict[int, dic
     currencies, items = _map_shop_entries(cache_dir, entries, item_map, names, force, dry_run)
     if not items:
         return None
+    sorted_currencies = sorted(currencies)
     war_ids = detail.get("warIds") or event.get("warIds") or []
     return {
         "event": _event_window(event),
-        "currencies": [currencies[cid] for cid in sorted(currencies)],
+        "currencies": [currencies[cid] for cid in sorted_currencies],
         "items": sorted(items, key=lambda it: (it["priority"], it["id"])),
-        "farm": _collect_farm(cache_dir, war_ids, sorted(currencies), force=force),
-        "trades": _shop_trades(entries, sorted(currencies)),
+        "farm": _collect_farm(cache_dir, war_ids, sorted_currencies, force=force),
+        "trades": _shop_trades(entries, sorted_currencies),
+        "bonusCes": _collect_bonus_ces(
+            event["id"],
+            sorted_currencies,
+            item_map,
+            equips,
+            names,
+            force=force,
+            dry_run=dry_run,
+        ),
     }
 
 
@@ -2338,11 +2514,12 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
 
     item_map = load_nice_item_map(cache_dir, force=force)
     names = load_event_name_maps(cache_dir, item_map, force=force)
+    equips = _load_equip_export(cache_dir, force=force)
 
     snapshots, failures = [], 0
     for event in events:
         try:
-            snapshot = _collect_event_snapshot(cache_dir, event, item_map, names, force=force, dry_run=dry_run)
+            snapshot = _collect_event_snapshot(cache_dir, event, item_map, names, equips=equips, force=force, dry_run=dry_run)
         except Exception as e:
             failures += 1
             print(f"  [WARN] Event {event.get('id')} shop fetch failed: {e}", file=sys.stderr)

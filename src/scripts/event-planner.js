@@ -110,6 +110,38 @@ export const EventPlanner = {
     this._mutatePlan({ bonus: clampCurrencyBox(this.activePlan().bonus, currencyId, value, Schema.tier.Bonus) });
   },
 
+  ceOwnedOf(ceId) {
+    const entry = (this.activePlan().ceOwned || {})[String(ceId)];
+    return {
+      limitBreak: entry ? entry.limitBreak || 0 : 0,
+      nonLimitBreak: entry ? entry.nonLimitBreak || 0 : 0,
+    };
+  },
+
+  setCeOwned(ceId, kind, value) {
+    if (kind !== "limitBreak" && kind !== "nonLimitBreak") return;
+    const event = this.activeEvent();
+    if (!event) return;
+    const key = String(ceId);
+    if (!(event.bonusCes || []).some((ce) => String(ce.id) === key)) return;
+    const current = this.activePlan().ceOwned || {};
+    const prev = current[key] || { limitBreak: 0, nonLimitBreak: 0 };
+    this._mutatePlan({
+      ceOwned: {
+        ...current,
+        [key]: { ...prev, [kind]: EventShop.clampCeOwned(value) },
+      },
+    });
+  },
+
+  ceEquipLimit() {
+    return EventShop.clampCeEquipLimit(this.activePlan().ceEquipLimit);
+  },
+
+  setCeEquipLimit(value) {
+    this._mutatePlan({ ceEquipLimit: EventShop.clampCeEquipLimit(value) });
+  },
+
   /* The 3-in-1 card's quest pick (Amendment L4): the dropdown only offers this event's all-covering
      quests, and anything else — a stale id, a quest the data retired — re-defaults through the same
      domain rule the load-time sanitize uses, so the plan never holds a quest the cards cannot show. */
@@ -117,9 +149,9 @@ export const EventPlanner = {
     const event = this.activeEvent();
     if (!event) return;
     const quests = (event.farm || {}).quests || [];
+    const currencyIds = currencyIdsOf(event);
     const id = Number(questId);
-    const known = quests.some((quest) => quest.questId === id);
-    const currencyIds = (event.currencies || []).map((currency) => currency.id);
+    const known = quests.some((quest) => quest.questId === id && EventShop.hasDropData(quest, currencyIds));
     this._mutatePlan({ farmQuest: known ? id : EventShop.defaultFarmQuest(event.farm || {}, currencyIds) });
   },
 
@@ -132,7 +164,7 @@ export const EventPlanner = {
     const event = this.activeEvent();
     if (!event) return;
     const key = String(currencyId);
-    const currencyIds = (event.currencies || []).map((currency) => currency.id);
+    const currencyIds = currencyIdsOf(event);
     const choice = EventShop.sanitizedCurrencyQuest({
       farm: event.farm || {},
       currencyIds,
@@ -140,6 +172,58 @@ export const EventPlanner = {
       saved: questId,
     });
     this._mutatePlan({ currencyQuest: { ...this.activePlan().currencyQuest, [key]: choice } });
+  },
+
+  questType() {
+    const event = this.activeEvent();
+    if (!hasEventRaids(event)) return "free";
+    return this.activePlan().questType === "raid" ? "raid" : "free";
+  },
+
+  setQuestType(type) {
+    const event = this.activeEvent();
+    if (!event) return;
+    const next = hasEventRaids(event) && type === "raid" ? "raid" : "free";
+    this._mutatePlan({ questType: next });
+  },
+
+  raidQuestOf(bossId) {
+    const event = this.activeEvent();
+    const boss = findRaidBoss(event, bossId);
+    if (!boss) return null;
+    const savedMap = this.activePlan().raidQuest || {};
+    const key = String(boss.bossId);
+    const saved = Object.hasOwn(savedMap, key) ? savedMap[key] : undefined;
+    return EventShop.sanitizedRaidQuest(boss, saved, currencyIdsOf(event));
+  },
+
+  setRaidQuest(bossId, questId) {
+    const event = this.activeEvent();
+    const boss = findRaidBoss(event, bossId);
+    if (!boss) return;
+    const choice = EventShop.sanitizedRaidQuest(boss, questId, currencyIdsOf(event));
+    if (choice === null) return;
+    const key = String(boss.bossId);
+    this._mutatePlan({ raidQuest: { ...this.activePlan().raidQuest, [key]: choice } });
+  },
+
+  activeRaidQuests() {
+    const event = this.activeEvent();
+    const raids = (event && event.farm && event.farm.raids) || [];
+    if (!Array.isArray(raids) || !raids.length) return [];
+    const currencyIds = currencyIdsOf(event);
+    const savedMap = this.activePlan().raidQuest || {};
+    const selected = [];
+    for (const boss of raids) {
+      const quests = EventShop.raidBossQuests(boss, currencyIds);
+      if (!quests.length) continue;
+      const key = String(boss.bossId);
+      const saved = Object.hasOwn(savedMap, key) ? savedMap[key] : undefined;
+      const questId = EventShop.sanitizedRaidQuest(boss, saved, currencyIds);
+      const quest = quests.find((entry) => entry.questId === questId);
+      if (quest) selected.push(quest);
+    }
+    return selected;
   },
 
   _mutatePlan(patch) {
@@ -172,3 +256,19 @@ export const EventPlanner = {
     }
   },
 };
+
+function currencyIdsOf(event) {
+  return (event && Array.isArray(event.currencies) ? event.currencies : []).map((currency) => currency.id);
+}
+
+function hasEventRaids(event) {
+  return EventShop.hasAvailableRaids(event);
+}
+
+function findRaidBoss(event, bossId) {
+  if (!event || bossId === null || bossId === undefined) return null;
+  const raids = (event.farm && event.farm.raids) || [];
+  if (!Array.isArray(raids)) return null;
+  const key = String(bossId);
+  return raids.find((boss) => boss && String(boss.bossId) === key) || null;
+}

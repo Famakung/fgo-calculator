@@ -9,6 +9,7 @@ import {
   buildHeldBonusBoxes,
   buildFarmQuestSelect,
   buildCurrencyQuestSelect,
+  buildRaidQuestSelect,
   questsDroppingCurrency,
 } from "./event-shop-farm-controls.js";
 import { renderFarmResults } from "./event-shop-farm-results.js";
@@ -37,14 +38,29 @@ export function hydrateFarmGrid(event, plan, handlers = {}) {
   const grid = document.getElementById("farmGrid");
   if (!grid) return;
   if (!event) {
+    document.documentElement.removeAttribute("data-event-combo");
     grid.replaceChildren();
     return;
   }
   const view = { snapshot: event, plan, mapped: tierMappedIds(event.currencies), handlers };
   const fragment = document.createDocumentFragment();
-  for (const currency of event.currencies) fragment.appendChild(buildCurrencyCard(currency, view));
-  const covering = EventShop.allCoveringQuests(event.farm, currencyIds(view.snapshot)).sort(byRecommendLv);
-  if (covering.length) fragment.appendChild(buildComboCard(view, covering));
+  const raids = Array.isArray(event.farm?.raids) ? event.farm.raids : [];
+  if (plan?.questType === "raid" && EventShop.hasAvailableRaids(event)) {
+    document.documentElement.removeAttribute("data-event-combo");
+    for (const boss of raids) {
+      const card = buildRaidBossCard(boss, view);
+      if (card) fragment.appendChild(card);
+    }
+  } else {
+    for (const currency of event.currencies) fragment.appendChild(buildCurrencyCard(currency, view));
+    const covering = EventShop.allCoveringQuests(event.farm, currencyIds(view.snapshot)).sort(byRecommendLv);
+    if (covering.length) {
+      document.documentElement.setAttribute("data-event-combo", "1");
+      fragment.appendChild(buildComboCard(view, covering));
+    } else {
+      document.documentElement.removeAttribute("data-event-combo");
+    }
+  }
   grid.replaceChildren(fragment);
   refreshSlidingNames(grid);
 }
@@ -61,8 +77,7 @@ function buildCurrencyCard(currency, view) {
     ? selectedQuest(view, currency, options)
     : bestDropperQuest(view.snapshot.farm, currency);
   card.appendChild(buildCardBody(currency, quest, view, options));
-  if (!view.mapped.has(String(currency.id)))
-    card.appendChild(buildHeldBonusBoxes(currency, view.plan, view.handlers.onBonusChange));
+  if (!view.mapped.has(String(currency.id))) card.appendChild(buildHeldBonusBoxes(currency, view.plan));
   return card;
 }
 
@@ -140,7 +155,7 @@ function questDropLines(currency, quest, view) {
    re-defaults the stored value itself). */
 function buildComboCard(view, covering) {
   const card = DOMFactory.el("div", ["quest-drops-item", "farm-card", "farm-card--combo"]);
-  card.appendChild(buildComboHeader(view.snapshot));
+  card.appendChild(buildIconsHeader(view.snapshot.currencies));
   const quest = covering.find((q) => String(q.questId) === String(view.plan.farmQuest)) || covering[0];
   const select = buildFarmQuestSelect(covering, view.plan.farmQuest, view.handlers.onQuestChange);
   const lines = [buildQuestName(quest.questName)];
@@ -153,9 +168,49 @@ function buildComboCard(view, covering) {
   return card;
 }
 
-function buildComboHeader(snapshot) {
+function buildRaidBossCard(boss, view) {
+  const cIds = currencyIds(view.snapshot);
+  const quests = EventShop.raidBossQuests(boss, cIds).sort(byRecommendLv);
+  if (!quests.length) return null;
+  const chosenId = EventShop.sanitizedRaidQuest(boss, (view.plan?.raidQuest || {})[String(boss.bossId)], cIds);
+  const quest = quests.find((candidate) => candidate.questId === chosenId) || quests[0];
+  const drops = quest.drops || {};
+  const dropped = (view.snapshot.currencies || []).filter((currency) => {
+    const entry = drops[String(currency.id)];
+    return Boolean(entry && Number(entry.dropExpected) > 0 && Number(entry.num) > 0);
+  });
+  if (!dropped.length) return null;
+
+  const classes = ["quest-drops-item", "farm-card"];
+  if (dropped.length !== 1) classes.push("farm-card--combo");
+  const card = DOMFactory.el("div", classes, dropped.length === 1 ? { "data-tier": dropped[0].background } : {});
+  card.appendChild(buildRaidCardHeader(dropped));
+
+  const lines = [buildQuestName(boss.bossName)];
+  lines.push(
+    buildRaidQuestSelect({
+      boss,
+      quests,
+      selectedQuestId: quest.questId,
+      onChange: view.handlers.onQuestChange,
+    }),
+  );
+  if (quest.recommendLv) lines.push(buildMessage(`REC Lv. ${quest.recommendLv}`));
+  for (const currency of dropped) lines.push(buildCurrencyDropLine(currency, drops[String(currency.id)]));
+  const body = DOMFactory.el("div", "farm-card-body");
+  body.replaceChildren(...lines);
+  card.appendChild(body);
+  return card;
+}
+
+function buildRaidCardHeader(dropped) {
+  if (dropped.length === 1) return buildCardHeader(dropped[0]);
+  return buildIconsHeader(dropped);
+}
+
+function buildIconsHeader(currencies) {
   const title = DOMFactory.el("div", "farm-card-title farm-card-title--icons");
-  for (const currency of snapshot.currencies) {
+  for (const currency of currencies) {
     const icon = DOMFactory.el("span", "farm-card-icon");
     icon.replaceChildren(buildCurrencyImg(currency, currency.background));
     title.appendChild(icon);
@@ -186,7 +241,6 @@ export function syncPlanBoxes(elements, values, needs = {}) {
   TIERS.forEach((tier) => {
     writeBox(elements, `${tier}Need`, needs[tier] || 0);
     writeBox(elements, `${tier}Have`, values.held[tier] || 0);
-    writeBox(elements, `${tier}Bonus`, values.bonus[tier] || 0);
   });
 }
 
@@ -210,6 +264,15 @@ export function showFarmCard() {
   setDisplay(document.getElementById("farmGrid"), "");
   const title = card.querySelector(".card-title");
   if (title) title.textContent = FARM_CARD_TITLE;
+}
+
+export function showLegacyCard() {
+  const card = document.getElementById("farmGrid")?.closest(".card");
+  if (!card) return;
+  setDisplay(card.querySelector(".base-row"), "flex");
+  setDisplay(document.getElementById("questDropsGrid"), "grid");
+  setDisplay(document.getElementById("farmGrid"), "none");
+  hydrateFarmGrid(null);
 }
 
 function setDisplay(element, value) {

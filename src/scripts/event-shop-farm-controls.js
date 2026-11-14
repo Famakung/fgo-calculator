@@ -30,9 +30,9 @@ export function tierMappedIds(currencies) {
    suffix plain < "+" < "++" < "★", so 70 < 75 < 80 < 85 < 90 < 90+ < 90++ < 100★. An absent or
    unparseable recommendLv ranks Infinity and sorts last. The stride leaves the suffix ranks 0-4
    room below the next level, keeping the rank a plain comparable number. */
-const REC_SUFFIX_RANK = { "": 0, "+": 1, "++": 2, "★": 3 };
+const REC_SUFFIX_RANK = { "": 0, "+": 1, "++": 2, "+++": 3, "★": 4 };
 const REC_RANK_STRIDE = 8;
-const UNKNOWN_SUFFIX_RANK = 4;
+const UNKNOWN_SUFFIX_RANK = 5;
 
 export function recLvRank(recommendLv) {
   const text = recommendLv === null || recommendLv === undefined ? "" : String(recommendLv).trim();
@@ -82,31 +82,17 @@ function planFigureBox(spec) {
   return labelledBox(spec.labelText, input);
 }
 
-/* The Held/Bonus pair of a currency no tier card owns. Writes go to EventPlanner keyed by this
-   card's currency id — the same plan and clamps the tier boxes use. `onBonusChange` is the farm
-   view's own line refresh (Amendment I): Bonus is the only figure a drop line reads, so only that
-   box reports its writes; the pair is built here, and the callback comes from event-shop-farm.js
-   rather than an import, which would close a cycle between the two farm modules. */
-export function buildHeldBonusBoxes(currency, plan, onBonusChange = null) {
+/* The Held input of a currency no tier card owns. Writes go to EventPlanner keyed by this card's
+   currency id — the same plan and clamps the tier boxes use. */
+export function buildHeldBonusBoxes(currency, plan) {
   const key = String(currency.id);
-  const figures = [
-    {
-      labelText: "Held",
-      schema: Schema.tier.Have,
-      value: plan.held[key] || 0,
-      write: (v) => EventPlanner.setHeld(key, v),
-    },
-    {
-      labelText: "Bonus",
-      schema: Schema.tier.Bonus,
-      value: plan.bonus[key] || 0,
-      write: (v) => EventPlanner.setBonus(key, v),
-      onWritten: onBonusChange,
-    },
-  ];
-  const fragment = document.createDocumentFragment();
-  for (const figure of figures) fragment.appendChild(planFigureBox({ ...figure, currency }));
-  return fragment;
+  return planFigureBox({
+    labelText: "Held",
+    schema: Schema.tier.Have,
+    value: plan.held[key] || 0,
+    write: (v) => EventPlanner.setHeld(key, v),
+    currency,
+  });
 }
 
 /* The 3-in-1 card's quest dropdown (Amendment L3/L4, N1): the list is ONLY the event's all-covering
@@ -129,10 +115,15 @@ export function buildFarmQuestSelect(quests, selectedQuestId, onChange = null) {
   return select;
 }
 
-function buildQuestOption(quest) {
+function buildQuestOption(quest, label = quest.questName) {
   const option = DOMFactory.el("option", null, { value: String(quest.questId) });
-  option.textContent = quest.recommendLv ? `${quest.questName} \u00b7 Lv.${quest.recommendLv}` : quest.questName;
+  option.textContent = quest.recommendLv ? `${label} \u00b7 Lv.${quest.recommendLv}` : label;
   return option;
+}
+
+function raidQuestLabel(quest, bossName) {
+  const rawDiff = (quest.difficultyLabel || "").trim();
+  return rawDiff && rawDiff !== (bossName || "").trim() ? rawDiff : quest.questName;
 }
 
 /* The plan's pick shows when the list still carries it; otherwise the first listed quest — the
@@ -154,6 +145,7 @@ function isMainDrop(quest, currencyId, currencyIds) {
     const drop = drops[id];
     if (!drop) continue;
     const amount = Number(drop.dropExpected) * Number(drop.num) || 0;
+    if (!(amount > 0)) continue;
     if (top === null || amount > topAmount || (amount === topAmount && Number(id) < Number(top))) {
       top = id;
       topAmount = amount;
@@ -172,7 +164,11 @@ export function questsDroppingCurrency(farm, currency, currencyIds) {
   const key = String(currency.id);
   const covering = new Set(EventShop.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
   const droppers = ((farm || {}).quests || []).filter(
-    (quest) => quest && !covering.has(quest.questId) && isMainDrop(quest, key, currencyIds),
+    (quest) =>
+      quest &&
+      EventShop.hasDropData(quest, currencyIds) &&
+      !covering.has(quest.questId) &&
+      isMainDrop(quest, key, currencyIds),
   );
   return droppers.sort(byRecommendLv);
 }
@@ -192,6 +188,21 @@ export function buildCurrencyQuestSelect(spec) {
   select.value = String(pickedQuestId(quests, selectedQuestId));
   select.addEventListener("change", () => {
     EventPlanner.setCurrencyQuest(currency.id, Number(select.value));
+    if (onChange) onChange();
+  });
+  return select;
+}
+
+export function buildRaidQuestSelect(spec) {
+  const { boss, quests, selectedQuestId, onChange = null } = spec;
+  const select = DOMFactory.el("select", "select-field farm-quest-select", {
+    id: `raidQuestSelect_${boss.bossId}`,
+    "aria-label": `Difficulty for ${boss.bossName}`,
+  });
+  for (const quest of quests) select.appendChild(buildQuestOption(quest, raidQuestLabel(quest, boss.bossName)));
+  select.value = String(pickedQuestId(quests, selectedQuestId));
+  select.addEventListener("change", () => {
+    EventPlanner.setRaidQuest(boss.bossId, Number(select.value));
     if (onChange) onChange();
   });
   return select;

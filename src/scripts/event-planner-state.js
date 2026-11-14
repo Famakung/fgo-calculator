@@ -16,14 +16,39 @@ export function snapshotEvents(data) {
 /* A copy, so a caller reading the plan cannot write into the stored one by accident. */
 export function planOf(state, eventId) {
   const plan = state.plans[String(eventId)];
-  if (!plan) return { requires: {}, held: {}, bonus: {}, farmQuest: null, currencyQuest: {} };
+  if (!plan) {
+    return {
+      requires: {},
+      held: {},
+      bonus: {},
+      farmQuest: null,
+      currencyQuest: {},
+      ceOwned: {},
+      ceEquipLimit: 6,
+      questType: "free",
+      raidQuest: {},
+    };
+  }
   return {
     requires: { ...plan.requires },
     held: { ...plan.held },
     bonus: { ...plan.bonus },
     farmQuest: plan.farmQuest ?? null,
     currencyQuest: { ...plan.currencyQuest },
+    ceOwned: cloneCeOwned(plan.ceOwned),
+    ceEquipLimit: plan.ceEquipLimit ?? 6,
+    questType: plan.questType === "raid" ? "raid" : "free",
+    raidQuest: plan.raidQuest && typeof plan.raidQuest === "object" ? { ...plan.raidQuest } : {},
   };
+}
+
+function cloneCeOwned(ceOwned) {
+  const copy = {};
+  for (const [ceId, counts] of Object.entries(ceOwned || {})) {
+    if (!counts || typeof counts !== "object") continue;
+    copy[ceId] = { limitBreak: counts.limitBreak || 0, nonLimitBreak: counts.nonLimitBreak || 0 };
+  }
+  return copy;
 }
 
 /* Amendment J5: the saved plans of events the current data no longer lists, kept out of state but
