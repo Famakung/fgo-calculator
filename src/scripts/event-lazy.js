@@ -1,4 +1,5 @@
 /* Event Shop lazy entry point — loaded on demand via import() */
+import { EventShop } from "./domain.js";
 import { App } from "./event-shop.js";
 import { EventPlanner } from "./event-planner.js";
 import { EventShopModal } from "./event-shop-modal.js";
@@ -56,7 +57,7 @@ function bindQuestTypeSelect() {
 function syncQuestTypeSelect(select = document.getElementById("questTypeSelect")) {
   if (!select) return;
   const event = EventPlanner.activeEvent();
-  const hasRaids = Boolean(event && Array.isArray(event.farm?.raids) && event.farm.raids.length > 0);
+  const hasRaids = EventShop.hasAvailableRaids(event);
   const raidOption = select.querySelector('option[value="raid"]');
   if (raidOption) raidOption.disabled = !hasRaids;
   select.value = hasRaids ? EventPlanner.questType() : "free";

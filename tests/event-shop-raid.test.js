@@ -535,9 +535,11 @@ test("recLvRank and byRecommendLv sort ★ > +++ > ++ > + > numeric desc, missin
   );
 });
 
-test("defaultRaidQuest prefers highest-REC with drops and falls back to highest-REC when drops empty", () => {
+test("defaultRaidQuest hides empty-drop difficulties/bosses and picks highest-REC with drops", () => {
   assert.equal(EventShop.defaultRaidQuest(null), null);
   assert.equal(EventShop.defaultRaidQuest({ bossId: 1, quests: [] }), null);
+  assert.equal(EventShop.hasAvailableRaids(NO_RAID_SNAPSHOT), false);
+  assert.equal(EventShop.hasAvailableRaids(RAID_EVENT_SNAPSHOT), true);
 
   // 90++ has drops, 90+++ does not yet -> prefers 90++!
   const partialDropsBoss = {
@@ -549,35 +551,47 @@ test("defaultRaidQuest prefers highest-REC with drops and falls back to highest-
     ],
   };
   assert.equal(EventShop.defaultRaidQuest(partialDropsBoss), 101);
+  assert.deepEqual(
+    EventShop.raidBossQuests(partialDropsBoss).map((q) => q.questId),
+    [101, 103],
+  );
 
-  // When NO difficulties have drops yet -> highest-REC overall!
-  assert.equal(EventShop.defaultRaidQuest(EVENT_80639_RAIDS[3]), 94164234);
+  // When NO difficulties have drops yet -> null (boss hidden)!
+  assert.equal(EventShop.defaultRaidQuest(EVENT_80639_RAIDS[3]), null);
+  assert.deepEqual(EventShop.raidBossQuests(EVENT_80639_RAIDS[3]), []);
 
-  // Tie break lower questId when REC matches
+  // Tie break lower questId when REC matches and drops exist
   const tiedBoss = {
     bossId: 2,
     quests: [
-      { questId: 50, recommendLv: "90+++", drops: {} },
-      { questId: 40, recommendLv: "90+++", drops: {} },
+      { questId: 50, recommendLv: "90+++", drops: { 94164000: { dropExpected: 10, num: 3 } } },
+      { questId: 40, recommendLv: "90+++", drops: { 94164000: { dropExpected: 9, num: 3 } } },
     ],
   };
   assert.equal(EventShop.defaultRaidQuest(tiedBoss), 40);
 });
 
-test("sanitizedRaidQuest validates saved integer id against boss.quests and rejects coercion hazards", () => {
-  const boss = EVENT_80639_RAIDS[2]; // default is 94164214 (90+++ with drops)
+test("sanitizedRaidQuest accepts drop-bearing ids only and rejects empty-drop or coercion hazards", () => {
+  const boss = EVENT_80639_RAIDS[2]; // default is 94164214 (90+++ with drops), 94164213 (90++ with drops)
   assert.equal(EventShop.sanitizedRaidQuest(boss, 94164213), 94164213);
   assert.equal(EventShop.sanitizedRaidQuest(boss, "94164213"), 94164213);
+  // Empty-drop difficulties (90+, 90, 70) are hidden and rejected back to default
+  for (const emptyId of [94164212, "94164212", 94164211, 94164210]) {
+    assert.equal(EventShop.sanitizedRaidQuest(boss, emptyId), 94164214, `rejected empty ${String(emptyId)}`);
+  }
   for (const bad of [null, undefined, "", "   ", false, true, [], 0, 999999, 94164204, 94164213.5]) {
     assert.equal(EventShop.sanitizedRaidQuest(boss, bad), 94164214, `rejected ${String(bad)}`);
   }
 
-  // Even if questId 0 actually existed, ""/false/null must NOT match it
+  // Boss with zero drop data returns null even if a legacy questId is saved
+  assert.equal(EventShop.sanitizedRaidQuest(EVENT_80639_RAIDS[3], 94164234), null);
+
+  // Even if questId 0 actually existed with drops, ""/false/null must NOT match it
   const zeroBoss = {
     bossId: 9,
     quests: [
-      { questId: 0, recommendLv: "70", drops: {} },
-      { questId: 5, recommendLv: "90", drops: {} },
+      { questId: 0, recommendLv: "70", drops: { 94164000: { dropExpected: 5, num: 3 } } },
+      { questId: 5, recommendLv: "90", drops: { 94164000: { dropExpected: 8, num: 3 } } },
     ],
   };
   assert.equal(EventShop.sanitizedRaidQuest(zeroBoss, ""), 5);
@@ -587,15 +601,16 @@ test("sanitizedRaidQuest validates saved integer id against boss.quests and reje
   assert.equal(EventShop.sanitizedRaidQuest(zeroBoss, "0"), 0);
 });
 
-test("sanitizePlans clamps questType to free when absent/empty raids and sanitizes raidQuest safely", () => {
+test("sanitizePlans clamps questType to free when absent/empty-drop raids and sanitizes raidQuest safely", () => {
   const saved = {
     selectedEventId: 80639,
     plans: {
       80639: {
         questType: "raid",
         raidQuest: {
-          920712: 94164213, // valid 90++
-          920710: 99999999, // stale -> defaults 94164204
+          920712: 94164213, // valid 90++ with drops
+          920710: 94164203, // empty-drop 90++ -> defaults to 94164204
+          920713: 94164234, // boss with no drops -> omitted
           888888: 94164204, // unknown boss -> dropped
           __proto__: { polluted: true },
         },
@@ -611,21 +626,29 @@ test("sanitizePlans clamps questType to free when absent/empty raids and sanitiz
     event: { id: 90000, name: "Empty Boss" },
     farm: { quests: [], raids: [{ bossId: 1, bossName: "Empty", quests: [] }] },
   };
-  const res = EventShop.sanitizePlans({ ...saved, plans: { ...saved.plans, 90000: { questType: "raid" } } }, [
-    RAID_EVENT_SNAPSHOT,
-    NO_RAID_SNAPSHOT,
-    emptyQuestsBossSnapshot,
-  ]);
+  const noDropsRaidSnapshot = {
+    ...NO_RAID_SNAPSHOT,
+    event: { id: 90001, name: "No-Drop Raid Boss" },
+    farm: { quests: [], raids: [EVENT_80639_RAIDS[3]] },
+  };
+  assert.equal(EventShop.hasAvailableRaids(noDropsRaidSnapshot), false);
+  const res = EventShop.sanitizePlans(
+    { ...saved, plans: { ...saved.plans, 90000: { questType: "raid" }, 90001: { questType: "raid" } } },
+    [RAID_EVENT_SNAPSHOT, NO_RAID_SNAPSHOT, emptyQuestsBossSnapshot, noDropsRaidSnapshot],
+  );
 
   assert.equal(res.plans["80639"].questType, "raid");
   assert.equal(res.plans["80639"].raidQuest["920712"], 94164213);
   assert.equal(res.plans["80639"].raidQuest["920710"], 94164204);
+  assert.equal(Object.hasOwn(res.plans["80639"].raidQuest, "920713"), false);
   assert.equal(Object.hasOwn(res.plans["80639"].raidQuest, "888888"), false);
   assert.equal(Object.hasOwn(res.plans["80639"].raidQuest, "polluted"), false);
   assert.equal(res.plans["80630"].questType, "free");
   assert.deepEqual(res.plans["80630"].raidQuest, {});
   assert.equal(res.plans["90000"].questType, "free");
   assert.deepEqual(res.plans["90000"].raidQuest, {});
+  assert.equal(res.plans["90001"].questType, "free");
+  assert.deepEqual(res.plans["90001"].raidQuest, {});
 
   for (const invalidType of [null, undefined, "", "custom", 42]) {
     const clean = EventShop.sanitizePlans({ selectedEventId: 80639, plans: { 80639: { questType: invalidType } } }, [
@@ -637,16 +660,21 @@ test("sanitizePlans clamps questType to free when absent/empty raids and sanitiz
 
 test("EventPlanner raid methods manage questType, raidQuestOf, setRaidQuest, activeRaidQuests, and isolation", async () => {
   const storage = fakeStorage();
-  const planner = await plannerWith(storage, [RAID_EVENT_SNAPSHOT, NO_RAID_SNAPSHOT]);
+  const emptyRaidEvent = {
+    ...NO_RAID_SNAPSHOT,
+    event: { id: 90002, name: "Empty Raid Only" },
+    farm: { quests: [], raids: [EVENT_80639_RAIDS[3]] },
+  };
+  const planner = await plannerWith(storage, [RAID_EVENT_SNAPSHOT, NO_RAID_SNAPSHOT, emptyRaidEvent]);
 
   // Default is "free"
   assert.equal(planner.questType(), "free");
   assert.equal(planner.raidQuestOf(920712), 94164214);
-  assert.equal(planner.raidQuestOf("920713"), 94164234);
+  assert.equal(planner.raidQuestOf("920713"), null);
   assert.equal(planner.raidQuestOf(999999), null);
   assert.deepEqual(
     planner.activeRaidQuests().map((q) => q.questId),
-    [94164204, 94164209, 94164214, 94164234, 94164219, 94164224, 94164229],
+    [94164204, 94164209, 94164214, 94164219, 94164224, 94164229],
   );
 
   planner.setQuestType("raid");
@@ -663,15 +691,19 @@ test("EventPlanner raid methods manage questType, raidQuestOf, setRaidQuest, act
   assert.equal(planner.raidQuestOf(920712), 94164213);
   assert.deepEqual(
     planner.activeRaidQuests().map((q) => q.questId),
-    [94164204, 94164209, 94164213, 94164234, 94164219, 94164224, 94164229],
+    [94164204, 94164209, 94164213, 94164219, 94164224, 94164229],
   );
 
-  // Invalid questId falls back to default, unknown bossId is ignored
+  // Empty-drop or invalid questId falls back to default, zero-drop/unknown bossId is ignored
+  planner.setRaidQuest(920712, 94164212);
+  assert.equal(planner.raidQuestOf(920712), 94164214);
   planner.setRaidQuest(920712, 999999);
   assert.equal(planner.raidQuestOf(920712), 94164214);
+  planner.setRaidQuest(920713, 94164234);
+  assert.equal(planner.raidQuestOf(920713), null);
   planner.setRaidQuest(999999, 94164213);
 
-  // Switch to Free-only event: clamps raid -> free cleanly and keeps raid event isolated
+  // Switch to Free-only or zero-drop-raid event: clamps raid -> free cleanly and keeps raid event isolated
   planner.select(80630);
   assert.equal(planner.questType(), "free");
   planner.setQuestType("raid");
@@ -679,9 +711,15 @@ test("EventPlanner raid methods manage questType, raidQuestOf, setRaidQuest, act
   assert.deepEqual(planner.activeRaidQuests(), []);
   assert.equal(planner.raidQuestOf(920712), null);
 
+  planner.select(90002);
+  assert.equal(planner.questType(), "free");
+  planner.setQuestType("raid");
+  assert.equal(planner.questType(), "free");
+  assert.deepEqual(planner.activeRaidQuests(), []);
+
   planner.select(80639);
   assert.equal(planner.questType(), "raid");
-  const reloaded = await plannerWith(storage, [RAID_EVENT_SNAPSHOT, NO_RAID_SNAPSHOT]);
+  const reloaded = await plannerWith(storage, [RAID_EVENT_SNAPSHOT, NO_RAID_SNAPSHOT, emptyRaidEvent]);
   assert.equal(reloaded.questType(), "raid");
   assert.equal(reloaded.raidQuestOf(920712), 94164214);
 });
@@ -810,14 +848,14 @@ test("farmPlan with useAllQuests:true handles >4 played bosses, empty drops, tra
   assert.deepEqual(infeasible.plays, []);
 });
 
-test("event 80639 real 7-boss raid optimization runs <100ms, uses >4 quests, and beats Free pool", () => {
+test("event 80639 real raid optimization runs <100ms, uses >4 quests, and beats Free pool", () => {
   const active = EVENT_80639_RAIDS.map((boss) => {
     const id = EventShop.defaultRaidQuest(boss);
     return boss.quests.find((q) => q.questId === id);
   }).filter(Boolean);
   assert.deepEqual(
     active.map((q) => q.questId),
-    [94164204, 94164209, 94164214, 94164234, 94164219, 94164224, 94164229],
+    [94164204, 94164209, 94164214, 94164219, 94164224, 94164229],
   );
 
   const totals = { 94164000: 5740, 94164001: 5390, 94164002: 6610 };

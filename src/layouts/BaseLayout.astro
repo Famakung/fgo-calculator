@@ -20,7 +20,7 @@ const comboEventIds = (EVENT_SHOP_DATA.events || [])
   .filter((e) => EventShop.allCoveringQuests(e.farm, (e.currencies || []).map((c) => c.id)).length > 0)
   .map((e) => e.event.id);
 const raidEventIds = (EVENT_SHOP_DATA.events || [])
-  .filter((e) => Array.isArray(e.farm?.raids) && e.farm.raids.length > 0)
+  .filter((e) => EventShop.hasAvailableRaids(e))
   .map((e) => e.event.id);
 
 // One source for the asset cache-buster: the preload script below takes it from define:vars, so a bump here reaches the preloads and the runtime src together.
@@ -52,7 +52,7 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
    already had. P2: the 3-in-1 card spans every tier, so it carries no data-tier and the legacy
    shell leaves its 2px border transparent; it gets the neutral 2px border instead, so the fourth
    card does not read as borderless next to three tier-bordered ones. */
-.farm-card-title { display: flex; align-items: center; justify-content: center; gap: 8px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 2px solid var(--border); } .farm-card-title--empty { min-height: 74px; color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; } .farm-card--combo { border: 2px solid var(--border); } /* Amendment L2/M2: the header art is the card's face, and since Amendment M2 it shares the
+.farm-card-title { display: flex; align-items: center; justify-content: center; gap: 8px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 2px solid var(--border); } .farm-card--combo { border: 2px solid var(--border); } /* Amendment L2/M2: the header art is the card's face, and since Amendment M2 it shares the
    results card's 48px icon step (the 112/120 box kept) instead of the tier cards' 96px plate — four
    narrow cards with two drop lines each read as rate rows, not as portraits. No plate, because
    there is nothing to clip or tint behind it. The 3-in-1 header is the one row allowed to shrink:

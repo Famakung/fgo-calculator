@@ -145,6 +145,7 @@ function isMainDrop(quest, currencyId, currencyIds) {
     const drop = drops[id];
     if (!drop) continue;
     const amount = Number(drop.dropExpected) * Number(drop.num) || 0;
+    if (!(amount > 0)) continue;
     if (top === null || amount > topAmount || (amount === topAmount && Number(id) < Number(top))) {
       top = id;
       topAmount = amount;
@@ -163,7 +164,11 @@ export function questsDroppingCurrency(farm, currency, currencyIds) {
   const key = String(currency.id);
   const covering = new Set(EventShop.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
   const droppers = ((farm || {}).quests || []).filter(
-    (quest) => quest && !covering.has(quest.questId) && isMainDrop(quest, key, currencyIds),
+    (quest) =>
+      quest &&
+      EventShop.hasDropData(quest, currencyIds) &&
+      !covering.has(quest.questId) &&
+      isMainDrop(quest, key, currencyIds),
   );
   return droppers.sort(byRecommendLv);
 }

@@ -1104,6 +1104,21 @@ export const EventShop = {
     return plan || infeasibleFarmPlan();
   },
 
+  hasDropData(quest, currencyIds = null) {
+    return hasDropData(quest, currencyIds);
+  },
+
+  raidBossQuests(boss, currencyIds = null) {
+    const quests = boss && Array.isArray(boss.quests) ? boss.quests : [];
+    return quests.filter(
+      (quest) => quest && quest.questId !== undefined && quest.questId !== null && hasDropData(quest, currencyIds),
+    );
+  },
+
+  hasAvailableRaids(snapshot) {
+    return hasNonEmptyRaids(snapshot);
+  },
+
   /* The quests the 3-in-1 farm card can offer (Amendment L3): those dropping EVERY shop currency
      of the event. currencyIds are the snapshot's currency ids in any order; an empty list has no
      all-covering quest by definition. */
@@ -1111,7 +1126,7 @@ export const EventShop = {
     const keys = (Array.isArray(currencyIds) ? currencyIds : []).map(String);
     if (!keys.length) return [];
     const quests = farm && Array.isArray(farm.quests) ? farm.quests : [];
-    return quests.filter((quest) => quest && quest.drops && keys.every((key) => Object.hasOwn(quest.drops, key)));
+    return quests.filter((quest) => quest && quest.drops && keys.every((key) => hasPositiveDrop(quest.drops[key])));
   },
 
   /* The farmQuest default (Amendment L4): the all-covering quest with the highest total
@@ -1133,7 +1148,9 @@ export const EventShop = {
     const key = String(currencyKey);
     const covering = new Set(this.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
     const quests = farm && Array.isArray(farm.quests) ? farm.quests : [];
-    const droppers = quests.filter((quest) => quest && (quest.drops || {})[key] && !covering.has(quest.questId));
+    const droppers = quests.filter(
+      (quest) => quest && hasPositiveDrop((quest.drops || {})[key]) && !covering.has(quest.questId),
+    );
     const best = droppers.reduce((top, quest) => {
       if (!top) return quest;
       const amount = dropAmount(quest.drops[key]);
@@ -1153,7 +1170,9 @@ export const EventShop = {
     const covering = new Set(this.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
     const quests = Array.isArray(farm.quests) ? farm.quests : [];
     const id = Number(saved);
-    const kept = quests.some((quest) => quest.questId === id && (quest.drops || {})[key] && !covering.has(id));
+    const kept = quests.some(
+      (quest) => quest && quest.questId === id && hasPositiveDrop((quest.drops || {})[key]) && !covering.has(id),
+    );
     return kept ? id : this.defaultCurrencyQuest(farm, currencyIds, key);
   },
 
@@ -1165,28 +1184,22 @@ export const EventShop = {
     return byRecommendLv(a, b);
   },
 
-  defaultRaidQuest(boss) {
-    const quests =
-      boss && Array.isArray(boss.quests)
-        ? boss.quests.filter((quest) => quest && quest.questId !== undefined && quest.questId !== null)
-        : [];
+  defaultRaidQuest(boss, currencyIds = null) {
+    const quests = this.raidBossQuests(boss, currencyIds);
     if (!quests.length) return null;
-    const withDrops = quests.filter(
-      (quest) => quest.drops && typeof quest.drops === "object" && Object.keys(quest.drops).length > 0,
-    );
-    const candidates = withDrops.length ? withDrops : quests;
-    const ranked = [...candidates].sort(byRecommendLv);
+    const ranked = [...quests].sort(byRecommendLv);
     return ranked[0].questId;
   },
 
-  sanitizedRaidQuest(boss, saved) {
-    const quests = boss && Array.isArray(boss.quests) ? boss.quests : [];
+  sanitizedRaidQuest(boss, saved, currencyIds = null) {
+    const quests = this.raidBossQuests(boss, currencyIds);
+    if (!quests.length) return null;
     const isScalar = typeof saved === "number" || (typeof saved === "string" && saved.trim() !== "");
     const id = isScalar ? Number(saved) : NaN;
-    if (Number.isInteger(id) && quests.some((quest) => quest && quest.questId === id)) {
+    if (Number.isInteger(id) && quests.some((quest) => quest.questId === id)) {
       return id;
     }
-    return EventShop.defaultRaidQuest(boss);
+    return this.defaultRaidQuest(boss, currencyIds);
   },
 
   /* Multi-event storage blob (Amendment G) → { selectedEventId, plans }. The old single-event
@@ -2117,9 +2130,25 @@ function byRecommendLv(a, b) {
   return ((a && a.questId) || 0) - ((b && b.questId) || 0);
 }
 
+function hasPositiveDrop(drop) {
+  return Boolean(drop && typeof drop === "object" && count(drop.dropExpected) > 0 && count(drop.num) > 0);
+}
+
+function hasDropData(quest, currencyIds = null) {
+  if (!quest || typeof quest !== "object" || !quest.drops || typeof quest.drops !== "object") return false;
+  const keys = Array.isArray(currencyIds) ? currencyIds.map(String) : Object.keys(quest.drops);
+  return keys.some((key) => Object.hasOwn(quest.drops, key) && hasPositiveDrop(quest.drops[key]));
+}
+
+function snapshotCurrencyIds(snapshot) {
+  return (Array.isArray(snapshot && snapshot.currencies) ? snapshot.currencies : []).map((currency) => currency.id);
+}
+
 function hasNonEmptyRaids(snapshot) {
   const raids = (snapshot && snapshot.farm && snapshot.farm.raids) || [];
-  return Array.isArray(raids) && raids.some((boss) => boss && Array.isArray(boss.quests) && boss.quests.length > 0);
+  if (!Array.isArray(raids) || !raids.length) return false;
+  const currencyIds = snapshotCurrencyIds(snapshot);
+  return raids.some((boss) => EventShop.defaultRaidQuest(boss, currencyIds.length ? currencyIds : null) !== null);
 }
 
 function sanitizeQuestType(saved, snapshot) {
@@ -2129,6 +2158,8 @@ function sanitizeQuestType(saved, snapshot) {
 function sanitizeRaidQuests(saved, snapshot) {
   const raids = (snapshot && snapshot.farm && snapshot.farm.raids) || [];
   if (!Array.isArray(raids) || !raids.length) return {};
+  const currencyIds = snapshotCurrencyIds(snapshot);
+  const filterIds = currencyIds.length ? currencyIds : null;
   const raw = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
   const clean = {};
   for (const boss of raids) {
@@ -2136,7 +2167,7 @@ function sanitizeRaidQuests(saved, snapshot) {
     const key = String(boss.bossId);
     if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
     const rawSaved = Object.hasOwn(raw, key) ? raw[key] : undefined;
-    const choice = EventShop.sanitizedRaidQuest(boss, rawSaved);
+    const choice = EventShop.sanitizedRaidQuest(boss, rawSaved, filterIds);
     if (choice !== null) clean[key] = choice;
   }
   return clean;
@@ -2148,11 +2179,17 @@ function sanitizeRaidQuests(saved, snapshot) {
    all-covering quest has no plan pick at all (null → per-currency best everywhere). */
 function sanitizeFarmQuest(saved, snapshot) {
   const quests = (snapshot.farm || {}).quests || [];
+  const currencyIds = snapshotCurrencyIds(snapshot);
+  const filterIds = currencyIds.length ? currencyIds : null;
   const id = Number(saved);
-  if (saved !== null && saved !== undefined && Number.isInteger(id) && quests.some((quest) => quest.questId === id)) {
+  if (
+    saved !== null &&
+    saved !== undefined &&
+    Number.isInteger(id) &&
+    quests.some((quest) => quest && quest.questId === id && hasDropData(quest, filterIds))
+  ) {
     return id;
   }
-  const currencyIds = (Array.isArray(snapshot.currencies) ? snapshot.currencies : []).map((currency) => currency.id);
   return EventShop.defaultFarmQuest(snapshot.farm || {}, currencyIds);
 }
 
