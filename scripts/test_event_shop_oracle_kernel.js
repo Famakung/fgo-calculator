@@ -1,5 +1,5 @@
 /**
- * scripts/event_shop_oracle_kernel.js — the exhaustive-integer oracle kernel of
+ * scripts/test_event_shop_oracle_kernel.js — the exhaustive-integer oracle kernel of
  * test_event_shop_optimizer_oracle.js, EXTRACTED verbatim so repro/verification scripts
  * (test_event_shop_overfarm_r30.js) import the SAME reference the frozen oracle runs.
  * Pure move: every function body below is byte-identical to the oracle's originals; the

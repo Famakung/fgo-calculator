@@ -42,7 +42,7 @@ import {
   auditAppPlan,
   snapshot,
   A_KEYS,
-} from "../scripts/event_shop_oracle_kernel.js";
+} from "../scripts/test_event_shop_oracle_kernel.js";
 import { EventShop } from "../src/scripts/domain.js";
 
 const NEEDS = { [A_KEYS[0]]: 5740, [A_KEYS[1]]: 5390, [A_KEYS[2]]: 6310 };

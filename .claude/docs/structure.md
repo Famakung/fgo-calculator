@@ -34,8 +34,9 @@ src/
     event-shop-farm-names.js   — single-line quest names with a looping slide for overflow (post-render measure + one resize watcher)
     event-shop-farm-lines.js   — farm-card primary/secondary drop lines from community data (live bonus)
     event-shop-farm-controls.js— farm-card Held/Bonus plan boxes + tier-mapped currency id set
-    event-shop-modal.js        — EventShopModal: per-currency draft config modal (Default/Select All/Cancel/Done)
+    event-shop-modal.js        — EventShopModal: per-currency draft config modal (Default/Select All/Cancel/OK)
     event-planner.js           — EventPlanner: shop plan state, applyRequires, persistence (state-only)
+    event-planner-state.js     — pure plan helpers (snapshotEvents, planOf, retiredPlans, clampCurrencyBox)
     event-planner-parts.js     — pure builders for the modal draft rows (buildDraftRow chain)
     tab-navigator.js           — TabNavigator (lazy init callbacks)
     data/

@@ -9,7 +9,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 ### Event Shop Calculator
 - **Select Event** card (same pattern as Bond's Select Quest): every active event shop is auto-fetched from Atlas Academy at data-sync time; switch between concurrent events, latest pre-selected, no blank option
 - **Per-event plans**: each event keeps its own Required/Held/Bonus save (`fgo_event_shop_data`); switching swaps plans, old saves migrate automatically
-- Per-currency **config modal**: click a Required display on a tier card to open that currency's shop items; steppers per item, then **Default** (clear), **Select All** (buy out every limited item), **Cancel** (discard), or **Done** (apply)
+- Per-currency **config modal**: click a Required display on a tier card to open that currency's shop items; steppers per item, then **Default** (clear), **Select All** (buy out every limited item), **Cancel** (discard), or **OK** (apply)
 - Required fields are read-only displays showing the live per-currency total (Σ require × price); Held and Bonus stay directly editable
 - **Drop Rates per Run**: each currency gets its own card with a quest dropdown (every quest dropping that currency, REC Lv order, community drop data via Atlas) — quest name, REC Lv., and two real-data drop lines `stack(+bonus)  amount / run` (amount = dropExpected × stack size): the card's own currency, then the quest's second-best shop-currency drop, `—` when it has none, event points and QP never offered. A fourth card appears when a quest drops every shop currency. Editing that currency's Bonus moves its lines live. AP stays in the data but off every card
 - **Best Farm Runs** results: the trade-aware optimizer finds the minimum-play plan and only the minimum trades needed to cover each shortfall. The card shows **Quests to Play** (farm-style cards with the run count; long quest names slide on a single line), then **Item Receive** (one card with each currency's raw drops from the runs as `×`-counts overlaid on the art — held items and trade results excluded), then **Shop Trades** (per-trade cards with the exchange ratio overlaid on the from/to icons). Required totals live in the Shop Requirements boxes, not the results card
@@ -72,7 +72,7 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 1. Open the Event Shop tab — pick an event in **Select Event** (latest is pre-selected)
 2. Click a currency's Required display to open its config modal
 3. Set how many of each item you want to buy (steppers clamp at the shop limit); **Select All** buys out every limited item, **Default** clears the draft
-4. **Done** applies the plan — Required displays and totals update; **Cancel** discards
+4. **OK** applies the plan — Required displays and totals update; **Cancel** discards
 5. Enter current holdings (Held) and drop Bonus (plussed into each drop's base amount)
 6. Click "Calculate Quest Runs" — runs and AP per currency, based on the best-drop quest
 
@@ -135,10 +135,13 @@ fgo-calculator/
 │       ├── event-shop.js       # UIBuilder, ViewManager, EventHandler, App (tier calculator)
 │       ├── event-shop-tier.js  # Event-native tier skin (currency images, read-only Required)
 │       ├── event-shop-farm.js  # Drop Rates per Run cards + event-mode results
+│       ├── event-shop-farm-results.js # Best Farm Runs results card builder
+│       ├── event-shop-farm-names.js # Single-line marquee name helper for overflowing titles
 │       ├── event-shop-farm-lines.js # A card's two per-run drop lines, repainted on Bonus edits
 │       ├── event-shop-farm-controls.js # Farm-card Required display + the Held/Bonus pair a tier card lacks
 │       ├── event-shop-modal.js # EventShopModal (per-currency draft config modal)
 │       ├── event-planner.js    # EventPlanner (shop plan state + persistence)
+│       ├── event-planner-state.js # Pure plan helpers (snapshotEvents, planOf, retiredPlans, clampCurrencyBox)
 │       ├── event-planner-parts.js # Pure builders for modal draft rows
 │       ├── tab-navigator.js    # TabNavigator (lazy init callbacks)
 │       └── data/

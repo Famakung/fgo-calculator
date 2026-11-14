@@ -6,7 +6,7 @@
  * farmPlan.totalPlays EXCEEDS the independent oracle's exhaustive minimum play count on a
  * non-all-drop event (80639: every quest drops 2 of 3 currencies, no all-covering quest).
  *
- * Reference: scripts/event_shop_oracle_kernel.js — the frozen oracle's own kernel, extracted
+ * Reference: scripts/test_event_shop_oracle_kernel.js — the frozen oracle's own kernel, extracted
  * verbatim (oracle suite stays 7/7). App plays > oracle minimum = over-farm. A play count the
  * oracle itself cannot reach is impossible: the oracle searches EVERY composition of the SAME
  * dominance pool the app audits against.
@@ -43,7 +43,7 @@ import {
   auditAppPlan,
   snapshot,
   A_KEYS,
-} from "./event_shop_oracle_kernel.js";
+} from "./test_event_shop_oracle_kernel.js";
 import { EventShop } from "../src/scripts/domain.js";
 
 /* ---------- the pinned farmer-rule space, priced by the FROZEN kernel ----------

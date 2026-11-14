@@ -41,7 +41,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventShop } from "../src/scripts/domain.js";
 /* The exhaustive kernel, the app-plan audit and the shipped-data access live in
-   scripts/event_shop_oracle_kernel.js (verbatim extract, shared with the R30 over-farm repro
+   scripts/test_event_shop_oracle_kernel.js (verbatim extract, shared with the R30 over-farm repro
    script). The kernel bodies were moved without edits; these bindings are this file's own
    oracle — nothing here takes an expected value from the app. */
 import {
@@ -60,7 +60,7 @@ import {
   snapshot,
   PAST,
   A_KEYS,
-} from "./event_shop_oracle_kernel.js";
+} from "./test_event_shop_oracle_kernel.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
