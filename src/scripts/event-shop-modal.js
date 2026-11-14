@@ -151,9 +151,9 @@ export const EventShopModal = {
     this.close();
   },
 
-  /* Static markup holds the footer; ✕, Cancel, backdrop mousedown and Escape all discard — only
-     Done publishes. Bound once per page: the guard covers a re-configure, and a missing modal
-     element (markup not shipped) simply leaves the module inert. */
+  /* Static markup holds the footer; ✕, Cancel and Escape all discard — only OK publishes. Bound
+     once per page: the guard covers a re-configure, and a missing modal element (markup not
+     shipped) simply leaves the module inert. */
   _bindChrome() {
     if (this._bound) return;
     const modal = document.getElementById(MODAL_ELEMENT_ID);
@@ -164,9 +164,6 @@ export const EventShopModal = {
     this._bindButton("eventShopModalDefaultBtn", () => this._zeroDraft());
     this._bindButton("eventShopModalSelectAllBtn", () => this._buyOutDraft());
     this._bindButton("eventShopModalDoneBtn", () => this._commitDraft());
-    modal.addEventListener("mousedown", (e) => {
-      if (e.target === modal) this.close();
-    });
     document.addEventListener("keydown", (e) => this._onKeydown(e, modal));
   },
 

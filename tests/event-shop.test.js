@@ -1791,3 +1791,68 @@ test("App.onFarmQuestChanged hides visible results instead of auto-calculating",
     else globalThis.document = previousDocument;
   }
 });
+
+test("App.refreshNeeds hides visible results when shop item requirements change", async () => {
+  await plannerWith(fakeStorage());
+  const classes = new Set(["visible"]);
+  const resultsEl = {
+    classList: {
+      remove: (...names) => names.forEach((name) => classes.delete(name)),
+      contains: (name) => classes.has(name),
+    },
+  };
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    getElementById: (id) => (id === "results" ? resultsEl : null),
+    querySelectorAll: () => [],
+  };
+  try {
+    const { App } = await import("../src/scripts/event-shop.js");
+    App.state = {
+      tiers: {
+        bronze: { need: 0, have: 0, bonus: 0 },
+        silver: { need: 0, have: 0, bonus: 0 },
+        gold: { need: 0, have: 0, bonus: 0 },
+      },
+      baseDrop: 1,
+      primaryMultiplier: 100,
+      secondaryMultiplier: 100,
+    };
+    App.refreshNeeds();
+    assert.equal(resultsEl.classList.contains("visible"), false);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
+
+test("EventShopModal ignores backdrop mousedown and keeps modal open", async () => {
+  const modalClasses = new Set(["open"]);
+  const listeners = {};
+  const modalEl = {
+    classList: {
+      add: (name) => modalClasses.add(name),
+      remove: (name) => modalClasses.delete(name),
+      contains: (name) => modalClasses.has(name),
+    },
+    addEventListener: (type, fn) => {
+      listeners[type] = listeners[type] || [];
+      listeners[type].push(fn);
+    },
+  };
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    getElementById: (id) => (id === "eventShopModal" ? modalEl : null),
+    addEventListener: () => {},
+  };
+  try {
+    const { EventShopModal } = await import("../src/scripts/event-shop-modal.js");
+    EventShopModal._bound = false;
+    EventShopModal.configure({ itemsOf: () => [], requiresOf: () => ({}), currenciesOf: () => [], onCommit: () => {} });
+    assert.equal(listeners.mousedown?.length || 0, 0);
+    assert.equal(modalEl.classList.contains("open"), true);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});

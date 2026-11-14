@@ -17,11 +17,11 @@
     "ce-filter-chunk": 20787,
     "ce-match-worker": 2622,
     "constants-chunk": 3203,
-    "data-chunk": 78681,
-    "event-lazy": 31881,
+    "data-chunk": 79093,
+    "event-lazy": 53034,
     "index.astro_astro_type_script_index_0_lang": 33,
     "main-entry": 3282,
-    "selectors-chunk": 47360,
+    "selectors-chunk": 60893,
     "tab-navigator-chunk": 1709
   },
   "chunkMinBytes": {
@@ -29,13 +29,13 @@
     "ce-filter-chunk": 5196,
     "ce-match-worker": 655,
     "constants-chunk": 800,
-    "data-chunk": 19670,
-    "event-lazy": 7970,
+    "data-chunk": 19773,
+    "event-lazy": 13258,
     "index.astro_astro_type_script_index_0_lang": 8,
     "main-entry": 820,
-    "selectors-chunk": 11840,
+    "selectors-chunk": 15223,
     "tab-navigator-chunk": 427
   },
-  "rawTextSha": "796bb2acb539cb15a2e8d317798aca9a58f566ebf4c257d46d8370703ea1a6ac",
-  "normalisedTextSha": "3b680c029f91d9a75d10b8e61391f82a48b438cbce89603867beebf74cf94085"
+  "rawTextSha": "220d4161f579285a16dd3b128e11e2f98eb93aca538b19489e813f1aa3e96428",
+  "normalisedTextSha": "2e34c46cd4975d8fd254ab7b46ab6305747531450d84751903b6cf3e6b1c91a0"
 }

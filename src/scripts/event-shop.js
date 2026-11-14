@@ -270,6 +270,7 @@ export const App = {
     Persistence.save(this.state);
     this._writePlanBoxes();
     if (!EventPlanner.activeEvent()) return;
+    ViewManager.resetResults();
     refreshFarmDropLines();
   },
 

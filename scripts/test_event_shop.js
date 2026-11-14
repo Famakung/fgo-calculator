@@ -3611,16 +3611,23 @@ try {
     const afterQuota = await readTier();
     assertPlan(afterQuota, { [String(freeRow.id)]: 2 }, "saving works again once setItem is restored");
 
-    /* ================= 21. backdrop mousedown = Cancel (discard) ============================== */
+    /* ================= 21. backdrop mousedown = click-outside immunity ======================== */
     await resetPlan();
     await openTierModal("bronze", "open for backdrop check");
     await typeInto(sel.modalInput(freeRow.id), "12");
-    await closeBy("backdrop", "backdrop click discards the draft");
+    await page.evaluate(() => {
+      const m = document.getElementById("eventShopModal");
+      m.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+    await wait(SETTLE_MS);
+    if (!(await readModal()).open)
+      errors.push("backdrop-immunity: mousedown on backdrop closed #eventShopModal");
+    await closeBy("Cancel", "Cancel discards the draft after backdrop check");
     const backdropState = await readTier();
-    assertPlan(backdropState, {}, "backdrop-discard leaves the plan");
+    assertPlan(backdropState, {}, "backdrop-immunity leaves the plan");
     if (backdropState.storage !== null)
       errors.push(
-        `backdrop-discard: localStorage was written (${JSON.stringify(backdropState.storage)}) — backdrop is Cancel, not Done`,
+        `backdrop-immunity: localStorage was written (${JSON.stringify(backdropState.storage)}) — backdrop + Cancel is discard, not OK`,
       );
 
     /* ================= 22. modal icon fallback: transparent plate, dashed badge =============== */

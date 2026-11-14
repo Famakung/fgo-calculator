@@ -36,7 +36,7 @@ function buildRowIcon(item) {
 }
 
 function buildInfo(item, currency) {
-  const name = DOMFactory.el("div", "eshop-item-name");
+  const name = DOMFactory.el("div", "eshop-item-name", { title: item.name });
   name.textContent = item.name;
   const meta = DOMFactory.el("div", "eshop-item-meta");
   meta.textContent = metaText(item, currency);
