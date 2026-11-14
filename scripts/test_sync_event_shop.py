@@ -112,9 +112,9 @@ TICKET_SHOP = [
 NICE_ITEM_MAP = [
     {"id": 705500, "name": "サーヴァントコイン", "icon": "JP/Coins/705500.png"},
     {"id": 7400, "name": "魔法の宝石", "icon": "JP/Items/7400.png"},
-    {"id": 94164000, "name": "MISOおでん", "icon": "JP/Items/94164000.png"},
-    {"id": 94164001, "name": "SHIMONITAネギ", "icon": "JP/Items/94164001.png"},
-    {"id": 94164002, "name": "YAKIまんじゅう", "icon": "JP/Items/94164002.png"},
+    {"id": 94164000, "name": "MISOおでん", "icon": "JP/Items/94164000.png", "individuality": [{"id": 11017}]},
+    {"id": 94164001, "name": "SHIMONITAネギ", "icon": "JP/Items/94164001.png", "individuality": [{"id": 11018}]},
+    {"id": 94164002, "name": "YAKIまんじゅう", "icon": "JP/Items/94164002.png", "individuality": [{"id": 11019}]},
     {"id": 1041, "name": "聖杯", "icon": "JP/Items/1041.png"},
 ]
 # NA knows the coin by its NA English text and has nothing for the event currencies.
@@ -125,10 +125,51 @@ JP_EN_ITEM_MAP = [
     {"id": 94164000, "name": "MISOおでん"},
     {"id": 94164002, "name": "YAKIまんじゅう"},
 ]
-NA_EQUIP_MAP = [{"id": 9409690, "name": "Kawanakajima Charge"}]
+NA_EQUIP_MAP = [{"id": 9409690, "name": "Kawanakajima Charge"}, {"id": 9409680, "name": "Hot Spring Visitor"}]
 EQUIP_DETAIL = {"id": 9409690, "name": "いざ、尋常に川中島！？", "extraAssets": {"faces": {"equip": {"0": "JP/Faces/f_94096900.png", "1": "JP/Faces/f_94096901.png"}}}}
 # Hero crystals / materials come back as statusUp|combineMaterial with faces under .ascension, no .equip.
 EQUIP_CRYSTAL = {"id": 9570400, "name": "No Name", "extraAssets": {"faces": {"ascension": {"0": f"{m.STATIC_BASE}/JP/Faces/f_95704000.png"}}}}
+
+def _bonus_ce_fixture(ce_id, name, rarity, event_id, ind_id, adds=(1, 2), extra_skills=()):
+    skills = [
+        {
+            "id": ce_id + idx,
+            "functions": [{"funcType": "eventDropUp", "svals": [{"EventId": event_id, "Individuality": ind_id, "AddCount": add}]}],
+        }
+        for idx, add in enumerate(adds)
+    ] + list(extra_skills)
+    return {
+        "id": ce_id,
+        "name": name,
+        "rarity": rarity,
+        "extraAssets": {"faces": {"equip": {"0": f"JP/Faces/f_{ce_id}0.png"}}},
+        "skills": skills,
+    }
+
+
+NICE_EQUIP_EXPORT = [
+    _bonus_ce_fixture(9409680, "秘湯の来訪者", 3, 80639, 11017),
+    _bonus_ce_fixture(
+        9409660,
+        "泡沫の遭逢",
+        5,
+        80639,
+        11019,
+        extra_skills=[
+            {"id": 1, "functions": [{"funcType": "eventDropUp", "svals": [{"EventId": 80457, "Individuality": 11017, "AddCount": 1}]}]},
+        ],
+    ),
+    _bonus_ce_fixture(9409670, "帰路への旗印", 4, 80639, 11018),
+    # Shop CE with eventPointUp only (not a shop currency drop bonus) + non-shop individuality CE: both excluded.
+    {
+        "id": 9409690,
+        "name": "いざ、尋常に川中島！？",
+        "rarity": 5,
+        "extraAssets": {"faces": {"equip": {"0": "JP/Faces/f_94096900.png"}}},
+        "skills": [{"id": 2, "functions": [{"funcType": "eventPointUp", "svals": [{"EventId": 80639, "Individuality": 11020, "RateCount": 300}]}]}],
+    },
+    _bonus_ce_fixture(9409990, "Point-only CE", 5, 80639, 11020),
+]
 
 # Costume faces (Amendment F).
 SERVANT_SINGLE_COSTUME = {"id": 204700, "costumeMaterials": {"204730": {"qp": 3000000}}}
@@ -249,6 +290,8 @@ def fixture_json(cache_dir, filename, url, force=False):
         return JP_EN_ITEM_MAP
     if filename == "na_basic_equip.json":
         return NA_EQUIP_MAP
+    if filename == "nice_equip_lang_en.json":
+        return NICE_EQUIP_EXPORT
     if filename == "nice_equip_9409690.json":
         return EQUIP_DETAIL
     if filename == "nice_equip_9570400.json":
@@ -631,7 +674,7 @@ def check_no_duplicate_fetches():
     with Sandbox() as s, patch.object(m.time, "time", lambda: NOW):
         s.spy_json()
         m.sync_event_shop(cache_dir=s.tmp)
-        for filename in ("nice_event_80639.json", "nice_event_80642.json", "nice_event_70001.json", "nice_war_9208.json", "nice_quest_94164100_1.json"):
+        for filename in ("nice_event_80639.json", "nice_event_80642.json", "nice_event_70001.json", "nice_war_9208.json", "nice_quest_94164100_1.json", "nice_equip_lang_en.json"):
             assert s.fetched.count(filename) == 1, f"{filename} read exactly once: the farm test's reads feed the snapshot"
     return 1
 
@@ -693,10 +736,33 @@ def check_sync_multi_event():
         assert icons[80639008] == "event_shop/item_705500.webp", "the same asset is reused across rows"
         assert icons[80639053] == "event_shop/item_94164001.webp", "the trade row's reward reuses the currency's own icon"
         fetched = [dest for _path, dest, _kind in s.icon_calls]
-        assert len(fetched) == len(set(fetched)) == 8, (
-            "one fetch per unique asset, and the pruned events' ticket currency and chalice are never downloaded"
+        assert len(fetched) == len(set(fetched)) == 11, (
+            "one fetch per unique asset (8 shop/currency + 3 bonus CEs), and pruned events' assets are never downloaded"
         )
         assert os.path.exists(os.path.join(m.PUBLIC_EVENT_SHOP_DIR, "item_705500.webp"))
+        assert snap["bonusCes"] == [
+            {
+                "id": 9409680,
+                "name": "Hot Spring Visitor",
+                "rarity": 3,
+                "icon": "event_shop/equip_9409680.webp",
+                "bonuses": {"94164000": {"nonLimitBreak": 1, "limitBreak": 2}},
+            },
+            {
+                "id": 9409670,
+                "name": "帰路への旗印",
+                "rarity": 4,
+                "icon": "event_shop/equip_9409670.webp",
+                "bonuses": {"94164001": {"nonLimitBreak": 1, "limitBreak": 2}},
+            },
+            {
+                "id": 9409660,
+                "name": "泡沫の遭逢",
+                "rarity": 5,
+                "icon": "event_shop/equip_9409660.webp",
+                "bonuses": {"94164002": {"nonLimitBreak": 1, "limitBreak": 2}},
+            },
+        ], "bonusCes sorted (rarity asc, id asc) with NA equip name fallback and non-shop/rerun skills excluded"
 
         farm = snap["farm"]
         assert [q["questId"] for q in farm["quests"]] == [94164100, 94164103, 94164101, 94164102, 94164106], (
@@ -719,6 +785,7 @@ def check_sync_multi_event():
         assert [q["questId"] for q in second["farm"]["quests"]] == [94164101, 94164102], "only quests dropping ITS currencies are farm quests for it"
         assert second["farm"]["best"] == {"94164002": 94164102}, "the same war's drops hydrate the second event"
         assert second["trades"] == [], "no upgrade rows in its own shop, no trades"
+        assert second["bonusCes"] == [], "events with no matching eventDropUp CEs ship an empty bonusCes list"
 
         past = _snapshot(data, 70001)
         assert past["farm"]["best"] == farm["best"], "the history entry carries the full farm model, same war data"
@@ -919,6 +986,74 @@ def check_shop_probe_write():
     return 1
 
 
+def check_bonus_ces():
+    """Bonus CE discovery: multi-currency CEs, non-1/2 AddCount, sort order, and equip export outage."""
+    item_map = {it["id"]: it for it in NICE_ITEM_MAP}
+    multi_ce = {
+        "id": 9401350,
+        "name": "Multi Currency CE",
+        "rarity": 5,
+        "extraAssets": {"faces": {"equip": {"0": "JP/Faces/f_94013500.png"}}},
+        "skills": [
+            {
+                "id": 10,
+                "functions": [
+                    {
+                        "funcType": "eventDropUp",
+                        "svals": [
+                            {"EventId": 80639, "Individuality": 11017, "AddCount": 2},
+                            {"EventId": 80639, "Individuality": 11018, "AddCount": 2},
+                        ],
+                    }
+                ],
+            },
+            {
+                "id": 11,
+                "functions": [
+                    {
+                        "funcType": "eventDropUp",
+                        "svals": [
+                            {"EventId": 80639, "Individuality": 11017, "AddCount": 3},
+                            {"EventId": 80639, "Individuality": 11018, "AddCount": 3},
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+    tie_ce = _bonus_ce_fixture(9401340, "Tie CE", 5, 80639, 11019)
+    low_ce = _bonus_ce_fixture(9409999, "Low Rarity CE", 3, 80639, 11017)
+    with Sandbox() as s:
+        res = m._collect_bonus_ces(
+            80639,
+            [94164000, 94164001, 94164002],
+            item_map,
+            [multi_ce, tie_ce, low_ce],
+            {"naEquips": {}},
+            dry_run=True,
+        )
+        assert [c["id"] for c in res] == [9409999, 9401340, 9401350], "rarity ascending, then id ascending"
+        assert res[2]["bonuses"] == {
+            "94164000": {"nonLimitBreak": 2, "limitBreak": 3},
+            "94164001": {"nonLimitBreak": 2, "limitBreak": 3},
+        }, "multi-currency and non-1/2 AddCount values preserved"
+
+    with Sandbox() as s, patch.object(m.time, "time", lambda: NOW):
+        inner = fixture_json
+
+        def equip_down(cache_dir, filename, url, force=False):
+            if filename == "nice_equip_lang_en.json":
+                raise RuntimeError("equip export down")
+            return inner(cache_dir, filename, url, force=force)
+
+        m.get_cached_json = equip_down
+        m.sync_event_shop(cache_dir=s.tmp)
+        data = s.read_data()
+        assert [snap["event"]["id"] for snap in data["events"]] == [80639, 80642, 70001]
+        assert data["events"][0]["bonusCes"] == [], "equip export outage skips bonusCes without sinking the shop sync"
+    return 1
+
+
 def main():
     n = 0
     for check in (
@@ -939,6 +1074,7 @@ def main():
         check_outage_policy,
         check_icon_candidates,
         check_shop_probe_write,
+        check_bonus_ces,
     ):
         n += check()
     print(f"{n} tests passed")

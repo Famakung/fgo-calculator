@@ -57,6 +57,7 @@ function runValidator(farm, trades = [TRADE]) {
               items: ITEMS,
               farm,
               trades,
+              bonusCes: [],
             },
           ],
         }) +

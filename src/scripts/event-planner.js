@@ -110,6 +110,38 @@ export const EventPlanner = {
     this._mutatePlan({ bonus: clampCurrencyBox(this.activePlan().bonus, currencyId, value, Schema.tier.Bonus) });
   },
 
+  ceOwnedOf(ceId) {
+    const entry = (this.activePlan().ceOwned || {})[String(ceId)];
+    return {
+      limitBreak: entry ? entry.limitBreak || 0 : 0,
+      nonLimitBreak: entry ? entry.nonLimitBreak || 0 : 0,
+    };
+  },
+
+  setCeOwned(ceId, kind, value) {
+    if (kind !== "limitBreak" && kind !== "nonLimitBreak") return;
+    const event = this.activeEvent();
+    if (!event) return;
+    const key = String(ceId);
+    if (!(event.bonusCes || []).some((ce) => String(ce.id) === key)) return;
+    const current = this.activePlan().ceOwned || {};
+    const prev = current[key] || { limitBreak: 0, nonLimitBreak: 0 };
+    this._mutatePlan({
+      ceOwned: {
+        ...current,
+        [key]: { ...prev, [kind]: EventShop.clampCeOwned(value) },
+      },
+    });
+  },
+
+  ceEquipLimit() {
+    return EventShop.clampCeEquipLimit(this.activePlan().ceEquipLimit);
+  },
+
+  setCeEquipLimit(value) {
+    this._mutatePlan({ ceEquipLimit: EventShop.clampCeEquipLimit(value) });
+  },
+
   /* The 3-in-1 card's quest pick (Amendment L4): the dropdown only offers this event's all-covering
      quests, and anything else — a stale id, a quest the data retired — re-defaults through the same
      domain rule the load-time sanitize uses, so the plan never holds a quest the cards cannot show. */

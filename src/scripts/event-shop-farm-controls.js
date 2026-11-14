@@ -82,31 +82,17 @@ function planFigureBox(spec) {
   return labelledBox(spec.labelText, input);
 }
 
-/* The Held/Bonus pair of a currency no tier card owns. Writes go to EventPlanner keyed by this
-   card's currency id — the same plan and clamps the tier boxes use. `onBonusChange` is the farm
-   view's own line refresh (Amendment I): Bonus is the only figure a drop line reads, so only that
-   box reports its writes; the pair is built here, and the callback comes from event-shop-farm.js
-   rather than an import, which would close a cycle between the two farm modules. */
-export function buildHeldBonusBoxes(currency, plan, onBonusChange = null) {
+/* The Held input of a currency no tier card owns. Writes go to EventPlanner keyed by this card's
+   currency id — the same plan and clamps the tier boxes use. */
+export function buildHeldBonusBoxes(currency, plan) {
   const key = String(currency.id);
-  const figures = [
-    {
-      labelText: "Held",
-      schema: Schema.tier.Have,
-      value: plan.held[key] || 0,
-      write: (v) => EventPlanner.setHeld(key, v),
-    },
-    {
-      labelText: "Bonus",
-      schema: Schema.tier.Bonus,
-      value: plan.bonus[key] || 0,
-      write: (v) => EventPlanner.setBonus(key, v),
-      onWritten: onBonusChange,
-    },
-  ];
-  const fragment = document.createDocumentFragment();
-  for (const figure of figures) fragment.appendChild(planFigureBox({ ...figure, currency }));
-  return fragment;
+  return planFigureBox({
+    labelText: "Held",
+    schema: Schema.tier.Have,
+    value: plan.held[key] || 0,
+    write: (v) => EventPlanner.setHeld(key, v),
+    currency,
+  });
 }
 
 /* The 3-in-1 card's quest dropdown (Amendment L3/L4, N1): the list is ONLY the event's all-covering

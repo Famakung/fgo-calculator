@@ -140,6 +140,7 @@ def main():
     assert [i["id"] for i in snapshot["items"]] == [2], "the free entry itself is still dropped from items"
     assert snapshot["farm"] == {"quests": [], "best": {}}, "no warIds means an empty quest list and an empty best map, not missing keys"
     assert snapshot["trades"] == [], "no upgrade rows in this shop means an empty trades list, never a missing key"
+    assert snapshot["bonusCes"] == [], "no matching bonus CEs means an empty bonusCes list, never a missing key"
     n += 1
 
     # --- an open eventQuest whose shop is empty is not an event shop: it drops out of the list ---
@@ -204,6 +205,35 @@ def main():
     assert m._shop_trades([{"purchaseType": "item", "targetIds": [94164002], "cost": {"item": BRONZE, "amount": 10}, "setNum": None}], currency_ids) == [], (
         "a row that sells nothing per purchase is not a usable ratio"
     )
+    n += 1
+
+    # --- _collect_bonus_ces: malformed equip entries, null skills/svals, invalid AddCount/rarity ---
+    broken_equips = [
+        None,
+        {"id": 0, "skills": [{"functions": [{"funcType": "eventDropUp", "svals": [{"EventId": 1, "Individuality": 11, "AddCount": 1}]}]}]},
+        {
+            "id": 9400001,
+            "name": "Junk CE",
+            "rarity": 99,
+            "skills": [
+                None,
+                {"functions": [None, {"funcType": "eventDropUp", "svals": [None, {"EventId": 1, "Individuality": 11, "AddCount": 0}, {"EventId": 1, "Individuality": 11, "AddCount": -2}]}]},
+            ],
+        },
+        {
+            "id": 9400002,
+            "name": None,
+            "rarity": None,
+            "skills": [{"functions": [{"funcType": "eventDropUp", "svals": [{"EventId": 1, "Individuality": 11, "AddCount": 1}]}]}],
+        },
+    ]
+    bad_items = {94164002: {"id": 94164002, "individuality": [None, {"id": 11}, {"id": -1}]}}
+    with patch.object(m, "_make_event_icon", no_icon_fetch):
+        ces = m._collect_bonus_ces(1, [94164002], bad_items, broken_equips, {"naEquips": {}}, dry_run=True)
+    assert ces == [{"id": 9400002, "name": "", "rarity": 3, "icon": None, "bonuses": {"94164002": {"nonLimitBreak": 1, "limitBreak": 1}}}], (
+        f"malformed rows drop out; missing rarity/name/face safely default (got {ces!r})"
+    )
+    assert m._collect_bonus_ces(1, [94164002], {}, broken_equips, {}, dry_run=True) == [], "no item individuality -> no bonus CEs"
     n += 1
 
     print(f"{n} tests passed")

@@ -608,16 +608,15 @@ test("L5/L8/R22 fixture B — trade-aware bonus plan: 104 plays (90誓い + 14�
   );
 });
 
-/* 2026-11-12 sync drift, sanctioned re-pin: the owner-ordered Atlas refetch moved 80639's community
-   drops (L2 data-truth passes against the fresh cache rows) and THIS file's exhaustive kernel below
-   re-derived the minimum as 263 — the old 306 literal is what the pre-sync drops produced. Never
-   guessed, never taken from EventShop: oracle.total, the 262 floor and the vector all come from
-   bestAtTotal/oraclePlan on the fresh module. */
-test("L5 fixture C — shipped 80639 snapshot, no all-covering quest, bonus 0, needs 3000/4000/5000 = 263 plays", () => {
+/* 2026-11-14 live sync re-pin: quest 94164105 unlocked on 80639 (L2 data-truth passes against the
+   fresh cache rows) and THIS file's exhaustive kernel below re-derived the minimum as 229 — the
+   old 263 literal is what the pre-94164105 drops produced. Never guessed, never taken from
+   EventShop: oracle.total and the vector both come from oraclePlan on the fresh module. */
+test("L5 fixture C — shipped 80639 snapshot, no all-covering quest, bonus 0, needs 3000/4000/5000 = 229 plays", () => {
   const needs = { [A_KEYS[0]]: 3000, [A_KEYS[1]]: 4000, [A_KEYS[2]]: 5000 };
   const input = { deficits: needs, quests: intQuests(snapshot.farm.quests, {}), trades: snapshot.trades };
   const oracle = oraclePlan(input, 360);
-  assert.equal(oracle.total, 263, `oracle minimum for ${JSON.stringify(needs)} is ${oracle.total}`);
+  assert.equal(oracle.total, 229, `oracle minimum for ${JSON.stringify(needs)} is ${oracle.total}`);
 
   const plan = appPlan({
     totals: needs,
@@ -627,7 +626,7 @@ test("L5 fixture C — shipped 80639 snapshot, no all-covering quest, bonus 0, n
     trades: snapshot.trades,
     priorityQuestId: null,
   });
-  assert.equal(plan.totalPlays, 263, `EventShop found ${plan.totalPlays} plays ${JSON.stringify(appVector(plan))}`);
+  assert.equal(plan.totalPlays, 229, `EventShop found ${plan.totalPlays} plays ${JSON.stringify(appVector(plan))}`);
   const audit = auditAppPlan(plan, input);
   assert.equal(audit.feasible, true, `app plan leaves ${audit.short.join(",")} short under integer replay`);
   assert.deepEqual(
@@ -636,10 +635,13 @@ test("L5 fixture C — shipped 80639 snapshot, no all-covering quest, bonus 0, n
     `app ${JSON.stringify(appVector(plan))} vs oracle ${JSON.stringify(oracle.vector)}`,
   );
 
-  /* R22: the 263-play optimum covers raw, so the MINIMUM cover is the empty trade list — the card
-     shows zero trade rows. Audited through the independent replay + propagation (chain linear
-     94164000→94164001→94164002, 10:1). */
-  assert.deepEqual(plan.trades, [], `R22 trades on the tradeless optimum ${JSON.stringify(plan.trades)}`);
+  /* R22: the 229-play optimum trades 60 Silver → 6 Gold (minimum cover audited independently below
+     through replay + propagation on the linear chain 94164000→94164001→94164002, 10:1). */
+  assert.deepEqual(
+    plan.trades,
+    [{ fromId: Number(A_KEYS[1]), toId: Number(A_KEYS[2]), count: 6 }],
+    `R22 trades on the 229-play optimum ${JSON.stringify(plan.trades)}`,
+  );
   const cRaw = rawMicroOfPlan(snapshot.farm.quests, {}, plan);
   assert.ok(cRaw, "app play cards name a quest the snapshot does not have");
   auditMinCover(plan, cRaw, needs, snapshot.trades, "fixture C");
@@ -1009,4 +1011,58 @@ test("R22 min-cover fuzz — linear, branching, cycles, zero-cost, duplicate pai
   console.log(
     `[R22 fuzz] plans ${stats.plans} infeasible ${stats.infeasible} with-trades ${stats.withTrades} notes ${notes.length}`,
   );
+});
+
+test("EventShop CE optimizer oracle audit on shipped 80639 and 80632 bonusCes", () => {
+  for (const snap of [snapshot, PAST]) {
+    const cids = snap.currencies.map((c) => String(c.id));
+    const needs = Object.fromEntries(cids.map((cid, idx) => [cid, 3000 + idx * 1000]));
+    const flatBonus = Object.fromEntries(cids.map((cid) => [cid, 1]));
+    const ceById = new Map(snap.bonusCes.map((ce) => [ce.id, ce]));
+    const ceOwned = Object.fromEntries(
+      snap.bonusCes.map((ce, idx) => [ce.id, { limitBreak: idx + 1, nonLimitBreak: 2 }]),
+    );
+    for (const limit of [2, 6]) {
+      const plan = EventShop.farmPlan({
+        totals: needs,
+        held: {},
+        bonus: flatBonus,
+        farm: snap.farm,
+        trades: snap.trades,
+        priorityQuestId: null,
+        currencyIds: cids,
+        bonusCes: snap.bonusCes,
+        ceOwned,
+        ceEquipLimit: limit,
+      });
+      assert.ok(plan.totalPlays > 0);
+      const questById = new Map(snap.farm.quests.map((q) => [String(q.questId), q]));
+      const rawMicro = {};
+      const boostedQuests = [];
+      for (const play of plan.plays) {
+        let slots = 0;
+        const effectiveBonus = { ...flatBonus };
+        for (const entry of play.ceCombo) {
+          slots += entry.limitBreak + entry.nonLimitBreak;
+          const ce = ceById.get(entry.ceId);
+          assert.ok(ce, `unknown CE ${entry.ceId}`);
+          for (const [cid, spec] of Object.entries(ce.bonuses)) {
+            effectiveBonus[cid] =
+              (effectiveBonus[cid] || 0) + entry.limitBreak * spec.limitBreak + entry.nonLimitBreak * spec.nonLimitBreak;
+          }
+        }
+        assert.ok(slots <= limit, `equipped ${slots} > limit ${limit}`);
+        const q = questById.get(String(play.questId));
+        assert.ok(q, `unknown quest ${play.questId}`);
+        const [boosted] = intQuests([q], effectiveBonus);
+        boostedQuests.push(boosted);
+        for (const [key, rate] of Object.entries(boosted.rates)) {
+          rawMicro[key] = (rawMicro[key] || 0) + play.runs * rate;
+        }
+      }
+      const audit = auditAppPlan(plan, { deficits: needs, quests: boostedQuests, trades: snap.trades });
+      assert.equal(audit.feasible, true, `${snap.event.id} limit ${limit} short: ${audit.short.join(",")}`);
+      auditMinCover(plan, rawMicro, needs, snap.trades, `CE oracle ${snap.event.id} limit=${limit}`);
+    }
+  }
 });

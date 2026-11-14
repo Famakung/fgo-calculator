@@ -21,22 +21,23 @@ src/
     ce-match-worker.js        — Worker entry (TraitMatcher inlined)
     constants.js              — All constants
     filter-sections.js        — FilterSections chip builder + FilterModalController
-    domain.js                 — Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, ServantFilters, ServantSort, SlotCEs, Teapot, Quest
+    domain.js                 — Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, ServantFilters, ServantSort, SlotCEs, Teapot, Quest, EventShop
     data.js                   — ServantData (incl. getBondGrowth), TraitNames, CEList, CEById, TraitCEs
     state.js                  — StateManager, Persistence
     presentation.js            — DOMFactory, CollapsibleFactory, ComboCardRenderer, debounce
     selectors.js               — ServantSelector, AscensionSelector, CESelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap
     bond-app.js                — BondApp (configure() for refs, _initialized guard)
     event-shop.js              — UIBuilder, ViewManager, EventHandler, App (tier calculator)
+    event-shop-ce.js           — Bonus CE grid (#bonusCeGrid, 3★/4★/5★ column-aligned LB/NLB counts) + #ceBonusEquipInput sync
     event-shop-tier.js         — event-native tier skin: currency images/names, read-only Required displays
     event-shop-farm.js         — Drop Rates per Run real-data cards, event-mode results + plan box sync
-    event-shop-farm-results.js — Best Farm Runs results card: Quests to Play farm-cards, Item Receive (raw farmed drops, ×-count overlays), minimum-cover Shop Trades cards
+    event-shop-farm-results.js — Best Farm Runs results card: Quests to Play farm-cards + per-quest CE combo chips, Item Receive (raw farmed drops, ×-count overlays), minimum-cover Shop Trades cards
     event-shop-farm-names.js   — single-line quest names with a looping slide for overflow (post-render measure + one resize watcher)
-    event-shop-farm-lines.js   — farm-card primary/secondary drop lines from community data (live bonus)
-    event-shop-farm-controls.js— farm-card Held/Bonus plan boxes + tier-mapped currency id set
+    event-shop-farm-lines.js   — farm-card primary/secondary drop lines from community data (.drop-icon-count stack overlay + perRun / run (pct%))
+    event-shop-farm-controls.js— farm-card unmapped-currency Held plan boxes + tier-mapped currency id set
     event-shop-modal.js        — EventShopModal: per-currency draft config modal (Default/Select All/Cancel/OK)
     event-planner.js           — EventPlanner: shop plan state, applyRequires, persistence (state-only)
-    event-planner-state.js     — pure plan helpers (snapshotEvents, planOf, retiredPlans, clampCurrencyBox)
+    event-planner-state.js     — pure plan helpers (snapshotEvents, planOf, cloneCeOwned, retiredPlans, clampCurrencyBox)
     event-planner-parts.js     — pure builders for the modal draft rows (buildDraftRow chain)
     tab-navigator.js           — TabNavigator (lazy init callbacks)
     data/

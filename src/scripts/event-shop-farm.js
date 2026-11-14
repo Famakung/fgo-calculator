@@ -67,8 +67,7 @@ function buildCurrencyCard(currency, view) {
     ? selectedQuest(view, currency, options)
     : bestDropperQuest(view.snapshot.farm, currency);
   card.appendChild(buildCardBody(currency, quest, view, options));
-  if (!view.mapped.has(String(currency.id)))
-    card.appendChild(buildHeldBonusBoxes(currency, view.plan, view.handlers.onBonusChange));
+  if (!view.mapped.has(String(currency.id))) card.appendChild(buildHeldBonusBoxes(currency, view.plan));
   return card;
 }
 
@@ -192,7 +191,6 @@ export function syncPlanBoxes(elements, values, needs = {}) {
   TIERS.forEach((tier) => {
     writeBox(elements, `${tier}Need`, needs[tier] || 0);
     writeBox(elements, `${tier}Have`, values.held[tier] || 0);
-    writeBox(elements, `${tier}Bonus`, values.bonus[tier] || 0);
   });
 }
 

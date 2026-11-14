@@ -423,6 +423,29 @@ const FX_B = {
     },
   ],
   farm: { quests: FX_B_QUESTS, best: { 94160901: 94161103, 94160902: 94161104, 94160903: 94161105 } },
+  bonusCes: [
+    {
+      id: 9409680,
+      name: "FX Cookie CE",
+      rarity: 3,
+      icon: "event_shop/equip_9409680.webp",
+      bonuses: { 94160901: { nonLimitBreak: 1, limitBreak: 2 } },
+    },
+    {
+      id: 9409670,
+      name: "FX Pie CE",
+      rarity: 4,
+      icon: "event_shop/equip_9409670.webp",
+      bonuses: { 94160903: { nonLimitBreak: 1, limitBreak: 2 } },
+    },
+    {
+      id: 9409660,
+      name: "FX Donut CE",
+      rarity: 5,
+      icon: "event_shop/equip_9409660.webp",
+      bonuses: { 94160902: { nonLimitBreak: 1, limitBreak: 2 } },
+    },
+  ],
   trades: FX_TRADES,
 };
 const FX_NULL = {
@@ -612,14 +635,14 @@ const MAIN_REQUIRES = { 80639054: 300, 80639053: 400, 80639055: 2500 };
    the owner-ordered Atlas refetch moved 80639's community drops (sanctioned data drift). MAIN_TRUTH
    below is the verbatim drop transcription of the three winning quests — the drift alarm. */
 const MAIN_ORACLE = {
-  totalPlays: 263,
-  rows: { 94164102: 133, 94164103: 47, 94164104: 83 },
-  trades: { count: 0 },
+  totalPlays: 229,
+  rows: { 94164105: 97, 94164104: 84, 94164103: 48 },
+  trades: { count: 1 },
 };
 const MAIN_TRUTH = {
-  94164102: { 94164000: [2.2844, 3], 94164002: [10.8199, 3] },
-  94164103: { 94164000: [14.8696, 3], 94164001: [2.7391, 3] },
-  94164104: { 94164001: [14.52, 3], 94164002: [2.7867, 3] },
+  94164103: { 94164000: [14.7333, 3], 94164001: [2.8444, 3] },
+  94164104: { 94164001: [14.5774, 3], 94164002: [2.931, 3] },
+  94164105: { 94164000: [3.0565, 3], 94164002: [14.6265, 3] },
 };
 for (const [qid, drops] of Object.entries(MAIN_TRUTH)) {
   const quest = LIVE.farm.quests.find((q) => String(q.questId) === qid);
@@ -865,7 +888,7 @@ function stageMutant(name, fxDirName, fxChunk) {
     case "mut_order": {
       const m = resolveChunkMatch(
         chunkText,
-        /([A-Za-z_$][\w$]*\.appendChild\([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\.result\)\)),([A-Za-z_$][\w$]*\.appendChild\([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\.result\)\)),([A-Za-z_$][\w$]*\.appendChild\([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\.result\)\))/,
+        /([A-Za-z_$][\w$]*\.appendChild\([A-Za-z_$][\w$]*\((?:[A-Za-z_$][\w$]*,)+[A-Za-z_$][\w$]*\.result\)\)),([A-Za-z_$][\w$]*\.appendChild\([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\.result\)\)),([A-Za-z_$][\w$]*\.appendChild\([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\.result\)\))/,
         "m-order",
       );
       patchFile(chunk, m[0], `${m[1]},${m[3]},${m[2]}`, "m-order");
@@ -875,13 +898,13 @@ function stageMutant(name, fxDirName, fxChunk) {
       const hFn = statNodeFn();
       const m = resolveChunkMatch(
         chunkText,
-        /function [A-Za-z_$][\w$]*\(([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*)\)\{let ([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\.el\([`"']div[`"'],[`"']farm-res-quests[`"']\),([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\.el\([`"']div[`"'],[`"']farm-grid[`"']\);for\(let [A-Za-z_$][\w$]* of \2\.plays\)[^}]*?return (\3\.replaceChildren\(([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[`"']quest-title[`"']\),\4)\)),\3\}/,
+        /function [A-Za-z_$][\w$]*\([^)]*,([A-Za-z_$][\w$]*)\)\{let ([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\.el\([`"']div[`"'],[`"']farm-res-quests[`"']\),([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\.el\([`"']div[`"'],[`"']farm-grid[`"']\)[^;]*;for\(let [A-Za-z_$][\w$]* of \1\.plays\)[^}]*?return (\2\.replaceChildren\(([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[`"']quest-title[`"']\),\3)\)),\2\}/,
         "m-total-back",
       );
       patchFile(
         chunk,
-        m[5],
-        `${m[3]}.replaceChildren(${m[6]},${hFn}(\`Total: \${${m[2]}.totalPlays} plays\`,\`farm-res-total\`))`,
+        m[4],
+        `${m[2]}.replaceChildren(${m[5]},${hFn}(\`Total: \${${m[1]}.totalPlays} plays\`,\`farm-res-total\`))`,
         "m-total-back",
       );
       break;
@@ -1196,6 +1219,18 @@ async function readCard(page) {
         runs: countEl ? Number(countEl.textContent.replace(/[^\d]/g, "")) : NaN,
         label: labelEl ? labelEl.textContent.trim() : null,
         bodySeq: body ? [...body.children].map((k) => ({ cls: [...k.classList], text: visibleText(k).trim() })) : [],
+        ceChips: body
+          ? [...body.querySelectorAll(".farm-res-ce-list > .farm-res-ce-chip")].map((chip) => {
+              const img = chip.querySelector("img.farm-res-ce-img");
+              return {
+                title: chip.getAttribute("title"),
+                hasImg: !!img,
+                imgComplete: img ? img.complete && img.naturalWidth > 0 : false,
+                imgH: img ? getComputedStyle(img).height : null,
+                counts: [...chip.querySelectorAll(".farm-res-ce-count")].map((s) => s.textContent.trim()),
+              };
+            })
+          : [],
         countStyle: cs
           ? {
               fontFamily: cs.fontFamily,
@@ -1314,12 +1349,14 @@ async function readCard(page) {
        .farm-card-icon header box (play OR trade header — the trade-row .farm-res-icon box is dead).
        Anything else is a stray. */
     const images = [...inner.querySelectorAll("img")].map((img) => {
-      const box = img.closest(".farm-res-fruit") || img.closest(".farm-card-icon");
+      const box = img.closest(".farm-res-fruit") || img.closest(".farm-card-icon") || img.closest(".farm-res-ce-chip");
+      const inCe = !!img.closest(".farm-res-ce-chip");
       return {
         inReceive: !!img.closest(".farm-res-receive"),
         inPlay: !!img.closest(".farm-card"),
+        inCe,
         cls: box ? [...box.classList].join(" ") : null,
-        h: box ? getComputedStyle(box).height : null,
+        h: inCe ? getComputedStyle(img).height : box ? getComputedStyle(box).height : null,
         imgCls: [...img.classList].join(" "),
       };
     });
@@ -1791,26 +1828,32 @@ function assertPlayCards(card, label, { currencies, quests }) {
     const wantSeq = [["farm-stat", "farm-quest-name"]];
     if (quest.recommendLv) wantSeq.push(["farm-stat"]);
     wantSeq.push(["farm-stat", "farm-res-play-count"], ["farm-stat", "farm-res-play-label"]);
+    const ceIndex = c.bodySeq.findIndex((k) => k.cls.includes("farm-res-ce-list"));
+    const statSeq = ceIndex >= 0 ? c.bodySeq.slice(0, ceIndex) : c.bodySeq;
     const body = [];
-    if (c.bodySeq.length !== wantSeq.length)
-      body.push(`${c.bodySeq.length} body lines ${JSON.stringify(c.bodySeq.map((k) => k.text))}`);
+    if (ceIndex >= 0 && ceIndex !== c.bodySeq.length - 1)
+      body.push(`.farm-res-ce-list at line ${ceIndex}, must follow .farm-res-play-label`);
+    if (ceIndex >= 0 && !sameClassSet(c.bodySeq[ceIndex].cls, ["farm-res-ce-list"]))
+      body.push(`ce list classes "${c.bodySeq[ceIndex].cls.join(" ")}", want "farm-res-ce-list"`);
+    if (statSeq.length !== wantSeq.length)
+      body.push(`${statSeq.length} body stat lines ${JSON.stringify(statSeq.map((k) => k.text))}`);
     wantSeq.forEach((cls, i) => {
-      const line = c.bodySeq[i];
+      const line = statSeq[i];
       if (!line) return;
       // R25: the name line may carry the measured STATE class is-sliding — identity classes stay
       // exact and r25.slide alone decides whether is-sliding is legitimate (proven from geometry).
       const gotCls = i === 0 ? line.cls.filter((x) => x !== "is-sliding") : line.cls;
       if (!sameClassSet(gotCls, cls)) body.push(`line ${i} classes "${line.cls.join(" ")}", want "${cls.join(" ")}"`);
     });
-    const nameLine = c.bodySeq[0];
+    const nameLine = statSeq[0];
     if (nameLine && nameLine.text !== quest.questName) body.push(`line 0 text "${nameLine.text}"`);
-    const recLine = quest.recommendLv ? c.bodySeq[1] : null;
+    const recLine = quest.recommendLv ? statSeq[1] : null;
     if (quest.recommendLv && recLine && recLine.text !== `REC Lv. ${quest.recommendLv}`)
       body.push(`REC line "${recLine.text}", want "REC Lv. ${quest.recommendLv}"`);
-    const countLine = c.bodySeq[wantSeq.length - 2];
+    const countLine = statSeq[wantSeq.length - 2];
     if (countLine && countLine.text !== c.runs.toLocaleString("en-US"))
       body.push(`runs line "${countLine.text}", want ${c.runs.toLocaleString("en-US")}`);
-    const labelLine = c.bodySeq[wantSeq.length - 1];
+    const labelLine = statSeq[wantSeq.length - 1];
     if (labelLine && labelLine.text !== (c.runs === 1 ? "run" : "runs"))
       body.push(`label "${labelLine.text}", want "${c.runs === 1 ? "run" : "runs"}"`);
     if (body.length) fail("r6.bodyseq", `${label}: play card ${at} body: ${body.join("; ")}`);
@@ -2098,12 +2141,12 @@ function assertStructure(card, label, { expectTrades }) {
       "r18.tradechrome",
       `${label}: ${card.tradesHintNodes} .farm-res-trades-hint node(s) — R21's hint was removed, none may render`,
     );
-  const stray = card.images.filter(
-    (i) =>
-      !i.cls ||
-      i.imgCls !== "fg-layer" ||
-      (i.inReceive ? i.cls !== "farm-res-fruit" : i.cls !== "farm-card-icon" || i.h !== "64px"),
-  );
+  const stray = card.images.filter((i) => {
+    if (!i.cls) return true;
+    if (i.inCe) return i.cls !== "farm-res-ce-chip" || i.imgCls !== "farm-res-ce-img" || i.h !== "48px";
+    if (i.imgCls !== "fg-layer") return true;
+    return i.inReceive ? i.cls !== "farm-res-fruit" : i.cls !== "farm-card-icon" || i.h !== "64px";
+  });
   if (stray.length)
     fail(
       "r1.noOtherImages",
@@ -2324,7 +2367,7 @@ async function runMain(browser, url) {
   if (card.tradeCards.length !== MAIN_ORACLE.trades.count)
     fail(
       "main.plan",
-      `trade cards ${JSON.stringify(card.tradeCards.map((r) => [r.countText, r.label]))}, want ${MAIN_ORACLE.trades.count} — the 263-play optimum re-derived on the fresh 2026-11-12 drops covers without the cascade`,
+      `trade cards ${JSON.stringify(card.tradeCards.map((r) => [r.countText, r.label]))}, want ${MAIN_ORACLE.trades.count} — synced 80639 optimum is 229 plays with 1 trade`,
     );
   assertStructure(card, "main", { expectTrades: MAIN_ORACLE.trades.count > 0 });
   assertPlayCards(card, "main", { currencies: LIVE.currencies, quests: LIVE.farm.quests });
@@ -2338,10 +2381,6 @@ async function runMain(browser, url) {
   assertSlidingNames(card.materialNames, "main tier cards", "r26.surface");
   assertNeutralResultsSkin(card, "main");
   assertTierSkinKept(card, "main");
-  /* 2026-11-12 sync drift: the re-derived 263-play optimum executes ZERO trades, so farmed === final
-     on this shipped-data scene and receive.notYields cannot discriminate here — the fx B scene (R22
-     minimum cover 196 donut→pie, ×3,052/×5,001/×3,008/×4,008/×5,007 absence) carries that pin at full
-     strength. The replay here still re-computes every shown figure independently (receive.figs). */
   const figsMain = assertFigs(card, "main", {
     quests: LIVE.farm.quests,
     bonusMap: {},
@@ -2351,11 +2390,31 @@ async function runMain(browser, url) {
   });
   if (figsMain) {
     const expectedMain = gateMinCover(figsMain.farmed, currencyNeeds(LIVE.items, MAIN_REQUIRES), LIVE.trades);
-    if (expectedMain && expectedMain.length)
+    if (
+      JSON.stringify(expectedMain) !== JSON.stringify([{ fromId: 94164001, toId: 94164002, count: 6 }])
+    )
       fail(
         "main.plan",
-        `gate-propagated minimum cover ${JSON.stringify(expectedMain)} on the 263-play drops — the scenario must be tradeless`,
+        `gate-propagated minimum cover ${JSON.stringify(expectedMain)}, want [{ fromId: 94164001, toId: 94164002, count: 6 }]`,
       );
+    const actualMain = card.tradeCards.map((t) => ({
+      fromId: Number(Object.keys(NAMES.main).find((k) => NAMES.main[k] === t.iconAlts[0])),
+      toId: Number(Object.keys(NAMES.main).find((k) => NAMES.main[k] === t.iconAlts[1])),
+      count: t.count,
+    }));
+    if (JSON.stringify(actualMain) !== JSON.stringify(expectedMain))
+      fail(
+        "main.plan",
+        `trade cards ${JSON.stringify(actualMain)} != gate-propagated minimum cover ${JSON.stringify(expectedMain)}`,
+      );
+    assertTradeCards(card, "main", {
+      currencies: LIVE.currencies,
+      trades: (expectedMain || []).map((t) => ({
+        ...t,
+        ...LIVE.trades.find((r) => Number(r.fromId) === t.fromId && Number(r.toId) === t.toId),
+      })),
+      wantCounts: (expectedMain || []).map((t) => t.count),
+    });
   }
   assertArt(card, "main", LIVE.currencies);
 }
@@ -2363,7 +2422,13 @@ async function runMain(browser, url) {
 const FX_PLAN_B = {
   requires: { 99999001: 4000, 99999002: 3000, 99999003: 5000 },
   held: {},
-  bonus: { 94160901: 1, 94160902: 2, 94160903: 1 },
+  bonus: {},
+  ceOwned: {
+    9409680: { limitBreak: 0, nonLimitBreak: 1 },
+    9409670: { limitBreak: 0, nonLimitBreak: 1 },
+    9409660: { limitBreak: 1, nonLimitBreak: 0 },
+  },
+  ceEquipLimit: 3,
   farmQuest: null,
   currencyQuest: {},
 };
@@ -2422,6 +2487,8 @@ async function runFx(browser, url) {
     if (oath.titleCls !== "farm-card-title farm-card-title--icons") off.push(`title "${oath.titleCls}"`);
     if (oath.iconH.length !== 3) off.push(`${oath.iconH.length} header icons, want every currency`);
     if (oath.label !== "runs") off.push(`label "${oath.label}"`);
+    if (!oath.ceChips || oath.ceChips.length !== 3)
+      off.push(`ceChips ${JSON.stringify(oath.ceChips)}, want 3 CE chips`);
     if (off.length) fail("fx.exact", `fx B: 誓い play card ${off.join("; ")}`);
   }
   if (herd) {
@@ -2429,8 +2496,10 @@ async function runFx(browser, url) {
     if (herd.tier !== "silver") off.push(`data-tier ${JSON.stringify(herd.tier)}, want the Pie (silver) main drop`);
     if (herd.cls.includes("farm-card--combo")) off.push("combo class on a one-currency play");
     if (herd.iconAlts.join() !== "Pie") off.push(`header icons ${JSON.stringify(herd.iconAlts)}, want only Pie`);
-    if (herd.bodySeq.map((k) => k.text).join(" | ") !== "パンプキン収穫 牛追いファーム | REC Lv. 85 | 14 | runs")
+    if (herd.bodySeq.slice(0, 4).map((k) => k.text).join(" | ") !== "パンプキン収穫 牛追いファーム | REC Lv. 85 | 14 | runs")
       off.push(`body ${JSON.stringify(herd.bodySeq.map((k) => k.text))}`);
+    if (!herd.ceChips || herd.ceChips.length !== 2)
+      off.push(`ceChips ${JSON.stringify(herd.ceChips)}, want 2 CE chips`);
     if (off.length) fail("fx.exact", `fx B: 牛追い play card ${off.join("; ")}`);
   }
   assertTradeCards(card, "fx", {
@@ -2876,7 +2945,7 @@ async function runStub(browser, url) {
     deficitRows: document.querySelectorAll("#deficitGrid .deficit-item").length,
     questRows: document.querySelectorAll("#questGrid > *").length,
     farmResNodes: document.querySelectorAll(
-      ".farm-res-receive, .farm-res-quests, .farm-res-trades, .farm-res-total, .farm-res-item, .farm-res-receive-card, .farm-res-fruit, .farm-res-fruit-count, .farm-res-play-count, .farm-res-play-label, .farm-res-trade-icon-count, .farm-res-trade-ratio, .farm-res-trades-hint",
+      ".farm-res-receive, .farm-res-quests, .farm-res-trades, .farm-res-total, .farm-res-item, .farm-res-receive-card, .farm-res-fruit, .farm-res-fruit-count, .farm-res-play-count, .farm-res-play-label, .farm-res-ce-list, .farm-res-trade-icon-count, .farm-res-trade-ratio, .farm-res-trades-hint",
     ).length,
     plannerWording:
       document.body.textContent.includes("Best Farm Runs") || document.body.textContent.includes("Item Receive"),

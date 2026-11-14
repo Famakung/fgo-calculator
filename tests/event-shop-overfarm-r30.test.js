@@ -89,17 +89,19 @@ test("owner 80639 gold pick 94164101 honors selected pool [103,104,101] and hits
   assert.equal(auditAppPlan(plan, input).feasible, true, "app plan must cover");
 });
 
-test("R30 control — default gold pick 94164102: app == oracle 240", () => {
-  const { oracle, plan } = ownerRun(94164102);
-  assert.equal(oracle.total, 240);
-  assert.equal(plan.totalPlays, 240, `app ${plan.totalPlays} vs oracle 240 with the default pick`);
+test("R30 control — default gold pick: app == oracle", () => {
+  const { oracle, plan } = ownerRun(DEFAULT_PICKS[A_KEYS[2]]);
+  assert.ok(oracle.total > 0);
+  assert.equal(plan.totalPlays, oracle.total, `app ${plan.totalPlays} vs oracle ${oracle.total} with the default pick`);
 });
 
 test("R30 context — 80639 ships no all-covering quest (non-all-drop defect surface)", () => {
   assert.equal(EventShop.allCoveringQuests(snapshot.farm, IDS).length, 0, "80639 must have no all-cover quest");
 });
 
-const DEFAULT_PICKS = { [A_KEYS[0]]: 94164103, [A_KEYS[1]]: 94164104, [A_KEYS[2]]: 94164102 };
+const DEFAULT_PICKS = Object.fromEntries(
+  A_KEYS.map((key) => [key, EventShop.defaultCurrencyQuest(snapshot.farm, IDS, key)]),
+);
 
 const CARD_SWAPS = [
   { [A_KEYS[0]]: 94164100 },

@@ -2221,7 +2221,95 @@ def _shop_entries(detail: dict) -> List[dict]:
     return [e for e in ((detail or {}).get("shop") or []) if isinstance(e, dict)]
 
 
-def _collect_event_snapshot(cache_dir: str, event: dict, item_map: Dict[int, dict], names: Dict[str, Dict[int, dict]], force: bool = False, dry_run: bool = False) -> Optional[dict]:
+def _load_equip_export(cache_dir: str, force: bool = False) -> List[dict]:
+    """Bulk JP equip export (shared with CE sync); an outage warns and skips bonus CEs."""
+    try:
+        data = get_cached_json(cache_dir, "nice_equip_lang_en.json", EQUIP_EXPORT_URL, force=force)
+    except Exception as e:
+        print(f"  [WARN] nice_equip_lang_en.json unavailable, bonus CEs skipped: {e}", file=sys.stderr)
+        return []
+    return data if isinstance(data, list) else []
+
+
+def _currency_individuality_map(currency_ids: List[int], item_map: Dict[int, dict]) -> Dict[int, int]:
+    """Map each shop currency's Atlas drop individuality id -> currency item id."""
+    ind_to_currency: Dict[int, int] = {}
+    for cid in currency_ids:
+        item = (item_map or {}).get(cid) or {}
+        for ind in item.get("individuality") or []:
+            ind_id = ind.get("id") if isinstance(ind, dict) else ind
+            if isinstance(ind_id, int) and ind_id > 0:
+                ind_to_currency[ind_id] = cid
+    return ind_to_currency
+
+
+def _equip_event_bonuses(equip: dict, event_id: int, ind_to_currency: Dict[int, int]) -> Dict[str, dict]:
+    """Extract {str(currencyId): {nonLimitBreak, limitBreak}} from eventDropUp skills for event_id."""
+    adds_by_currency: Dict[int, List[int]] = {}
+    for skill in equip.get("skills") or []:
+        if not isinstance(skill, dict):
+            continue
+        for fn in skill.get("functions") or []:
+            if not isinstance(fn, dict) or fn.get("funcType") != "eventDropUp":
+                continue
+            for sv in fn.get("svals") or []:
+                if not isinstance(sv, dict) or sv.get("EventId") != event_id:
+                    continue
+                cid = ind_to_currency.get(sv.get("Individuality"))
+                add = sv.get("AddCount")
+                if cid and isinstance(add, int) and add > 0:
+                    adds_by_currency.setdefault(cid, []).append(add)
+    return {
+        str(cid): {"nonLimitBreak": min(adds), "limitBreak": max(adds)}
+        for cid, adds in sorted(adds_by_currency.items())
+    }
+
+
+def _collect_bonus_ces(
+    event_id: int,
+    currency_ids: List[int],
+    item_map: Dict[int, dict],
+    equips: Optional[List[dict]],
+    names: Dict[str, Dict[int, dict]],
+    force: bool = False,
+    dry_run: bool = False,
+) -> List[dict]:
+    """Discover event bonus CEs boosting at least one shop currency, sorted (rarity, id)."""
+    ind_to_currency = _currency_individuality_map(currency_ids, item_map)
+    if not ind_to_currency or not equips:
+        return []
+    bonus_ces = []
+    for equip in equips:
+        if not isinstance(equip, dict):
+            continue
+        eid = equip.get("id")
+        if not isinstance(eid, int) or eid <= 0:
+            continue
+        bonuses = _equip_event_bonuses(equip, event_id, ind_to_currency)
+        if not bonuses:
+            continue
+        rarity = equip.get("rarity")
+        rarity = rarity if isinstance(rarity, int) and 1 <= rarity <= 5 else 3
+        bonus_ces.append({
+            "id": eid,
+            "name": resolve_equip_name(eid, {}, names, equip),
+            "rarity": rarity,
+            "icon": _event_icon_file("equip", eid, _equip_face_asset_path(equip), force=force, dry_run=dry_run),
+            "bonuses": bonuses,
+        })
+    bonus_ces.sort(key=lambda ce: (ce["rarity"], ce["id"]))
+    return bonus_ces
+
+
+def _collect_event_snapshot(
+    cache_dir: str,
+    event: dict,
+    item_map: Dict[int, dict],
+    names: Dict[str, Dict[int, dict]],
+    equips: Optional[List[dict]] = None,
+    force: bool = False,
+    dry_run: bool = False,
+) -> Optional[dict]:
     """One event's snapshot, or None when it has no shop to snapshot (the G1 non-empty filter)."""
     detail = _event_detail(cache_dir, event, force=force)
     entries = _shop_entries(detail)
@@ -2230,13 +2318,23 @@ def _collect_event_snapshot(cache_dir: str, event: dict, item_map: Dict[int, dic
     currencies, items = _map_shop_entries(cache_dir, entries, item_map, names, force, dry_run)
     if not items:
         return None
+    sorted_currencies = sorted(currencies)
     war_ids = detail.get("warIds") or event.get("warIds") or []
     return {
         "event": _event_window(event),
-        "currencies": [currencies[cid] for cid in sorted(currencies)],
+        "currencies": [currencies[cid] for cid in sorted_currencies],
         "items": sorted(items, key=lambda it: (it["priority"], it["id"])),
-        "farm": _collect_farm(cache_dir, war_ids, sorted(currencies), force=force),
-        "trades": _shop_trades(entries, sorted(currencies)),
+        "farm": _collect_farm(cache_dir, war_ids, sorted_currencies, force=force),
+        "trades": _shop_trades(entries, sorted_currencies),
+        "bonusCes": _collect_bonus_ces(
+            event["id"],
+            sorted_currencies,
+            item_map,
+            equips,
+            names,
+            force=force,
+            dry_run=dry_run,
+        ),
     }
 
 
@@ -2338,11 +2436,12 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
 
     item_map = load_nice_item_map(cache_dir, force=force)
     names = load_event_name_maps(cache_dir, item_map, force=force)
+    equips = _load_equip_export(cache_dir, force=force)
 
     snapshots, failures = [], 0
     for event in events:
         try:
-            snapshot = _collect_event_snapshot(cache_dir, event, item_map, names, force=force, dry_run=dry_run)
+            snapshot = _collect_event_snapshot(cache_dir, event, item_map, names, equips=equips, force=force, dry_run=dry_run)
         except Exception as e:
             failures += 1
             print(f"  [WARN] Event {event.get('id')} shop fetch failed: {e}", file=sys.stderr)

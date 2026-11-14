@@ -1024,6 +1024,8 @@ test("sanitizePlans keeps one plan per event and starts unseen events empty", ()
     bonus: { 94164000: 0, 94164001: 0, 94164002: 1 },
     farmQuest: null,
     currencyQuest: {},
+    ceOwned: {},
+    ceEquipLimit: 6,
   });
   assert.deepEqual(state.plans["80630"], {
     requires: {},
@@ -1031,6 +1033,8 @@ test("sanitizePlans keeps one plan per event and starts unseen events empty", ()
     bonus: { 94162101: 0 },
     farmQuest: null,
     currencyQuest: {},
+    ceOwned: {},
+    ceEquipLimit: 6,
   });
 });
 
@@ -1088,7 +1092,15 @@ test("sanitizePlans survives junk blobs and an absent event list", () => {
   assert.deepEqual(EventShop.sanitizePlans({ selectedEventId: 5, plans: 7 }, [EVENT_B]), {
     selectedEventId: 80630,
     plans: {
-      80630: { requires: {}, held: { 94162101: 0 }, bonus: { 94162101: 0 }, farmQuest: null, currencyQuest: {} },
+      80630: {
+        requires: {},
+        held: { 94162101: 0 },
+        bonus: { 94162101: 0 },
+        farmQuest: null,
+        currencyQuest: {},
+        ceOwned: {},
+        ceEquipLimit: 6,
+      },
     },
   });
 });
@@ -1250,6 +1262,8 @@ test("EventPlanner isolates plans: committing to the selected event never touche
       bonus: { 94164000: 0, 94164001: 0, 94164002: 1 },
       farmQuest: null,
       currencyQuest: {},
+      ceOwned: {},
+      ceEquipLimit: 6,
     },
     "event A is exactly what it was before the switch",
   );

@@ -257,10 +257,10 @@ const refFarmRow = (entry, total, held, bonus) => {
   const runs = entry && perRun > 0 ? Math.ceil(deficit / perRun) : null;
   return { deficit, perRun, runs, ap: runs === null ? null : runs * entry.ap };
 };
-/* Amendment I drop line: "[icon] {num}(+{bonus}) {dropExpected×(num+bonus)} / run", 2dp, the same
-   multiply farmPlan prices with — formatted exactly the way toLocaleString("en-US", 2..2) does. */
-const dropStackRef = (num_, bonus) => `${num_}(+${bonus})`;
-const dropValueRef = (dropExpected, num_, bonus) =>
+/* Drop line: "[icon+num] {dropExpected*100}%  {dropExpected×num} / run", default 0-bonus rate. */
+const dropPctRef = (dropExpected) =>
+  `${(Number(dropExpected || 0) * 100).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
+const dropValueRef = (dropExpected, num_, bonus = 0) =>
   (dropExpected * (num_ + bonus)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
   " / run";
 
@@ -300,25 +300,25 @@ const FARM_TRUTH = {
     questName: "【GUNMA巡り】癒やしの温泉女神様",
     recommendLv: "75",
     ap: 40,
-    dropExpected: 14.8696,
+    dropExpected: 14.7333,
     num: 3,
-    secondary: { currencyId: 94164001, dropExpected: 2.7391, num: 3 },
+    secondary: { currencyId: 94164001, dropExpected: 2.8444, num: 3 },
   },
   94164001: {
     questName: "【GUNMA巡り】青城の白いドラゴン",
     recommendLv: "80",
     ap: 40,
-    dropExpected: 14.52,
+    dropExpected: 14.5774,
     num: 3,
-    secondary: { currencyId: 94164002, dropExpected: 2.7867, num: 3 },
+    secondary: { currencyId: 94164002, dropExpected: 2.931, num: 3 },
   },
   94164002: {
-    questName: "【GUNMA巡り】槍をスキーに連れていけ",
-    recommendLv: "70",
+    questName: "【GUNMA巡り】運動会の組分け会議",
+    recommendLv: "85",
     ap: 40,
-    dropExpected: 10.8199,
+    dropExpected: 14.6265,
     num: 3,
-    secondary: { currencyId: 94164000, dropExpected: 2.2844, num: 3 },
+    secondary: { currencyId: 94164000, dropExpected: 3.0565, num: 3 },
   },
 };
 
@@ -374,7 +374,6 @@ if (!LEGACY) {
 const sel = {
   tierNeed: (tier) => `#${tier}Need`,
   tierHeld: (tier) => `#${tier}Have`,
-  tierBonus: (tier) => `#${tier}Bonus`,
   modalRow: (id) => `#eventShopModalList .eshop-item[data-item-id="${id}"]`,
   modalInput: (id) => `${sel.modalRow(id)} .eshop-require-input`,
   modalPlus: (id) => `${sel.modalRow(id)} .eshop-step-btn[data-step="1"]`,
@@ -539,14 +538,13 @@ try {
             : null,
           needValue: need ? need.value : null,
           heldValue: held ? held.value : null,
-          bonusValue: bonus ? bonus.value : null,
+          bonusPresent: !!bonus,
           needReadOnly: need ? need.readOnly : null,
           needDisplayClass: need ? need.classList.contains("eshop-require-display") : null,
           needFieldClass: need ? need.classList.contains("material-input-box-field") : null,
           needHaspopup: need ? need.getAttribute("aria-haspopup") : null,
           needBox: box(need),
           heldBox: box(held),
-          bonusBox: box(bonus),
           iconEventClass: iconBox ? iconBox.classList.contains("material-icon--event") : null,
           iconBoxBg: iconBox ? getComputedStyle(iconBox).backgroundColor : null,
           iconBoxH: iconBox ? iconBox.offsetHeight : 0,
@@ -645,6 +643,7 @@ try {
                     num: d.dataset.num || null,
                     material: (d.querySelector(".drop-material") || {}).textContent || null,
                     value: (d.querySelector(".drop-value") || {}).textContent || null,
+                    iconCount: ((dBox && dBox.querySelector(".drop-icon-count")) || {}).textContent || null,
                     imgSrc: img ? img.getAttribute("src") : null,
                     imgW: img ? img.naturalWidth : 0,
                     boxH: dBox ? dBox.offsetHeight : 0,
@@ -1359,10 +1358,8 @@ try {
         );
       if (!td.badge)
         errors.push(`legacy: ${t} icon box has no .icon-fallback badge — buildTierFallback never ran on it`);
-      if (!(td.needBox.h > 0) || td.needBox.h !== td.heldBox.h || td.needBox.h !== td.bonusBox.h)
-        errors.push(
-          `legacy: ${t} box heights differ — need ${td.needBox.h} held ${td.heldBox.h} bonus ${td.bonusBox.h}`,
-        );
+      if (!(td.needBox.h > 0) || td.needBox.h !== td.heldBox.h)
+        errors.push(`legacy: ${t} box heights differ — need ${td.needBox.h} held ${td.heldBox.h}`);
       const before = td.needValue;
       await page.focus(sel.tierNeed(t));
       await page.keyboard.down("Control");
@@ -1613,18 +1610,14 @@ try {
       if (td.needHaspopup !== "dialog")
         errors.push(`parity: ${t} Required aria-haspopup=${JSON.stringify(td.needHaspopup)}, want dialog`);
       if (!(td.needBox.h > 0)) errors.push(`parity: ${t} Required has no height (${td.needBox.h}px)`);
-      if (td.needBox.h !== td.heldBox.h || td.needBox.h !== td.bonusBox.h)
-        errors.push(
-          `parity: ${t} offsetHeight mismatch — Required ${td.needBox.h}px, Held ${td.heldBox.h}px, Bonus ${td.bonusBox.h}px`,
-        );
+      if (td.needBox.h !== td.heldBox.h)
+        errors.push(`parity: ${t} offsetHeight mismatch — Required ${td.needBox.h}px, Held ${td.heldBox.h}px`);
       if (td.needBox.h === 44)
         errors.push(
           `parity: ${t} Required is exactly 44px tall — the removed min-height override is back (Held ${td.heldBox.h}px)`,
         );
-      if (td.needBox.w !== td.heldBox.w || td.needBox.w !== td.bonusBox.w)
-        errors.push(
-          `parity: ${t} offsetWidth mismatch — Required ${td.needBox.w}px, Held ${td.heldBox.w}px, Bonus ${td.bonusBox.w}px`,
-        );
+      if (td.needBox.w !== td.heldBox.w)
+        errors.push(`parity: ${t} offsetWidth mismatch — Required ${td.needBox.w}px, Held ${td.heldBox.w}px`);
       if (td.needBox.borderStyle !== "dashed")
         errors.push(`cues: ${t} Required computed border-style is ${td.needBox.borderStyle}, want dashed`);
       if (td.heldBox.borderStyle !== "solid")
@@ -1775,9 +1768,9 @@ try {
       const wantSrc = `event_shop/${currency.icon.split("/").pop()}?v=`;
       if (!src || !src.includes(wantSrc))
         errors.push(`icons: ${tier} icon src ${JSON.stringify(src)}, want ${JSON.stringify(wantSrc)}…`);
-      if (td.heldBox.readOnly !== false || td.bonusBox.readOnly !== false)
+      if (td.heldBox.readOnly !== false || td.bonusPresent)
         errors.push(
-          `tier card: ${tier} Held/Bonus must stay editable (held readOnly=${td.heldBox.readOnly}, bonus readOnly=${td.bonusBox.readOnly})`,
+          `tier card: ${tier} Held must stay editable and Bonus must be removed (held readOnly=${td.heldBox.readOnly}, bonusPresent=${td.bonusPresent})`,
         );
     }
     /* Amendment E data truth: currencies keep the JP names, NA-translated permanent materials are
@@ -1934,9 +1927,9 @@ try {
                 `farm(P1)(${currency.name}): header text ${JSON.stringify(hText)} alt ${JSON.stringify(h.imgAlt)}, want icon-only with alt=${JSON.stringify(currency.name)}`,
               );
           }
-          /* exactly one Held/Bonus pair per currency, and never on a tier-mapped card (Amendment H+I7) */
+          /* only Held on unmapped farm cards, never on a tier-mapped card */
           const gotLabels = card.inputs.map((i) => i.label).sort().join(",");
-          const wantLabels = mapped.has(id) ? "" : "Bonus,Held";
+          const wantLabels = mapped.has(id) ? "" : "Held";
           if (gotLabels !== wantLabels)
             errors.push(
               `farm(${currency.name}): card holds inputs [${gotLabels}], want [${wantLabels}] — mapped currencies own their tier-card pair, unmapped ones the farm pair`,
@@ -2004,8 +1997,13 @@ try {
               errors.push(
                 `farm(${currency.name}): ${want.kind} line data ${JSON.stringify([d.dropExpected, d.num])}, want [${want.de},${want.num}]`,
               );
-            if (d.material !== dropStackRef(want.num, 0))
-              errors.push(`farm(${currency.name}): ${want.kind} stack reads ${JSON.stringify(d.material)}, want "${dropStackRef(want.num, 0)}"`);
+            if (d.iconCount !== String(want.num))
+              errors.push(
+                `farm(${currency.name}): ${want.kind} icon count overlay reads ${JSON.stringify(d.iconCount)}, want "${want.num}"`,
+              );
+            const wantPct = dropPctRef(want.de);
+            if (d.material !== wantPct)
+              errors.push(`farm(${currency.name}): ${want.kind} drop % reads ${JSON.stringify(d.material)}, want "${wantPct}"`);
             const wantValue = dropValueRef(want.de, want.num, 0);
             if (d.value !== wantValue)
               errors.push(`farm(${currency.name}): ${want.kind} amount reads ${JSON.stringify(d.value)}, want "${wantValue}"`);
@@ -2048,73 +2046,18 @@ try {
       }
     }
 
-    /* ============ 5b. live Bonus repaints EVERY drop line carrying that currency ============== */
-    /* A currency rides its own card's primary line and, when its best quest pays a second shop
-       currency, another card's secondary line. The plan is empty here, so every line starts at +0. */
+    /* ============ 5b. Drop Rates stay default 0-bonus % and rate even when CE inputs change ==== */
     if (base.farm) {
-      for (const currency of CURRENCIES) {
-        const id = String(currency.id);
-        const tier = tierOfCurrency(currency);
-        /* every line in the grid that carries THIS currency: its own card's primary plus any other
-           quest's secondary when that quest pays it as the second-best shop drop */
-        const carriersNow = [];
-        for (const c of CURRENCIES) {
-          const entry = FARM[String(c.id)];
-          if (!entry) continue;
-          if (String(c.id) === id) carriersNow.push({ card: c.name, kind: "primary", de: entry.dropExpected, num: entry.num });
-          if (entry.secondary && String(entry.secondary.currencyId) === id)
-            carriersNow.push({ card: c.name, kind: "secondary", de: entry.secondary.dropExpected, num: entry.secondary.num });
-        }
-        const readLine = (cards, cardName, kind) =>
-          (((cards.find((c) => c.name === cardName) || {}).drops) || []).find(
-            (d) => d.kind === kind && d.currencyId === id,
-          );
-        const cardCountBefore = (await readTier()).farm.cards.length;
-        if (!carriersNow.length)
-          errors.push(`bonus repaint: no drop line carries currency ${id} — the scene has nothing to pin`);
-        if (carriersNow.length < 2 && FARM[id] && FARM[id].secondary)
-          errors.push(
-            `bonus repaint: currency ${id} rides only ${carriersNow.length} line(s) — the two-line repaint is unpinned for it`,
-          );
-        for (const want of [2, 0]) {
-          await typeInto(sel.tierBonus(tier), String(want));
-          await wait(SETTLE_MS);
-          const cards = (await readTier()).farm.cards;
-          for (const c of carriersNow) {
-            const d = readLine(cards, c.card, c.kind);
-            if (!d) {
-              errors.push(`bonus repaint(${currency.name}): ${c.card}/${c.kind} line vanished at bonus ${want}`);
-              continue;
-            }
-            if (d.material !== dropStackRef(c.num, want))
-              errors.push(
-                `bonus repaint(${currency.name}): ${c.card} ${c.kind} stack reads ${JSON.stringify(d.material)}, want "${dropStackRef(c.num, want)}"`,
-              );
-            const wantValue = dropValueRef(c.de, c.num, want);
-            if (d.value !== wantValue)
-              errors.push(
-                `bonus repaint(${currency.name}): ${c.card} ${c.kind} amount reads ${JSON.stringify(d.value)}, want "${wantValue}" (dropExpected ${c.de} × (${c.num}+${want}))`,
-              );
-          }
-          /* lines carrying OTHER currencies must not move */
-          for (const card of cards) {
-            for (const d of card.drops) {
-              if (d.currencyId === id) continue;
-              if (d.material !== dropStackRef(Number(d.num), 0))
-                errors.push(
-                  `bonus repaint(${currency.name}): editing its bonus moved ${card.name}'s ${d.kind} line for currency ${d.currencyId} — ${JSON.stringify(d.material)}`,
-                );
-            }
-          }
-        }
-        if ((await readTier()).farm.cards.length !== cardCountBefore)
-          errors.push(`bonus repaint: card count changed across the repaint (${cardCountBefore} → ${(await readTier()).farm.cards.length})`);
+      const goldCe = (EACTIVE.bonusCes || []).find((c) => c.bonuses && c.bonuses[String(goldCurrency.id)]);
+      if (goldCe) {
+        const beforeDrops = (await readTier()).farm.cards.map((c) => c.drops.map((d) => [d.iconCount, d.material, d.value]));
+        await typeInto(`#bonusCe_${goldCe.id}_lb`, "2");
+        await wait(SETTLE_MS);
+        const afterDrops = (await readTier()).farm.cards.map((c) => c.drops.map((d) => [d.iconCount, d.material, d.value]));
+        if (JSON.stringify(beforeDrops) !== JSON.stringify(afterDrops))
+          errors.push(`farm drop lines changed after editing CE count: ${JSON.stringify(beforeDrops)} → ${JSON.stringify(afterDrops)}`);
+        await resetPlan();
       }
-      const planAfter = (await readTier()).storage ? JSON.parse((await readTier()).storage).plans[String(ACTIVE_ID)] : null;
-      const bonusKeys = Object.keys((planAfter && planAfter.bonus) || {});
-      if (bonusKeys.some((k) => TIERS.includes(k)))
-        errors.push(`bonus repaint: plan.bonus holds TIER keys ${JSON.stringify(bonusKeys)} — Amendment H keys by currency id`);
-      await resetPlan();
     }
 
     /* ================= 6. event + farm images actually decode ================================== */
@@ -2640,7 +2583,8 @@ try {
       await safeClick(sel.footer("SelectAll"));
       await clickDone();
       await typeInto("#goldHave", "1000");
-      await typeInto("#goldBonus", "2");
+      const goldCe14 = (EACTIVE.bonusCes || []).find((c) => c.bonuses && c.bonuses[String(goldCurrency.id)]);
+      if (goldCe14) await typeInto(`#bonusCe_${goldCe14.id}_lb`, "1");
       /* the tier-box writers are debounced (Amendment H): let the flush land before pricing */
       await wait(SETTLE_MS);
       await safeClick("#calculateBtn");
@@ -2694,12 +2638,13 @@ try {
     /* ================= 15. per-event saves: isolation, swap-on-switch, reload (MULTI) ========= */
     if (MULTI) {
       await resetPlan();
-      /* plan A: bronze row 3 + gold held/bonus figures */
+      /* plan A: bronze row 3 + gold held + CE figures */
       await openTierModal("bronze", "A: commit a bronze requires plan");
       await typeInto(sel.modalInput(freeRow.id), "3");
       await clickDone();
       await typeInto("#goldHave", "1000");
-      await typeInto("#goldBonus", "2");
+      const goldCe15 = (EACTIVE.bonusCes || []).find((c) => c.bonuses && c.bonuses[String(goldCurrency.id)]);
+      if (goldCe15) await typeInto(`#bonusCe_${goldCe15.id}_lb`, "1");
       /* the tier-box writers are debounced (Amendment H): the figures reach the plan after
          DEBOUNCE_MS — snapshot only once the flush has landed (a human always types slower). */
       await wait(SETTLE_MS);
@@ -2707,7 +2652,7 @@ try {
       const snapshotA = JSON.stringify({
         requires: planABefore.requires,
         held: planABefore.held,
-        bonus: planABefore.bonus,
+        ceOwned: planABefore.ceOwned,
       });
 
       /* switch to B: everything the event owns must swap */
@@ -2727,13 +2672,9 @@ try {
         errors.push(
           `switch: gold card is ${JSON.stringify(stateB.tiers.gold.name)}, want ${JSON.stringify(EOTHER.currencies[0].name)}`,
         );
-      if (
-        stateB.tiers.gold.needValue !== "0" ||
-        stateB.tiers.gold.heldValue !== "0" ||
-        stateB.tiers.gold.bonusValue !== "0"
-      )
+      if (stateB.tiers.gold.needValue !== "0" || stateB.tiers.gold.heldValue !== "0")
         errors.push(
-          `switch: gold boxes leaked A's plan into B — ${JSON.stringify([stateB.tiers.gold.needValue, stateB.tiers.gold.heldValue, stateB.tiers.gold.bonusValue])}`,
+          `switch: gold boxes leaked A's plan into B — ${JSON.stringify([stateB.tiers.gold.needValue, stateB.tiers.gold.heldValue])}`,
         );
       if (stateB.farm.cards.length !== 1 || stateB.farm.cards[0].lines[0] !== "No drop data yet")
         errors.push(
@@ -2764,7 +2705,7 @@ try {
         const aJson = JSON.stringify({
           requires: afterB.plans[String(ACTIVE_ID)].requires,
           held: afterB.plans[String(ACTIVE_ID)].held,
-          bonus: afterB.plans[String(ACTIVE_ID)].bonus,
+          ceOwned: afterB.plans[String(ACTIVE_ID)].ceOwned,
         });
         if (aJson !== snapshotA) errors.push(`isolation(G): editing 80630 mutated 80639 — ${aJson} vs ${snapshotA}`);
         const bReq = afterB.plans[String(PIN_OTHER)].requires || {};
@@ -2791,10 +2732,8 @@ try {
           errors.push(
             `isolation(G): A's bronze Required after the round trip reads ${JSON.stringify(backA.tiers.bronze.needValue)}, want ${3 * freeRow.cost.amount}`,
           );
-        if (backA.tiers.gold.heldValue !== "1000" || backA.tiers.gold.bonusValue !== "2")
-          errors.push(
-            `isolation(G): A's held/bonus after the round trip reads ${JSON.stringify([backA.tiers.gold.heldValue, backA.tiers.gold.bonusValue])}, want ["1000","2"]`,
-          );
+        if (backA.tiers.gold.heldValue !== "1000")
+          errors.push(`isolation(G): A's held after the round trip reads ${JSON.stringify(backA.tiers.gold.heldValue)}, want "1000"`);
         const fullShape = (c) => {
           const cur = CURRENCIES.find((x) => x.name === c.name);
           const entry = cur ? FARM[String(cur.id)] : null;
@@ -3138,14 +3077,14 @@ try {
               );
           } else if (totals[id] !== 0 && mapped.has(id))
             errors.push(`H1(${snap.event.id}): ${currency.name} is first-match mapped but its tier box is missing`);
-          const wantLabels = mapped.has(id) ? "" : "Bonus,Held";
+          const wantLabels = mapped.has(id) ? "" : "Held";
           const gotLabels = card.boxes.map((b) => b.label).sort().join(",");
           if (gotLabels !== wantLabels)
             errors.push(
               `H1(${snap.event.id}): ${currency.name} (${id}) farm card holds [${gotLabels}], want [${wantLabels}] — ${
                 mapped.has(id)
-                  ? "a tier-mapped currency already has the tier-card pair; a second pair makes two writers for one figure"
-                  : "a currency with no tier card must own its Held/Bonus pair on the farm card"
+                  ? "a tier-mapped currency already has the tier-card Held input; a second input makes two writers for one figure"
+                  : "a currency with no tier card must own its Held box on the farm card"
               }`,
             );
           for (const b of card.boxes) {
@@ -3373,10 +3312,8 @@ try {
       await seedAndReload(migH);
       const h5 = await readTier();
       const h5ctl = await readFarmCtl(PIN_MULTI);
-      if (h5.tiers.gold.heldValue !== "1234" || h5.tiers.gold.bonusValue !== "7")
-        errors.push(
-          `H5: the gold tier boxes did not receive the stored tier keys — ${JSON.stringify([h5.tiers.gold.heldValue, h5.tiers.gold.bonusValue])}, want ["1234","7"]`,
-        );
+      if (h5.tiers.gold.heldValue !== "1234")
+        errors.push(`H5: the gold tier Held box did not receive the stored tier key — ${JSON.stringify(h5.tiers.gold.heldValue)}, want "1234"`);
       const secondBoxes = (h5ctl.cards.find((c) => c.headerText === secondGold.name) || { boxes: [] }).boxes;
       if (secondBoxes.some((b) => b.value !== "0"))
         errors.push(
@@ -3646,17 +3583,11 @@ try {
           return Math.floor(Number.isNaN(n) ? 0 : Math.min(max, Math.max(0, n)));
         };
         const wantHave = { bronze: clampVal("1e9", 999999), silver: clampVal(-4, 999999), gold: 0 };
-        const wantBonus = { bronze: clampVal("x", 1000), silver: 0, gold: clampVal(1e999, 1000) };
         for (const t of TIERS) {
           const gotHave = stt.tiers[t].heldValue;
-          const gotBonus = stt.tiers[t].bonusValue;
           if (gotHave !== String(wantHave[t]))
             errors.push(
               `garbage storage (${label}): ${t} Held reads ${JSON.stringify(gotHave)}, want the clamped ${wantHave[t]}`,
-            );
-          if (gotBonus !== String(wantBonus[t]))
-            errors.push(
-              `garbage storage (${label}): ${t} Bonus reads ${JSON.stringify(gotBonus)}, want the clamped ${wantBonus[t]}`,
             );
         }
       }
@@ -3929,19 +3860,233 @@ try {
       errors.push(
         `regression: #questGrid has ${neighbours.questRows} children — the calculator broke next to the modal`,
       );
-    await page.focus("#silverBonus");
+    await page.focus("#silverHave");
     await page.keyboard.down("Control");
     await page.keyboard.press("KeyA");
     await page.keyboard.up("Control");
     await page.keyboard.press("Digit5");
     await wait(SETTLE_MS);
-    const bonusValue = await page.evaluate(() => document.getElementById("silverBonus").value);
-    if (bonusValue !== "5")
+    const heldValue = await page.evaluate(() => document.getElementById("silverHave").value);
+    if (heldValue !== "5")
       errors.push(
-        `regression: the tier Bonus input no longer accepts typing (reads ${JSON.stringify(bonusValue)}, want "5")`,
+        `regression: the tier Held input no longer accepts typing (reads ${JSON.stringify(heldValue)}, want "5")`,
       );
 
     await resetPlan();
+
+    /* ================= 24b. Bonus CE grid, CE Bonus Equip, and 320px mobile fit ============= */
+    {
+      const ceDom = await page.evaluate(() => {
+        const grid = document.getElementById("bonusCeGrid");
+        const cards = grid ? [...grid.querySelectorAll(".bonus-ce-card")] : [];
+        const actions = document.querySelector(".bond-card-actions--end");
+        const equipWrap = document.getElementById("ceBonusEquipWrap");
+        const equipInput = document.getElementById("ceBonusEquipInput");
+        const calcBtn = document.getElementById("calculateBtn");
+        const children = actions ? [...actions.children].map((el) => el.id) : [];
+        return {
+          cardCount: cards.length,
+          cards: cards.map((card) => {
+            const img = card.querySelector("img.bonus-ce-img");
+            const nameEl = card.querySelector(".bonus-ce-name");
+            const textEl = nameEl && nameEl.querySelector(".farm-quest-name-text");
+            const bonusRows = card.querySelectorAll(".bonus-ce-bonuses").length;
+            const inputs = [...card.querySelectorAll(".material-input-box")].map((box) => {
+              const label = box.querySelector(".material-input-box-label");
+              const input = box.querySelector("input");
+              return {
+                id: input ? input.id : null,
+                label: label ? label.textContent.trim() : null,
+                min: input ? input.min : null,
+                max: input.max,
+                value: input ? input.value : null,
+              };
+            });
+            return {
+              ceId: card.dataset.ceId || null,
+              name: (textEl || nameEl || {}).textContent || null,
+              hasImg: !!img,
+              imgComplete: img ? img.complete && img.naturalWidth > 0 : false,
+              imgSrc: img ? img.getAttribute("src") : null,
+              bonusRows,
+              inputs,
+            };
+          }),
+          equipPresent: !!(equipWrap && equipInput),
+          equipValue: equipInput ? equipInput.value : null,
+          equipMin: equipInput ? equipInput.min : null,
+          equipMax: equipInput ? equipInput.max : null,
+          actionsOrder: children,
+          equipBeforeCalc:
+            children.indexOf("ceBonusEquipWrap") >= 0 &&
+            children.indexOf("calculateBtn") > children.indexOf("ceBonusEquipWrap"),
+          oldBonusCount: document.querySelectorAll("#bronzeBonus, #silverBonus, #goldBonus").length,
+        };
+      });
+      if (ceDom.oldBonusCount !== 0)
+        errors.push(`bonus-removal: found ${ceDom.oldBonusCount} legacy *Bonus inputs still in DOM`);
+      const wantCeOrder = TIERS.map((tier) => {
+        const cur = currencyForTierRef(CURRENCIES, tier);
+        return (EACTIVE.bonusCes || []).find((ce) => ce.bonuses && cur && ce.bonuses[String(cur.id)]);
+      })
+        .filter(Boolean)
+        .map((ce) => String(ce.id));
+      const gotCeOrder = ceDom.cards.map((c) => c.ceId);
+      if (JSON.stringify(gotCeOrder) !== JSON.stringify(wantCeOrder))
+        errors.push(`bonus-ce: card order ${JSON.stringify(gotCeOrder)}, want tier column order ${JSON.stringify(wantCeOrder)}`);
+      for (const c of ceDom.cards) {
+        const specCe = (EACTIVE.bonusCes || []).find((x) => String(x.id) === c.ceId);
+        const spec = specCe ? Object.values(specCe.bonuses || {})[0] : null;
+        if (!c.hasImg || !c.imgComplete || !(c.imgSrc || "").includes(`equip_${c.ceId}.webp?v=${IMAGE_VERSION}`))
+          errors.push(`bonus-ce(${c.ceId}): image not decoded or bad src ${JSON.stringify(c)}`);
+        if (c.bonusRows !== 0)
+          errors.push(`bonus-ce(${c.ceId}): old .bonus-ce-bonuses row returned (${c.bonusRows})`);
+        const wantLabels = spec
+          ? [`Limit Break (+${spec.limitBreak})`, `Non-Limit Break (+${spec.nonLimitBreak})`]
+          : ["Limit Break", "Non-Limit Break"];
+        const gotLabels = c.inputs.map((i) => i.label);
+        if (JSON.stringify(gotLabels) !== JSON.stringify(wantLabels))
+          errors.push(`bonus-ce(${c.ceId}): input labels ${JSON.stringify(gotLabels)}, want ${JSON.stringify(wantLabels)}`);
+      }
+      if (!ceDom.equipPresent || !ceDom.equipBeforeCalc || ceDom.equipValue !== "6" || ceDom.equipMin !== "1" || ceDom.equipMax !== "6")
+        errors.push(`bonus-ce: CE Bonus Equip control invalid ${JSON.stringify(ceDom)}`);
+
+      /* Clamping 0 -> 1 and 9 -> 6 on #ceBonusEquipInput */
+      await typeInto("#ceBonusEquipInput", "0");
+      await page.evaluate(() => document.getElementById("ceBonusEquipInput").dispatchEvent(new Event("change", { bubbles: true })));
+      await wait(120);
+      const clampLow = await page.evaluate(() => document.getElementById("ceBonusEquipInput").value);
+      await typeInto("#ceBonusEquipInput", "9");
+      await page.evaluate(() => document.getElementById("ceBonusEquipInput").dispatchEvent(new Event("change", { bubbles: true })));
+      await wait(120);
+      const clampHigh = await page.evaluate(() => document.getElementById("ceBonusEquipInput").value);
+      if (clampLow !== "1" || clampHigh !== "6")
+        errors.push(`bonus-ce: CE Bonus Equip clamp 0->${JSON.stringify(clampLow)}, 9->${JSON.stringify(clampHigh)}, want "1"/"6"`);
+
+      /* Calculate with 0 CEs vs owned gold CE (LB=1, NLB=1, equip=2) and inspect .farm-res-ce-list */
+      await openTierModal("gold", "open gold modal for CE combo QA");
+      await typeInto(sel.modalInput(draftFree.id), "300");
+      await clickDone();
+      await safeClick("#calculateBtn");
+      await wait(SETTLE_MS);
+      const baseRes = await page.evaluate(() => ({
+        plays: [...document.querySelectorAll("#results .farm-res-quests .farm-card")].map((c) =>
+          Number((c.querySelector(".farm-res-play-count") || {}).textContent?.replace(/[^\d]/g, "")),
+        ),
+        ceListCount: document.querySelectorAll("#results .farm-res-ce-list").length,
+      }));
+      const baseRuns = baseRes.plays.reduce((s, n) => s + n, 0);
+      if (!(baseRuns > 0) || baseRes.ceListCount !== 0)
+        errors.push(`bonus-ce baseline: plays=${JSON.stringify(baseRes.plays)}, ceListCount=${baseRes.ceListCount}`);
+
+      const goldCe24b = (EACTIVE.bonusCes || []).find((c) => c.bonuses && c.bonuses[String(goldCurrency.id)]);
+      if (goldCe24b) {
+        await typeInto(`#bonusCe_${goldCe24b.id}_lb`, "1");
+        await typeInto(`#bonusCe_${goldCe24b.id}_nlb`, "1");
+        await typeInto("#ceBonusEquipInput", "2");
+        await wait(SETTLE_MS);
+        await safeClick("#calculateBtn");
+        await wait(SETTLE_MS);
+        const ceRes = await page.evaluate(() => {
+          const cards = [...document.querySelectorAll("#results .farm-res-quests .farm-card")];
+          return {
+            runs: cards.reduce(
+              (s, c) => s + Number((c.querySelector(".farm-res-play-count") || {}).textContent?.replace(/[^\d]/g, "")),
+              0,
+            ),
+            chips: cards.flatMap((c) =>
+              [...c.querySelectorAll(".farm-res-ce-list > .farm-res-ce-chip")].map((chip) => {
+                const img = chip.querySelector("img.farm-res-ce-img");
+                const list = chip.closest(".farm-res-ce-list");
+                const prev = list ? list.previousElementSibling : null;
+                return {
+                  afterLabel: !!(prev && prev.classList.contains("farm-res-play-label")),
+                  hasImg: !!img,
+                  imgComplete: img ? img.complete && img.naturalWidth > 0 : false,
+                  counts: [...chip.querySelectorAll(".farm-res-ce-count")].map((n) => n.textContent.trim()),
+                };
+              }),
+            ),
+          };
+        });
+        if (!(ceRes.runs > 0 && ceRes.runs < baseRuns))
+          errors.push(`bonus-ce combo: CE combo did not lower runs (${ceRes.runs} vs baseline ${baseRuns})`);
+        if (
+          !ceRes.chips.length ||
+          ceRes.chips.some(
+            (ch) =>
+              !ch.afterLabel ||
+              !ch.hasImg ||
+              !ch.imgComplete ||
+              JSON.stringify(ch.counts) !== JSON.stringify(["LB ×1", "NLB ×1"]),
+          )
+        )
+          errors.push(`bonus-ce combo chips invalid: ${JSON.stringify(ceRes.chips)}`);
+      }
+
+      const silverCe24b = (EACTIVE.bonusCes || []).find(
+        (c) => c.bonuses && silverCurrency && c.bonuses[String(silverCurrency.id)],
+      );
+      if (goldCe24b && silverCe24b) {
+        await openTierModal("silver", "open silver modal for uneven CE height check");
+        await safeClick(sel.footer("SelectAll"));
+        await clickDone();
+        await typeInto(`#bonusCe_${silverCe24b.id}_lb`, "2");
+        await wait(SETTLE_MS);
+        await safeClick("#calculateBtn");
+        await wait(SETTLE_MS);
+        const alignRes = await page.evaluate(() => {
+          return [...document.querySelectorAll("#results .farm-res-quests .farm-card")].map((card) => {
+            const cr = card.getBoundingClientRect();
+            const count = card.querySelector(".farm-res-play-count");
+            const prev = count ? count.previousElementSibling : null;
+            const cRect = count ? count.getBoundingClientRect() : null;
+            const pRect = prev ? prev.getBoundingClientRect() : null;
+            const ce = card.querySelector(".farm-res-ce-list");
+            return {
+              cardTop: Math.round(cr.top),
+              countTop: cRect ? Math.round(cRect.top) : null,
+              gapAboveCount: cRect && pRect ? Math.round(cRect.top - pRect.bottom) : null,
+              ceH: ce ? Math.round(ce.getBoundingClientRect().height) : 0,
+            };
+          });
+        });
+        const row0 = alignRes.filter((r) => Math.abs(r.cardTop - alignRes[0].cardTop) <= 1);
+        if (alignRes.length < 2 || row0.length < 2 || new Set(row0.map((r) => r.ceH)).size < 2)
+          errors.push(`bonus-ce align: differential invalid (need >=2 cards in row with unequal CE heights): ${JSON.stringify(alignRes)}`);
+        else if (row0.some((r) => Math.abs(r.countTop - row0[0].countTop) > 1 || r.gapAboveCount === null || r.gapAboveCount > 8))
+          errors.push(`bonus-ce align: uneven CE heights shifted play-count or left excess gap: ${JSON.stringify(alignRes)}`);
+      }
+
+      /* 320px mobile overflow + label clipping check on CE cards, drop-lines, and CE combo results */
+      await page.setViewport({ width: 320, height: 800 });
+      await wait(120);
+      const mobile320 = await page.evaluate(() => {
+        const overflow = Math.round(document.documentElement.scrollWidth - window.innerWidth);
+        const clippedLabels = [...document.querySelectorAll("#bonusCeGrid .material-input-box")].flatMap((box) => {
+          const lbl = box.querySelector(".material-input-box-label");
+          if (!lbl) return [];
+          const br = box.getBoundingClientRect();
+          const lr = lbl.getBoundingClientRect();
+          return lbl.scrollWidth > lbl.clientWidth + 1 || lr.right > br.right - 0.5 || lr.left < br.left - 0.5
+            ? [{ text: lbl.textContent, scrollW: lbl.scrollWidth, clientW: lbl.clientWidth, lr: lr.right, br: br.right }]
+            : [];
+        });
+        const dropLinesOverflow = [...document.querySelectorAll("#farmGrid .drop-line")].filter(
+          (line) => line.scrollWidth > line.clientWidth + 1,
+        ).length;
+        return { overflow, clippedLabels, dropLinesOverflow };
+      });
+      await page.setViewport({ width: 1120, height: 900 });
+      if (mobile320.overflow > 1)
+        errors.push(`mobile 320px: horizontal overflow ${mobile320.overflow}px with CE grid + results`);
+      if (mobile320.clippedLabels.length)
+        errors.push(`mobile 320px: CE label clipped — ${JSON.stringify(mobile320.clippedLabels)}`);
+      if (mobile320.dropLinesOverflow)
+        errors.push(`mobile 320px: ${mobile320.dropLinesOverflow} drop-line(s) overflow at 320px`);
+
+      await resetPlan();
+    }
     await page.evaluate((k) => localStorage.removeItem(k), KEY);
 
     /* ================= 25. network hygiene ==================================================== */

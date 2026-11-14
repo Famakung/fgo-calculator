@@ -363,6 +363,60 @@ function validateEventShopTrades(trades, currencyIds, ctx) {
   });
 }
 
+function validateEventShopBonusCes(bonusCes, currencyIds, ctx) {
+  if (!Array.isArray(bonusCes)) {
+    errors.push(`${ctx}: bonusCes must be an array (got ${JSON.stringify(bonusCes)})`);
+    return;
+  }
+  const ceIds = new Set();
+  bonusCes.forEach((ce, i) => {
+    const what = `${ctx} bonus CE ${ce && ce.id}`;
+    if (!ce || typeof ce !== "object" || Array.isArray(ce)) {
+      errors.push(`${ctx}: bonusCes[${i}] must be an object`);
+      return;
+    }
+    if (!Number.isInteger(ce.id) || ce.id <= 0) {
+      errors.push(`${what}: id must be a positive integer`);
+    }
+    if (ceIds.has(ce.id)) errors.push(`${what}: duplicate bonus CE id`);
+    ceIds.add(ce.id);
+    if (!Number.isInteger(ce.rarity) || ce.rarity < 1 || ce.rarity > 5) {
+      errors.push(`${what}: rarity must be an integer 1..5 (got ${JSON.stringify(ce.rarity)})`);
+    }
+    if (i > 0) {
+      const prev = bonusCes[i - 1];
+      if (prev.rarity > ce.rarity || (prev.rarity === ce.rarity && prev.id >= ce.id)) {
+        errors.push(`${ctx}: bonusCes not sorted by (rarity asc, id asc) at ${ce.id}`);
+      }
+    }
+    checkShopName(ce, "bonus CE");
+    checkShopIcon(ce, "bonus CE");
+    if (!ce.bonuses || typeof ce.bonuses !== "object" || Array.isArray(ce.bonuses)) {
+      errors.push(`${what}: bonuses must be an object`);
+      return;
+    }
+    const bonusEntries = Object.entries(ce.bonuses);
+    if (!bonusEntries.length) {
+      errors.push(`${what}: bonuses must include at least one shop currency`);
+    }
+    for (const [cidKey, bonus] of bonusEntries) {
+      if (!currencyIds.has(Number(cidKey))) {
+        errors.push(`${what}.bonuses: key ${cidKey} is not a shop currency`);
+      }
+      if (!bonus || typeof bonus !== "object" || Array.isArray(bonus)) {
+        errors.push(`${what}.bonuses[${cidKey}]: must be an object`);
+        continue;
+      }
+      if (!Number.isInteger(bonus.nonLimitBreak) || bonus.nonLimitBreak <= 0) {
+        errors.push(`${what}.bonuses[${cidKey}]: nonLimitBreak must be a positive integer`);
+      }
+      if (!Number.isInteger(bonus.limitBreak) || bonus.limitBreak < (bonus.nonLimitBreak || 1)) {
+        errors.push(`${what}.bonuses[${cidKey}]: limitBreak must be an integer >= nonLimitBreak`);
+      }
+    }
+  });
+}
+
 function validateEventShopSnapshot(snapshot, index, total) {
   if (!snapshot || typeof snapshot.event !== "object" || snapshot.event === null) {
     errors.push(`Event Shop: events[${index}].event must be an object (got ${JSON.stringify(snapshot)})`);
@@ -378,6 +432,7 @@ function validateEventShopSnapshot(snapshot, index, total) {
   validateEventShopItems(snapshot.items, currencyIds, ctx);
   validateEventShopFarm(snapshot.farm, currencyIds, ctx);
   validateEventShopTrades(snapshot.trades, currencyIds, ctx);
+  validateEventShopBonusCes(snapshot.bonusCes, currencyIds, ctx);
   if (index > 0) {
     const prev = total[index - 1];
     if ((prev.event.startedAt || 0) < (event.startedAt || 0)) {
