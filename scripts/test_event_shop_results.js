@@ -68,16 +68,17 @@
  *                      the pre-sync drops); the 263-play optimum covers without the cascade, so this
  *                      scene pins the tradeless shape and receive.figs runs its replay with noTrades.
  *  - r1.receive96      every receive art box .farm-res-fruit computed height 96px (R1, art kept by R4).
- *  - r1.rows48         every 48px header icon box .farm-card-icon (play AND trade headers, R17/R18)
- *                      computes height 48px. The R17 trade rows became trade CARDS, so .farm-res-icon is dead.
+ *  - r1.rows48         every 64px header icon box .farm-card-icon (play AND trade headers, R17/R18;
+ *                      re-pinned 48→64px in 27bb180) computes height 64px. The R17 trade rows became
+ *                      trade CARDS, so .farm-res-icon is dead.
  *  - r1.noOtherImages  receive art is .fg-layer inside a .farm-res-fruit (96px); play-header AND
- *                      trade-header art is .fg-layer inside a 48px .farm-card-icon; no strays. R18:
+ *                      trade-header art is .fg-layer inside a 64px .farm-card-icon; no strays. R18:
  *                      the trade-header icons gain overlay SPANS inside those boxes — spans are not
  *                      imgs, the sweep still sees one img.fg-layer per box and nothing else.
  *  - r18.tradechrome   each Shop Trade is ONE div.quest-drops-item.farm-card inside
  *                      .farm-res-trades > .farm-grid with data-tier == the DESTINATION currency
  *                      background, a .farm-card-title--icons header carrying exactly from-icon +
- *                      .farm-res-trade-arrow + to-icon (2 48px .farm-card-icon boxes, 3 header
+ *                      .farm-res-trade-arrow + to-icon (2 64px .farm-card-icon boxes, 3 header
  *                      children total) and NO separator bar (header computed border-bottom none/0px +
  *                      padding-bottom 0 — R18 dropped the bar), and a body of ONLY count
  *                      (.farm-res-play-count, the runs voice, BARE /^[\d,]+$/ — R19 dropped its "× "
@@ -185,7 +186,7 @@
  *                      .farm-res-row markup anywhere in the wrap.
  *  - r6.headericons    header .farm-card-title (+ --icons on an all-drop play) carries ONE icon for a
  *                      normal play (the main drop's art) and EVERY currency's icon in snapshot order for
- *                      an all-drop one, each box computed 48px, each img alt == its currency's name.
+ *                      an all-drop one, each box computed 64px, each img alt == its currency's name.
  *  - r6.bodyseq        body .farm-card-body children in order: quest name (.farm-stat.farm-quest-name,
  *                      plus the R25 STATE class is-sliding only when the name overflows — r25.slide
  *                      proves the class from measurement, bodyseq pins the identity classes),
@@ -226,18 +227,18 @@
  *
  * Mutation self-test (--mutants): each mutant is a patched FX copy; it MUST redden its target
  * checks and nothing else (house pattern). Patch anchors are CHECKED strings — a missing or
- * ambiguous target throws. Minifier names belong to the CURRENT build (chunk event-lazy.D28-iZXp:
- * ot/st/dt = the Quests-to-Play / Item-Receive / Shop-Trades wrap builders, W = the plain node
- * builder, U = the farm-stat node builder, Qe/$e/et/tt = the section-title strings) —
- * re-derived for R29; the throws are the drift alarm:
+ * ambiguous target throws. Minifier names belong to the CURRENT build (chunk event-lazy.D7CovPBy:
+ * st/ct/ft = the Quests-to-Play / Item-Receive / Shop-Trades wrap builders, U = the plain node
+ * builder, H = the farm-stat node builder, $e/et/tt/nt = the section-title strings) —
+ * re-derived after 27bb180 + CLS changes; the throws are the drift alarm:
  *   mut_farmer:   `.farmed` → `.yields`              → receive.figs, receive.notYields, fx.exact
  *   mut_order:    receive/trade append calls swapped → order.sequence
  *   mut_totalout: a Total node is RE-ADDED to the quests wrap (R7 deleted the line for good — this
  *                 mutant proves the total.absent pin actually sees it come back) → total.absent
  *   mut_h96:      receive art .farm-res-fruit 96px → 48px → r1.receive96 (the R1 .mini-icon rule is gone)
- *   mut_row48:    shared header icon 48px → 24px     → r1.rows48, r1.noOtherImages, r6.headericons
- *                 (R17: play and trade headers are the same .farm-card-icon rule, so one patch
- *                 reddens every pin that measures that 48px — no trade-only rule exists any more)
+ *   mut_row48:    shared header icon 64px → 24px     → r1.rows48, r1.noOtherImages, r6.headericons
+ *                 (R17: play and trade headers are the same .farm-card-icon rule, re-pinned to 64px
+ *                 in 27bb180, so one patch reddens every pin that measures it — no trade-only rule exists)
  *   mut_title:    title gets farm-stat back          → title.parity
  *   mut_icons:    a NORMAL play header takes every currency icon → r6.headericons (the R6 chrome)
  *   R22 note: a minimum-cover revert mutant (reported trades back to the full cascade) was weighed
@@ -830,43 +831,61 @@ const MUTANT_TARGETS = {
   mut_title: ["title.parity"],
   mut_icons: ["r6.headericons"],
 };
+function resolveChunkMatch(text, re, tag) {
+  const match = text.match(re);
+  if (!match) throw new Error(`${tag}: structural chunk pattern missing`);
+  return match;
+}
+
 function stageMutant(name, fxDirName, fxChunk) {
   const dir = makeCopy(name, path.join(STAGE, fxDirName, "fgo-calculator"));
   const chunk = path.join(dir, "_astro", fxChunk);
   const html = path.join(dir, "index.html");
-  /* R17: the trade rows became trade CARDS and .farm-res-icon is dead — the 48px header icon rule is
-     now the single shared .farm-card-icon (play AND trade headers), so this patch reddens every pin
-     that measures 48px header art: r1.rows48, the sweep, and r6.headericons. */
-  const iconRule = ".farm-card-icon { width: auto; height: 48px;";
+  const chunkText = fs.readFileSync(chunk, "utf8");
+  const statNodeFn = () =>
+    resolveChunkMatch(
+      chunkText,
+      /function ([A-Za-z_$][\w$]*)\(([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*)\)\{let ([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\.el\([`"']div[`"'],\[[`"']farm-stat[`"'],\3\]\.filter\(Boolean\)\);return \4\.textContent=\2,\4\}/,
+      "statNodeFn",
+    )[1];
+  const plainNodeFn = () =>
+    resolveChunkMatch(
+      chunkText,
+      /function ([A-Za-z_$][\w$]*)\(([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*)\)\{let ([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\.el\([`"']div[`"'],\3\);return \4\.textContent=\2,\4\}/,
+      "plainNodeFn",
+    )[1];
+  /* R17: the trade rows became trade CARDS and .farm-res-icon is dead — the 64px header icon rule
+     (re-pinned 48→64px in 27bb180) is now the single shared .farm-card-icon (play AND trade headers),
+     so this patch reddens every pin that measures header art: r1.rows48, the sweep, and r6.headericons. */
+  const iconRule = ".farm-card-icon { width: auto; height: 64px;";
   switch (name) {
     case "mut_farmer":
       patchFile(chunk, "t.farmed", "t.yields", "m-farmed");
       break;
-    case "mut_order":
-      /* R29 build names (chunk event-lazy.D28-iZXp): the three wrap builders are ot = Quests to
-         Play, st = Item Receive, dt = Shop Trades; W = plain node builder,
-         U = farm-stat node builder, Qe/$e/et/tt = the four section-title strings
-         (drift alarm — re-derived against the current chunk; the swap itself is the same
-         receive/trade mutation as ever). */
-      patchFile(
-        chunk,
-        "n.appendChild(st(r,t.result)),n.appendChild(dt(e,t.result))",
-        "n.appendChild(dt(e,t.result)),n.appendChild(st(r,t.result))",
+    case "mut_order": {
+      const m = resolveChunkMatch(
+        chunkText,
+        /([A-Za-z_$][\w$]*\.appendChild\([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\.result\)\)),([A-Za-z_$][\w$]*\.appendChild\([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\.result\)\)),([A-Za-z_$][\w$]*\.appendChild\([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\.result\)\))/,
         "m-order",
       );
+      patchFile(chunk, m[0], `${m[1]},${m[3]},${m[2]}`, "m-order");
       break;
-    case "mut_totalout":
-      /* R7 deleted the total line; re-add one inside the quests wrap (right after the grid) so the
-         ONLY thing a green total.absent pin is guarding against is exactly this regression.
-         R29 build: wrap builder ot, its local n = the wrap, r = the grid, W = title, $e = the
-         "Quests to Play" string, U = farm-stat node builder, t = the plan result. */
+    }
+    case "mut_totalout": {
+      const hFn = statNodeFn();
+      const m = resolveChunkMatch(
+        chunkText,
+        /function [A-Za-z_$][\w$]*\(([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*)\)\{let ([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\.el\([`"']div[`"'],[`"']farm-res-quests[`"']\),([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\.el\([`"']div[`"'],[`"']farm-grid[`"']\);for\(let [A-Za-z_$][\w$]* of \2\.plays\)[^}]*?return (\3\.replaceChildren\(([A-Za-z_$][\w$]*\([A-Za-z_$][\w$]*,[`"']quest-title[`"']\),\4)\)),\3\}/,
+        "m-total-back",
+      );
       patchFile(
         chunk,
-        "n.replaceChildren(W($e,`quest-title`),r)",
-        "n.replaceChildren(W($e,`quest-title`),r,U(`Total: ${t.totalPlays} plays`,`farm-res-total`))",
+        m[5],
+        `${m[3]}.replaceChildren(${m[6]},${hFn}(\`Total: \${${m[2]}.totalPlays} plays\`,\`farm-res-total\`))`,
         "m-total-back",
       );
       break;
+    }
     case "mut_h96":
       patchFile(
         html,
@@ -876,11 +895,20 @@ function stageMutant(name, fxDirName, fxChunk) {
       );
       break;
     case "mut_row48":
-      patchFile(html, iconRule, iconRule.replace("height: 48px;", "height: 24px;"), "m-row48");
+      patchFile(html, iconRule, iconRule.replace("height: 64px;", "height: 24px;"), "m-row48");
       break;
-    case "mut_title":
-      patchFile(chunk, "W(Qe,`card-title`)", "U(Qe,`card-title`)", "m-title");
+    case "mut_title": {
+      const hFn = statNodeFn();
+      const uFn = plainNodeFn();
+      const escapedU = uFn.replace(/\$/g, "\\$");
+      const m = resolveChunkMatch(
+        chunkText,
+        new RegExp(`${escapedU}\\(([A-Za-z_$][\\w$]*),[\`"']card-title[\`"']\\)`),
+        "m-title",
+      );
+      patchFile(chunk, m[0], `${hFn}(${m[1]},\`card-title\`)`, "m-title");
       break;
+    }
     case "mut_icons":
       // R6 chrome: a play that does NOT drop every currency still takes every currency's icon.
       patchFile(chunk, "r=t.isAllDrop?e:e.filter(e=>String(e.id)===String(t.mainDropId))", "r=e", "m-icons");
@@ -1004,7 +1032,7 @@ async function readCard(page) {
     };
     const kids = [...inner.children].map((el) => ({ classes: [...el.classList], text: el.textContent.trim() }));
     const titleEl = [...inner.children].find((el) => el.classList.contains("card-title"));
-    /* R17: .farm-res-icon is dead — the 48px row/header art box is the single .farm-card-icon shared
+    /* R17: .farm-res-icon is dead — the 64px row/header art box is the single .farm-card-icon shared
        by play AND trade card headers; this scrape measures every one of them in the card. */
     const rowIcons = [...inner.querySelectorAll(".farm-card-icon")].map((el) => getComputedStyle(el).height);
     /* R7 absence scrapes: the total line must be GONE (node and text); the three section wraps must
@@ -1185,7 +1213,7 @@ async function readCard(page) {
       };
     });
     /* R18: each Shop Trade is ONE farm card in .farm-res-trades > .farm-grid — from→to header (two
-       48px .farm-card-icon boxes plus the arrow, NO separator bar under it), the exchange ratio
+       64px .farm-card-icon boxes plus the arrow, NO separator bar under it), the exchange ratio
        OVERLAID on the header icons (cost on the from-icon, get on the to-icon) only when it
        resolves, the trade count in the runs voice (.farm-res-play-count) and the "trade(s)" label;
        the body carries ONLY those two lines (the R17 ratio body line is gone). No names in the body:
@@ -1282,7 +1310,7 @@ async function readCard(page) {
     }));
     const siblings = [...document.querySelectorAll("#panel-event .card-title")].filter((el) => !inner.contains(el));
     const siblingQuest = [...document.querySelectorAll("#panel-event .quest-title")].find((el) => !inner.contains(el));
-    /* R17 sweep: an image in this card lives either in a receive .farm-res-fruit or in a 48px
+    /* R17 sweep: an image in this card lives either in a receive .farm-res-fruit or in a 64px
        .farm-card-icon header box (play OR trade header — the trade-row .farm-res-icon box is dead).
        Anything else is a stray. */
     const images = [...inner.querySelectorAll("img")].map((img) => {
@@ -1747,7 +1775,7 @@ function assertPlayCards(card, label, { currencies, quests }) {
       header.push(`${c.iconH.length} header icon(s), want ${wantIcons.length} (${wantIcons.map((w) => w.name)})`);
     wantIcons.forEach((cur, i) => {
       if (i >= c.iconH.length) return;
-      if (c.iconH[i] !== "48px") header.push(`icon ${i} height ${c.iconH[i]}, want 48px`);
+      if (c.iconH[i] !== "64px") header.push(`icon ${i} height ${c.iconH[i]}, want 64px`);
       if (cur.icon) {
         if (!c.iconSrcs[i] || !c.iconSrcs[i].includes(String(cur.icon).split("/").pop()))
           header.push(`icon ${i} src ${JSON.stringify(c.iconSrcs[i])}, want ${cur.icon}`);
@@ -1857,7 +1885,7 @@ function assertTradeCards(card, label, { currencies, trades, wantCounts }) {
     if (t.iconH.length !== 2) wrong.push(`${t.iconH.length} header icons, want exactly 2 (from + to)`);
     if (t.arrow !== "\u2192") wrong.push(`arrow ${JSON.stringify(t.arrow)}, want "\u2192"`);
     t.iconH.forEach((h, i) => {
-      if (h !== "48px") wrong.push(`icon ${i} height ${h}, want 48px`);
+      if (h !== "64px") wrong.push(`icon ${i} height ${h}, want 64px`);
     });
     if (from && from.icon && t.iconSrcs[0] && !t.iconSrcs[0].includes(String(from.icon).split("/").pop()))
       wrong.push(`from icon src ${JSON.stringify(t.iconSrcs[0])}, want ${from.icon}`);
@@ -2036,9 +2064,9 @@ function assertStructure(card, label, { expectTrades }) {
   const badR = card.receive.filter((r) => r.fruitH !== "96px");
   if (badR.length) fail("r1.receive96", `${label}: ${badR.length} receive art box(es) at ${badR[0].fruitH}, want 96px`);
   if (!card.receive.length) fail("r1.receive96", `${label}: no Item Receive fruit rendered`);
-  const badRow = card.rowIcons.filter((h) => h !== "48px");
-  if (badRow.length) fail("r1.rows48", `${label}: ${badRow.length} .farm-card-icon at ${badRow[0]}, want 48px`);
-  /* R17: the 48px box is the shared .farm-card-icon (play AND trade headers) — a plan with trades
+  const badRow = card.rowIcons.filter((h) => h !== "64px");
+  if (badRow.length) fail("r1.rows48", `${label}: ${badRow.length} .farm-card-icon at ${badRow[0]}, want 64px`);
+  /* R17: the 64px box is the shared .farm-card-icon (play AND trade headers) — a plan with trades
      renders at least two of them (two per trade card, pinned on the cards themselves). */
   if (card.rowIcons.length < (expectTrades ? 2 : 0))
     fail("r1.rows48", `${label}: ${card.rowIcons.length} .farm-card-icon boxes, want ≥ 2 with trades rendered`);
@@ -2074,12 +2102,12 @@ function assertStructure(card, label, { expectTrades }) {
     (i) =>
       !i.cls ||
       i.imgCls !== "fg-layer" ||
-      (i.inReceive ? i.cls !== "farm-res-fruit" : i.cls !== "farm-card-icon" || i.h !== "48px"),
+      (i.inReceive ? i.cls !== "farm-res-fruit" : i.cls !== "farm-card-icon" || i.h !== "64px"),
   );
   if (stray.length)
     fail(
       "r1.noOtherImages",
-      `${label}: ${JSON.stringify(stray.slice(0, 3))} — image outside the .farm-res-fruit / 48px .farm-card-icon boxes (R17: .farm-res-icon is dead)`,
+      `${label}: ${JSON.stringify(stray.slice(0, 3))} — image outside the .farm-res-fruit / 64px .farm-card-icon boxes (R17: .farm-res-icon is dead)`,
     );
 
   /* R4/R5a: exactly one 320px receive card wearing the .bond-result-servant-card skin, holding ONE

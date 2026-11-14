@@ -164,11 +164,13 @@ try {
         // content (children + margins + padding + border) equals that height — the one with no free space.
         const natural = (c) => {
           const kcs = getComputedStyle(c);
+          const gap = parseFloat(kcs.rowGap) || 0;
           let n =
             parseFloat(kcs.paddingTop) +
             parseFloat(kcs.paddingBottom) +
             parseFloat(kcs.borderTopWidth) +
-            parseFloat(kcs.borderBottomWidth);
+            parseFloat(kcs.borderBottomWidth) +
+            gap * Math.max(0, c.children.length - 1);
           for (const k of c.children) {
             const kc = getComputedStyle(k);
             n += k.getBoundingClientRect().height + parseFloat(kc.marginTop) + parseFloat(kc.marginBottom);

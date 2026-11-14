@@ -5,7 +5,7 @@ import { debounce } from "./presentation.js";
 import { EventPlanner } from "./event-planner.js";
 import { eventTierNeeds, hydrateTierCards, hydrateQuestIcons, buildFallbackIcon } from "./event-shop-tier.js";
 import { refreshFarmDropLines } from "./event-shop-farm-lines.js";
-import { hydrateFarmGrid, showFarmResults, syncPlanBoxes, showFarmCard } from "./event-shop-farm.js";
+import { hydrateFarmGrid, showFarmResults, syncPlanBoxes, showFarmCard, showLegacyCard } from "./event-shop-farm.js";
 
 /* ============================================
    PRESENTATION LAYER - UI Builder
@@ -212,6 +212,7 @@ export const App = {
   /* Legacy calculator (empty snapshot list): exactly the flow the page shipped before the planner.
      #farmGrid ships hidden in the markup, so the legacy card needs no chrome change here. */
   _initLegacyMode() {
+    showLegacyCard();
     UIBuilder.buildMaterialsGrid(document.getElementById("materialsGrid"), this.state);
     ViewManager.syncInputsFromState(this.state, this._eventNeeds());
     UIBuilder.loadQuestIcons();

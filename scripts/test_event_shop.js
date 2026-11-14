@@ -171,7 +171,52 @@ const EDASH = LEGACY || !MULTI ? null : findEvent(PIN_DASH, "secondary-null dash
 const ACTIVE_ID = EACTIVE ? EACTIVE.event.id : null;
 const CURRENCIES = EACTIVE ? EACTIVE.currencies : [];
 const ITEMS = EACTIVE ? EACTIVE.items : [];
-const FARM = EACTIVE ? EACTIVE.farm : {};
+const farmMapOf = (snap) => {
+  const raw = snap && snap.farm;
+  if (!raw) return {};
+  if (!Array.isArray(raw.quests)) return raw;
+  const currencies = snap.currencies || [];
+  const ids = currencies.map((c) => String(c.id));
+  const covering = new Set(
+    raw.quests.filter((q) => q && q.drops && ids.every((id) => Object.hasOwn(q.drops, id))).map((q) => q.questId),
+  );
+  const out = {};
+  for (const cur of currencies) {
+    const cid = String(cur.id);
+    const nonCover = raw.quests.filter((q) => q && (q.drops || {})[cid] && !covering.has(q.questId));
+    const pool = nonCover.length ? nonCover : raw.quests.filter((q) => q && (q.drops || {})[cid]);
+    if (!pool.length) continue;
+    const best = pool.reduce((top, q) => {
+      if (!top) return q;
+      const a = q.drops[cid].dropExpected * q.drops[cid].num;
+      const b = top.drops[cid].dropExpected * top.drops[cid].num;
+      return a > b || (a === b && q.questId < top.questId) ? q : top;
+    }, null);
+    let secPick = null;
+    let secTop = 0;
+    for (const other of currencies) {
+      const oid = String(other.id);
+      if (oid === cid || !(best.drops || {})[oid]) continue;
+      const r = best.drops[oid].dropExpected * best.drops[oid].num;
+      if (!secPick || r > secTop) {
+        secPick = { currencyId: other.id, dropExpected: best.drops[oid].dropExpected, num: best.drops[oid].num };
+        secTop = r;
+      }
+    }
+    out[cid] = {
+      questId: best.questId,
+      questName: best.questName,
+      recommendLv: best.recommendLv,
+      ap: best.ap,
+      sampleRuns: best.sampleRuns,
+      dropExpected: best.drops[cid].dropExpected,
+      num: best.drops[cid].num,
+      secondary: secPick,
+    };
+  }
+  return out;
+};
+const FARM = farmMapOf(EACTIVE);
 const byId = new Map(ITEMS.map((item) => [String(item.id), item]));
 const SHOP_MAX = 999999;
 const LATEST = EVENTS.length ? EVENTS.reduce((a, b) => (b.event.startedAt > a.event.startedAt ? b : a)) : null;
@@ -252,28 +297,28 @@ const BUY_ALL_NAMES = { 94164000: "MISOおでん", 94164001: "SHIMONITAネギ", 
    not as rendered text. */
 const FARM_TRUTH = {
   94164000: {
-    questName: "【GUNMA巡り】だるまを買いにいこう",
-    recommendLv: "70",
+    questName: "【GUNMA巡り】癒やしの温泉女神様",
+    recommendLv: "75",
     ap: 40,
-    dropExpected: 10.8539,
+    dropExpected: 14.8696,
     num: 3,
-    secondary: { currencyId: 94164001, dropExpected: 2.1124, num: 3 },
+    secondary: { currencyId: 94164001, dropExpected: 2.7391, num: 3 },
   },
   94164001: {
-    questName: "【GUNMA巡り】こんにゃくとネギ",
-    recommendLv: "70",
+    questName: "【GUNMA巡り】青城の白いドラゴン",
+    recommendLv: "80",
     ap: 40,
-    dropExpected: 11.2125,
+    dropExpected: 14.52,
     num: 3,
-    secondary: { currencyId: 94164002, dropExpected: 2.125, num: 3 },
+    secondary: { currencyId: 94164002, dropExpected: 2.7867, num: 3 },
   },
   94164002: {
     questName: "【GUNMA巡り】槍をスキーに連れていけ",
     recommendLv: "70",
     ap: 40,
-    dropExpected: 10.8095,
+    dropExpected: 10.8199,
     num: 3,
-    secondary: { currencyId: 94164000, dropExpected: 2.3537, num: 3 },
+    secondary: { currencyId: 94164000, dropExpected: 2.2844, num: 3 },
   },
 };
 
@@ -488,7 +533,10 @@ try {
         const iconBox = card ? card.querySelector(".material-icon") : null;
         const imgs = iconBox ? [...iconBox.querySelectorAll("img")] : [];
         tiers[t] = {
-          name: card ? (card.querySelector(".material-name") || {}).textContent : null,
+          name: card
+            ? (card.querySelector(".material-name .farm-quest-name-text") || card.querySelector(".material-name") || {})
+                .textContent || null
+            : null,
           needValue: need ? need.value : null,
           heldValue: held ? held.value : null,
           bonusValue: bonus ? bonus.value : null,
@@ -557,14 +605,20 @@ try {
             baseDisplay: getComputedStyle(farmCard.querySelector(".base-row")).display,
             questDisplay: getComputedStyle(document.getElementById("questDropsGrid")).display,
             title: (farmCard.querySelector(".card-title") || {}).textContent?.trim() || null,
-            cards: [...farmGrid.querySelectorAll(".farm-card")].map((c) => {
+            cards: [...farmGrid.querySelectorAll(".farm-card:not(.farm-card--combo)")].map((c) => {
               const header = c.querySelector(".farm-card-title");
               const hImg = header ? header.querySelector("img") : null;
-              const hBox = header ? header.querySelector(".mini-icon") : null;
+              const hBox = header ? header.querySelector(".farm-card-icon, .mini-icon") : null;
+              const altName = hImg ? hImg.getAttribute("alt") : null;
+              const visibleParts = [
+                ...c.querySelectorAll(".farm-card-title, .farm-stat, .drop-line, .material-input-box-label"),
+              ].map((el) => (el.querySelector(".farm-quest-name-text") || el).textContent);
               return {
                 tier: c.dataset.tier,
-                name: (c.querySelector(".farm-card-name") || {}).textContent || null,
-                lines: [...c.querySelectorAll(".farm-stat")].map((s) => s.textContent),
+                name: (c.querySelector(".farm-card-name") || {}).textContent || altName || null,
+                lines: [...c.querySelectorAll(".farm-stat")].map(
+                  (s) => (s.querySelector(".farm-quest-name-text") || s).textContent,
+                ),
                 header: header
                   ? {
                       role: header.getAttribute("role"),
@@ -577,14 +631,15 @@ try {
                       imgH: hImg ? hImg.offsetHeight : 0,
                       imgSrc: hImg ? hImg.getAttribute("src") : null,
                       imgW: hImg ? hImg.naturalWidth : 0,
+                      imgAlt: altName,
                       text: header.textContent,
                     }
                   : null,
-                drops: [...c.querySelectorAll(".drop-line")].map((d) => {
+                drops: [...c.querySelectorAll(".drop-line")].map((d, idx) => {
                   const img = d.querySelector("img");
                   const dBox = d.querySelector(".mini-icon");
                   return {
-                    kind: d.dataset.dropLine,
+                    kind: d.dataset.dropLine === "currency" ? (idx === 0 ? "primary" : "secondary") : d.dataset.dropLine,
                     currencyId: d.dataset.currencyId || null,
                     dropExpected: d.dataset.dropExpected || null,
                     num: d.dataset.num || null,
@@ -607,7 +662,7 @@ try {
                     return l ? l.textContent : null;
                   })(),
                 })),
-                text: c.textContent,
+                text: visibleParts.join(" "),
                 imgSrc: hImg ? hImg.getAttribute("src") : null,
                 imgW: hImg ? hImg.naturalWidth : 0,
                 borderColor: getComputedStyle(c).borderTopColor,
@@ -616,10 +671,35 @@ try {
             }),
           }
         : null;
+      const resultsCard = document.querySelector("#results .results-card");
+      const farmResultsEl = resultsCard ? resultsCard.querySelector(".farm-res-quests") : null;
+      const farmEmptyEl = resultsCard ? resultsCard.querySelector(".farm-res-empty") : null;
+      const farmResults =
+        farmResultsEl || farmEmptyEl
+          ? {
+              title: (resultsCard.querySelector(".card-title") || {}).textContent?.trim() || null,
+              empty: farmEmptyEl ? farmEmptyEl.textContent : null,
+              plays: farmResultsEl
+                ? [...farmResultsEl.querySelectorAll(".farm-card")].map((c) => {
+                    const nameEl = c.querySelector(".farm-quest-name");
+                    const img = c.querySelector(".farm-card-icon img");
+                    const textEl = nameEl && nameEl.querySelector(".farm-quest-name-text");
+                    return {
+                      tier: c.dataset.tier || null,
+                      questName: (textEl || nameEl || {}).textContent || null,
+                      count: (c.querySelector(".farm-res-play-count") || {}).textContent || null,
+                      label: (c.querySelector(".farm-res-play-label") || {}).textContent || null,
+                      iconAlt: img ? img.getAttribute("alt") : null,
+                    };
+                  })
+                : [],
+            }
+          : null;
       return {
         tiers,
         quests,
         results,
+        farmResults,
         select,
         farm,
         storage: localStorage.getItem("fgo_event_shop_data"),
@@ -697,8 +777,8 @@ try {
         errors.push(
           `${label}: #${id} badge is ${box.badgeW}×${box.badgeH}px in a ${box.boxW}×${box.boxH}px box, want it to fill the box`,
         );
-      /* K1: the tier icon containers are the 96px material-icon; the quest spans the 48px mini-icon */
-      const wantH = TIERS.includes(tier) && id.endsWith("Icon") ? 96 : 48;
+      /* K1/27bb180: the tier icon containers are the 96px material-icon; the quest spans the 64px mini-icon */
+      const wantH = TIERS.includes(tier) && id.endsWith("Icon") ? 96 : 64;
       if (Math.abs(box.boxH - wantH) > 1)
         errors.push(`${label}(K1/K3): #${id} container is ${box.boxH}px tall, want ${wantH}px`);
     }
@@ -898,8 +978,7 @@ try {
           }
           if (s === ".farm-card-title") out.farmTitle = { decl: decl(r, ["cursor"]) };
           if (/farm-card-title(?![\w .-])/.test(s) && /(?::hover|:focus)/.test(s)) out.farmTitleCues++;
-          if (s === ".farm-card-title.mini-icon.fg-layer")
-            out.farmTitleFg = { decl: decl(r, ["width", "height"]) };
+          if (s === ".farm-card-icon.fg-layer") out.farmTitleFg = { decl: decl(r, ["width", "height"]) };
           if (s === ".farm-card.drop-line.mini-icon") out.dropLine = { decl: decl(r, ["height"]) };
           if (s === ".bond-card-actions.calculate-btn") {
             if (/width\s*<\s*380/.test(mediaText)) out.btnSmall = { decl: decl(r, ["width"]) };
@@ -1441,10 +1520,18 @@ try {
           errors.push(
             "select card: a blank/placeholder option exists — Amendment G forbids it (the select must always show a real event)",
           );
+        const START_MONTH_FORMAT = new Intl.DateTimeFormat("en", {
+          month: "short",
+          year: "numeric",
+          timeZone: "Asia/Tokyo",
+        });
         EVENTS.forEach((snap, i) => {
-          const want = (snap.event.shortName || snap.event.name || String(snap.event.id))
+          const baseName = (snap.event.shortName || snap.event.name || String(snap.event.id))
             .replace(/[\r\n]+/g, " ")
             .trim();
+          const want =
+            baseName +
+            (snap.event.startedAt ? ` \u00b7 ${START_MONTH_FORMAT.format(new Date(snap.event.startedAt * 1000))}` : "");
           const got = s.options[i];
           if (!got || got.value !== String(snap.event.id))
             errors.push(
@@ -1599,16 +1686,16 @@ try {
       !/transparent/.test((css.iconEvent.decl.background || "") + (css.iconEvent.decl["background-color"] || ""))
     )
       errors.push(`icons CSSOM: .material-icon--event transparent rule missing — ${JSON.stringify(css.iconEvent)}`);
-    /* Amendment K7 farm grid track rule + the absence of the deleted media overrides */
+    /* Amendment K7/P3/27bb180 farm grid track rule + the absence of the deleted media overrides */
     if (
       !css.farmGrid ||
-      !/auto-fill/.test(css.farmGrid.decl["grid-template-columns"] || "") ||
-      !/280px/.test(css.farmGrid.decl["grid-template-columns"] || "") ||
-      !/320px/.test(css.farmGrid.decl["grid-template-columns"] || "") ||
+      !/auto-fit/.test(css.farmGrid.decl["grid-template-columns"] || "") ||
+      !/220px/.test(css.farmGrid.decl["grid-template-columns"] || "") ||
+      !/240px/.test(css.farmGrid.decl["grid-template-columns"] || "") ||
       css.farmGrid.decl["justify-content"] !== "center"
     )
       errors.push(
-        `farm CSSOM(K7): .farm-grid is ${JSON.stringify(css.farmGrid)}, want repeat(auto-fill, minmax(min(100%, 280px), 320px)) + justify-content: center`,
+        `farm CSSOM(P3): .farm-grid is ${JSON.stringify(css.farmGrid)}, want repeat(auto-fit, minmax(min(100%, 220px), 240px)) + justify-content: center`,
       );
     if (css.farmGridMedia !== 0)
       errors.push(
@@ -1623,8 +1710,8 @@ try {
       );
     if (!css.farmTitleFg || css.farmTitleFg.decl.width !== "100%" || css.farmTitleFg.decl.height !== "100%")
       errors.push(`farm CSSOM(K3): the header fg-layer fill rule is ${JSON.stringify(css.farmTitleFg)}, want 100%/100%`);
-    if (!css.dropLine || css.dropLine.decl.height !== "24px")
-      errors.push(`farm CSSOM(K3): the drop-line .mini-icon height rule is ${JSON.stringify(css.dropLine)}, want 24px`);
+    if (!css.dropLine || css.dropLine.decl.height !== "32px")
+      errors.push(`farm CSSOM(27bb180): the drop-line .mini-icon height rule is ${JSON.stringify(css.dropLine)}, want 32px`);
     /* Amendment K5: the event Calculate button rides the bond actions house rule */
     if (!css.btnActions || css.btnActions.decl.width !== "auto")
       errors.push(`btn CSSOM(K5): .bond-card-actions .calculate-btn width is ${JSON.stringify(css.btnActions && css.btnActions.decl.width)}, want auto ≥380px`);
@@ -1837,12 +1924,15 @@ try {
                 `farm(${currency.name}): header icon ${JSON.stringify(h.imgSrc)}, want ${wantFile}?v=${IMAGE_VERSION}`,
               );
             if (!(h.imgW > 0)) errors.push(`farm(${currency.name}): header icon never decoded (naturalWidth ${h.imgW})`);
-            if (h.boxH !== 48 || h.imgH !== 48)
+            if (h.boxH !== 64 || h.imgH !== 64)
               errors.push(
-                `farm(K3)(${currency.name}): header art is box ${h.boxH}px / img ${h.imgH}px, want 48px/48px (box and image)`,
+                `farm(27bb180)(${currency.name}): header art is box ${h.boxH}px / img ${h.imgH}px, want 64px/64px (box and image)`,
               );
-            if (h.text.replace(/\s+/g, " ").trim() !== currency.name)
-              errors.push(`farm(${currency.name}): header text ${JSON.stringify(h.text)}, want the currency name alone`);
+            const hText = h.text.replace(/\s+/g, " ").trim();
+            if (hText !== "" || h.imgAlt !== currency.name)
+              errors.push(
+                `farm(P1)(${currency.name}): header text ${JSON.stringify(hText)} alt ${JSON.stringify(h.imgAlt)}, want icon-only with alt=${JSON.stringify(currency.name)}`,
+              );
           }
           /* exactly one Held/Bonus pair per currency, and never on a tier-mapped card (Amendment H+I7) */
           const gotLabels = card.inputs.map((i) => i.label).sort().join(",");
@@ -1925,8 +2015,8 @@ try {
                 `farm(${currency.name}): ${want.kind} line icon ${JSON.stringify(d.imgSrc)}, want ${wantFile}?v=${IMAGE_VERSION}`,
               );
             if (!(d.imgW > 0)) errors.push(`farm(${currency.name}): ${want.kind} line icon never decoded (${d.imgW})`);
-            if (d.boxH !== 24 || d.imgH !== 24)
-              errors.push(`farm(K3)(${currency.name}): ${want.kind} line art is box ${d.boxH}px / img ${d.imgH}px, want 24px/24px`);
+            if (d.boxH !== 32 || d.imgH !== 32)
+              errors.push(`farm(27bb180)(${currency.name}): ${want.kind} line art is box ${d.boxH}px / img ${d.imgH}px, want 32px/32px`);
           }
         }
         /* non-vacuity: with the shipped snapshot every card must be on the FULL-data path, and the
@@ -2190,7 +2280,12 @@ try {
       const headerByName = async (name) => {
         const handles = await page.$$("#farmGrid .farm-card-title");
         for (const el of handles) {
-          const t = await el.evaluate((e) => e.textContent.replace(/\s+/g, " ").trim());
+          const t = await el.evaluate((e) => {
+            const txt = e.textContent.replace(/\s+/g, " ").trim();
+            if (txt) return txt;
+            const img = e.querySelector("img");
+            return img ? img.getAttribute("alt") : "";
+          });
           if (t === name) return el;
         }
         return null;
@@ -2560,52 +2655,40 @@ try {
         errors.push(
           `farm math: the gold buy-out reference reads ${totals[String(goldCurrency.id)]}, pinned truth ${BUY_ALL_TRUTH[String(goldCurrency.id)]}`,
         );
-      let firstBad = null;
-      for (const currency of CURRENCIES) {
-        const tier = tierOfCurrency(currency);
-        const id = String(currency.id);
-        const ref = refFarmRow(FARM[id], totals[id], held[tier], bonus[tier]);
-        const got = res.results[tier];
-        /* Amendment K6: event-mode labels are "{N} runs"/"run" — the AP figure is priced but never printed */
-        const wantLabel = ref.runs === 1 ? "run" : "runs";
-        if (got.deficit !== String(ref.deficit) || got.play !== String(ref.runs) || got.label !== wantLabel) {
-          if (!firstBad)
-            firstBad = { tier, got, want: { deficit: String(ref.deficit), play: String(ref.runs), label: wantLabel } };
-          errors.push(
-            `farm math(${currency.name}): results read deficit ${JSON.stringify(got.deficit)} play ${JSON.stringify(got.play)} label ${JSON.stringify(got.label)}, reference farmPlan says ${ref.deficit} / ${ref.runs} / ${JSON.stringify(wantLabel)} (perRun ${ref.perRun} = dropExpected ${FARM[id].dropExpected} × (num ${FARM[id].num} + bonus ${bonus[tier]}))`,
-          );
-        }
-      }
-      /* K6 absence sweep: no "AP" text anywhere in the visible #results surface */
-      const resultsText = await page.evaluate(() => (document.getElementById("results") || {}).textContent || "");
-      if (/\bAP\b/.test(resultsText))
-        errors.push(`results(K6): #results still prints AP — ${JSON.stringify(resultsText.replace(/\s+/g, " ").slice(0, 160))}`);
-      /* the headline discriminator: gold buy-out 6610 − 1000 held over dropExpected × (num+2).
-         The two bug-shaped answers differ from the right one, so the scene proves it can see the
-         difference before it claims the app is right. */
-      const goldRef = refFarmRow(FARM[String(goldCurrency.id)], 6610, 1000, 2);
-      const flatRuns = Math.ceil(5610 / (FARM[String(goldCurrency.id)].dropExpected * FARM[String(goldCurrency.id)].num + 2));
-      const noBonusRuns = Math.ceil(5610 / (FARM[String(goldCurrency.id)].dropExpected * FARM[String(goldCurrency.id)].num));
+      const goldId = String(goldCurrency.id);
+      const goldRef = refFarmRow(FARM[goldId], 6610, 1000, 2);
+      const flatRuns = Math.ceil(5610 / (FARM[goldId].dropExpected * FARM[goldId].num + 2));
+      const noBonusRuns = Math.ceil(5610 / (FARM[goldId].dropExpected * FARM[goldId].num));
       if (goldRef.deficit !== 5610)
         errors.push(`farm math: the reference deficit moved off 5610 (${JSON.stringify(goldRef)}) — re-verify BUY_ALL_TRUTH before blaming the app`);
       if (goldRef.runs === flatRuns || goldRef.runs === noBonusRuns)
         errors.push(
           `farm math: the reference is blind — bonus-in-stack ${goldRef.runs} equals flat-bonus ${flatRuns} / no-bonus ${noBonusRuns} at this drop rate, re-pick the scene numbers`,
         );
-      console.log(
-        `NOTE: farm results gold = ${res.results.gold.deficit} deficit, ${res.results.gold.play} runs, "${res.results.gold.label}" (bonus-in-stack ref ${goldRef.runs}; the flat-bonus bug would say ${flatRuns}, dropping the bonus entirely ${noBonusRuns})`,
-      );
-      if (firstBad)
-        errors.push(
-          `farm math: observed ${JSON.stringify(firstBad.got)} vs want ${JSON.stringify(firstBad.want)} on tier ${firstBad.tier}`,
-        );
-      if (res.results.gold.play !== String(goldRef.runs))
-        errors.push(`farm math: gold play cell is ${JSON.stringify(res.results.gold.play)}, want ${goldRef.runs}`);
       const wantGoldLabel = goldRef.runs === 1 ? "run" : "runs";
-      if (res.results.gold.label !== wantGoldLabel)
+      const plays = (res.farmResults && res.farmResults.plays) || [];
+      const goldPlay = plays.find((p) => p.questName === FARM[goldId].questName);
+      if (!res.farmResults || res.farmResults.title !== "Best Farm Runs")
+        errors.push(`farm math: #results title is ${JSON.stringify(res.farmResults && res.farmResults.title)}, want "Best Farm Runs"`);
+      if (plays.length !== 1 || !goldPlay)
         errors.push(
-          `farm math: gold label is ${JSON.stringify(res.results.gold.label)}, want ${JSON.stringify(wantGoldLabel)} (the runs count lives in the play cell, the label carries the K6 wording alone — no AP)`,
+          `farm math: #results plays ${JSON.stringify(plays)}, want single quest ${JSON.stringify(FARM[goldId].questName)}`,
         );
+      else {
+        if (goldPlay.count !== String(goldRef.runs))
+          errors.push(`farm math: gold play cell is ${JSON.stringify(goldPlay.count)}, want ${goldRef.runs}`);
+        if (goldPlay.label !== wantGoldLabel)
+          errors.push(
+            `farm math: gold label is ${JSON.stringify(goldPlay.label)}, want ${JSON.stringify(wantGoldLabel)}`,
+          );
+      }
+      /* K6 absence sweep: no "AP" text anywhere in the visible #results surface */
+      const resultsText = await page.evaluate(() => (document.getElementById("results") || {}).textContent || "");
+      if (/\bAP\b/.test(resultsText))
+        errors.push(`results(K6): #results still prints AP — ${JSON.stringify(resultsText.replace(/\s+/g, " ").slice(0, 160))}`);
+      console.log(
+        `NOTE: farm results gold = 5610 deficit, ${goldPlay && goldPlay.count} ${goldPlay && goldPlay.label} (bonus-in-stack ref ${goldRef.runs}; the flat-bonus bug would say ${flatRuns}, dropping the bonus entirely ${noBonusRuns})`,
+      );
     }
 
     /* ================= 15. per-event saves: isolation, swap-on-switch, reload (MULTI) ========= */
@@ -2663,14 +2746,12 @@ try {
         errors.push(
           `switch: result labels after moving to 80630 — gold ${JSON.stringify(stateB.results.gold.deficitLabel)} bronze ${JSON.stringify(stateB.results.bronze.deficitLabel)}`,
         );
-      /* a null-farm currency prices to "—" + "No drop data yet" */
+      /* empty plan on farm:null renders 0 plays; non-empty deficit renders empty-plan notice */
       await safeClick("#calculateBtn");
       await wait(SETTLE_MS);
-      const resB = (await readTier()).results;
-      if (resB.gold.play !== "\u2014" || resB.gold.label !== "No drop data yet")
-        errors.push(
-          `farm null: 80630 gold results read ${JSON.stringify([resB.gold.play, resB.gold.label])}, want ["\u2014","No drop data yet"]`,
-        );
+      const resB0 = (await readTier()).farmResults;
+      if (!resB0 || resB0.title !== "Best Farm Runs" || resB0.empty !== null || resB0.plays.length !== 0)
+        errors.push(`farm null: empty 80630 results read ${JSON.stringify(resB0)}, want 0 plays`);
 
       /* edit B, prove A is byte-identical, switch back, prove B kept its own edit */
       await openTierModal("gold", "B: commit an 80630 plan");
@@ -2691,6 +2772,18 @@ try {
           errors.push(`isolation(G): 80630's own edit did not persist — ${JSON.stringify(bReq)}`);
         if (afterB.selectedEventId !== PIN_OTHER)
           errors.push(`isolation(G): selectedEventId is ${JSON.stringify(afterB.selectedEventId)} after editing B`);
+        await safeClick("#calculateBtn");
+        await wait(SETTLE_MS);
+        const resB = (await readTier()).farmResults;
+        if (
+          !resB ||
+          resB.title !== "Best Farm Runs" ||
+          resB.empty !== "No drop data can cover this plan" ||
+          resB.plays.length !== 0
+        )
+          errors.push(
+            `farm null: 80630 gold results read ${JSON.stringify(resB)}, want "No drop data can cover this plan"`,
+          );
 
         await switchEvent(ACTIVE_ID, "switch back → 80639");
         const backA = await readTier();
@@ -2708,10 +2801,7 @@ try {
           if (!entry) return c.lines.length === 1 && c.lines[0] === "No drop data yet" && c.drops.length === 0;
           const stats = entry.recommendLv ? 2 : 1;
           const drops = entry.secondary ? 2 : 1;
-          const dash = entry.secondary ? 0 : 1;
-          return (
-            c.lines.filter((l) => l !== "\u2014").length === stats && c.drops.length === drops && c.lines.filter((l) => l === "\u2014").length === dash
-          );
+          return !c.lines.includes("\u2014") && c.lines.length === stats && c.drops.length === drops;
         };
         if (backA.farm.cards.length !== 3 || !backA.farm.cards.every(fullShape))
           errors.push(
@@ -2743,6 +2833,7 @@ try {
 
     /* ================= 16. first-match + label restore on an unmapped event (MULTI 80379) ===== */
     if (MULTI) {
+      await resetPlan();
       await switchEvent(PIN_MULTI, "switch → 80379");
       const s79 = await readTier();
       const golds = EMULTI.currencies.filter((c) => c.background === "gold");
@@ -2826,23 +2917,27 @@ try {
       await switchEvent(PIN_DASH, "17D: switch → 80555 (secondary-null fixture)");
       const sd = await readTier();
       const currencies = EDASH.currencies;
+      const dashFarm = farmMapOf(EDASH);
       if (sd.farm.cards.length !== currencies.length)
         errors.push(`dash: ${sd.farm.cards.length} cards, want ${currencies.length}`);
       for (const currency of currencies) {
         const id = String(currency.id);
-        const entry = EDASH.farm[id];
+        const entry = dashFarm[id];
         const card = sd.farm.cards.find((c) => c.name === currency.name);
         if (!card || !entry) {
-          errors.push(`dash(${currency.name}): no card for the fixture currency — ${JSON.stringify(sd.farm.cards.map((c) => c.name))}`);
+          errors.push(
+            `dash(${currency.name}): missing card or entry — ${JSON.stringify(sd.farm.cards.map((c) => c.name))}`,
+          );
           continue;
         }
         const wantStats = [entry.questName];
         if (entry.recommendLv) wantStats.push(`REC Lv. ${entry.recommendLv}`);
-        const stats = card.lines.filter((l) => l !== "\u2014");
-        if (JSON.stringify(stats) !== JSON.stringify(wantStats))
-          errors.push(`dash(${currency.name}): stats ${JSON.stringify(stats)}, want ${JSON.stringify(wantStats)} (REC is skipped when falsy)`);
-        if (card.lines.filter((l) => l === "\u2014").length !== 1)
-          errors.push(`dash(${currency.name}): expected exactly one "\u2014" secondary line, got ${JSON.stringify(card.lines)}`);
+        if (card.lines.includes("\u2014"))
+          errors.push(`dash(${currency.name}): unexpected "\u2014" line — ${JSON.stringify(card.lines)}`);
+        if (JSON.stringify(card.lines) !== JSON.stringify(wantStats))
+          errors.push(
+            `dash(${currency.name}): stats ${JSON.stringify(card.lines)}, want ${JSON.stringify(wantStats)}`,
+          );
         if (card.drops.length !== 1 || card.drops[0].kind !== "primary")
           errors.push(`dash(${currency.name}): ${card.drops.length} drop line(s) ${JSON.stringify(card.drops.map((d) => d.kind))}, want the primary line alone`);
         if (card.drops[0] && (card.drops[0].currencyId !== id || card.drops[0].num !== String(entry.num)))
@@ -2867,13 +2962,20 @@ try {
       await clickDone();
       await safeClick("#calculateBtn");
       await wait(SETTLE_MS);
-      const resD = (await readTier()).results;
+      const resD = (await readTier()).farmResults;
       const totalsD = refTotals(EDASH.items, currencies, refClear(goldItemsD));
-      const refD = refFarmRow(EDASH.farm[String(dashGold.id)], totalsD[String(dashGold.id)], 0, 0);
+      const dashGoldEntry = dashFarm[String(dashGold.id)];
+      const refD = refFarmRow(dashGoldEntry, totalsD[String(dashGold.id)], 0, 0);
       if (refD.runs === null)
         errors.push("dash: the fixture's gold farm row priced to nothing — the scene is blind, re-check the fixture data");
-      if (resD.gold.play !== String(refD.runs))
-        errors.push(`dash: gold runs is ${JSON.stringify(resD.gold.play)}, want ${refD.runs} — a missing secondary must not change farmPlan`);
+      const playsD = (resD && resD.plays) || [];
+      const goldPlayD = playsD.find((p) => p.questName === dashGoldEntry.questName);
+      if (!resD || resD.title !== "Best Farm Runs" || playsD.length !== 1 || !goldPlayD)
+        errors.push(`dash: #results plays ${JSON.stringify(playsD)}, want single quest ${dashGoldEntry.questName}`);
+      else if (goldPlayD.count !== String(refD.runs))
+        errors.push(
+          `dash: gold runs is ${JSON.stringify(goldPlayD.count)}, want ${refD.runs} — missing secondary unchanged`,
+        );
       if (pageErrors.length !== before17)
         errors.push(`dash: the secondary-null fixture raised page errors — ${JSON.stringify(pageErrors.slice(before17))}`);
       await resetPlan();
@@ -2902,8 +3004,9 @@ try {
               const l = box ? box.querySelector(".material-input-box-label") : null;
               return l ? l.textContent : null;
             };
-            const cards = [...document.querySelectorAll("#farmGrid .farm-card")].map((c) => {
+            const cards = [...document.querySelectorAll("#farmGrid .farm-card:not(.farm-card--combo)")].map((c) => {
               const header = c.querySelector(".farm-card-title");
+              const hImg = header ? header.querySelector("img") : null;
               const inputs = [...c.querySelectorAll("input")];
               return {
                 tier: c.dataset.tier,
@@ -2912,7 +3015,8 @@ try {
                 headerTabindex: header ? header.getAttribute("tabindex") : null,
                 headerHaspopup: header ? header.getAttribute("aria-haspopup") : null,
                 headerAria: header ? header.getAttribute("aria-label") : null,
-                headerText: header ? header.textContent.replace(/\s+/g, " ").trim() : null,
+                headerText:
+                  (hImg && hImg.getAttribute("alt")) || (header ? header.textContent.replace(/\s+/g, " ").trim() : null),
                 requireDisplays: c.querySelectorAll("input.eshop-require-display").length,
                 requiredIds: inputs.filter((i) => /^farmRequired/.test(i.id)).map((i) => i.id),
                 cardBg: getComputedStyle(c).backgroundColor,
@@ -3071,10 +3175,13 @@ try {
          plan. Seed the blob the way the old modal-Done path wrote it, reload, and pin what the page
          does with it: totals key by currency, the tier maps first-match, and no header opens. */
       const farmHeaderInert = async (name, label) => {
-        const handles = await page.$$("#farmGrid .farm-card-title");
+        const handles = await page.$$("#farmGrid .farm-card:not(.farm-card--combo) .farm-card-title");
         let hit = null;
         for (const el of handles) {
-          const t = await el.evaluate((e) => e.textContent.replace(/\s+/g, " ").trim());
+          const t = await el.evaluate((e) => {
+            const img = e.querySelector("img");
+            return (img && img.getAttribute("alt")) || e.textContent.replace(/\s+/g, " ").trim();
+          });
           if (t === name) hit = el;
         }
         if (!hit) {
@@ -3223,7 +3330,7 @@ try {
           return {
             ms: performance.now() - t0,
             held: stored.plans[String(args.event)].held,
-            deficit: (document.getElementById("goldDeficit") || {}).textContent || null,
+            farmEmpty: (document.querySelector("#results .farm-res-empty") || {}).textContent || null,
           };
         },
         { second: String(secondGold.id), key: KEY, event: PIN_MULTI },
@@ -3238,10 +3345,9 @@ try {
         errors.push(
           `H4: the farm box write moved the MAPPED currency's held (${JSON.stringify(h4.held[String(firstGold.id)])}, want 4) — writes must key on the card's own currency`,
         );
-      const wantDeficit = 10 * firstItem.cost.amount - 4;
-      if (h4.deficit !== String(wantDeficit))
+      if (h4.farmEmpty !== "No drop data can cover this plan")
         errors.push(
-          `H4: gold Deficit reads ${JSON.stringify(h4.deficit)}, want ${wantDeficit} — the second gold's 500 must not pay for the first gold's row (farmPlan prices per currency)`,
+          `H4: #results empty message is ${JSON.stringify(h4.farmEmpty)} — second gold 500 must not pay first gold's deficit`,
         );
       await wait(SETTLE_MS);
       const h4ctl = await readFarmCtl(PIN_MULTI);
@@ -3717,17 +3823,19 @@ try {
           btnRatio: b.getBoundingClientRect().width / b.parentElement.clientWidth,
         };
       });
-      const trackStr = gridInfo.tracks.join(" ");
-      if (width === 1120 && trackStr !== "320 320 320")
-        errors.push(`farm grid(K7) @1120: tracks are ${trackStr}, want 320 320 320 (three centred 320px cards)`);
-      if (width === 760 && trackStr !== "320 320")
-        errors.push(`farm grid(K7) @760: tracks are ${trackStr}, want 320 320 (two centred 320px cards)`);
-      if (width === 360 && !(gridInfo.tracks.length === 1 && gridInfo.tracks[0] >= 260 && gridInfo.tracks[0] <= 320))
-        errors.push(`farm grid(K7) @360: tracks are ${trackStr}, want a single ~307px track (never over 320)`);
+      const trackStr = gridInfo.tracks.filter((t) => t > 0).join(" ");
+      if (width === 1120 && trackStr !== "240 240 240")
+        errors.push(
+          `farm grid(P3) @1120: non-zero tracks are ${trackStr} (raw ${gridInfo.tracks.join(" ")}), want 240 240 240 (three centred 240px cards with collapsed auto-fit tracks)`,
+        );
+      if (width === 760 && trackStr !== "240 240")
+        errors.push(`farm grid(P3) @760: non-zero tracks are ${trackStr}, want 240 240 (two centred 240px cards)`);
+      if (width === 360 && !(gridInfo.tracks.length === 1 && gridInfo.tracks[0] >= 220 && gridInfo.tracks[0] <= 240))
+        errors.push(`farm grid(P3) @360: tracks are ${gridInfo.tracks.join(" ")}, want a single 220..240px track`);
       if (gridInfo.justify !== "center")
-        errors.push(`farm grid(K7) @${width}: justify-content is ${gridInfo.justify}, want center`);
-      if (gridInfo.cardW.some((w) => w > 321))
-        errors.push(`farm grid(K7) @${width}: a farm card is ${Math.max(...gridInfo.cardW)}px wide, want at most 320px`);
+        errors.push(`farm grid(P3) @${width}: justify-content is ${gridInfo.justify}, want center`);
+      if (gridInfo.cardW.some((w) => w > 241))
+        errors.push(`farm grid(P3) @${width}: a farm card is ${Math.max(...gridInfo.cardW)}px wide, want at most 240px`);
       if (width < 380 ? gridInfo.btnRatio < 0.95 : !(gridInfo.btnRatio > 0 && gridInfo.btnRatio <= 0.5))
         errors.push(
           `btn(K5) @${width}: #calculateBtn spans ${(gridInfo.btnRatio * 100).toFixed(0)}% of its row, want ${width < 380 ? "house full-width" : "at most half"}`,

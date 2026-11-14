@@ -158,7 +158,11 @@ try {
         };
       }
 
-      return {
+      const qd = document.getElementById("questDropsGrid");
+      const prevQdDisplay = qd ? qd.style.display : "";
+      if (qd) qd.style.display = "grid";
+
+      const out = {
         materials: getMetrics("materialsGrid"),
         questDrops: getMetrics("questDropsGrid"),
         deficit: getMetrics("deficitGrid"),
@@ -166,6 +170,9 @@ try {
         docScrollWidth: document.documentElement.scrollWidth,
         windowWidth: window.innerWidth,
       };
+
+      if (qd) qd.style.display = prevQdDisplay;
+      return out;
     });
 
     const isMobile = vp.width < 580;
@@ -231,9 +238,9 @@ try {
 
       const teapot = document.querySelector(".bond-teapot");
       const teapotStyle = teapot ? window.getComputedStyle(teapot) : null;
-      const calcBtn = document.querySelector(".bond-card-actions .calculate-btn");
+      const calcBtn = document.querySelector("#panel-bond .bond-card-actions .calculate-btn");
       const calcBtnRect = toRect(calcBtn);
-      const cardActions = document.querySelector(".bond-card-actions");
+      const cardActions = document.querySelector("#panel-bond .bond-card-actions");
       const cardActionsRect = toRect(cardActions);
 
       return {

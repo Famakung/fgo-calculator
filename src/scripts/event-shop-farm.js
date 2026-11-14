@@ -37,6 +37,7 @@ export function hydrateFarmGrid(event, plan, handlers = {}) {
   const grid = document.getElementById("farmGrid");
   if (!grid) return;
   if (!event) {
+    document.documentElement.removeAttribute("data-event-combo");
     grid.replaceChildren();
     return;
   }
@@ -44,7 +45,12 @@ export function hydrateFarmGrid(event, plan, handlers = {}) {
   const fragment = document.createDocumentFragment();
   for (const currency of event.currencies) fragment.appendChild(buildCurrencyCard(currency, view));
   const covering = EventShop.allCoveringQuests(event.farm, currencyIds(view.snapshot)).sort(byRecommendLv);
-  if (covering.length) fragment.appendChild(buildComboCard(view, covering));
+  if (covering.length) {
+    document.documentElement.setAttribute("data-event-combo", "1");
+    fragment.appendChild(buildComboCard(view, covering));
+  } else {
+    document.documentElement.removeAttribute("data-event-combo");
+  }
   grid.replaceChildren(fragment);
   refreshSlidingNames(grid);
 }
@@ -210,6 +216,15 @@ export function showFarmCard() {
   setDisplay(document.getElementById("farmGrid"), "");
   const title = card.querySelector(".card-title");
   if (title) title.textContent = FARM_CARD_TITLE;
+}
+
+export function showLegacyCard() {
+  const card = document.getElementById("farmGrid")?.closest(".card");
+  if (!card) return;
+  setDisplay(card.querySelector(".base-row"), "flex");
+  setDisplay(document.getElementById("questDropsGrid"), "grid");
+  setDisplay(document.getElementById("farmGrid"), "none");
+  hydrateFarmGrid(null);
 }
 
 function setDisplay(element, value) {
