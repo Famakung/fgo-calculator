@@ -9,6 +9,7 @@ import {
   buildHeldBonusBoxes,
   buildFarmQuestSelect,
   buildCurrencyQuestSelect,
+  buildRaidQuestSelect,
   questsDroppingCurrency,
 } from "./event-shop-farm-controls.js";
 import { renderFarmResults } from "./event-shop-farm-results.js";
@@ -43,13 +44,19 @@ export function hydrateFarmGrid(event, plan, handlers = {}) {
   }
   const view = { snapshot: event, plan, mapped: tierMappedIds(event.currencies), handlers };
   const fragment = document.createDocumentFragment();
-  for (const currency of event.currencies) fragment.appendChild(buildCurrencyCard(currency, view));
-  const covering = EventShop.allCoveringQuests(event.farm, currencyIds(view.snapshot)).sort(byRecommendLv);
-  if (covering.length) {
-    document.documentElement.setAttribute("data-event-combo", "1");
-    fragment.appendChild(buildComboCard(view, covering));
-  } else {
+  const raids = Array.isArray(event.farm?.raids) ? event.farm.raids : [];
+  if (plan?.questType === "raid" && raids.length > 0) {
     document.documentElement.removeAttribute("data-event-combo");
+    for (const boss of raids) fragment.appendChild(buildRaidBossCard(boss, view));
+  } else {
+    for (const currency of event.currencies) fragment.appendChild(buildCurrencyCard(currency, view));
+    const covering = EventShop.allCoveringQuests(event.farm, currencyIds(view.snapshot)).sort(byRecommendLv);
+    if (covering.length) {
+      document.documentElement.setAttribute("data-event-combo", "1");
+      fragment.appendChild(buildComboCard(view, covering));
+    } else {
+      document.documentElement.removeAttribute("data-event-combo");
+    }
   }
   grid.replaceChildren(fragment);
   refreshSlidingNames(grid);
@@ -145,7 +152,7 @@ function questDropLines(currency, quest, view) {
    re-defaults the stored value itself). */
 function buildComboCard(view, covering) {
   const card = DOMFactory.el("div", ["quest-drops-item", "farm-card", "farm-card--combo"]);
-  card.appendChild(buildComboHeader(view.snapshot));
+  card.appendChild(buildIconsHeader(view.snapshot.currencies));
   const quest = covering.find((q) => String(q.questId) === String(view.plan.farmQuest)) || covering[0];
   const select = buildFarmQuestSelect(covering, view.plan.farmQuest, view.handlers.onQuestChange);
   const lines = [buildQuestName(quest.questName)];
@@ -158,9 +165,52 @@ function buildComboCard(view, covering) {
   return card;
 }
 
-function buildComboHeader(snapshot) {
+function buildRaidBossCard(boss, view) {
+  const quests = [...(boss.quests || [])].sort(byRecommendLv);
+  const chosenId = EventShop.sanitizedRaidQuest(boss, (view.plan?.raidQuest || {})[String(boss.bossId)]);
+  const quest = quests.find((candidate) => candidate.questId === chosenId) || quests[0] || null;
+  const drops = (quest && quest.drops) || {};
+  const dropped = (view.snapshot.currencies || []).filter((currency) => Boolean(drops[String(currency.id)]));
+
+  const classes = ["quest-drops-item", "farm-card"];
+  if (dropped.length !== 1) classes.push("farm-card--combo");
+  const card = DOMFactory.el("div", classes, dropped.length === 1 ? { "data-tier": dropped[0].background } : {});
+  card.appendChild(buildRaidCardHeader(dropped));
+
+  const lines = [buildQuestName(boss.bossName)];
+  if (quests.length) {
+    lines.push(
+      buildRaidQuestSelect({
+        boss,
+        quests,
+        selectedQuestId: quest?.questId,
+        onChange: view.handlers.onQuestChange,
+      }),
+    );
+  }
+  if (quest && quest.recommendLv) lines.push(buildMessage(`REC Lv. ${quest.recommendLv}`));
+  if (dropped.length) {
+    for (const currency of dropped) lines.push(buildCurrencyDropLine(currency, drops[String(currency.id)]));
+  } else {
+    lines.push(buildMessage(NO_DROP_MESSAGE));
+  }
+  const body = DOMFactory.el("div", "farm-card-body");
+  body.replaceChildren(...lines);
+  card.appendChild(body);
+  return card;
+}
+
+function buildRaidCardHeader(dropped) {
+  if (dropped.length === 1) return buildCardHeader(dropped[0]);
+  if (dropped.length > 1) return buildIconsHeader(dropped);
+  const title = DOMFactory.el("div", "farm-card-title farm-card-title--empty", { "aria-hidden": "true" });
+  title.textContent = "\u2014";
+  return title;
+}
+
+function buildIconsHeader(currencies) {
   const title = DOMFactory.el("div", "farm-card-title farm-card-title--icons");
-  for (const currency of snapshot.currencies) {
+  for (const currency of currencies) {
     const icon = DOMFactory.el("span", "farm-card-icon");
     icon.replaceChildren(buildCurrencyImg(currency, currency.background));
     title.appendChild(icon);

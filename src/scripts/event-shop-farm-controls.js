@@ -30,9 +30,9 @@ export function tierMappedIds(currencies) {
    suffix plain < "+" < "++" < "★", so 70 < 75 < 80 < 85 < 90 < 90+ < 90++ < 100★. An absent or
    unparseable recommendLv ranks Infinity and sorts last. The stride leaves the suffix ranks 0-4
    room below the next level, keeping the rank a plain comparable number. */
-const REC_SUFFIX_RANK = { "": 0, "+": 1, "++": 2, "★": 3 };
+const REC_SUFFIX_RANK = { "": 0, "+": 1, "++": 2, "+++": 3, "★": 4 };
 const REC_RANK_STRIDE = 8;
-const UNKNOWN_SUFFIX_RANK = 4;
+const UNKNOWN_SUFFIX_RANK = 5;
 
 export function recLvRank(recommendLv) {
   const text = recommendLv === null || recommendLv === undefined ? "" : String(recommendLv).trim();
@@ -115,10 +115,15 @@ export function buildFarmQuestSelect(quests, selectedQuestId, onChange = null) {
   return select;
 }
 
-function buildQuestOption(quest) {
+function buildQuestOption(quest, label = quest.questName) {
   const option = DOMFactory.el("option", null, { value: String(quest.questId) });
-  option.textContent = quest.recommendLv ? `${quest.questName} \u00b7 Lv.${quest.recommendLv}` : quest.questName;
+  option.textContent = quest.recommendLv ? `${label} \u00b7 Lv.${quest.recommendLv}` : label;
   return option;
+}
+
+function raidQuestLabel(quest, bossName) {
+  const rawDiff = (quest.difficultyLabel || "").trim();
+  return rawDiff && rawDiff !== (bossName || "").trim() ? rawDiff : quest.questName;
 }
 
 /* The plan's pick shows when the list still carries it; otherwise the first listed quest — the
@@ -178,6 +183,21 @@ export function buildCurrencyQuestSelect(spec) {
   select.value = String(pickedQuestId(quests, selectedQuestId));
   select.addEventListener("change", () => {
     EventPlanner.setCurrencyQuest(currency.id, Number(select.value));
+    if (onChange) onChange();
+  });
+  return select;
+}
+
+export function buildRaidQuestSelect(spec) {
+  const { boss, quests, selectedQuestId, onChange = null } = spec;
+  const select = DOMFactory.el("select", "select-field farm-quest-select", {
+    id: `raidQuestSelect_${boss.bossId}`,
+    "aria-label": `Difficulty for ${boss.bossName}`,
+  });
+  for (const quest of quests) select.appendChild(buildQuestOption(quest, raidQuestLabel(quest, boss.bossName)));
+  select.value = String(pickedQuestId(quests, selectedQuestId));
+  select.addEventListener("change", () => {
+    EventPlanner.setRaidQuest(boss.bossId, Number(select.value));
     if (onChange) onChange();
   });
   return select;

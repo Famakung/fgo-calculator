@@ -1071,13 +1071,14 @@ export const EventShop = {
     bonusCes = [],
     ceOwned = {},
     ceEquipLimit = Schema.ceEquipLimit.default,
+    useAllQuests = false,
   } = {}) {
     const deficits = planDeficits(totals, held, farm);
     const keys = Object.keys(deficits);
     if (!keys.length || allCovered(deficits)) return emptyFarmPlan(keys);
     const quests = planQuests(farm, bonus);
     if (!quests.length) return infeasibleFarmPlan();
-    const selection = currencyQuest && typeof currencyQuest === "object" ? currencyQuest : {};
+    const selection = !useAllQuests && currencyQuest && typeof currencyQuest === "object" ? currencyQuest : {};
     const coveringIds = new Set(
       this.allCoveringQuests(farm, currencyIds === null ? keys : currencyIds).map((quest) => String(quest.questId)),
     );
@@ -1098,8 +1099,8 @@ export const EventShop = {
       coveringIds,
     };
     const plan = normalizedCes.length
-      ? bestCeFarmPlan(table, priorityQuestId, normalizedCes, equipLimit)
-      : bestFarmPlan(table, priorityQuestId);
+      ? bestCeFarmPlan(table, priorityQuestId, normalizedCes, equipLimit, useAllQuests)
+      : bestFarmPlan(table, priorityQuestId, useAllQuests);
     return plan || infeasibleFarmPlan();
   },
 
@@ -1154,6 +1155,38 @@ export const EventShop = {
     const id = Number(saved);
     const kept = quests.some((quest) => quest.questId === id && (quest.drops || {})[key] && !covering.has(id));
     return kept ? id : this.defaultCurrencyQuest(farm, currencyIds, key);
+  },
+
+  recLvRank(recommendLv) {
+    return recLvRank(recommendLv);
+  },
+
+  byRecommendLv(a, b) {
+    return byRecommendLv(a, b);
+  },
+
+  defaultRaidQuest(boss) {
+    const quests =
+      boss && Array.isArray(boss.quests)
+        ? boss.quests.filter((quest) => quest && quest.questId !== undefined && quest.questId !== null)
+        : [];
+    if (!quests.length) return null;
+    const withDrops = quests.filter(
+      (quest) => quest.drops && typeof quest.drops === "object" && Object.keys(quest.drops).length > 0,
+    );
+    const candidates = withDrops.length ? withDrops : quests;
+    const ranked = [...candidates].sort(byRecommendLv);
+    return ranked[0].questId;
+  },
+
+  sanitizedRaidQuest(boss, saved) {
+    const quests = boss && Array.isArray(boss.quests) ? boss.quests : [];
+    const isScalar = typeof saved === "number" || (typeof saved === "string" && saved.trim() !== "");
+    const id = isScalar ? Number(saved) : NaN;
+    if (Number.isInteger(id) && quests.some((quest) => quest && quest.questId === id)) {
+      return id;
+    }
+    return EventShop.defaultRaidQuest(boss);
   },
 
   /* Multi-event storage blob (Amendment G) → { selectedEventId, plans }. The old single-event
@@ -1627,15 +1660,26 @@ function dropAmount(drop) {
 
 /* Best farm plan over the user's selected quests across the currency cards and optional all-drop
    card: compute the greedy incumbent over that selected pool, then run exact search bounded by it. */
-function bestFarmPlan(table, priorityQuestId) {
-  const pool = nondominatedQuests(selectedPool(table, priorityQuestId));
+function bestFarmPlan(table, priorityQuestId, useAllQuests = false) {
+  const candidatePool = useAllQuests ? table.quests : selectedPool(table, priorityQuestId);
+  const pool = nondominatedQuests(candidatePool);
   return bestFarmPlanForPool(table, pool);
 }
+
+const LARGE_POOL_EXACT_NODES = 400000;
 
 function bestFarmPlanForPool(table, pool, ceCombosByQuestId = null) {
   if (!pool.length) return null;
   const greedy = greedyFarmPlan(table, pool, ceCombosByQuestId);
-  return betterPlan(greedy, exactFarmPlan(table, pool, greedy, ceCombosByQuestId));
+  if (pool.length <= 4) {
+    return betterPlan(greedy, exactFarmPlan(table, pool, greedy, ceCombosByQuestId));
+  }
+  const lpSeed = lpSeedCandidate(table, pool, 0, ceCombosByQuestId);
+  const incumbent = betterPlan(greedy, lpSeed.plan);
+  return betterPlan(
+    incumbent,
+    exactFarmPlan(table, pool, incumbent, ceCombosByQuestId, lpSeed.lpLb, LARGE_POOL_EXACT_NODES),
+  );
 }
 
 function selectedPool(table, priorityQuestId) {
@@ -1663,11 +1707,18 @@ function selectedAllDropQuest(table, priorityQuestId) {
 }
 
 /* Exact minimum-play search over the user-selected quest pool, tie-broken by least surplus then least AP. */
-function exactFarmPlan(table, pool, incumbent, ceCombosByQuestId = null) {
+function exactFarmPlan(
+  table,
+  pool,
+  incumbent,
+  ceCombosByQuestId = null,
+  minTotalHint = 0,
+  maxSearchNodes = MAX_EXACT_SEARCH_NODES,
+) {
   const kernel = buildExactKernel(table, pool);
   const bound = incumbent && incumbent.totalPlays !== null ? incumbent.totalPlays : MAX_PLAN_SCAN;
-  const minTotal = minExactTotal(kernel, bound);
-  const budget = { nodes: MAX_EXACT_SEARCH_NODES };
+  const minTotal = Math.max(minTotalHint || 0, minExactTotal(kernel, bound));
+  const budget = { nodes: maxSearchNodes };
   for (let total = minTotal; total <= bound; total++) {
     if (!hopelessMix(kernel, 0, total, kernel.zeroYields, null)) {
       const best = searchExactTotal(kernel, total, budget);
@@ -2034,7 +2085,61 @@ function sanitizeEventPlan(plan, snapshot) {
     currencyQuest: sanitizeCurrencyQuests((plan || {}).currencyQuest, snapshot),
     ceOwned: sanitizeCeOwned((plan || {}).ceOwned, snapshot.bonusCes),
     ceEquipLimit: EventShop.clampCeEquipLimit((plan || {}).ceEquipLimit),
+    questType: sanitizeQuestType((plan || {}).questType, snapshot),
+    raidQuest: sanitizeRaidQuests((plan || {}).raidQuest, snapshot),
   };
+}
+
+const REC_SUFFIX_RANK = { "": 0, "+": 1, "++": 2, "+++": 3, "★": 4 };
+const UNKNOWN_REC_SUFFIX_RANK = 5;
+const REC_RANK_STRIDE = 8;
+
+function recLvRank(recommendLv) {
+  if (recommendLv === null || recommendLv === undefined) return Infinity;
+  const text = String(recommendLv).trim();
+  if (!text) return Infinity;
+  const match = /^(\d+)(.*)$/.exec(text);
+  if (!match) return Infinity;
+  const num = Number(match[1]);
+  const suffix = match[2].trim();
+  const suffixRank = Object.hasOwn(REC_SUFFIX_RANK, suffix) ? REC_SUFFIX_RANK[suffix] : UNKNOWN_REC_SUFFIX_RANK;
+  return num * REC_RANK_STRIDE + suffixRank;
+}
+
+function byRecommendLv(a, b) {
+  const rankA = recLvRank(a && a.recommendLv);
+  const rankB = recLvRank(b && b.recommendLv);
+  if (rankA !== rankB) {
+    if (!Number.isFinite(rankA)) return 1;
+    if (!Number.isFinite(rankB)) return -1;
+    return rankB - rankA;
+  }
+  return ((a && a.questId) || 0) - ((b && b.questId) || 0);
+}
+
+function hasNonEmptyRaids(snapshot) {
+  const raids = (snapshot && snapshot.farm && snapshot.farm.raids) || [];
+  return Array.isArray(raids) && raids.some((boss) => boss && Array.isArray(boss.quests) && boss.quests.length > 0);
+}
+
+function sanitizeQuestType(saved, snapshot) {
+  return hasNonEmptyRaids(snapshot) && saved === "raid" ? "raid" : "free";
+}
+
+function sanitizeRaidQuests(saved, snapshot) {
+  const raids = (snapshot && snapshot.farm && snapshot.farm.raids) || [];
+  if (!Array.isArray(raids) || !raids.length) return {};
+  const raw = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  const clean = {};
+  for (const boss of raids) {
+    if (!boss || boss.bossId === undefined || boss.bossId === null) continue;
+    const key = String(boss.bossId);
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+    const rawSaved = Object.hasOwn(raw, key) ? raw[key] : undefined;
+    const choice = EventShop.sanitizedRaidQuest(boss, rawSaved);
+    if (choice !== null) clean[key] = choice;
+  }
+  return clean;
 }
 
 /* The 3-in-1 card's quest pick (Amendment L4): a saved id survives only if that event's farm list
@@ -2115,6 +2220,10 @@ function pickSelectedEventId(savedId, snapshots) {
 
 const MAX_CE_BNB_NODES = 8000;
 const MAX_CE_LEAF_EVALS = 1000;
+const LARGE_CE_BNB_NODES = 800;
+const LARGE_CE_LEAF_EVALS = 80;
+const LARGE_POOL_SEED_EXACT_NODES = 300000;
+const LARGE_CE_LEAF_EXACT_NODES = 20000;
 
 function clampSchemaInteger(value, schema) {
   if (typeof value !== "number" && typeof value !== "string") return schema.default;
@@ -2175,15 +2284,19 @@ function microRateWithCe(drop, flatBonusRaw, ceBonus) {
   return micro(count(drop.dropExpected) * (count(drop.num) + flatBonus + ceBonus));
 }
 
-function bestCeFarmPlan(table, priorityQuestId, normalizedCes, equipLimit) {
+function bestCeFarmPlan(table, priorityQuestId, normalizedCes, equipLimit, useAllQuests = false) {
   const maxRatesByQuestId = buildMaxRatesByQuest(table.quests, table.bonus, normalizedCes, equipLimit);
-  const selected = selectCePool(table, priorityQuestId, maxRatesByQuestId);
+  const selected = useAllQuests
+    ? table.quests.filter((quest) =>
+        Object.values(maxRatesByQuestId.get(String(quest.meta.questId)) || {}).some((rate) => count(rate) > 0),
+      )
+    : selectCePool(table, priorityQuestId, maxRatesByQuestId);
   if (!selected.length) return null;
   const usefulSet = usefulCurrencySet(table);
   const combosByQuest = selected.map((quest) =>
     buildQuestParetoCombos(quest, table.bonus, normalizedCes, equipLimit, usefulSet),
   );
-  if (combosByQuest.every((list) => list.length <= 1)) {
+  if (combosByQuest.every((list) => list.length === 1)) {
     const fixedPool = selected.map((quest, index) => ({
       meta: quest.meta,
       rates: combosByQuest[index][0].rates,
@@ -2430,18 +2543,19 @@ function solveCeBranchAndBound(table, rawPool, rawCombos) {
     const ceCombos = new Map(pool.map((quest, idx) => [String(quest.meta.questId), combosByQuest[idx][0].ceCombo]));
     return bestFarmPlanForPool(table, fixedPool, ceCombos);
   }
+  const largePool = pool.length > 4;
   const ctx = buildCeLpContext(table, pool, combosByQuest);
   const root = certifiedLpBound(ctx, [], ctx.allIndices);
   if (root.lb === Infinity) return null;
-  let best = seedCeIncumbent(ctx, root);
-  let nodeBudget = MAX_CE_BNB_NODES;
-  let leafBudget = MAX_CE_LEAF_EVALS;
+  let best = seedCeIncumbent(ctx, root, largePool);
+  let nodeBudget = largePool ? LARGE_CE_BNB_NODES : MAX_CE_BNB_NODES;
+  let leafBudget = largePool ? LARGE_CE_LEAF_EVALS : MAX_CE_LEAF_EVALS;
 
   const branch = (fixedPairs, undecidedQs, precomputedLp) => {
     if (nodeBudget <= 0) return;
     nodeBudget--;
     const lp = precomputedLp || certifiedLpBound(ctx, fixedPairs, undecidedQs);
-    if (lp.lb === Infinity || (best && lp.lb > best.totalPlays)) return;
+    if (lp.lb === Infinity || (best && (largePool ? lp.lb >= best.totalPlays : lp.lb > best.totalPlays))) return;
     if (!undecidedQs.length) {
       if (!fixedPairs.length || leafBudget <= 0) return;
       leafBudget--;
@@ -2450,7 +2564,7 @@ function solveCeBranchAndBound(table, rawPool, rawCombos) {
         rates: ctx.combosByQuest[qi][ci].rates,
         ceCombo: ctx.combosByQuest[qi][ci].ceCombo,
       }));
-      best = betterPlan(best, exactCeLeafPlan(ctx.table, activeQuests, lp.lb, best));
+      best = betterPlan(best, exactCeLeafPlan(ctx.table, activeQuests, lp.lb, best, largePool));
       return;
     }
     const { pickQ, maxWeight, orderedCombos } = pickBranchQuest(ctx, undecidedQs, lp);
@@ -2468,7 +2582,7 @@ function solveCeBranchAndBound(table, rawPool, rawCombos) {
   return best;
 }
 
-function buildCeLpContext(table, pool, combosByQuest) {
+function buildTradeEdges(table) {
   const nodes = table.order;
   const indexOf = new Map(nodes.map((key, pos) => [key, pos]));
   const scale = 1 / CURRENCY_MICRO;
@@ -2489,13 +2603,74 @@ function buildCeLpContext(table, pool, combosByQuest) {
     }
   }
   const baseRhs = nodes.map((key) => count(table.deficits[key]) * scale);
+  return { nodes, edges, baseRhs, scale };
+}
+
+function solvePoolLp(table, pool, baseRunsCount = 0) {
+  const { nodes, edges, baseRhs, scale } = buildTradeEdges(table);
+  const m = nodes.length;
+  const rhs = baseRhs.slice();
+  const cols = pool.map((quest) => Float64Array.from(nodes, (key) => count(quest.rates[key]) * scale));
+  if (baseRunsCount > 0) {
+    for (const vec of cols) {
+      for (let i = 0; i < m; i++) rhs[i] -= baseRunsCount * vec[i];
+    }
+  }
+  const nQuestCols = cols.length;
+  if (nQuestCols === 0 && !edges.length) {
+    const infeasible = rhs.some((val) => val > 1e-9);
+    return {
+      status: infeasible ? "infeasible" : "ok",
+      lb: infeasible ? Infinity : baseRunsCount * pool.length,
+      primal: new Float64Array(0),
+    };
+  }
+  const totalCols = nQuestCols + edges.length;
+  const costs = new Float64Array(totalCols);
+  costs.fill(1, 0, nQuestCols);
+  const lp = solveMinLp(m, cols, edges, rhs, costs);
+  if (lp.status === "infeasible") return { status: "infeasible", lb: Infinity, primal: new Float64Array(0) };
+  if (lp.status !== "ok") {
+    return { status: lp.status, lb: baseRunsCount * pool.length, primal: new Float64Array(nQuestCols) };
+  }
+  const dualDot = certifiedDualDot(m, cols, nQuestCols, edges, lp.dual, rhs);
+  const slack = 1e-9 * Math.max(1, Math.abs(dualDot));
+  const lb = baseRunsCount * pool.length + Math.max(0, Math.ceil(dualDot - slack));
+  return { status: "ok", lb, primal: lp.primal };
+}
+
+function lpSeedCandidate(table, pool, baseRunsCount = 0, ceCombosByQuestId = null) {
+  const lp = solvePoolLp(table, pool, baseRunsCount);
+  if (lp.status !== "ok") return { lpLb: lp.lb, plan: null };
+  const runs = {};
+  const rawYields = {};
+  let totalPlays = 0;
+  let apTotal = 0;
+  for (let j = 0; j < pool.length; j++) {
+    const quest = pool[j];
+    const countRuns = baseRunsCount + Math.floor(Math.max(0, lp.primal[j] || 0));
+    if (countRuns <= 0) continue;
+    runs[String(quest.meta.questId)] = countRuns;
+    addQuestYields(rawYields, quest, countRuns);
+    totalPlays += countRuns;
+    apTotal += countRuns * count(quest.meta.ap);
+  }
+  const seed = greedyFromStart(table, pool, { runs, rawYields, totalPlays, apTotal });
+  return {
+    lpLb: lp.lb,
+    plan: seed ? finishFarmPlan(table, seed.runs, seed.state, seed.rawYields, ceCombosByQuestId) : null,
+  };
+}
+
+function buildCeLpContext(table, pool, combosByQuest) {
+  const { nodes, edges, baseRhs, scale } = buildTradeEdges(table);
   const lpRates = combosByQuest.map((list) =>
     list.map((combo) => Float64Array.from(nodes, (key) => count(combo.rates[key]) * scale)),
   );
   return { table, pool, combosByQuest, nodes, edges, baseRhs, lpRates, allIndices: pool.map((_, idx) => idx) };
 }
 
-function seedCeIncumbent(ctx, root) {
+function seedCeIncumbent(ctx, root, largePool = false) {
   const picked = new Map();
   for (let j = 0; j < root.meta.length; j++) {
     const val = root.primal[j];
@@ -2511,7 +2686,7 @@ function seedCeIncumbent(ctx, root) {
       rates: ctx.combosByQuest[qi][ci].rates,
       ceCombo: ctx.combosByQuest[qi][ci].ceCombo,
     }));
-    best = exactCeLeafPlan(ctx.table, lpQuests, root.lb, null);
+    best = exactCeLeafPlan(ctx.table, lpQuests, root.lb, null, largePool, true);
   }
   const mainTarget = widestShortfall(ctx.table.deficits, ctx.table.keys);
   const greedyPool = ctx.pool.map((quest, qi) => {
@@ -2758,22 +2933,37 @@ function makeSimplexRunner(tableau, m, stride, bCol, firstArt, basis) {
   return { pivot, run };
 }
 
-function exactCeLeafPlan(table, activeQuests, minTotalHint, incumbent) {
+function exactCeLeafPlan(table, activeQuests, minTotalHint, incumbent, largePool = false, isSeed = false) {
   if (!activeQuests.length) return null;
   const ceCombos = new Map(activeQuests.map((quest) => [String(quest.meta.questId), quest.ceCombo || []]));
   const greedy = greedyCeLeafPlan(table, activeQuests, ceCombos);
-  const localBest = betterPlan(incumbent, greedy);
+  const lpSeed = largePool || activeQuests.length > 4 ? lpSeedCandidate(table, activeQuests, 1, ceCombos) : null;
+  const seedPlan = lpSeed ? betterPlan(greedy, lpSeed.plan) : greedy;
+  const localBest = betterPlan(incumbent, seedPlan);
   const bound = localBest && localBest.totalPlays !== null ? localBest.totalPlays : MAX_PLAN_SCAN;
+  const lpMin = lpSeed ? lpSeed.lpLb : 0;
+  if (
+    largePool &&
+    !isSeed &&
+    incumbent &&
+    Math.max(activeQuests.length, minTotalHint || 0, lpMin) >= incumbent.totalPlays
+  ) {
+    return seedPlan;
+  }
   const kernel = buildExactKernel(table, activeQuests);
   const baseState = buildFixedBaseState(kernel);
   const minTotal = Math.max(
     baseState.fixedCount,
     minTotalHint || baseState.fixedCount,
+    lpMin,
     minExactBaseTotal(kernel, baseState, bound),
   );
-  const budget = { nodes: MAX_EXACT_SEARCH_NODES };
-  let winner = greedy;
-  for (let total = minTotal; total <= bound; total++) {
+  const upperTotal = largePool && !isSeed && incumbent ? Math.min(incumbent.totalPlays - 1, bound) : bound;
+  const budget = {
+    nodes: largePool ? (isSeed ? LARGE_POOL_SEED_EXACT_NODES : LARGE_CE_LEAF_EXACT_NODES) : MAX_EXACT_SEARCH_NODES,
+  };
+  let winner = seedPlan;
+  for (let total = minTotal; total <= upperTotal; total++) {
     const remaining = total - baseState.fixedCount;
     if (!hopelessMix(kernel, 0, remaining, baseState.yields, baseState.cYields)) {
       const mix = searchExactTotal(kernel, total, budget, baseState);

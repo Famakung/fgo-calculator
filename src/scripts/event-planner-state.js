@@ -25,6 +25,8 @@ export function planOf(state, eventId) {
       currencyQuest: {},
       ceOwned: {},
       ceEquipLimit: 6,
+      questType: "free",
+      raidQuest: {},
     };
   }
   return {
@@ -35,6 +37,8 @@ export function planOf(state, eventId) {
     currencyQuest: { ...plan.currencyQuest },
     ceOwned: cloneCeOwned(plan.ceOwned),
     ceEquipLimit: plan.ceEquipLimit ?? 6,
+    questType: plan.questType === "raid" ? "raid" : "free",
+    raidQuest: plan.raidQuest && typeof plan.raidQuest === "object" ? { ...plan.raidQuest } : {},
   };
 }
 

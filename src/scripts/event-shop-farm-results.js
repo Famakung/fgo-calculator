@@ -36,17 +36,28 @@ function buildResultsFragment(snapshot, view) {
   }
   const currencies = snapshot.currencies || [];
   const bonusCes = snapshot.bonusCes || [];
-  fragment.appendChild(buildPlaysBlock(currencies, bonusCes, view.result));
+  const raidQuestById = buildRaidQuestMap(snapshot);
+  fragment.appendChild(buildPlaysBlock(currencies, bonusCes, raidQuestById, view.result));
   fragment.appendChild(buildReceiveBlock(currencies, view.result));
   fragment.appendChild(buildTradesBlock(snapshot, view.result));
   return fragment;
 }
 
-function buildPlaysBlock(currencies, bonusCes, result) {
+function buildRaidQuestMap(snapshot) {
+  const map = new Map();
+  for (const boss of snapshot.farm?.raids || []) {
+    for (const quest of boss.quests || []) {
+      if (quest && quest.questId !== undefined && quest.questId !== null) map.set(String(quest.questId), quest);
+    }
+  }
+  return map;
+}
+
+function buildPlaysBlock(currencies, bonusCes, raidQuestById, result) {
   const wrap = DOMFactory.el("div", "farm-res-quests");
   const grid = DOMFactory.el("div", "farm-grid");
   const ceById = new Map(bonusCes.map((ce) => [String(ce.id), ce]));
-  for (const play of result.plays) grid.appendChild(buildPlayCard(currencies, ceById, play));
+  for (const play of result.plays) grid.appendChild(buildPlayCard(currencies, ceById, raidQuestById, play));
   wrap.replaceChildren(buildTitle(PLAYS_SECTION, "quest-title"), grid);
   return wrap;
 }
@@ -76,12 +87,24 @@ function buildReceiveFruit(currency, farmed) {
 /* Amendment R6: each play wears the Drop Rates farm-card chrome — centered 48px header art, quest
    name, REC line, and the runs number centered where the drop lines sit — with no dropdown. An
    all-drop play takes the combo card's neutral border and every currency icon, like card 4. */
-function buildPlayCard(currencies, ceById, play) {
-  const main = currencies.find((currency) => String(currency.id) === String(play.mainDropId));
+function playDroppedCurrencies(currencies, raidQuestById, play) {
+  if (play.isAllDrop) return currencies;
+  const raidQuest = raidQuestById.get(String(play.questId));
+  if (raidQuest && raidQuest.drops) {
+    const dropped = currencies.filter((currency) => Boolean(raidQuest.drops[String(currency.id)]));
+    if (dropped.length > 0) return dropped;
+  }
+  return currencies.filter((currency) => String(currency.id) === String(play.mainDropId));
+}
+
+function buildPlayCard(currencies, ceById, raidQuestById, play) {
+  const icons = playDroppedCurrencies(currencies, raidQuestById, play);
+  const isCombo = play.isAllDrop || icons.length > 1;
+  const main = icons.find((currency) => String(currency.id) === String(play.mainDropId)) || icons[0];
   const classes = ["quest-drops-item", "farm-card"];
-  if (play.isAllDrop) classes.push("farm-card--combo");
-  const card = DOMFactory.el("div", classes, play.isAllDrop || !main ? {} : { "data-tier": main.background });
-  card.appendChild(buildPlayCardHeader(currencies, play));
+  if (isCombo) classes.push("farm-card--combo");
+  const card = DOMFactory.el("div", classes, isCombo || !main ? {} : { "data-tier": main.background });
+  card.appendChild(buildPlayCardHeader(icons, isCombo));
   const lines = [buildQuestName(play.questName)];
   if (play.recommendLv) lines.push(buildNode(`REC Lv. ${play.recommendLv}`));
   lines.push(
@@ -127,11 +150,8 @@ function buildCeComboList(ceCombo, ceById) {
   return list;
 }
 
-function buildPlayCardHeader(currencies, play) {
-  const title = DOMFactory.el("div", play.isAllDrop ? "farm-card-title farm-card-title--icons" : "farm-card-title");
-  const icons = play.isAllDrop
-    ? currencies
-    : currencies.filter((currency) => String(currency.id) === String(play.mainDropId));
+function buildPlayCardHeader(icons, isCombo) {
+  const title = DOMFactory.el("div", isCombo ? "farm-card-title farm-card-title--icons" : "farm-card-title");
   for (const currency of icons) title.appendChild(buildIcon(currency, "farm-card-icon"));
   return title;
 }

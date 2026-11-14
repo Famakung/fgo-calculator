@@ -22,6 +22,7 @@ export function initEvent() {
   EventPlanner.init();
   App.init();
   bindEventSelect();
+  bindQuestTypeSelect();
 }
 
 /* Event Select card (Amendment G): the options are the snapshot list, and the change handler runs a
@@ -35,8 +36,30 @@ function bindEventSelect() {
     /* Flush first, while the old event is still active and the boxes hold the typed figures. */
     App.flushPlanBoxes();
     EventPlanner.select(Number(select.value));
+    syncQuestTypeSelect();
     App.rehydrate();
   });
+}
+
+function bindQuestTypeSelect() {
+  const select = document.getElementById("questTypeSelect");
+  if (!select) return;
+  syncQuestTypeSelect(select);
+  select.addEventListener("change", () => {
+    App.flushPlanBoxes();
+    EventPlanner.setQuestType(select.value);
+    syncQuestTypeSelect(select);
+    App.onFarmQuestChanged();
+  });
+}
+
+function syncQuestTypeSelect(select = document.getElementById("questTypeSelect")) {
+  if (!select) return;
+  const event = EventPlanner.activeEvent();
+  const hasRaids = Boolean(event && Array.isArray(event.farm?.raids) && event.farm.raids.length > 0);
+  const raidOption = select.querySelector('option[value="raid"]');
+  if (raidOption) raidOption.disabled = !hasRaids;
+  select.value = hasRaids ? EventPlanner.questType() : "free";
 }
 
 function populateEventOptions(select, events, selectedEventId) {

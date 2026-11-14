@@ -485,7 +485,7 @@ def check_farm_pick():
             "bronze ties 100 against 103 at the same rate and goes to the lower quest id"
         )
         assert "94164105" not in json.dumps(farm), "a gift-only challenge quest cannot enter the farm model"
-        assert m._collect_farm(s.tmp, [], [94164000]) == {"quests": [], "best": {}}, "an event with no war has no farm data"
+        assert m._collect_farm(s.tmp, [], [94164000]) == {"quests": [], "best": {}, "raids": []}, "an event with no war has no farm data"
     return 1
 
 
@@ -591,7 +591,7 @@ def check_farm_test_read_outage():
     with Sandbox() as s:
         m.get_cached_json = war_down
         farm = m._collect_farm(s.tmp, [9208], [94164000, 94164001])
-        assert farm == {"quests": [], "best": {}}, "the snapshot path stays lenient: an outage is an empty quest list"
+        assert farm == {"quests": [], "best": {}, "raids": []}, "the snapshot path stays lenient: an outage is an empty quest list"
         assert m._collect_farm_quests(s.tmp, [9208]) == [], "the lenient read still memoizes what it could collect"
         m._farm_quests_results.clear()
         m.get_cached_json = fixture_json
@@ -657,7 +657,7 @@ def check_override_bypass():
         m.sync_event_shop(cache_dir=s.tmp, event_id=80630)
         data = s.read_data()
         assert [snap["event"]["id"] for snap in data["events"]] == [80630], "the campaign shop the farm pass prunes ships under --event-id"
-        assert data["events"][0]["farm"] == {"quests": [], "best": {}}, "override snapshot keeps the empty farm shape: no war, no quests, no best entries"
+        assert data["events"][0]["farm"] == {"quests": [], "best": {}, "raids": []}, "override snapshot keeps the empty farm shape: no war, no quests, no best entries"
         assert data["events"][0]["trades"] == [], "a shop with no upgrade rows ships an empty trades list"
         m.sync_event_shop(cache_dir=s.tmp, event_id=80639)
         snap = s.read_data()["events"][0]
@@ -1054,6 +1054,120 @@ def check_bonus_ces():
     return 1
 
 
+def check_raid_boss_extraction():
+    """Raid Boss quests ('raid' in flags) stay separated from farm.quests/best, group by bossId
+    sorted asc, preserve empty-drop difficulties/bosses, sort difficulties by REC Lv desc, and
+    participate in _farm_event_passes + _write_shop_probe."""
+    raid_war = {
+        "id": 9209,
+        "spots": [
+            {"id": 920720, "name": "Boss Beta", "quests": [
+                {"id": 950020, "name": "Boss Beta [Easy]", "afterClear": "repeatLast", "flags": ["raid"], "phases": [1]},
+                {"id": 950021, "name": "Boss Beta [Hard]", "afterClear": "repeatLast", "flags": ["raid"], "phases": [1]},
+                {"id": 950022, "name": "Boss Beta [GiftOnly]", "afterClear": "repeatLast", "flags": ["raid"], "phases": [1]},
+                {"id": 950023, "name": "Boss Beta [Closed]", "afterClear": "close", "flags": ["raid"], "phases": [1]},
+            ]},
+            {"id": 920710, "name": "Boss Alpha", "quests": [
+                {"id": 950010, "name": "Boss Alpha Lv70", "afterClear": "repeatLast", "flags": ["raid"], "phases": [1]},
+                {"id": 950011, "name": "Boss Alpha Lv90+", "afterClear": "repeat", "flags": ["raid"], "phases": [1]},
+                {"id": 950012, "name": "Boss Alpha Lv90++", "afterClear": "repeatLast", "flags": ["raid"], "phases": [1]},
+                {"id": 950013, "name": "Boss Alpha Lv90★", "afterClear": "repeatLast", "flags": ["raid"], "phases": [1]},
+                {"id": 950014, "name": "Boss Alpha Lv90", "afterClear": "repeatLast", "flags": ["raid"], "phases": [1]},
+                {"id": 950015, "name": "Boss Alpha", "afterClear": "repeatLast", "flags": ["raid"], "phases": [1]},
+            ]},
+            {"id": 920700, "name": "Free Spot", "quests": [
+                {"id": 950001, "name": "Free Quest", "afterClear": "repeatLast", "flags": [], "phases": [1]},
+            ]},
+        ],
+    }
+    raid_details = {
+        "nice_war_9209.json": raid_war,
+        "nice_quest_950001_1.json": _quest(950001, "Free Quest", "90", 40, [
+            {"type": "item", "objectId": 94164000, "num": 3, "dropExpected": 5.0, "runs": 10},
+        ]),
+        "nice_quest_950010_1.json": _quest(950010, "Boss Alpha Lv70", "70", 40, []),
+        "nice_quest_950011_1.json": _quest(950011, "Boss Alpha Lv90+", "90+", 40, []),
+        "nice_quest_950012_1.json": _quest(950012, "Boss Alpha Lv90++", "90++", 40, []),
+        "nice_quest_950013_1.json": _quest(950013, "Boss Alpha Lv90★", "90★", 40, [
+            {"type": "item", "objectId": 94164002, "num": 5, "dropExpected": 20.0, "runs": 42},
+        ]),
+        "nice_quest_950014_1.json": _quest(950014, "Boss Alpha Lv90", "90", 40, []),
+        "nice_quest_950015_1.json": _quest(950015, "Boss Alpha", "", 40, []),
+        "nice_quest_950020_1.json": _quest(950020, "Boss Beta [Easy]", "70", 40, []),
+        "nice_quest_950021_1.json": _quest(950021, "Boss Beta [Hard]", "90+++", 40, []),
+        "nice_quest_950022_1.json": _quest(950022, "Boss Beta [GiftOnly]", "90", 40, [], gifts=[{"objectId": 94164002, "num": 1}]),
+    }
+
+    def raid_json(cache_dir, filename, url, force=False):
+        if filename in raid_details:
+            return raid_details[filename]
+        if filename == "basic_event.json":
+            return [{"id": 80650, "name": "Raid Event", "shortName": "Raid", "type": "eventQuest", "startedAt": NOW - 10, "finishedAt": NOW + 1000, "warIds": [9209]}]
+        if filename == "nice_event_80650.json":
+            return {"id": 80650, "shop": SHOP_ENTRIES, "warIds": [9209]}
+        return fixture_json(cache_dir, filename, url, force=force)
+
+    with Sandbox() as s:
+        m.get_cached_json = raid_json
+        farm = m._collect_farm(s.tmp, [9209], [94164000, 94164001, 94164002])
+        assert [q["questId"] for q in farm["quests"]] == [950001], "raid quests never leak into farm.quests"
+        assert farm["best"] == {"94164000": 950001}, "farm.best only considers free quests"
+        assert [b["bossId"] for b in farm["raids"]] == [920710, 920720], "bosses sorted by bossId asc, including empty-drop boss"
+        alpha, beta = farm["raids"]
+        assert [q["questId"] for q in alpha["quests"]] == [950013, 950012, 950011, 950014, 950010, 950015], (
+            "REC Lv desc: 90★ > 90++ > 90+ > 90 > 70 > missing"
+        )
+        assert alpha["quests"][0]["difficultyLabel"] == "Lv90★"
+        assert alpha["quests"][0]["sampleRuns"] == 42
+        assert alpha["quests"][0]["drops"] == {"94164002": {"dropExpected": 20.0, "num": 5}}
+        assert alpha["quests"][-1]["difficultyLabel"] == "Boss Alpha", "empty stripped label falls back to questName"
+        assert alpha["quests"][-1]["drops"] == {} and alpha["quests"][-1]["sampleRuns"] == 0
+        assert [q["questId"] for q in beta["quests"]] == [950021, 950020], (
+            "all difficulties of empty-drop boss preserved, closed + gift-only excluded"
+        )
+        assert beta["quests"][0]["difficultyLabel"] == "[Hard]"
+
+    # Raid-only event (no free quests at all) passes _farm_event_passes if a raid has shop drops;
+    # fails when all raids have empty drops.
+    with Sandbox() as s:
+        raid_only_war = {"id": 9210, "spots": [raid_war["spots"][1]]}
+        def raid_only_json(cache_dir, filename, url, force=False):
+            if filename == "nice_war_9210.json":
+                return raid_only_war
+            if filename == "nice_event_80651.json":
+                return {"id": 80651, "shop": SHOP_ENTRIES, "warIds": [9210]}
+            return raid_json(cache_dir, filename, url, force=force)
+
+        m.get_cached_json = raid_only_json
+        assert m._farm_event_passes(s.tmp, {"id": 80651, "warIds": [9210]}), "raid-only event with drops passes"
+
+        empty_raid_war = {"id": 9211, "spots": [raid_war["spots"][0]]}
+        def empty_raid_json(cache_dir, filename, url, force=False):
+            if filename == "nice_war_9211.json":
+                return empty_raid_war
+            if filename == "nice_event_80652.json":
+                return {"id": 80652, "shop": SHOP_ENTRIES, "warIds": [9211]}
+            return raid_json(cache_dir, filename, url, force=force)
+
+        m._farm_quests_results.clear()
+        m.get_cached_json = empty_raid_json
+        assert not m._farm_event_passes(s.tmp, {"id": 80652, "warIds": [9211]}), "raid-only event with 0 drops fails"
+
+    # _write_shop_probe includes both free and raid repeatable quests.
+    with Sandbox() as s:
+        m.get_cached_json = raid_json
+        os.makedirs(os.path.join(s.tmp, ".ci-baselines"), exist_ok=True)
+        probe_path = os.path.join(s.tmp, ".ci-baselines", "shop_probe.json")
+        m._write_shop_probe(s.tmp, raid_json(s.tmp, "basic_event.json", ""), now=NOW, probe_path=probe_path)
+        with open(probe_path, "r", encoding="utf-8") as f:
+            probe = json.load(f)
+        probed_ids = {q["id"] for q in probe["activeQuests"]}
+        assert 950001 in probed_ids and 950013 in probed_ids and 950021 in probed_ids, (
+            "shop_probe tracks both free and raid repeatable quests"
+        )
+    return 1
+
+
 def main():
     n = 0
     for check in (
@@ -1075,6 +1189,7 @@ def main():
         check_icon_candidates,
         check_shop_probe_write,
         check_bonus_ces,
+        check_raid_boss_extraction,
     ):
         n += check()
     print(f"{n} tests passed")

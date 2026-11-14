@@ -310,14 +310,16 @@ export const App = {
     commitCeEquipInput();
     const plan = EventPlanner.activePlan();
     const totals = EventShop.totals(snapshot.items, plan.requires);
+    const isRaid = EventPlanner.questType() === "raid";
     const result = EventShop.farmPlan({
       totals,
       held: plan.held,
       bonus: {},
-      farm: snapshot.farm,
+      farm: isRaid ? { quests: EventPlanner.activeRaidQuests(), best: {} } : snapshot.farm,
       trades: snapshot.trades || [],
-      priorityQuestId: plan.farmQuest,
-      currencyQuest: plan.currencyQuest,
+      priorityQuestId: isRaid ? null : plan.farmQuest,
+      currencyQuest: isRaid ? {} : plan.currencyQuest,
+      useAllQuests: isRaid,
       currencyIds: (snapshot.currencies || []).map((currency) => currency.id),
       bonusCes: snapshot.bonusCes || [],
       ceOwned: plan.ceOwned || {},

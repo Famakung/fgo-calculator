@@ -138,7 +138,7 @@ def main():
     snapshot = payload["events"][0]
     assert [c["id"] for c in snapshot["currencies"]] == [94164002], "a free-entry-only currency stays out of the registry"
     assert [i["id"] for i in snapshot["items"]] == [2], "the free entry itself is still dropped from items"
-    assert snapshot["farm"] == {"quests": [], "best": {}}, "no warIds means an empty quest list and an empty best map, not missing keys"
+    assert snapshot["farm"] == {"quests": [], "best": {}, "raids": []}, "no warIds means empty quest/raid lists and an empty best map, not missing keys"
     assert snapshot["trades"] == [], "no upgrade rows in this shop means an empty trades list, never a missing key"
     assert snapshot["bonusCes"] == [], "no matching bonus CEs means an empty bonusCes list, never a missing key"
     n += 1

@@ -174,6 +174,56 @@ export const EventPlanner = {
     this._mutatePlan({ currencyQuest: { ...this.activePlan().currencyQuest, [key]: choice } });
   },
 
+  questType() {
+    const event = this.activeEvent();
+    if (!hasEventRaids(event)) return "free";
+    return this.activePlan().questType === "raid" ? "raid" : "free";
+  },
+
+  setQuestType(type) {
+    const event = this.activeEvent();
+    if (!event) return;
+    const next = hasEventRaids(event) && type === "raid" ? "raid" : "free";
+    this._mutatePlan({ questType: next });
+  },
+
+  raidQuestOf(bossId) {
+    const event = this.activeEvent();
+    const boss = findRaidBoss(event, bossId);
+    if (!boss) return null;
+    const savedMap = this.activePlan().raidQuest || {};
+    const key = String(boss.bossId);
+    const saved = Object.hasOwn(savedMap, key) ? savedMap[key] : undefined;
+    return EventShop.sanitizedRaidQuest(boss, saved);
+  },
+
+  setRaidQuest(bossId, questId) {
+    const event = this.activeEvent();
+    const boss = findRaidBoss(event, bossId);
+    if (!boss) return;
+    const choice = EventShop.sanitizedRaidQuest(boss, questId);
+    if (choice === null) return;
+    const key = String(boss.bossId);
+    this._mutatePlan({ raidQuest: { ...this.activePlan().raidQuest, [key]: choice } });
+  },
+
+  activeRaidQuests() {
+    const event = this.activeEvent();
+    const raids = (event && event.farm && event.farm.raids) || [];
+    if (!Array.isArray(raids) || !raids.length) return [];
+    const savedMap = this.activePlan().raidQuest || {};
+    const selected = [];
+    for (const boss of raids) {
+      if (!boss || !Array.isArray(boss.quests) || !boss.quests.length) continue;
+      const key = String(boss.bossId);
+      const saved = Object.hasOwn(savedMap, key) ? savedMap[key] : undefined;
+      const questId = EventShop.sanitizedRaidQuest(boss, saved);
+      const quest = boss.quests.find((entry) => entry && entry.questId === questId);
+      if (quest) selected.push(quest);
+    }
+    return selected;
+  },
+
   _mutatePlan(patch) {
     if (this.state.selectedEventId === null) return;
     const plans = { ...this.state.plans };
@@ -204,3 +254,16 @@ export const EventPlanner = {
     }
   },
 };
+
+function hasEventRaids(event) {
+  const raids = (event && event.farm && event.farm.raids) || [];
+  return Array.isArray(raids) && raids.some((boss) => boss && Array.isArray(boss.quests) && boss.quests.length > 0);
+}
+
+function findRaidBoss(event, bossId) {
+  if (!event || bossId === null || bossId === undefined) return null;
+  const raids = (event.farm && event.farm.raids) || [];
+  if (!Array.isArray(raids)) return null;
+  const key = String(bossId);
+  return raids.find((boss) => boss && String(boss.bossId) === key) || null;
+}

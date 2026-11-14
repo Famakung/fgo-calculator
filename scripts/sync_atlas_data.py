@@ -1709,11 +1709,11 @@ def _latest_past_farm_event(
 
 def _farm_event_passes(cache_dir: str, event: dict, force: bool = False) -> bool:
     """Amendment J farm-event test: the event's shop has rows, and at least one repeatable quest
-    (afterClear repeatLast|repeat) in its wars reports community drops for at least one of the
-    shop's own currencies on REPEAT runs — the same quests the snapshot ships (Amendment L's
-    challenge exclusion included). A campaign exchange shop (no war) and a memorial battle (quests
-    without submissions) both fail it. Reads the same event/war/quest files the snapshot's farm
-    collection reads, once per run; a fetch that cannot be read raises, never a silent prune."""
+    (afterClear repeatLast|repeat, free or raid) in its wars reports community drops for at least
+    one of the shop's own currencies on REPEAT runs — the same quests the snapshot ships (Amendment
+    L's challenge exclusion included). A campaign exchange shop (no war) and a memorial battle
+    (quests without submissions) both fail it. Reads the same event/war/quest files the snapshot's
+    farm collection reads, once per run; a fetch that cannot be read raises, never a silent prune."""
     detail = _event_detail(cache_dir, event, force=force)
     currency_ids = _shop_currency_ids(_shop_entries(detail))
     if not currency_ids:
@@ -1803,10 +1803,10 @@ def resolve_equip_name(equip_id: Optional[int], entry: dict, names: Dict[str, Di
 # --- Farm model (Amendment L): every repeatable quest that pays a shop currency on repeat runs ---
 
 
-def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, strict: bool = False) -> List[dict]:
-    """Quests of one war the game reopens after a clear; a war that cannot be read has none. Strict
-    is the farm-event test's call: there an unreadable war raises, because a swallowed read looks
-    exactly like an event with no repeatable quests and would silently prune a good shop."""
+def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, strict: bool = False) -> List[Tuple[dict, dict]]:
+    """(spot, quest) pairs of one war the game reopens after a clear; a war that cannot be read has
+    none. Strict is the farm-event test's call: there an unreadable war raises, because a swallowed
+    read looks exactly like an event with no repeatable quests and would silently prune a good shop."""
     try:
         war = get_cached_json(cache_dir, f"nice_war_{war_id}.json", f"{API_BASE}/nice/JP/war/{war_id}?lang=en", force=force)
     except Exception as e:
@@ -1816,7 +1816,7 @@ def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, str
         return []
     spots = war.get("spots") if isinstance(war, dict) else None
     return [
-        quest
+        (spot, quest)
         for spot in (spots or [])
         for quest in (spot.get("quests") or [])
         if quest.get("afterClear") in REPEATABLE_AFTER_CLEAR
@@ -1840,18 +1840,22 @@ def _quest_phase_detail(cache_dir: str, quest: dict, force: bool = False, strict
         return None
 
 
-def _farm_quest(quest: dict, detail: dict) -> dict:
-    """The farm candidate: what the quest asks and pays, plus its repeat drop lines and first-clear
-    gifts. The gifts matter to the challenge exclusion (Amendment L2): a shop currency handed out
-    once on first clear but never dropped again is not something the quest can be farmed for."""
+def _farm_quest(quest: dict, detail: dict, spot: Optional[dict] = None) -> dict:
+    """The farm candidate: what the quest asks and pays, plus its repeat drop lines, first-clear
+    gifts, and raid/boss grouping metadata."""
+    quest_name = detail.get("name") or quest.get("name") or ""
+    spot_obj = spot or {}
     return {
         "questId": quest.get("id"),
         "phase": max(quest.get("phases") or [0]),
-        "questName": detail.get("name") or quest.get("name") or "",
+        "questName": quest_name,
         "recommendLv": detail.get("recommendLv") or quest.get("recommendLv") or "",
         "ap": int(detail.get("consume") or quest.get("consume") or 0),
         "drops": detail.get("drops") or [],
         "gifts": detail.get("gifts") or [],
+        "isRaid": "raid" in (quest.get("flags") or []),
+        "bossId": spot_obj.get("id") or quest.get("spotId") or quest.get("id"),
+        "bossName": spot_obj.get("name") or detail.get("spotName") or quest_name,
     }
 
 
@@ -1866,10 +1870,10 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
     if key not in _farm_quests_results:
         quests = []
         for war_id in key:
-            for quest in _war_repeatable_quests(cache_dir, war_id, force=force, strict=strict):
+            for spot, quest in _war_repeatable_quests(cache_dir, war_id, force=force, strict=strict):
                 detail = _quest_phase_detail(cache_dir, quest, force=force, strict=strict)
                 if detail:
-                    quests.append(_farm_quest(quest, detail))
+                    quests.append(_farm_quest(quest, detail, spot=spot))
         _farm_quests_results[key] = quests
     return _farm_quests_results[key]
 
@@ -1922,13 +1926,24 @@ def _first_time_only_reward(quest: dict, shop_currency_ids: List[int], drops: Di
     return any(str(currency_id) not in drops for currency_id in gift_ids)
 
 
+_REC_SUFFIX_RANK = {"": 0, "+": 1, "++": 2, "+++": 3, "★": 4}
+_REC_LV_RE = re.compile(r"^\s*(\d+)\s*(.*)$")
+
+
+def _quest_shop_drops(quest: dict, shop_currency_ids: List[int]) -> Tuple[Dict[str, dict], int]:
+    """Best repeat-drop line per shop currency for one quest, plus max sampleRuns (0 when none)."""
+    rows = {str(currency_id): (_drop_rows([quest], currency_id) or [None])[0] for currency_id in shop_currency_ids}
+    drops = {key: {"dropExpected": row["dropExpected"], "num": row["num"]} for key, row in rows.items() if row}
+    sample_runs = max((row["sampleRuns"] for row in rows.values() if row), default=0)
+    return drops, sample_runs
+
+
 def _farm_quest_entry(quest: dict, shop_currency_ids: List[int]) -> Optional[dict]:
     """The shipped farm card for one quest: its per-currency repeat drops plus the reported-run
     count. None when the quest repeats no shop currency at all, or when a gift-only shop-currency
     reward marks it a challenge quest (Amendment L2). sampleRuns is the highest run count among the
     drop lines the card ships."""
-    rows = {str(currency_id): (_drop_rows([quest], currency_id) or [None])[0] for currency_id in shop_currency_ids}
-    drops = {key: {"dropExpected": row["dropExpected"], "num": row["num"]} for key, row in rows.items() if row}
+    drops, sample_runs = _quest_shop_drops(quest, shop_currency_ids)
     if not drops or _first_time_only_reward(quest, shop_currency_ids, drops):
         return None
     return {
@@ -1936,9 +1951,70 @@ def _farm_quest_entry(quest: dict, shop_currency_ids: List[int]) -> Optional[dic
         "questName": quest["questName"],
         "recommendLv": quest["recommendLv"],
         "ap": quest["ap"],
-        "sampleRuns": max(row["sampleRuns"] for row in rows.values() if row),
+        "sampleRuns": sample_runs,
         "drops": drops,
     }
+
+
+def _raid_difficulty_label(quest_name: str, boss_name: str) -> str:
+    """Strip leading bossName + whitespace from questName; fall back to questName if empty."""
+    if boss_name and quest_name.startswith(boss_name):
+        stripped = quest_name[len(boss_name) :].lstrip()
+        if stripped:
+            return stripped
+    return quest_name
+
+
+def _rec_lv_sort_key(quest: dict) -> Tuple[int, int, int, int]:
+    """Sort key for REC Lv descending (numeric desc, suffix rank desc, missing last, tie questId asc)."""
+    raw = quest.get("recommendLv")
+    text = "" if raw is None else str(raw).strip()
+    match = _REC_LV_RE.match(text)
+    if not match:
+        return (1, 0, 0, quest["questId"])
+    level = int(match.group(1))
+    suffix = match.group(2).strip()
+    suffix_rank = _REC_SUFFIX_RANK.get(suffix, 5)
+    return (0, -level, -suffix_rank, quest["questId"])
+
+
+def _raid_quest_entry(quest: dict, shop_currency_ids: List[int]) -> Optional[dict]:
+    """One raid difficulty entry; kept even when drops is {} and sampleRuns is 0, unless first-time-only."""
+    drops, sample_runs = _quest_shop_drops(quest, shop_currency_ids)
+    if _first_time_only_reward(quest, shop_currency_ids, drops):
+        return None
+    rec_lv = quest.get("recommendLv")
+    return {
+        "questId": quest["questId"],
+        "questName": quest["questName"],
+        "difficultyLabel": _raid_difficulty_label(quest["questName"], quest.get("bossName") or ""),
+        "recommendLv": "" if rec_lv is None else str(rec_lv),
+        "ap": quest["ap"],
+        "sampleRuns": sample_runs,
+        "drops": drops,
+    }
+
+
+def _collect_raids(quests: List[dict], currency_ids: List[int]) -> List[dict]:
+    """Group repeatable raid-flagged quests by boss spot, sorted by bossId asc and REC Lv desc."""
+    bosses: Dict[int, dict] = {}
+    for quest in quests:
+        if not quest.get("isRaid"):
+            continue
+        entry = _raid_quest_entry(quest, currency_ids)
+        if not entry:
+            continue
+        boss_id = quest.get("bossId") or quest["questId"]
+        boss_name = quest.get("bossName") or quest["questName"]
+        if boss_id not in bosses:
+            bosses[boss_id] = {"bossId": boss_id, "bossName": boss_name, "quests": []}
+        bosses[boss_id]["quests"].append(entry)
+    result = []
+    for boss_id in sorted(bosses):
+        boss = bosses[boss_id]
+        boss["quests"].sort(key=_rec_lv_sort_key)
+        result.append(boss)
+    return result
 
 
 def _farm_best(quests: List[dict], shop_currency_ids: List[int]) -> Dict[str, int]:
@@ -1957,11 +2033,13 @@ def _farm_best(quests: List[dict], shop_currency_ids: List[int]) -> Dict[str, in
 
 
 def _collect_farm(cache_dir: str, war_ids: List[int], currency_ids: List[int], force: bool = False) -> dict:
-    """farm = { quests: [repeat-drop quests], best: { currencyId: questId } } (Amendment L2), the
-    shop's own currencies only. An event with no wars simply has no quests."""
+    """farm = { quests: [repeat-drop free quests], best: { currencyId: questId }, raids: [boss groups] }.
+    Free Quests and Raid Bosses are separated by the 'raid' quest flag; an event with no wars has
+    empty lists and an empty best map."""
     quests = _collect_farm_quests(cache_dir, war_ids, force=force) if war_ids else []
-    shipped = [entry for entry in (_farm_quest_entry(quest, currency_ids) for quest in quests) if entry]
-    return {"quests": shipped, "best": _farm_best(shipped, currency_ids)}
+    free_quests = [quest for quest in quests if not quest.get("isRaid")]
+    shipped = [entry for entry in (_farm_quest_entry(quest, currency_ids) for quest in free_quests) if entry]
+    return {"quests": shipped, "best": _farm_best(shipped, currency_ids), "raids": _collect_raids(quests, currency_ids)}
 
 
 # --- Costume faces (Amendment F): the costume detail, not the servant's base face ---
