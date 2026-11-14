@@ -27,6 +27,7 @@ export function planOf(state, eventId) {
       ceEquipLimit: 6,
       questType: "free",
       raidQuest: {},
+      raidEnded: {},
     };
   }
   return {
@@ -39,6 +40,7 @@ export function planOf(state, eventId) {
     ceEquipLimit: plan.ceEquipLimit ?? 6,
     questType: plan.questType === "raid" ? "raid" : "free",
     raidQuest: plan.raidQuest && typeof plan.raidQuest === "object" ? { ...plan.raidQuest } : {},
+    raidEnded: plan.raidEnded && typeof plan.raidEnded === "object" ? { ...plan.raidEnded } : {},
   };
 }
 

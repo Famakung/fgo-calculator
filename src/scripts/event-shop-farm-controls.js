@@ -194,16 +194,38 @@ export function buildCurrencyQuestSelect(spec) {
 }
 
 export function buildRaidQuestSelect(spec) {
-  const { boss, quests, selectedQuestId, onChange = null } = spec;
+  const { boss, quests, selectedQuestId, disabled = false, onChange = null } = spec;
   const select = DOMFactory.el("select", "select-field farm-quest-select", {
     id: `raidQuestSelect_${boss.bossId}`,
     "aria-label": `Difficulty for ${boss.bossName}`,
   });
   for (const quest of quests) select.appendChild(buildQuestOption(quest, raidQuestLabel(quest, boss.bossName)));
   select.value = String(pickedQuestId(quests, selectedQuestId));
+  select.disabled = Boolean(disabled);
   select.addEventListener("change", () => {
     EventPlanner.setRaidQuest(boss.bossId, Number(select.value));
     if (onChange) onChange();
   });
   return select;
+}
+
+export function buildRaidEndedToggle(spec) {
+  const { boss, checked = false, onToggle = null } = spec;
+  const row = DOMFactory.el("div", ["bond-checkbox-row", "farm-raid-ended-row"]);
+  const label = DOMFactory.el("label", "bond-checkbox-label");
+  const checkbox = DOMFactory.el("input", "bond-checkbox", {
+    type: "checkbox",
+    id: `raidEnded_${boss.bossId}`,
+  });
+  checkbox.checked = Boolean(checked);
+  const text = DOMFactory.el("span");
+  text.textContent = "Raid Ended";
+  label.replaceChildren(checkbox, text);
+  row.replaceChildren(label);
+  checkbox.addEventListener("change", () => {
+    const ended = checkbox.checked;
+    EventPlanner.setRaidEnded(boss.bossId, ended);
+    if (onToggle) onToggle(ended);
+  });
+  return row;
 }
