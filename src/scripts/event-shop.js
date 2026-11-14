@@ -240,8 +240,8 @@ export const App = {
 
   /* The farm grid's two write paths (Amendment L, M4): a Bonus figure repaints the live drop
      lines; any quest pick — a card's own dropdown or the 3-in-1's — repaints the whole grid (each
-     card resolves its own selected quest through it) and reprices the results when they are
-     showing. */
+     card resolves its own selected quest through it) and closes visible results until Calculate is
+     clicked again. */
   _farmHandlers() {
     return { onBonusChange: refreshFarmDropLines, onQuestChange: () => this.onFarmQuestChanged() };
   },
@@ -250,7 +250,7 @@ export const App = {
     const snapshot = EventPlanner.activeEvent();
     if (!snapshot) return;
     hydrateFarmGrid(snapshot, EventPlanner.activePlan(), this._farmHandlers());
-    if (document.getElementById("results")?.classList.contains("visible")) this._calculateFarm();
+    ViewManager.resetResults();
   },
 
   /* Event-mode boxes: Required is the plan's spend and Held/Bonus are the plan's figures. */

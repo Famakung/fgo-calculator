@@ -1758,3 +1758,36 @@ test("Calculator.calcOptimalRuns finds minimum legacy runs and handles large def
   assert.equal(large.warning, undefined);
   assert.deepEqual(large.runs, { bronze: 20000, silver: 0, gold: 0 });
 });
+
+test("App.onFarmQuestChanged hides visible results instead of auto-calculating", async () => {
+  await plannerWith(fakeStorage());
+  const classes = new Set(["visible"]);
+  const resultsEl = {
+    classList: {
+      remove: (...names) => names.forEach((name) => classes.delete(name)),
+      contains: (name) => classes.has(name),
+    },
+  };
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    getElementById: (id) => (id === "results" ? resultsEl : null),
+  };
+  try {
+    const { App } = await import("../src/scripts/event-shop.js");
+    const originalCalculate = App._calculateFarm;
+    let calculateCalls = 0;
+    App._calculateFarm = () => {
+      calculateCalls += 1;
+    };
+    try {
+      App.onFarmQuestChanged();
+      assert.equal(resultsEl.classList.contains("visible"), false);
+      assert.equal(calculateCalls, 0);
+    } finally {
+      App._calculateFarm = originalCalculate;
+    }
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
+});
