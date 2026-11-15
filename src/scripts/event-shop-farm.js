@@ -119,16 +119,20 @@ function selectedQuest(view, currency, options) {
    REC line (skipped when falsy, a bare "REC Lv." is noise), the own-currency drop line and the
    quest's OTHER shop currency as a secondary line, omitted when the quest drops only this one. */
 function buildCardBody(currency, quest, view, options) {
-  const lines = [];
-  if (options.length)
-    lines.push(
-      buildCurrencyQuestSelect({
-        currency,
-        quests: options,
-        selectedQuestId: quest.questId,
-        onChange: view.handlers.onQuestChange,
-      }),
-    );
+  const lines = [
+    options.length
+      ? buildCurrencyQuestSelect({
+          currency,
+          quests: options,
+          selectedQuestId: quest.questId,
+          onChange: view.handlers.onQuestChange,
+        })
+      : DOMFactory.el("select", ["select-field", "farm-quest-select", "farm-quest-select--empty"], {
+          "aria-hidden": "true",
+          tabindex: "-1",
+          disabled: "disabled",
+        }),
+  ];
   lines.push(buildQuestName(quest ? quest.questName || NO_DROP_MESSAGE : NO_DROP_MESSAGE));
   if (quest && quest.recommendLv) lines.push(buildMessage(`REC Lv. ${quest.recommendLv}`));
   if (quest) lines.push(...questDropLines(currency, quest, view));

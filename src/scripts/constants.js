@@ -12,7 +12,6 @@ export const IMAGE_VERSION = "4";
 
 export const BOND_CONSTANTS = {
   MAX_BOND_NEEDED: 9999999,
-  MAX_CUSTOM_BOND: 99999,
   FRONTLINE_SIZE: 3,
   MAX_BOND_BONUS_PCT: 25,
   SUPPORT_BONUS_PCT: 4,
@@ -32,11 +31,20 @@ export const BOND_CONSTANTS = {
      One teapot is spent per quest run, and a run pays every servant in the party. */
   TEAPOT_MULTIPLIER: 2,
   MAX_TEAPOT_COUNT: 9999,
-  /* AP consumption: Free Quest defaults to 22 AP, Grand Duel to 40 AP. */
+  /* AP consumption and Free Quest REC Lv. -> Bond/run (`recLv * 10 + 15`). */
   FREE_QUEST_AP: 22,
   GRAND_DUEL_AP: 40,
   DEFAULT_CUSTOM_AP: 22,
   MAX_CUSTOM_AP: 999,
+  MIN_REC_LV: 1,
+  MAX_REC_LV: 100,
+  DEFAULT_REC_LV: 84,
+  FREE_QUEST_BOND_PER_LV: 10,
+  FREE_QUEST_BOND_BASE: 15,
+  DEFAULT_RAID_AP: 40,
+  DEFAULT_RAID_REC_LV: 90,
+  RAID_BOND_MULTIPLIER: 2,
+  RAID_TIER_STEP_MULTIPLIER: 1.2,
   DEFAULT_MAX_AP: 152,
   MAX_PLAYER_AP: 999,
 };
@@ -118,17 +126,23 @@ export const GENDER_FILTERS = [
   { id: "0003", label: "Unknown" },
 ];
 
-/* The quest a Bond plan is priced on. The player picks a family first, then one choice inside it:
-   Free Quest names a single quest (or its own custom figure), Grand Duel names a class group and then
-   the Rank-Up Training Battle level of that class. */
+/* The quest a Bond plan is priced on. The player picks a family first: Free Quest is priced from
+   its AP/run and REC Lv. (`recLv * 10 + 15`), while Grand Duel names a class group and then the
+   Rank-Up Training Battle level of that class. */
 export const QUEST_FAMILIES = [
   { key: "fq", name: "Free Quest" },
+  { key: "rb", name: "Raid Boss/Bleached Earth" },
   { key: "gd", name: "Grand Duel" },
 ];
 
-export const FREE_QUESTS = [
-  { key: "fq83", name: "Free Quest Lv.83", bond: 845 },
-  { key: "fq84", name: "Free Quest Lv.84", bond: 855 },
+export const QUEST_TIERS = [
+  { key: "", label: "None", steps: 0 },
+  { key: "+", label: "+", steps: 1 },
+  { key: "++", label: "++", steps: 2 },
+  { key: "+++", label: "+++", steps: 3 },
+  { key: "\u2605", label: "\u2605", steps: 3 },
+  { key: "\u2605\u2605", label: "\u2605\u2605", steps: 4 },
+  { key: "\u2605\u2605\u2605", label: "\u2605\u2605\u2605", steps: 5 },
 ];
 
 /* Grand Duel party classes. `classes` is the set of class trait ids the party is limited to; null means
@@ -158,11 +172,11 @@ export const GRAND_CLASSES = [
 /* The seven Rank-Up Training Battle levels. Each pays more bond than the one below it, so the level is
    the only thing a Grand Duel plan needs besides the class. */
 export const GRAND_DIFFICULTIES = [
-  { key: "1", roman: "I", lv: "Lv.100", bond: 3164 },
-  { key: "2", roman: "II", lv: "Lv.100+", bond: 3385 },
-  { key: "3", roman: "III", lv: "Lv.100++", bond: 3622 },
-  { key: "4", roman: "IV", lv: "Lv.100+++", bond: 3876 },
-  { key: "5", roman: "V", lv: "Lv.100\u2605", bond: 4147 },
-  { key: "6", roman: "VI", lv: "Lv.100\u2605\u2605", bond: 4438 },
-  { key: "7", roman: "VII", lv: "Lv.100\u2605\u2605\u2605", bond: 4748 },
+  { key: "1", roman: "I", lv: "Lv.100", tier: "None", bond: 3164 },
+  { key: "2", roman: "II", lv: "Lv.100+", tier: "+", bond: 3385 },
+  { key: "3", roman: "III", lv: "Lv.100++", tier: "++", bond: 3622 },
+  { key: "4", roman: "IV", lv: "Lv.100+++", tier: "+++", bond: 3876 },
+  { key: "5", roman: "V", lv: "Lv.100\u2605", tier: "\u2605", bond: 4147 },
+  { key: "6", roman: "VI", lv: "Lv.100\u2605\u2605", tier: "\u2605\u2605", bond: 4438 },
+  { key: "7", roman: "VII", lv: "Lv.100\u2605\u2605\u2605", tier: "\u2605\u2605\u2605", bond: 4748 },
 ];

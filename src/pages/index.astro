@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/constants.js';
 ---
 
 <BaseLayout>
@@ -32,7 +33,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
               </div>
               <div class="input-row">
                 <label class="input-label" for="questTypeSelect">Quest</label>
-                <select class="select-field" id="questTypeSelect">
+                <select class="select-field" id="questTypeSelect" tabindex="-1" disabled>
                   <option value="free">Free Quest</option>
                   <option value="raid">Raid Boss</option>
                 </select>
@@ -343,62 +344,291 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
         <section class="tab-panel" id="panel-bond">
           <div class="card">
-            <div class="card-inner">
+            <div class="card-inner bond-quest-card-inner">
               <div class="card-title">Select Quest</div>
-            <div class="input-row">
-              <label class="input-label" for="bondQuestSelect">Main</label>
-              <select class="select-field" id="bondQuestSelect">
-                <option value="">-- Select a Quest --</option>
-              </select>
-            </div>
-            <div class="input-row bond-quest-row--free">
-              <label class="input-label" for="bondFreeQuestSelect">Quest</label>
-              <select class="select-field" id="bondFreeQuestSelect">
-                <option value="">-- Select --</option>
-              </select>
-            </div>
-            <div class="input-row bond-quest-row--grand">
-              <label class="input-label" for="bondGrandClassSelect">Class</label>
-              <select class="select-field" id="bondGrandClassSelect">
-                <option value="">-- Select --</option>
-              </select>
-            </div>
-            <div class="input-row bond-quest-row--grand">
-              <label class="input-label" for="bondGrandDiffSelect">Difficulty</label>
-              <select class="select-field" id="bondGrandDiffSelect">
-                <option value="">-- Select --</option>
-              </select>
-            </div>
-            <div id="customQuestSection" class="custom-quest-section">
-              <div class="input-row">
-                <label class="input-label" for="customBondPerRun"
-                  >Bond/Run</label
+              <div class="bond-quest-tabs" id="bondQuestTabs" role="tablist" aria-label="Quest Type">
+                <button
+                  type="button"
+                  class="tab-btn bond-quest-tab-btn active"
+                  data-quest-family="fq"
+                  role="tab"
+                  aria-selected="true"
                 >
-                <input
-                  type="number"
-                  class="input-field"
-                  id="customBondPerRun"
-                  min="0"
-                  max="99999"
-                  value="0"
-                  disabled
-                />
-              </div>
-              <div class="input-row">
-                <label class="input-label" for="customApPerRun"
-                  >AP/Run</label
+                  Free Quest
+                </button>
+                <button
+                  type="button"
+                  class="tab-btn bond-quest-tab-btn"
+                  data-quest-family="rb"
+                  role="tab"
+                  aria-selected="false"
+                  aria-label="Raid Boss/Bleached Earth"
+                  title="Raid Boss/Bleached Earth"
                 >
-                <input
-                  type="number"
-                  class="input-field"
-                  id="customApPerRun"
-                  min="0"
-                  max="999"
-                  value="22"
-                  disabled
-                />
+                  Raid / Bleached
+                </button>
+                <button
+                  type="button"
+                  class="tab-btn bond-quest-tab-btn"
+                  data-quest-family="gd"
+                  role="tab"
+                  aria-selected="false"
+                >
+                  Grand Duel
+                </button>
               </div>
-            </div>
+
+              <div class="bond-quest-panel bond-quest-panel--free" data-quest-panel="fq">
+                <div class="bond-quest-grid">
+                  <div class="bond-quest-field">
+                    <label class="bond-quest-field-label" for="customApPerRun">AP / Run</label>
+                    <input
+                      type="number"
+                      class="input-field bond-quest-input"
+                      id="customApPerRun"
+                      min="0"
+                      max="999"
+                      value="22"
+                      inputmode="numeric"
+                    />
+                  </div>
+                  <div class="bond-quest-field">
+                    <label class="bond-quest-field-label" for="freeQuestRecLv">REC Lv.</label>
+                    <input
+                      type="number"
+                      class="input-field bond-quest-input"
+                      id="freeQuestRecLv"
+                      min="1"
+                      max="100"
+                      value="84"
+                      inputmode="numeric"
+                    />
+                  </div>
+                </div>
+                <div class="bond-quest-field bond-quest-field--full">
+                  <span class="bond-quest-field-label" id="freeQuestTierLabel">Plus / Star</span>
+                  <div
+                    class="bond-tier-pills"
+                    id="freeQuestTierPills"
+                    role="radiogroup"
+                    aria-labelledby="freeQuestTierLabel"
+                  >
+                    {QUEST_TIERS.map((t, idx) => (
+                      <button
+                        type="button"
+                        class={idx === 0 ? "bond-tier-pill active" : "bond-tier-pill"}
+                        role="radio"
+                        data-value={t.key}
+                        aria-label={t.label}
+                        aria-checked={idx === 0 ? "true" : "false"}
+                        tabindex={idx === 0 ? 0 : -1}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div class="bond-quest-panel bond-quest-panel--raid" data-quest-panel="rb">
+                <div class="bond-quest-grid">
+                  <div class="bond-quest-field">
+                    <label class="bond-quest-field-label" for="raidApPerRun">AP / Run</label>
+                    <input
+                      type="number"
+                      class="input-field bond-quest-input"
+                      id="raidApPerRun"
+                      min="0"
+                      max="999"
+                      value="40"
+                      inputmode="numeric"
+                    />
+                  </div>
+                  <div class="bond-quest-field">
+                    <label class="bond-quest-field-label" for="raidRecLv">REC Lv.</label>
+                    <input
+                      type="number"
+                      class="input-field bond-quest-input"
+                      id="raidRecLv"
+                      min="1"
+                      max="100"
+                      value="90"
+                      inputmode="numeric"
+                    />
+                  </div>
+                </div>
+                <div class="bond-quest-field bond-quest-field--full">
+                  <span class="bond-quest-field-label" id="raidTierLabel">Plus / Star</span>
+                  <div
+                    class="bond-tier-pills"
+                    id="raidTierPills"
+                    role="radiogroup"
+                    aria-labelledby="raidTierLabel"
+                  >
+                    {QUEST_TIERS.map((t, idx) => (
+                      <button
+                        type="button"
+                        class={idx === 0 ? "bond-tier-pill active" : "bond-tier-pill"}
+                        role="radio"
+                        data-value={t.key}
+                        aria-label={t.label}
+                        aria-checked={idx === 0 ? "true" : "false"}
+                        tabindex={idx === 0 ? 0 : -1}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div class="bond-quest-panel bond-quest-panel--grand" data-quest-panel="gd">
+                <div class="bond-quest-field bond-quest-field--full">
+                  <label class="bond-quest-field-label" for="bondGrandClassSelect">Class</label>
+                  <select class="select-field bond-quest-select" id="bondGrandClassSelect">
+                    {GRAND_CLASSES.map((c) => (
+                      <option value={c.key}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div class="bond-quest-field bond-quest-field--full">
+                  <span class="bond-quest-field-label" id="grandDiffLabel">REC Lv.</span>
+                  <div
+                    class="bond-tier-pills bond-tier-pills--grand"
+                    id="bondGrandDiffPills"
+                    role="radiogroup"
+                    aria-labelledby="grandDiffLabel"
+                  >
+                    {GRAND_DIFFICULTIES.map((d, idx) => (
+                      <button
+                        type="button"
+                        class={idx === 0 ? "bond-tier-pill active" : "bond-tier-pill"}
+                        role="radio"
+                        data-value={d.key}
+                        aria-label={d.lv}
+                        aria-checked={idx === 0 ? "true" : "false"}
+                        tabindex={idx === 0 ? 0 : -1}
+                      >
+                        {d.lv.replace(/^Lv\./, "")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <dl class="bond-quest-summary" id="bondQuestSummary" aria-live="polite">
+                <div class="bond-quest-summary-item">
+                  <dt class="bond-quest-summary-label">AP / Run</dt>
+                  <dd class="bond-quest-summary-value" id="bondSummaryAp">22</dd>
+                </div>
+                <div class="bond-quest-summary-item">
+                  <dt class="bond-quest-summary-label">REC Lv.</dt>
+                  <dd class="bond-quest-summary-value" id="bondSummaryRecLv">84</dd>
+                </div>
+                <div class="bond-quest-summary-item bond-quest-summary-item--highlight">
+                  <dt class="bond-quest-summary-label">Bond / Run</dt>
+                  <dd class="bond-quest-summary-value bond-quest-summary-value--accent" id="bondSummaryBond">855</dd>
+                </div>
+              </dl>
+
+              <script is:inline define:vars={{ tiers: QUEST_TIERS, gdDiffs: GRAND_DIFFICULTIES }}>(function () {
+                var b = null;
+                try {
+                  var raw = localStorage.getItem("fgo_bond_calculator_data");
+                  if (raw) {
+                    var parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) b = parsed;
+                  }
+                } catch (e) {}
+
+                var q = document.documentElement.getAttribute("data-bond-quest") || (b && (b.questMain === "gd" || b.questMain === "rb") ? b.questMain : "fq");
+                var btns = document.querySelectorAll("#bondQuestTabs .bond-quest-tab-btn");
+                for (var i = 0; i < btns.length; i++) {
+                  var on = btns[i].getAttribute("data-quest-family") === q;
+                  btns[i].classList.toggle("active", on);
+                  btns[i].setAttribute("aria-selected", on ? "true" : "false");
+                }
+
+                function clampInt(v, min, max, fallback) {
+                  var n = Number(v);
+                  if (!isFinite(n)) return fallback;
+                  return Math.floor(Math.max(min, Math.min(max, n)));
+                }
+                function syncPills(id, val) {
+                  var el = document.getElementById(id);
+                  if (!el) return;
+                  var pills = el.querySelectorAll(".bond-tier-pill");
+                  for (var j = 0; j < pills.length; j++) {
+                    var hit = pills[j].getAttribute("data-value") === val;
+                    pills[j].classList.toggle("active", hit);
+                    pills[j].setAttribute("aria-checked", hit ? "true" : "false");
+                    pills[j].tabIndex = hit ? 0 : -1;
+                  }
+                }
+                function stepMap(list) {
+                  var m = {};
+                  for (var k = 0; k < list.length; k++) m[list[k].key] = list[k].steps;
+                  return m;
+                }
+                function applyTier(base, steps) {
+                  var v = base;
+                  for (var s = 0; s < steps; s++) v = Math.ceil(v * 1.2);
+                  return v;
+                }
+
+                var tierSteps = stepMap(tiers);
+                var customAp = b && b.customAp !== undefined ? clampInt(b.customAp, 0, 999, 22) : 22;
+                var customRecLv = b && b.customRecLv !== undefined ? clampInt(b.customRecLv, 1, 100, 84) : 84;
+                var customTier = b && typeof b.customTier === "string" && tierSteps[b.customTier] !== undefined ? b.customTier : "";
+                var raidAp = b && b.raidAp !== undefined ? clampInt(b.raidAp, 0, 999, 40) : 40;
+                var raidRecLv = b && b.raidRecLv !== undefined ? clampInt(b.raidRecLv, 1, 100, 90) : 90;
+                var raidTier = b && typeof b.raidTier === "string" && tierSteps[b.raidTier] !== undefined ? b.raidTier : "";
+                var questClass = b && typeof b.questClass === "string" && b.questClass ? b.questClass : "all";
+                var questDiff = b && typeof b.questDiff === "string" ? b.questDiff : "1";
+
+                var gdEntry = gdDiffs[0];
+                for (var d = 0; d < gdDiffs.length; d++) {
+                  if (gdDiffs[d].key === questDiff) {
+                    gdEntry = gdDiffs[d];
+                    break;
+                  }
+                }
+                questDiff = gdEntry.key;
+
+                var el;
+                if ((el = document.getElementById("customApPerRun"))) el.value = String(customAp);
+                if ((el = document.getElementById("freeQuestRecLv"))) el.value = String(customRecLv);
+                if ((el = document.getElementById("raidApPerRun"))) el.value = String(raidAp);
+                if ((el = document.getElementById("raidRecLv"))) el.value = String(raidRecLv);
+                if ((el = document.getElementById("bondGrandClassSelect"))) {
+                  el.value = questClass;
+                  if (!el.value) el.value = "all";
+                }
+
+                syncPills("freeQuestTierPills", customTier);
+                syncPills("raidTierPills", raidTier);
+                syncPills("bondGrandDiffPills", questDiff);
+
+                var apOut = customAp;
+                var recOut = String(customRecLv) + customTier;
+                var bondOut = applyTier(customRecLv * 10 + 15, tierSteps[customTier] || 0);
+                if (q === "gd") {
+                  apOut = 40;
+                  recOut = gdEntry.lv.replace(/^Lv\./, "");
+                  bondOut = gdEntry.bond;
+                } else if (q === "rb") {
+                  apOut = raidAp;
+                  recOut = String(raidRecLv) + raidTier;
+                  bondOut = applyTier((raidRecLv * 10 + 15) * 2, tierSteps[raidTier] || 0);
+                }
+
+                var apEl = document.getElementById("bondSummaryAp");
+                var recEl = document.getElementById("bondSummaryRecLv");
+                var bondEl = document.getElementById("bondSummaryBond");
+                if (apEl) apEl.textContent = String(apOut);
+                if (recEl) recEl.textContent = recOut;
+                if (bondEl) bondEl.textContent = bondOut.toLocaleString();
+              })();</script>
             </div>
           </div>
 
