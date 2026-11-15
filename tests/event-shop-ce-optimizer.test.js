@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { EVENT_SHOP_DATA } from "../src/scripts/data/event_shop.js";
 import { EventShop, Schema } from "../src/scripts/domain.js";
+import { snapshotEvents } from "../src/scripts/event-planner-state.js";
 
 const CE_GOLD = 9409660;
 const CE_SILVER = 9409670;
@@ -494,7 +495,7 @@ test("brute-force cross-check on 30 randomized multi-quest CE instances with tra
 });
 
 test("shipped 80639 and 80632 buy-all plans optimize with 3-CE and 6-CE fixtures within 150ms", () => {
-  for (const snap of EVENT_SHOP_DATA.events) {
+  for (const snap of snapshotEvents(EVENT_SHOP_DATA)) {
     const cids = snap.currencies.map((c) => String(c.id));
     const ces3 = cids.map((cid, idx) => ({
       id: 9000 + idx,

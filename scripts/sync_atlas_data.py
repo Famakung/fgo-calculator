@@ -1599,6 +1599,7 @@ def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas
 # past farm event (capped newest-first scan) so players can plan high-level quests after a rerun.
 
 EVENT_SHOP_STUB = {"events": []}
+EVENT_SERVERS = ("JP", "NA", "CN", "TW", "KR")
 
 # A quest the game closes after one clear is not farmable; only these two repeat.
 REPEATABLE_AFTER_CLEAR = ("repeatLast", "repeat")
@@ -1723,12 +1724,26 @@ def _farm_event_passes(cache_dir: str, event: dict, force: bool = False) -> bool
     return any(_farm_quest_entry(quest, currency_ids) for quest in quests)
 
 
+def _is_qp_dump_entry(entry: dict) -> bool:
+    """True for unlimited leftover-currency-to-QP exchange rows (Atlas item id 1 = QP)."""
+    return (
+        entry.get("purchaseType") == "item"
+        and entry.get("targetIds") == [1]
+        and int(entry.get("limitNum") or 0) == 0
+    )
+
+
 def _shop_currency_ids(entries: List[dict]) -> List[int]:
     """Distinct cost.item ids of the raw shop rows — the currencies the farm test prices."""
+    real_cids = {
+        ((e.get("cost") or {}).get("item") or {}).get("id")
+        for e in entries
+        if ((e.get("cost") or {}).get("amount") or 0) > 0 and not _is_qp_dump_entry(e)
+    }
     ids = []
     for entry in entries:
         cid = ((entry.get("cost") or {}).get("item") or {}).get("id")
-        if cid and cid not in ids:
+        if cid and cid not in ids and (not real_cids or cid in real_cids):
             ids.append(cid)
     return ids
 
@@ -2272,10 +2287,20 @@ def _event_window(event: dict) -> dict:
 
 def _map_shop_entries(cache_dir: str, entries: List[dict], item_map: Dict[int, dict], names: Dict[str, Dict[int, dict]], force: bool, dry_run: bool):
     """Currencies and items of one shop. A currency is registered only on a kept row: one seen
-    solely on amount<=0 (free) entries would otherwise yield a ghost chip with an empty group."""
+    solely on amount<=0 (free) entries would otherwise yield a ghost chip with an empty group.
+    Currencies whose only shop rows are unlimited QP exchanges (e.g. crafting mats / event
+    points) are excluded when real shop currencies exist."""
+    real_cids = {
+        ((e.get("cost") or {}).get("item") or {}).get("id")
+        for e in entries
+        if ((e.get("cost") or {}).get("amount") or 0) > 0 and not _is_qp_dump_entry(e)
+    }
     currencies: Dict[int, dict] = {}
     items = []
     for entry in entries:
+        cid = ((entry.get("cost") or {}).get("item") or {}).get("id")
+        if real_cids and cid not in real_cids:
+            continue
         item = _shop_item(entry, item_map, cache_dir, force=force, dry_run=dry_run, names=names)
         if item:
             _shop_currency(entry, currencies, names, force=force, dry_run=dry_run)
@@ -2398,11 +2423,39 @@ def _collect_event_snapshot(
         return None
     sorted_currencies = sorted(currencies)
     war_ids = detail.get("warIds") or event.get("warIds") or []
+    farm = _collect_farm(cache_dir, war_ids, sorted_currencies, force=force)
+    dropped_ids = {
+        int(cid)
+        for q in farm.get("quests") or []
+        for cid in (q.get("drops") or {}).keys()
+    } | {
+        int(cid)
+        for boss in farm.get("raids") or []
+        for q in boss.get("quests") or []
+        for cid in (q.get("drops") or {}).keys()
+    }
+    if dropped_ids:
+        first_tier_cids = set()
+        seen_tiers = set()
+        for cid in sorted_currencies:
+            bg = currencies[cid].get("background")
+            if bg in ("bronze", "silver", "gold") and bg not in seen_tiers:
+                seen_tiers.add(bg)
+                first_tier_cids.add(cid)
+        kept = [
+            cid
+            for cid in sorted_currencies
+            if cid in dropped_ids or currencies[cid].get("background") == "zero" or cid in first_tier_cids
+        ]
+        if kept and len(kept) < len(sorted_currencies):
+            kept_set = set(kept)
+            sorted_currencies = kept
+            items = [it for it in items if (it.get("cost") or {}).get("itemId") in kept_set]
     return {
         "event": _event_window(event),
         "currencies": [currencies[cid] for cid in sorted_currencies],
         "items": sorted(items, key=lambda it: (it["priority"], it["id"])),
-        "farm": _collect_farm(cache_dir, war_ids, sorted_currencies, force=force),
+        "farm": farm,
         "trades": _shop_trades(entries, sorted_currencies),
         "bonusCes": _collect_bonus_ces(
             event["id"],
@@ -2502,10 +2555,31 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
     global _servant_lore
     _servant_lore = None
     basic = get_cached_json(cache_dir, "basic_event.json", BASIC_EVENT_URL, force=force)
+    region_selected: Dict[str, List[dict]] = {}
     if event_id is not None:
         events = select_events(basic, event_id)
+        region_selected["JP"] = events
     else:
-        events = _select_farm_events(cache_dir, basic, force=force)
+        jp_events = _select_farm_events(cache_dir, basic, force=force)
+        region_selected["JP"] = jp_events
+        jp_by_id = {e.get("id"): e for e in basic if isinstance(e, dict) and e.get("id")} if isinstance(basic, list) else {}
+        seen_ids = {e.get("id") for e in jp_events if e.get("id")}
+        events = list(jp_events)
+        for region in EVENT_SERVERS[1:]:
+            try:
+                region_url = f"{API_BASE}/export/{region}/basic_event.json"
+                basic_region = get_cached_json(cache_dir, f"{region.lower()}_basic_event.json", region_url, force=force)
+                region_events = _select_farm_events(cache_dir, basic_region, force=force)
+            except Exception as e:
+                print(f"  [WARN] {region} event list fetch failed, skipped: {e}", file=sys.stderr)
+                region_events = []
+            region_selected[region] = region_events
+            for ev in region_events:
+                eid = ev.get("id")
+                if eid and eid not in seen_ids:
+                    seen_ids.add(eid)
+                    events.append(jp_by_id.get(eid) or ev)
+        events.sort(key=lambda e: -(e.get("startedAt") or 0))
     if not events:
         if event_id is None and not dry_run:
             _write_shop_probe(cache_dir, basic, force=force)
@@ -2530,7 +2604,14 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
         raise RuntimeError(f"all {failures} open event shop fetch(es) failed")
     if event_id is None and not dry_run:
         _write_shop_probe(cache_dir, basic, force=force)
-    return {"events": snapshots}
+    result = {"events": snapshots}
+    if event_id is None:
+        snapshot_ids = {snap["event"]["id"] for snap in snapshots if isinstance(snap.get("event"), dict)}
+        result["servers"] = {
+            region: [_event_window(ev) for ev in region_selected.get(region, []) if ev.get("id") in snapshot_ids]
+            for region in EVENT_SERVERS
+        }
+    return result
 
 
 def _event_shop_js_text(data: dict) -> str:

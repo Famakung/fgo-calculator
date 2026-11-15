@@ -1882,3 +1882,226 @@ test("EventShopModal ignores backdrop mousedown and keeps modal open", async () 
     else globalThis.document = previousDocument;
   }
 });
+
+test("EventPlanner server selector switches server event list while using JP calculation data and persisting state", async () => {
+  const { EventPlanner } = await import("../src/scripts/event-planner.js");
+  const { EVENT_SHOP_STORAGE_KEY } = await import("../src/scripts/constants.js");
+  const store = new Map();
+  const prevStorage = globalThis.localStorage;
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+  };
+  try {
+    const jpEvent = {
+      ...EVENT_A,
+      event: { id: 80639, name: "JP Name", shortName: "JP Short", startedAt: 1794394800, endedAt: 1796183999 },
+    };
+    const naBase = {
+      ...EVENT_B,
+      event: { id: 80630, name: "JP Old Name", shortName: "JP Old", startedAt: 1700000000, endedAt: 1701000000 },
+    };
+    const data = {
+      events: [jpEvent, naBase],
+      servers: {
+        JP: [{ id: 80639, name: "JP Name", shortName: "JP Short", startedAt: 1794394800, endedAt: 1796183999 }],
+        NA: [{ id: 80630, name: "NA Event Name", shortName: "NA Short", startedAt: 1760000000, endedAt: 1761000000 }],
+        CN: [],
+        TW: [],
+        KR: [],
+      },
+    };
+    EventPlanner.load({ selectedServer: "INVALID", plans: {} }, data);
+    assert.equal(EventPlanner.server(), "JP");
+    assert.deepEqual(
+      EventPlanner.events().map((s) => s.event.id),
+      [80639],
+    );
+    EventPlanner.applyRequires({ 101: 2 });
+
+    assert.equal(EventPlanner.setServer("NA"), true);
+    assert.equal(EventPlanner.server(), "NA");
+    assert.equal(EventPlanner.state.selectedEventId, 80630);
+    assert.equal(EventPlanner.activeEvent().event.name, "NA Event Name");
+    assert.equal(EventPlanner.activeEvent().items, naBase.items, "uses JP snapshot items");
+    EventPlanner.applyRequires({ 201: 2 });
+
+    const saved = JSON.parse(store.get(EVENT_SHOP_STORAGE_KEY));
+    assert.equal(saved.selectedServer, "NA");
+    assert.equal(saved.selectedEventId, 80630);
+
+    assert.equal(EventPlanner.setServer("JP"), true);
+    assert.equal(EventPlanner.state.selectedEventId, 80639);
+    assert.equal(EventPlanner.activePlan().requires[101], 2, "JP plan preserved across server switch");
+
+    EventPlanner.load(null, { events: [jpEvent] });
+    assert.equal(EventPlanner.server(), "JP");
+    assert.equal(EventPlanner.events().length, 1);
+    assert.equal(EventPlanner.setServer("NA"), true);
+    assert.equal(EventPlanner.events().length, 0);
+  } finally {
+    if (prevStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = prevStorage;
+  }
+});
+
+test("snapshotEvents prunes QP-only dump currencies so non-main materials never appear in farm display", async () => {
+  const { snapshotEvents } = await import("../src/scripts/event-planner-state.js");
+  const raw = {
+    events: [
+      {
+        event: {
+          id: 80494,
+          name: "Mystery House",
+          shortName: "Mystery House",
+          startedAt: 1731495600,
+          endedAt: 1733284799,
+        },
+        currencies: [
+          { id: 94136601, name: "Design Notebook", background: "bronze", icon: "event_shop/item_94136601.webp" },
+          { id: 94136602, name: "Guide Rope", background: "silver", icon: "event_shop/item_94136602.webp" },
+          { id: 94136603, name: "Decorative Paint", background: "gold", icon: "event_shop/item_94136603.webp" },
+          { id: 94136605, name: "Craft Stone", background: "silver", icon: "event_shop/item_94136605.webp" },
+        ],
+        items: [
+          {
+            id: 1,
+            name: "Lore",
+            purchaseType: "item",
+            cost: { itemId: 94136601, amount: 100 },
+            limitNum: 1,
+            setNum: 1,
+            priority: 1,
+            icon: null,
+          },
+          {
+            id: 2,
+            name: "QP",
+            purchaseType: "item",
+            cost: { itemId: 94136601, amount: 10 },
+            limitNum: 0,
+            setNum: 10000,
+            priority: 90,
+            icon: "event_shop/item_1.webp",
+          },
+          {
+            id: 3,
+            name: "QP",
+            purchaseType: "item",
+            cost: { itemId: 94136605, amount: 50 },
+            limitNum: 0,
+            setNum: 10000,
+            priority: 95,
+            icon: "event_shop/item_1.webp",
+          },
+        ],
+        farm: {
+          quests: [
+            {
+              questId: 94136714,
+              questName: "Lv90++",
+              recommendLv: "90++",
+              ap: 40,
+              sampleRuns: 100,
+              drops: {
+                94136601: { dropExpected: 5, num: 3 },
+                94136602: { dropExpected: 5, num: 3 },
+                94136603: { dropExpected: 5, num: 3 },
+                94136605: { dropExpected: 6, num: 3 },
+              },
+            },
+          ],
+          best: { 94136601: 94136714, 94136602: 94136714, 94136603: 94136714, 94136605: 94136714 },
+        },
+        trades: [],
+        bonusCes: [],
+      },
+    ],
+  };
+  const [snap] = snapshotEvents(raw);
+  assert.deepEqual(
+    snap.currencies.map((c) => c.id),
+    [94136601, 94136602, 94136603],
+  );
+  assert.equal(
+    snap.items.some((it) => it.cost.itemId === 94136605),
+    false,
+  );
+  assert.equal(snap.farm.best["94136605"], undefined);
+  assert.equal(snap.farm.quests[0].drops["94136605"], undefined);
+  assert.equal(
+    EventShop.allCoveringQuests(
+      snap.farm,
+      snap.currencies.map((c) => c.id),
+    ).length,
+    1,
+  );
+});
+
+test("snapshotEvents prunes undropped non-main currencies (e.g. 80514 chocolates) when farm drops exist", async () => {
+  const { snapshotEvents } = await import("../src/scripts/event-planner-state.js");
+  const raw = {
+    events: [
+      {
+        event: { id: 80514, name: "Valentine", shortName: "Valentine", startedAt: 1739343600, endedAt: 1741157999 },
+        currencies: [
+          { id: 94140201, name: "Bookmark", background: "bronze", icon: "event_shop/item_94140201.webp" },
+          { id: 94140202, name: "Tanzaku", background: "silver", icon: "event_shop/item_94140202.webp" },
+          { id: 94140203, name: "Brush", background: "gold", icon: "event_shop/item_94140203.webp" },
+          { id: 94140304, name: "Surprise Chocolate", background: "gold", icon: "event_shop/item_94140304.webp" },
+          { id: 94140305, name: "Lock-On Chocolate", background: "gold", icon: "event_shop/item_94140305.webp" },
+        ],
+        items: [
+          {
+            id: 1,
+            name: "Lore",
+            purchaseType: "item",
+            cost: { itemId: 94140201, amount: 100 },
+            limitNum: 1,
+            setNum: 1,
+            priority: 1,
+            icon: null,
+          },
+          {
+            id: 2,
+            name: "Choco",
+            purchaseType: "item",
+            cost: { itemId: 94140305, amount: 1 },
+            limitNum: 1,
+            setNum: 1,
+            priority: 10,
+            icon: null,
+          },
+        ],
+        farm: {
+          quests: [
+            {
+              questId: 94140401,
+              questName: "Lv90++",
+              recommendLv: "90++",
+              ap: 40,
+              sampleRuns: 100,
+              drops: {
+                94140201: { dropExpected: 5, num: 3 },
+                94140202: { dropExpected: 5, num: 3 },
+                94140203: { dropExpected: 5, num: 3 },
+              },
+            },
+          ],
+          best: { 94140201: 94140401, 94140202: 94140401, 94140203: 94140401 },
+        },
+        trades: [],
+        bonusCes: [],
+      },
+    ],
+  };
+  const [snap] = snapshotEvents(raw);
+  assert.deepEqual(
+    snap.currencies.map((c) => c.id),
+    [94140201, 94140202, 94140203],
+  );
+  assert.equal(
+    snap.items.some((it) => it.cost.itemId === 94140305),
+    false,
+  );
+});

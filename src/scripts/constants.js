@@ -8,6 +8,8 @@ export const STORAGE_KEY = "fgo_calculator_data";
 export const BOND_STORAGE_KEY = "fgo_bond_calculator_data";
 export const CEFILTER_STORAGE_KEY = "fgo_ce_filter_data";
 export const EVENT_SHOP_STORAGE_KEY = "fgo_event_shop_data";
+export const EVENT_SERVERS = ["JP", "NA", "CN", "TW", "KR"];
+export const DEFAULT_EVENT_SERVER = "JP";
 export const IMAGE_VERSION = "4";
 
 export const BOND_CONSTANTS = {

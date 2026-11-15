@@ -3,6 +3,7 @@ import { IMAGE_VERSION } from "../scripts/constants.js";
 import { SERVANT_DATA } from "../scripts/data/servants.js";
 import { EVENT_SHOP_DATA } from "../scripts/data/event_shop.js";
 import { EventShop } from "../scripts/domain.js";
+import { snapshotEvents } from "../scripts/event-planner-state.js";
 
 interface Props {
   title?: string;
@@ -15,11 +16,15 @@ const preloadServantIds = Object.entries(SERVANT_DATA)
   .slice(0, 6)
   .map(([id]) => id);
 
-const eventIds = (EVENT_SHOP_DATA.events || []).map((e) => e.event.id);
-const comboEventIds = (EVENT_SHOP_DATA.events || [])
+const prunedEvents = snapshotEvents(EVENT_SHOP_DATA);
+const eventIds = prunedEvents.map((e) => e.event.id);
+const serverFirstEventIds = Object.fromEntries(
+  Object.entries(EVENT_SHOP_DATA.servers || {}).map(([srv, list]) => [srv, Array.isArray(list) && list[0] ? list[0].id : null]),
+);
+const comboEventIds = prunedEvents
   .filter((e) => EventShop.allCoveringQuests(e.farm, (e.currencies || []).map((c) => c.id)).length > 0)
   .map((e) => e.event.id);
-const raidEventIds = (EVENT_SHOP_DATA.events || [])
+const raidEventIds = prunedEvents
   .filter((e) => EventShop.hasAvailableRaids(e))
   .map((e) => e.event.id);
 
@@ -125,7 +130,7 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
     servant sub-tab shows combo rows instead, so `plain` skips the block in those two states rather than
     warming portraits the page will never render. currentPage, class/rarity filters and search are not
     persisted, so they cannot make the guess wrong. */}
-    <script is:inline define:vars={{ v: IMAGE_VERSION, preloadIds: preloadServantIds, eventIds, comboEventIds, raidEventIds }}>(function(){var t="cefilter";try{var s=localStorage.getItem("fgo_active_tab");if(s)t=s}catch(e){}if(t!=="cefilter")document.documentElement.setAttribute("data-tab",t);var plain=1;try{var f=JSON.parse(localStorage.getItem("fgo_ce_filter_data"));if(f){if(f.subTab==="servant"){document.documentElement.setAttribute("data-subtab","servant");plain=0}if(f.cePicks&&f.cePicks.length)plain=0}}catch(e){}function p(h){var l=document.createElement("link");l.rel="preload";l.as="image";l.fetchPriority="high";l.href=h;return l}if(eventIds.length){var eid=eventIds[0];var qt="free";try{var es=JSON.parse(localStorage.getItem("fgo_event_shop_data"));if(es){var cand=typeof es.selectedEventId==="number"?es.selectedEventId:es.eventId;if(eventIds.indexOf(cand)>=0)eid=cand;if(es.plans&&es.plans[String(eid)]&&es.plans[String(eid)].questType==="raid")qt="raid"}}catch(e){}if(comboEventIds.indexOf(eid)>=0&&!(qt==="raid"&&raidEventIds.indexOf(eid)>=0))document.documentElement.setAttribute("data-event-combo","1")}if(t==="bond"){var bq="fq";try{var b=JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));if(b){if(b.questMain==="gd"||b.questMain==="rb"){bq=b.questMain;}if(Array.isArray(b.slots)){for(var i=0;i<b.slots.length;i++){if(b.slots[i]&&b.slots[i].servantId){document.head.appendChild(p("servants/"+b.slots[i].servantId+"/"+(b.slots[i].ascension||"000")+".webp?v="+v));break;}}}}}catch(e){}document.documentElement.setAttribute("data-bond-quest",bq);}if(t==="cefilter"&&plain){var mq=window.matchMedia;var cols=mq("(min-width:1120px)").matches?6:mq("(min-width:940px)").matches?5:mq("(min-width:760px)").matches?4:mq("(min-width:580px)").matches?3:2;var f=document.createDocumentFragment();for(var i=0;i<cols&&i<preloadIds.length;i++){f.appendChild(p("servants/"+preloadIds[i]+"/000.webp?v="+v))}document.head.appendChild(f)}})();</script>
+    <script is:inline define:vars={{ v: IMAGE_VERSION, preloadIds: preloadServantIds, eventIds, serverFirstEventIds, comboEventIds, raidEventIds }}>(function(){var t="cefilter";try{var s=localStorage.getItem("fgo_active_tab");if(s)t=s}catch(e){}if(t!=="cefilter")document.documentElement.setAttribute("data-tab",t);var plain=1;try{var f=JSON.parse(localStorage.getItem("fgo_ce_filter_data"));if(f){if(f.subTab==="servant"){document.documentElement.setAttribute("data-subtab","servant");plain=0}if(f.cePicks&&f.cePicks.length)plain=0}}catch(e){}function p(h){var l=document.createElement("link");l.rel="preload";l.as="image";l.fetchPriority="high";l.href=h;return l}if(eventIds.length){var eid=eventIds[0];var qt="free";try{var es=JSON.parse(localStorage.getItem("fgo_event_shop_data"));if(es){var cand=typeof es.selectedEventId==="number"?es.selectedEventId:es.eventId;if(eventIds.indexOf(cand)>=0){eid=cand}else if(es.selectedServer&&typeof serverFirstEventIds[es.selectedServer]==="number"){eid=serverFirstEventIds[es.selectedServer]}if(es.plans&&es.plans[String(eid)]&&es.plans[String(eid)].questType==="raid")qt="raid"}}catch(e){}if(comboEventIds.indexOf(eid)>=0&&!(qt==="raid"&&raidEventIds.indexOf(eid)>=0))document.documentElement.setAttribute("data-event-combo","1")}if(t==="bond"){var bq="fq";try{var b=JSON.parse(localStorage.getItem("fgo_bond_calculator_data"));if(b){if(b.questMain==="gd"||b.questMain==="rb"){bq=b.questMain;}if(Array.isArray(b.slots)){for(var i=0;i<b.slots.length;i++){if(b.slots[i]&&b.slots[i].servantId){document.head.appendChild(p("servants/"+b.slots[i].servantId+"/"+(b.slots[i].ascension||"000")+".webp?v="+v));break;}}}}}catch(e){}document.documentElement.setAttribute("data-bond-quest",bq);}if(t==="cefilter"&&plain){var mq=window.matchMedia;var cols=mq("(min-width:1120px)").matches?6:mq("(min-width:940px)").matches?5:mq("(min-width:760px)").matches?4:mq("(min-width:580px)").matches?3:2;var f=document.createDocumentFragment();for(var i=0;i<cols&&i<preloadIds.length;i++){f.appendChild(p("servants/"+preloadIds[i]+"/000.webp?v="+v))}document.head.appendChild(f)}})();</script>
   </head>
   <body>
     <slot />
