@@ -487,6 +487,25 @@ function validateEventShop(data) {
     return;
   }
   data.events.forEach((snapshot, index) => validateEventShopSnapshot(snapshot, index, data.events));
+  if (data.servers !== undefined) {
+    if (!data.servers || typeof data.servers !== "object" || Array.isArray(data.servers)) {
+      errors.push(`Event Shop: servers must be an object`);
+      return;
+    }
+    const knownIds = new Set(data.events.map((s) => s.event && s.event.id));
+    for (const [server, list] of Object.entries(data.servers)) {
+      if (!Array.isArray(list)) {
+        errors.push(`Event Shop server ${server}: list must be an array`);
+        continue;
+      }
+      list.forEach((ev, idx) => {
+        if (!ev || !Number.isInteger(ev.id) || !knownIds.has(ev.id)) {
+          errors.push(`Event Shop server ${server}[${idx}]: unknown event id ${JSON.stringify(ev && ev.id)}`);
+        }
+        checkShopName(ev || {}, `server ${server}`);
+      });
+    }
+  }
 }
 
 console.log(`Validating EVENT_SHOP_DATA...`);

@@ -1,6 +1,13 @@
-import { EVENT_SHOP_STORAGE_KEY } from "./constants.js";
+import { DEFAULT_EVENT_SERVER, EVENT_SHOP_STORAGE_KEY } from "./constants.js";
 import { EventShop, Schema } from "./domain.js";
-import { planOf, snapshotEvents, retiredPlans, clampCurrencyBox } from "./event-planner-state.js";
+import {
+  planOf,
+  snapshotEvents,
+  snapshotServers,
+  sanitizeEventServer,
+  retiredPlans,
+  clampCurrencyBox,
+} from "./event-planner-state.js";
 import { EVENT_SHOP_DATA } from "./data/event_shop.js";
 
 /* Application layer for the Event Shop planner: owns the selected event and that event's plan
@@ -18,9 +25,10 @@ import { EVENT_SHOP_DATA } from "./data/event_shop.js";
     pure plan helpers — snapshot list, plan copy, retired stash, currency-box clamp — live in
     event-planner-state.js. */
 export const EventPlanner = {
-  state: { selectedEventId: null, plans: {} },
+  state: { selectedServer: DEFAULT_EVENT_SERVER, selectedEventId: null, plans: {} },
   _initialized: false,
   _events: [],
+  _servers: {},
   _retired: {},
 
   /* Idempotent entry (house BondApp pattern): load the snapshot list and fold the saved plans into
@@ -37,18 +45,31 @@ export const EventPlanner = {
      here and sanitizePlans reads its plan again. */
   load(saved, data) {
     this._events = snapshotEvents(data);
+    this._servers = snapshotServers(data, this._events);
     this._retired = retiredPlans(saved, this._events);
-    this.state = EventShop.sanitizePlans(saved, this._events);
+    const server = sanitizeEventServer(saved && saved.selectedServer);
+    const sanitized = EventShop.sanitizePlans(saved, this._events);
+    const serverEvents = this._servers[server] || [];
+    const selectedEventId = serverEvents.some((snap) => snap.event.id === sanitized.selectedEventId)
+      ? sanitized.selectedEventId
+      : serverEvents.length > 0
+        ? serverEvents[0].event.id
+        : null;
+    this.state = { selectedServer: server, selectedEventId, plans: sanitized.plans };
   },
 
-  /* Every shop snapshot the select can offer, newest event first (the sync sorted them). */
+  server() {
+    return this.state.selectedServer || DEFAULT_EVENT_SERVER;
+  },
+
+  /* Every shop snapshot the select can offer for the active server, newest event first. */
   events() {
-    return this._events;
+    return this._servers[this.server()] || [];
   },
 
   /* The snapshot the UI is working on: the selected event, or null when the list is empty. */
   activeEvent() {
-    return this._events.find((snap) => snap.event.id === this.state.selectedEventId) || null;
+    return this.events().find((snap) => snap.event.id === this.state.selectedEventId) || null;
   },
 
   /* The active event's plan. A never-touched event has an empty one — never null. */
@@ -69,11 +90,27 @@ export const EventPlanner = {
     return event ? event.currencies : [];
   },
 
+  /* Switch the working server (Server Select). Selects the server's latest event when the current
+     event is not in that server's list. Returns whether the server changed. */
+  setServer(server) {
+    const next = sanitizeEventServer(server);
+    if (next === this.server()) return false;
+    const serverEvents = this._servers[next] || [];
+    const nextEventId = serverEvents.some((snap) => snap.event.id === this.state.selectedEventId)
+      ? this.state.selectedEventId
+      : serverEvents.length > 0
+        ? serverEvents[0].event.id
+        : null;
+    this.state = { ...this.state, selectedServer: next, selectedEventId: nextEventId };
+    this._persist();
+    return true;
+  },
+
   /* Switch the working event (Event Select). Unknown ids are refused: the id came from a list this
      module built, so a miss is stale data, not a user choice. Returns whether the selection moved. */
   select(eventId) {
     if (eventId === this.state.selectedEventId) return false;
-    if (!this._events.some((snap) => snap.event.id === eventId)) return false;
+    if (!this.events().some((snap) => snap.event.id === eventId)) return false;
     this.state = { ...this.state, selectedEventId: eventId };
     this._persist();
     return true;
@@ -245,7 +282,11 @@ export const EventPlanner = {
       /* The pruned events' plans ride along verbatim so no save can erode them; a live plan wins a
          key collision, which is what an event that re-entered the data must write back. */
       const plans = { ...this._retired, ...this.state.plans };
-      const payload = JSON.stringify({ selectedEventId: this.state.selectedEventId, plans });
+      const payload = JSON.stringify({
+        selectedServer: this.server(),
+        selectedEventId: this.state.selectedEventId,
+        plans,
+      });
       localStorage.setItem(EVENT_SHOP_STORAGE_KEY, payload);
     } catch (e) {
       console.warn("Event shop planner save failed:", e);

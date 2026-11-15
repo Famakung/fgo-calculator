@@ -22,8 +22,25 @@ export function initEvent() {
   });
   EventPlanner.init();
   App.init();
+  bindServerSelect();
   bindEventSelect();
   bindQuestTypeSelect();
+}
+
+function bindServerSelect() {
+  const select = document.getElementById("eventServerSelect");
+  if (!select) return;
+  select.value = EventPlanner.server();
+  select.addEventListener("change", () => {
+    App.flushPlanBoxes();
+    if (!EventPlanner.setServer(select.value)) return;
+    const eventSelect = document.getElementById("eventSelect");
+    if (eventSelect) {
+      populateEventOptions(eventSelect, EventPlanner.events(), EventPlanner.state.selectedEventId);
+    }
+    syncQuestTypeSelect();
+    App.rehydrate();
+  });
 }
 
 /* Event Select card (Amendment G): the options are the snapshot list, and the change handler runs a

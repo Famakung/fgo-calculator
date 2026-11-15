@@ -1168,6 +1168,72 @@ def check_raid_boss_extraction():
     return 1
 
 
+def check_multi_server_event_lists():
+    """Non-JP servers select their own event list/names while reusing JP's calculation snapshot by event id."""
+    na_event = {
+        "id": 70001,
+        "type": "eventQuest",
+        "name": "NA Past Event Title",
+        "shortName": "NA Past Event",
+        "startedAt": NOW - 100,
+        "finishedAt": NOW + 3600,
+        "endedAt": NOW + 3600,
+    }
+    with Sandbox() as s, patch.object(m.time, "time", lambda: NOW):
+        inner = fixture_json
+
+        def with_na_events(cache_dir, filename, url, force=False):
+            if filename == "na_basic_event.json":
+                return [na_event]
+            return inner(cache_dir, filename, url, force=force)
+
+        m.get_cached_json = with_na_events
+        m.sync_event_shop(cache_dir=s.tmp)
+        data = s.read_data()
+        assert [snap["event"]["id"] for snap in data["events"]] == [80639, 80642, 70001]
+        assert data["servers"]["JP"][0]["id"] == 80639
+        assert [ev["id"] for ev in data["servers"]["NA"]] == [70001]
+        assert data["servers"]["NA"][0]["name"] == "NA Past Event Title"
+        assert data["servers"]["NA"][0]["startedAt"] == NOW - 100
+        jp_70001 = next(snap for snap in data["events"] if snap["event"]["id"] == 70001)
+        assert jp_70001["event"]["name"] != "NA Past Event Title", "JP snapshot retains JP metadata"
+    return 1
+
+
+def check_qp_only_currencies_excluded():
+    """Currencies whose only shop rows are unlimited QP exchanges (item 1) are excluded."""
+    entries = [
+        {"id": 1, "name": "Lore", "purchaseType": "item", "targetIds": [1041], "cost": {"item": BRONZE, "amount": 100}, "limitNum": 1, "setNum": 1, "priority": 1},
+        {"id": 2, "name": "QP", "purchaseType": "item", "targetIds": [1], "cost": {"item": BRONZE, "amount": 10}, "limitNum": 0, "setNum": 10000, "priority": 90},
+        {"id": 3, "name": "QP", "purchaseType": "item", "targetIds": [1], "cost": {"item": SILVER, "amount": 50}, "limitNum": 0, "setNum": 10000, "priority": 95},
+    ]
+    assert m._shop_currency_ids(entries) == [BRONZE["id"]], "QP-only currency excluded from farm test currency list"
+    with Sandbox() as s:
+        currencies, items = m._map_shop_entries(s.tmp, entries, {1041: {"id": 1041, "name": "Lore"}}, {"naItems": {}, "jpEnItems": {}}, force=False, dry_run=True)
+        assert list(currencies.keys()) == [BRONZE["id"]], "QP-only currency excluded from shop currencies"
+        assert [it["id"] for it in items] == [1, 2], "real currency keeps its QP row; QP-only currency rows dropped"
+
+    # Also verify _collect_event_snapshot drops undropped non-zero currencies (e.g. Valentine chocolates)
+    with Sandbox() as s, patch.object(m.time, "time", lambda: NOW):
+        inner = fixture_json
+        choco_item = {"id": 94164099, "name": "Lock-On Chocolate", "background": "gold", "icon": "JP/Items/94164000.png"}
+        choco_row = {"id": 80639099, "name": "Choco", "purchaseType": "item", "targetIds": [1041], "cost": {"item": choco_item, "amount": 1}, "limitNum": 1, "setNum": 1, "priority": 99}
+
+        def with_choco(cache_dir, filename, url, force=False):
+            data = inner(cache_dir, filename, url, force=force)
+            if filename == "nice_event_80639.json":
+                data = json.loads(json.dumps(data))
+                data["shop"].append(choco_row)
+            return data
+
+        m.get_cached_json = with_choco
+        m.sync_event_shop(cache_dir=s.tmp)
+        snap = s.read_data()["events"][0]
+        assert 94164099 not in [c["id"] for c in snap["currencies"]], "undropped non-main currency excluded from snapshot"
+        assert not any(it["cost"]["itemId"] == 94164099 for it in snap["items"])
+    return 1
+
+
 def main():
     n = 0
     for check in (
@@ -1190,6 +1256,8 @@ def main():
         check_shop_probe_write,
         check_bonus_ces,
         check_raid_boss_extraction,
+        check_multi_server_event_lists,
+        check_qp_only_currencies_excluded,
     ):
         n += check()
     print(f"{n} tests passed")
