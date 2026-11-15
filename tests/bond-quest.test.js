@@ -177,55 +177,92 @@ test("Raid Boss / Storm Pod does not trigger Grand Duel party or class locks", (
   assert.equal(BondApp._partyKey(), "");
 });
 
-test("bondQuestSelect, bondGrandClassSelect, and bondGrandDiffSelect have no blank option in markup and stay unblankable in initQuestSelects", () => {
+test("Select Quest tabs, Grand Duel class select, and tier pills initialize cleanly and update live summary", () => {
   const html = fs.readFileSync(path.join(repoRoot, "src/pages/index.astro"), "utf8");
-  for (const id of ["bondQuestSelect", "bondGrandClassSelect", "bondGrandDiffSelect"]) {
-    const match = html.match(new RegExp(`<select[^>]*id="${id}"[^>]*>([\\s\\S]*?)<\\/select>`));
-    assert.ok(match, `${id} must exist in index.astro`);
-    assert.equal(match[1].trim(), "", `${id} must not ship a blank <option>`);
+  const classMatch = html.match(/<select[^>]*id="bondGrandClassSelect"[^>]*>([\s\S]*?)<\/select>/);
+  assert.ok(classMatch, "bondGrandClassSelect must exist in index.astro");
+  assert.ok(!classMatch[1].includes('value=""'), "bondGrandClassSelect must not ship a blank <option>");
+  for (const family of ["fq", "rb", "gd"]) {
+    assert.ok(
+      html.includes(`data-quest-family="${family}"`),
+      `bondQuestTabs must include data-quest-family="${family}"`,
+    );
   }
-  assert.ok(
-    html.includes('<label class="input-label" for="bondQuestSelect">Quest</label>'),
-    'bondQuestSelect label must be "Quest"',
-  );
 
-  const makeEl = (tag) => {
+  const makeEl = (tag, dataset = {}) => {
     const attrs = new Map();
     const listeners = new Map();
+    const classes = new Set();
     const children = [];
     const el = {
       tagName: tag.toUpperCase(),
       style: {},
+      dataset: { ...dataset },
       children,
       value: "",
-      setAttribute: (k, v) => attrs.set(k, String(v)),
+      textContent: "",
+      tabIndex: 0,
+      classList: {
+        toggle: (cls, force) => {
+          if (force === undefined) {
+            if (classes.has(cls)) classes.delete(cls);
+            else classes.add(cls);
+          } else if (force) {
+            classes.add(cls);
+          } else {
+            classes.delete(cls);
+          }
+        },
+        contains: (cls) => classes.has(cls),
+      },
+      setAttribute: (k, v) => {
+        attrs.set(k, String(v));
+        if (k.startsWith("data-")) {
+          const camel = k.slice(5).replace(/-([a-z])/g, (_, ch) => ch.toUpperCase());
+          el.dataset[camel] = String(v);
+        }
+      },
       removeAttribute: (k) => attrs.delete(k),
       getAttribute: (k) => (attrs.has(k) ? attrs.get(k) : null),
       appendChild: (node) => {
-        if (node.children) children.push(...node.children);
+        if (!node.tagName && Array.isArray(node.children)) children.push(...node.children);
         else children.push(node);
         return node;
       },
+      replaceChildren: (...nodes) => {
+        children.length = 0;
+        for (const node of nodes) {
+          if (node && !node.tagName && Array.isArray(node.children)) children.push(...node.children);
+          else if (node) children.push(node);
+        }
+      },
+      querySelectorAll: () => children,
       addEventListener: (ev, fn) => listeners.set(ev, fn),
       closest: () => ({ style: {} }),
-      trigger: (ev) => listeners.get(ev)?.(),
+      focus: () => {},
+      trigger: (ev, eventObj = {}) => listeners.get(ev)?.(eventObj),
     };
     return el;
   };
 
+  const tabList = makeEl("div");
+  for (const family of ["fq", "rb", "gd"]) {
+    tabList.appendChild(makeEl("button", { questFamily: family }));
+  }
+
   const elements = new Map([
-    ["bondQuestSelect", makeEl("select")],
+    ["bondQuestTabs", tabList],
     ["bondGrandClassSelect", makeEl("select")],
-    ["bondGrandDiffSelect", makeEl("select")],
+    ["bondGrandDiffPills", makeEl("div")],
     ["freeQuestRecLv", makeEl("input")],
-    ["freeQuestTierSelect", makeEl("select")],
-    ["freeQuestBondDisplay", makeEl("input")],
+    ["freeQuestTierPills", makeEl("div")],
     ["customApPerRun", makeEl("input")],
-    ["raidTierSelect", makeEl("select")],
+    ["raidTierPills", makeEl("div")],
     ["raidRecLv", makeEl("input")],
-    ["raidBondDisplay", makeEl("input")],
     ["raidApPerRun", makeEl("input")],
-    ["grandBondDisplay", makeEl("input")],
+    ["bondSummaryAp", makeEl("dd")],
+    ["bondSummaryRecLv", makeEl("dd")],
+    ["bondSummaryBond", makeEl("dd")],
   ]);
   const docEl = makeEl("html");
   const prevDoc = globalThis.document;
@@ -256,65 +293,59 @@ test("bondQuestSelect, bondGrandClassSelect, and bondGrandDiffSelect have no bla
       raidTier: "",
     };
     BondApp.initQuestSelects();
-    const main = elements.get("bondQuestSelect");
-    assert.deepEqual(
-      main.children.map((opt) => opt.getAttribute("value")),
-      ["fq", "rb", "gd"],
-    );
-    assert.equal(main.value, "fq");
+
     assert.equal(BondApp.state.questMain, "fq");
     assert.equal(docEl.getAttribute("data-bond-quest"), "fq");
-    assert.equal(elements.get("freeQuestBondDisplay").value, "855");
-    assert.equal(elements.get("raidBondDisplay").value, "1830");
+    assert.equal(elements.get("bondSummaryAp").textContent, "22");
+    assert.equal(elements.get("bondSummaryRecLv").textContent, "84");
+    assert.equal(elements.get("bondSummaryBond").textContent, (855).toLocaleString());
 
     const recLvInput = elements.get("freeQuestRecLv");
     recLvInput.value = "90";
     recLvInput.trigger("input");
     assert.equal(BondApp.state.customRecLv, 90);
-    assert.equal(elements.get("freeQuestBondDisplay").value, "915");
+    assert.equal(elements.get("bondSummaryRecLv").textContent, "90");
+    assert.equal(elements.get("bondSummaryBond").textContent, (915).toLocaleString());
 
-    const freeTier = elements.get("freeQuestTierSelect");
-    freeTier.value = "★";
-    freeTier.trigger("change");
+    const freePills = elements.get("freeQuestTierPills").children;
+    freePills.find((b) => b.dataset.value === "★").trigger("click");
     assert.equal(BondApp.state.customTier, "★");
-    assert.equal(elements.get("freeQuestBondDisplay").value, "1582");
+    assert.equal(elements.get("bondSummaryRecLv").textContent, "90★");
+    assert.equal(elements.get("bondSummaryBond").textContent, (1582).toLocaleString());
 
-    main.value = "rb";
-    main.trigger("change");
+    tabList.children.find((b) => b.dataset.questFamily === "rb").trigger("click");
     assert.equal(BondApp.state.questMain, "rb");
     assert.equal(docEl.getAttribute("data-bond-quest"), "rb");
-    const raidTier = elements.get("raidTierSelect");
-    raidTier.value = "★";
-    raidTier.trigger("change");
-    assert.equal(BondApp.state.raidTier, "★");
-    assert.equal(elements.get("raidBondDisplay").value, "3164");
+    assert.equal(elements.get("bondSummaryRecLv").textContent, "90");
+    assert.equal(elements.get("bondSummaryBond").textContent, (1830).toLocaleString());
 
-    main.value = "";
-    main.trigger("change");
-    assert.equal(main.value, "fq");
-    assert.equal(BondApp.state.questMain, "fq");
+    const raidPills = elements.get("raidTierPills").children;
+    raidPills.find((b) => b.dataset.value === "★").trigger("click");
+    assert.equal(BondApp.state.raidTier, "★");
+    assert.equal(elements.get("bondSummaryRecLv").textContent, "90★");
+    assert.equal(elements.get("bondSummaryBond").textContent, (3164).toLocaleString());
+
+    tabList.children.find((b) => b.dataset.questFamily === "gd").trigger("click");
+    assert.equal(BondApp.state.questMain, "gd");
+    assert.equal(docEl.getAttribute("data-bond-quest"), "gd");
 
     const gdClass = elements.get("bondGrandClassSelect");
-    const gdDiff = elements.get("bondGrandDiffSelect");
     assert.equal(gdClass.value, GRAND_CLASSES[0].key);
     assert.equal(BondApp.state.questClass, GRAND_CLASSES[0].key);
-    assert.equal(gdDiff.value, GRAND_DIFFICULTIES[0].key);
     assert.equal(BondApp.state.questDiff, GRAND_DIFFICULTIES[0].key);
+    assert.equal(elements.get("bondSummaryRecLv").textContent, "100");
+    assert.equal(elements.get("bondSummaryBond").textContent, (3164).toLocaleString());
 
     gdClass.value = "";
     gdClass.trigger("change");
     assert.equal(gdClass.value, GRAND_CLASSES[0].key);
     assert.equal(BondApp.state.questClass, GRAND_CLASSES[0].key);
 
-    gdDiff.value = "";
-    gdDiff.trigger("change");
-    assert.equal(gdDiff.value, GRAND_DIFFICULTIES[0].key);
-    assert.equal(BondApp.state.questDiff, GRAND_DIFFICULTIES[0].key);
-    assert.equal(elements.get("grandBondDisplay").value, "3164");
-
-    gdDiff.value = "7";
-    gdDiff.trigger("change");
-    assert.equal(elements.get("grandBondDisplay").value, "4748");
+    const gdPills = elements.get("bondGrandDiffPills").children;
+    gdPills.find((b) => b.dataset.value === "7").trigger("click");
+    assert.equal(BondApp.state.questDiff, "7");
+    assert.equal(elements.get("bondSummaryRecLv").textContent, "100★★★");
+    assert.equal(elements.get("bondSummaryBond").textContent, (4748).toLocaleString());
   } finally {
     globalThis.document = prevDoc;
   }

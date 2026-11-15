@@ -55,35 +55,35 @@ try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
 
     const initialMetrics = await page.evaluate(() => {
-      const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
+      const questCard = document.getElementById("bondQuestTabs")?.closest(".card");
       const grid = document.getElementById("servantGrid");
-      const freeRow = document.querySelector(".bond-quest-row--free");
-      const grandRow = document.querySelector(".bond-quest-row--grand");
+      const freePanel = document.querySelector(".bond-quest-panel--free");
+      const grandPanel = document.querySelector(".bond-quest-panel--grand");
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
         gridH: grid ? grid.getBoundingClientRect().height : 0,
         gridChildren: grid ? grid.children.length : 0,
-        freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
-        grandDisplay: grandRow ? getComputedStyle(grandRow).display : "",
+        freeDisplay: freePanel ? getComputedStyle(freePanel).display : "",
+        grandDisplay: grandPanel ? getComputedStyle(grandPanel).display : "",
       };
     });
 
     // Wait for bond-lazy and settled state
-    await page.waitForFunction(() => document.getElementById("bondQuestSelect").options.length > 1, { timeout: 10000 });
+    await page.waitForFunction(() => document.getElementById("bondQuestTabs")?.dataset.hydrated === "1", { timeout: 10000 });
 
     const settledMetrics = await page.evaluate(() => {
-      const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
+      const questCard = document.getElementById("bondQuestTabs")?.closest(".card");
       const grid = document.getElementById("servantGrid");
-      const freeRow = document.querySelector(".bond-quest-row--free");
-      const grandRow = document.querySelector(".bond-quest-row--grand");
+      const freePanel = document.querySelector(".bond-quest-panel--free");
+      const grandPanel = document.querySelector(".bond-quest-panel--grand");
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
         gridH: grid ? grid.getBoundingClientRect().height : 0,
         gridChildren: grid ? grid.children.length : 0,
-        freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
-        grandDisplay: grandRow ? getComputedStyle(grandRow).display : "",
+        freeDisplay: freePanel ? getComputedStyle(freePanel).display : "",
+        grandDisplay: grandPanel ? getComputedStyle(grandPanel).display : "",
       };
     });
 
@@ -97,8 +97,8 @@ try {
     assert(gridShift < 1.0, `Fresh session Servant Grid height shift is < 1px (actual shift: ${gridShift.toFixed(2)}px, initial: ${initialMetrics.gridH}px, settled: ${settledMetrics.gridH}px)`);
     assert(initialMetrics.gridChildren === 8, `Initial grid has exactly 8 pre-populated children (2 labels + 6 slots)`);
     assert(settledMetrics.gridChildren === 8, `Settled grid maintains exactly 8 children`);
-    assert(initialMetrics.freeDisplay === "none" && settledMetrics.freeDisplay === "none", `Free quest row is hidden both initial and settled`);
-    assert(initialMetrics.grandDisplay === "none" && settledMetrics.grandDisplay === "none", `Grand duel rows are hidden both initial and settled`);
+    assert(initialMetrics.freeDisplay === "block" && settledMetrics.freeDisplay === "block", `Free quest panel is display:block both initial and settled`);
+    assert(initialMetrics.grandDisplay === "none" && settledMetrics.grandDisplay === "none", `Grand duel panel is hidden both initial and settled`);
 
     await page.close();
   }
@@ -131,15 +131,15 @@ try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
 
     const initial = await page.evaluate(() => {
-      const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
-      const freeRow = document.querySelector(".bond-quest-row--free");
-      const grandRow = document.querySelector(".bond-quest-row--grand");
+      const questCard = document.getElementById("bondQuestTabs")?.closest(".card");
+      const freePanel = document.querySelector(".bond-quest-panel--free");
+      const grandPanel = document.querySelector(".bond-quest-panel--grand");
       const htmlAttr = document.documentElement.getAttribute("data-bond-quest");
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
-        freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
-        grandDisplay: grandRow ? getComputedStyle(grandRow).display : "",
+        freeDisplay: freePanel ? getComputedStyle(freePanel).display : "",
+        grandDisplay: grandPanel ? getComputedStyle(grandPanel).display : "",
         dataBondQuest: htmlAttr,
       };
     });
@@ -148,15 +148,15 @@ try {
     await page.waitForFunction(() => document.getElementById("freeQuestRecLv").value === "83", { timeout: 10000 });
 
     const settled = await page.evaluate(() => {
-      const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
-      const freeRow = document.querySelector(".bond-quest-row--free");
-      const grandRow = document.querySelector(".bond-quest-row--grand");
+      const questCard = document.getElementById("bondQuestTabs")?.closest(".card");
+      const freePanel = document.querySelector(".bond-quest-panel--free");
+      const grandPanel = document.querySelector(".bond-quest-panel--grand");
       const htmlAttr = document.documentElement.getAttribute("data-bond-quest");
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
-        freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
-        grandDisplay: grandRow ? getComputedStyle(grandRow).display : "",
+        freeDisplay: freePanel ? getComputedStyle(freePanel).display : "",
+        grandDisplay: grandPanel ? getComputedStyle(grandPanel).display : "",
         dataBondQuest: htmlAttr,
       };
     });
@@ -167,8 +167,8 @@ try {
     const shift = Math.abs(initial.questCardH - settled.questCardH);
     assert(shift < 1.0, `Saved FQ Select Quest card height shift is < 1px (actual: ${shift.toFixed(2)}px, initial: ${initial.questCardH}px, settled: ${settled.questCardH}px)`);
     assert(initial.dataBondQuest === "fq", `Initial data-bond-quest attribute is synchronously restored to 'fq'`);
-    assert(initial.freeDisplay === "flex" && settled.freeDisplay === "flex", `Free quest row is display:flex immediately from initial paint`);
-    assert(initial.grandDisplay === "none" && settled.grandDisplay === "none", `Grand duel rows are hidden`);
+    assert(initial.freeDisplay === "block" && settled.freeDisplay === "block", `Free quest panel is display:block immediately from initial paint`);
+    assert(initial.grandDisplay === "none" && settled.grandDisplay === "none", `Grand duel panel is hidden`);
 
     await page.close();
   }
@@ -200,13 +200,13 @@ try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
 
     const initial = await page.evaluate(() => {
-      const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
-      const freeRow = document.querySelector(".bond-quest-row--free");
+      const questCard = document.getElementById("bondQuestTabs")?.closest(".card");
+      const freePanel = document.querySelector(".bond-quest-panel--free");
       const de = document.documentElement;
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
-        freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
+        freeDisplay: freePanel ? getComputedStyle(freePanel).display : "",
         dataBondQuest: de.getAttribute("data-bond-quest"),
       };
     });
@@ -215,13 +215,13 @@ try {
     await page.waitForFunction(() => document.getElementById("freeQuestRecLv").value === "90", { timeout: 10000 });
 
     const settled = await page.evaluate(() => {
-      const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
-      const freeRow = document.querySelector(".bond-quest-row--free");
+      const questCard = document.getElementById("bondQuestTabs")?.closest(".card");
+      const freePanel = document.querySelector(".bond-quest-panel--free");
       const de = document.documentElement;
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
-        freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
+        freeDisplay: freePanel ? getComputedStyle(freePanel).display : "",
         dataBondQuest: de.getAttribute("data-bond-quest"),
       };
     });
@@ -232,7 +232,7 @@ try {
     const shift = Math.abs(initial.questCardH - settled.questCardH);
     assert(shift < 1.0, `Custom FQ Select Quest card height shift is < 1px (actual: ${shift.toFixed(2)}px, initial: ${initial.questCardH}px, settled: ${settled.questCardH}px)`);
     assert(initial.dataBondQuest === "fq", `data-bond-quest is 'fq'`);
-    assert(initial.freeDisplay === "flex" && settled.freeDisplay === "flex", `Free quest row is display:flex`);
+    assert(initial.freeDisplay === "block" && settled.freeDisplay === "block", `Free quest panel is display:block`);
 
     await page.close();
   }
@@ -264,15 +264,15 @@ try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
 
     const initial = await page.evaluate(() => {
-      const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
-      const freeRow = document.querySelector(".bond-quest-row--free");
-      const grandRows = Array.from(document.querySelectorAll(".bond-quest-row--grand"));
+      const questCard = document.getElementById("bondQuestTabs")?.closest(".card");
+      const freePanel = document.querySelector(".bond-quest-panel--free");
+      const grandPanel = document.querySelector(".bond-quest-panel--grand");
       const de = document.documentElement;
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
-        freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
-        grandDisplays: grandRows.map((r) => getComputedStyle(r).display),
+        freeDisplay: freePanel ? getComputedStyle(freePanel).display : "",
+        grandDisplay: grandPanel ? getComputedStyle(grandPanel).display : "",
         dataBondQuest: de.getAttribute("data-bond-quest"),
       };
     });
@@ -281,15 +281,15 @@ try {
     await page.waitForFunction(() => document.getElementById("bondGrandClassSelect").value === "0100", { timeout: 10000 });
 
     const settled = await page.evaluate(() => {
-      const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
-      const freeRow = document.querySelector(".bond-quest-row--free");
-      const grandRows = Array.from(document.querySelectorAll(".bond-quest-row--grand"));
+      const questCard = document.getElementById("bondQuestTabs")?.closest(".card");
+      const freePanel = document.querySelector(".bond-quest-panel--free");
+      const grandPanel = document.querySelector(".bond-quest-panel--grand");
       const de = document.documentElement;
 
       return {
         questCardH: questCard ? questCard.getBoundingClientRect().height : 0,
-        freeDisplay: freeRow ? getComputedStyle(freeRow).display : "",
-        grandDisplays: grandRows.map((r) => getComputedStyle(r).display),
+        freeDisplay: freePanel ? getComputedStyle(freePanel).display : "",
+        grandDisplay: grandPanel ? getComputedStyle(grandPanel).display : "",
         dataBondQuest: de.getAttribute("data-bond-quest"),
       };
     });
@@ -300,10 +300,10 @@ try {
     const shift = Math.abs(initial.questCardH - settled.questCardH);
     assert(shift < 1.0, `Grand Duel Select Quest card height shift is < 1px (actual: ${shift.toFixed(2)}px, initial: ${initial.questCardH}px, settled: ${settled.questCardH}px)`);
     assert(initial.dataBondQuest === "gd", `data-bond-quest is 'gd'`);
-    assert(initial.freeDisplay === "none" && settled.freeDisplay === "none", `Free quest row is hidden`);
+    assert(initial.freeDisplay === "none" && settled.freeDisplay === "none", `Free quest panel is hidden`);
     assert(
-      initial.grandDisplays.every((d) => d === "flex") && settled.grandDisplays.every((d) => d === "flex"),
-      `Both Grand Duel rows (class & difficulty) are display:flex initial and settled`,
+      initial.grandDisplay === "block" && settled.grandDisplay === "block",
+      `Grand Duel panel is display:block initial and settled`,
     );
 
     await page.close();
@@ -465,12 +465,12 @@ try {
       await page.goto(baseUrl, { waitUntil: "networkidle0" });
 
       // Give it time to load bond-lazy
-      await page.waitForFunction(() => document.getElementById("bondQuestSelect") !== null, { timeout: 5000 });
+      await page.waitForFunction(() => document.getElementById("bondQuestTabs") !== null, { timeout: 5000 });
       await new Promise((r) => setTimeout(r, 200));
 
       const healthy = await page.evaluate(() => {
         const grid = document.getElementById("servantGrid");
-        const questCard = document.getElementById("bondQuestSelect")?.closest(".card");
+        const questCard = document.getElementById("bondQuestTabs")?.closest(".card");
         return {
           gridOk: grid && grid.children.length === 8,
           questCardOk: !!questCard,

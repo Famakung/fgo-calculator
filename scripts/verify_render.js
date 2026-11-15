@@ -920,7 +920,7 @@ try {
   await page.waitForSelector(".servant-add-slot");
   /* The Grand Servant tick lives only in a Grand Duel party, and each quest choice owns its own rack, so
      the card the blocks below measure is built inside Grand Duel from here on. */
-  await page.select("#bondQuestSelect", "gd");
+  await page.click('#bondQuestTabs .bond-quest-tab-btn[data-quest-family="gd"]');
   await page.waitForSelector(".servant-add-slot");
   await page.click(".servant-add-slot");
   await page.waitForSelector("#servantModal.open .servant-picker-item");
@@ -1138,7 +1138,7 @@ try {
      .bond-card-actions--end with the bond button's auto width (the old full-width pin was retired by
      owner directive). */
   const order = await page.evaluate(() => {
-    const quest = document.getElementById("bondQuestSelect").closest(".card");
+    const quest = document.getElementById("bondQuestTabs").closest(".card");
     const party = document.getElementById("servantGrid").closest(".card");
     const btn = document.getElementById("bondCalculateBtn");
     const partyInner = party.querySelector(".card-inner");
@@ -1237,9 +1237,9 @@ try {
       `support CE rate: the result card shows ${JSON.stringify(split.badges)}, want one +5% and one +15% badge`,
     );
   }
-  // 5%+15% = 200 of the 1,000-point base, x1.24 frontline (one borrowed support in the first three),
-  // +200 frontline flat and +40 for that support's +4%. Both essences boost the one calculated servant.
-  const wantBonus = Math.floor(200 * 1.24) + 200 + 40;
+  // 5%+15% = 201 of the 1,005-point base (REC Lv.99), x1.24 frontline (one borrowed support in the first three),
+  // +201 frontline flat and +40 for that support's +4% (floor(1005 * 0.04) = 40). Both essences boost the one calculated servant.
+  const wantBonus = Math.floor(201 * 1.24) + 201 + 40;
   const gotBonus = Number((split.bonus || "").replace(/,/g, ""));
   if (gotBonus !== wantBonus) {
     errors.push(
@@ -1342,30 +1342,30 @@ try {
       `teapot: the "Out of" chip draws its teapot ${teapotSplit.exhaust.imgH}px tall, want 48px (--ce-badge-h)`,
     );
   }
-  // The one teapot buys one 2,400-point run, which does not clear Lv.0->1 — so it names no level at all.
+  // The one teapot buys one 2,412-point run (REC Lv.99 = 1,005 base), which does not clear Lv.0->1 — so it names no level at all.
   if (
     !teapotSplit.boosted ||
-    teapotSplit.boosted.info !== "1,000(+1,400)" ||
+    teapotSplit.boosted.info !== "1,005(+1,407)" ||
     teapotSplit.boosted.runs !== "1 run" ||
     !teapotSplit.boosted.teapot ||
     teapotSplit.boosted.levels.length !== 0
   ) {
     errors.push(
-      `teapot: the boosted block reads ${JSON.stringify(teapotSplit.boosted)}, want "1,000(+1,400)", "1 run", ` +
+      `teapot: the boosted block reads ${JSON.stringify(teapotSplit.boosted)}, want "1,005(+1,407)", "1 run", ` +
         `teapot badge and NO level row (the run cleared no level)`,
     );
   }
   // The continuation keeps the bond levels the teapots never got through, and their own run counts.
   if (
     !teapotSplit.plain ||
-    teapotSplit.plain.info !== "1,000(+200)" ||
+    teapotSplit.plain.info !== "1,005(+201)" ||
     teapotSplit.plain.runs !== "2 runs" ||
     teapotSplit.plain.teapot ||
     JSON.stringify(teapotSplit.plain.levels) !== JSON.stringify(["Bond Lv.0->2", "Bond Lv.2->3"]) ||
     JSON.stringify(teapotSplit.plain.levelRuns) !== JSON.stringify(["1 run", "1 run"])
   ) {
     errors.push(
-      `teapot: the continuation reads ${JSON.stringify(teapotSplit.plain)}, want "1,000(+200)" / "2 runs" ` +
+      `teapot: the continuation reads ${JSON.stringify(teapotSplit.plain)}, want "1,005(+201)" / "2 runs" ` +
         `with Lv.0->2 (1 run) and Lv.2->3 (1 run)`,
     );
   }
@@ -1384,13 +1384,13 @@ try {
     teapotRemoved.grids !== 1 ||
     teapotRemoved.exhaust ||
     !teapotRemoved.boosted ||
-    teapotRemoved.boosted.info !== "1,000(+200)" ||
+    teapotRemoved.boosted.info !== "1,005(+201)" ||
     teapotRemoved.boosted.runs !== "4 runs" ||
     teapotRemoved.boosted.teapot ||
     JSON.stringify(teapotRemoved.boosted.levels) !== JSON.stringify(["Bond Lv.0->2", "Bond Lv.2->3"])
   ) {
     errors.push(
-      `teapot: after Remove it drew ${JSON.stringify(teapotRemoved)}, want one plain grid "1,000(+200)" / "4 runs" ` +
+      `teapot: after Remove it drew ${JSON.stringify(teapotRemoved)}, want one plain grid "1,005(+201)" / "4 runs" ` +
         `over Lv.0->2 and Lv.2->3`,
     );
   }
@@ -1400,7 +1400,7 @@ try {
   await setTeapotCount(99);
   await page.click("#teapotToggle");
   const idle = await readTeapot();
-  if (idle.boosted && idle.boosted.info === "1,000(+1,400)") {
+  if (idle.boosted && idle.boosted.info === "1,005(+1,407)") {
     errors.push("teapot: flipping the switch re-priced the plan without a Calculate click");
   }
 
@@ -1412,7 +1412,7 @@ try {
     enough.grids !== 1 ||
     enough.exhaust ||
     !enough.boosted ||
-    enough.boosted.info !== "1,000(+1,400)" ||
+    enough.boosted.info !== "1,005(+1,407)" ||
     enough.boosted.runs !== "2 runs" ||
     !enough.boosted.teapot ||
     JSON.stringify(enough.boosted.levels) !== JSON.stringify(["Bond Lv.0->3"]) ||
@@ -1420,7 +1420,7 @@ try {
   ) {
     errors.push(
       `teapot: with the stock covering the plan it drew ${JSON.stringify(enough)}, ` +
-        `want one boosted grid "1,000(+1,400)" / "2 runs" with its Lv.0->3 row`,
+        `want one boosted grid "1,005(+1,407)" / "2 runs" with its Lv.0->3 row`,
     );
   }
   console.log(
@@ -1442,13 +1442,16 @@ try {
 
   const questRowFlags = () =>
     page.evaluate(() => {
-      const shown = (id) => document.getElementById(id).closest(".input-row").style.display !== "none";
+      const shown = (id) => {
+        const panel = document.getElementById(id)?.closest(".bond-quest-panel");
+        return Boolean(panel && getComputedStyle(panel).display !== "none");
+      };
       return {
         ap: shown("customApPerRun"),
         recLv: shown("freeQuestRecLv"),
-        bondDisplay: shown("freeQuestBondDisplay"),
+        bondDisplay: getComputedStyle(document.getElementById("bondSummaryBond")).display !== "none",
         gdClass: shown("bondGrandClassSelect"),
-        gdDiff: shown("bondGrandDiffSelect"),
+        gdDiff: shown("bondGrandDiffPills"),
       };
     });
 
@@ -1545,18 +1548,18 @@ try {
     return seen;
   };
 
-  await page.select("#bondQuestSelect", "fq");
+  await page.click('#bondQuestTabs .bond-quest-tab-btn[data-quest-family="fq"]');
   const fqRows = await questRowFlags();
   if (!fqRows.ap || !fqRows.recLv || !fqRows.bondDisplay || fqRows.gdClass || fqRows.gdDiff) {
     errors.push(`quest cascade: Free Quest drew ${JSON.stringify(fqRows)}, want AP, REC Lv., Bond/Run rows only`);
   }
 
-  await page.select("#bondQuestSelect", "gd");
+  await page.click('#bondQuestTabs .bond-quest-tab-btn[data-quest-family="gd"]');
   const grandRows = await questRowFlags();
   await page.select("#bondGrandClassSelect", "extra1");
-  await page.select("#bondGrandDiffSelect", "1");
-  if (!grandRows.gdClass || !grandRows.gdDiff || grandRows.ap || grandRows.recLv || grandRows.bondDisplay) {
-    errors.push(`quest cascade: Grand Duel drew ${JSON.stringify(grandRows)}, want class and difficulty rows only`);
+  await page.click('#bondGrandDiffPills .bond-tier-pill[data-value="1"]');
+  if (!grandRows.gdClass || !grandRows.gdDiff || grandRows.ap || grandRows.recLv || !grandRows.bondDisplay) {
+    errors.push(`quest cascade: Grand Duel drew ${JSON.stringify(grandRows)}, want class, difficulty, and shared summary`);
   }
 
   /* Entering Grand Duel opens a rack of its own: the Mash picked under Free Quest does not follow, and a
@@ -1884,9 +1887,9 @@ try {
   await page.click('.tab-btn[data-tab="bond"]');
   await page.waitForSelector(".servant-slot", { timeout: 15000 });
   const questRestored = await page.evaluate(() => ({
-    main: document.getElementById("bondQuestSelect").value,
+    main: document.querySelector("#bondQuestTabs .bond-quest-tab-btn.active")?.dataset.questFamily,
     klass: document.getElementById("bondGrandClassSelect").value,
-    diff: document.getElementById("bondGrandDiffSelect").value,
+    diff: document.querySelector("#bondGrandDiffPills .bond-tier-pill.active")?.dataset.value,
     servant: 6 - document.querySelectorAll(".servant-add-slot").length,
   }));
   if (questRestored.main !== "gd" || questRestored.klass !== "all" || questRestored.diff !== "1") {
@@ -1895,14 +1898,12 @@ try {
   if (questRestored.servant !== 1) {
     errors.push(`party per class: after reload All held ${questRestored.servant} servant(s), want its own Mash`);
   }
-  const lv100 = await page.evaluate(
-    () => document.getElementById("bondGrandDiffSelect").selectedOptions[0].textContent,
-  );
-  if (!lv100.includes("3164")) {
+  const lv100 = await page.evaluate(() => document.getElementById("bondSummaryBond").textContent);
+  if (!lv100.replace(/,/g, "").includes("3164")) {
     errors.push(`quest table: Lv.100 difficulty reads "${lv100}", want 3164 pts`);
   }
   // And the shared party is still where it was parked: back to Free Quest, the Mash returns.
-  await page.select("#bondQuestSelect", "fq");
+  await page.click('#bondQuestTabs .bond-quest-tab-btn[data-quest-family="fq"]');
   const fqShared = 6 - (await blankSlots());
   if (fqShared !== 1) {
     errors.push(`party per class: Free Quest reopened with ${fqShared} servant(s), want the parked Mash`);
@@ -1947,7 +1948,7 @@ try {
         `want one block, one chip, no tick`,
     );
   }
-  await page.select("#bondQuestSelect", "gd");
+  await page.click('#bondQuestTabs .bond-quest-tab-btn[data-quest-family="gd"]');
   await page.waitForSelector(".slot-ce-block", { timeout: 15000 });
   const legacyGd = await ceTickState();
   if (legacyGd.blocks !== 1 || legacyGd.ticks !== 1 || legacyGd.chips !== 2) {

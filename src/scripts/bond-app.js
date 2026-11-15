@@ -153,75 +153,101 @@ export const BondApp = {
   /* ============================================
      QUEST SELECTS
      ============================================ */
-  /* The Select Quest card cascades: a family first (Free Quest or Grand Duel), then either the
-     Free Quest AP/Run and REC Lv. inputs (auto-computing Bond/Run = recLv * 10 + 15) or a Grand Duel
-     class group plus a Rank-Up Training Battle level. */
+  /* The Select Quest card uses segmented family tabs (Free Quest, Raid Boss/Bleached Earth,
+     Grand Duel), 1-tap tier/difficulty pill groups, and a live summary strip. */
   initQuestSelects() {
-    const main = document.getElementById("bondQuestSelect");
+    const tabList = document.getElementById("bondQuestTabs");
     const gdClass = document.getElementById("bondGrandClassSelect");
-    const gdDiff = document.getElementById("bondGrandDiffSelect");
+    const gdDiffPills = document.getElementById("bondGrandDiffPills");
     const recLvInput = document.getElementById("freeQuestRecLv");
-    const freeTierSelect = document.getElementById("freeQuestTierSelect");
+    const freeTierPills = document.getElementById("freeQuestTierPills");
     const customApInput = document.getElementById("customApPerRun");
-    const raidTierSelect = document.getElementById("raidTierSelect");
+    const raidTierPills = document.getElementById("raidTierPills");
     const raidRecLvInput = document.getElementById("raidRecLv");
     const raidApInput = document.getElementById("raidApPerRun");
-    if (!main || !gdClass || !gdDiff) return;
+    if (!tabList || !gdClass || !gdDiffPills) return;
 
-    const addOptions = (select, items) => {
-      const frag = document.createDocumentFragment();
-      items.forEach(({ value, label }) => {
-        const opt = DOMFactory.el("option", null, { value });
-        opt.textContent = label;
-        frag.appendChild(opt);
-      });
-      select.appendChild(frag);
+    const validFamilies = new Set(QUEST_FAMILIES.map((f) => f.key));
+    if (!validFamilies.has(this.state.questMain)) {
+      this.state.questMain = "fq";
+    }
+
+    const tabBtns = Array.from(tabList.querySelectorAll(".bond-quest-tab-btn"));
+    const selectFamily = (family) => {
+      if (!validFamilies.has(family) || family === this.state.questMain) return;
+      this.stashParty();
+      this.state.questMain = family;
+      this.applyParty();
+      this._refs?.ServantSelector?.resetFilters?.();
+      this.saveState();
+      this.syncQuestRows();
     };
 
-    addOptions(
-      main,
-      QUEST_FAMILIES.map((f) => ({ value: f.key, label: f.name })),
-    );
-    addOptions(
-      gdClass,
-      GRAND_CLASSES.map((c) => ({ value: c.key, label: c.name })),
-    );
-    addOptions(
-      gdDiff,
+    tabBtns.forEach((btn, idx) => {
+      btn.addEventListener("click", () => selectFamily(btn.dataset.questFamily));
+      btn.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        const nextIdx = (idx + (e.key === "ArrowRight" ? 1 : -1) + tabBtns.length) % tabBtns.length;
+        tabBtns[nextIdx].focus();
+        selectFamily(tabBtns[nextIdx].dataset.questFamily);
+      });
+    });
+
+    if ((gdClass.options?.length ?? 0) === 0) {
+      const gdFrag = document.createDocumentFragment();
+      GRAND_CLASSES.forEach((c) => {
+        const opt = DOMFactory.el("option", null, { value: c.key });
+        opt.textContent = c.name;
+        gdFrag.appendChild(opt);
+      });
+      gdClass.replaceChildren(gdFrag);
+    }
+    gdClass.value = this.state.questClass;
+    if (!gdClass.value) {
+      gdClass.value = GRAND_CLASSES[0].key;
+      this.state.questClass = GRAND_CLASSES[0].key;
+    }
+    gdClass.addEventListener("change", () => {
+      this.stashParty();
+      if (!gdClass.value) gdClass.value = GRAND_CLASSES[0].key;
+      this.state.questClass = gdClass.value;
+      this.applyParty();
+      this._refs?.ServantSelector?.resetFilters?.();
+      this.saveState();
+      this.syncQuestSummary();
+    });
+
+    this._initTierPills(
+      gdDiffPills,
       GRAND_DIFFICULTIES.map((d) => ({
         value: d.key,
-        label: d.tier,
+        label: d.lv.replace(/^Lv\./, ""),
+        ariaLabel: d.lv,
       })),
+      "questDiff",
+      GRAND_DIFFICULTIES[0].key,
     );
 
-    this._questSelects = { main, gdClass, gdDiff };
+    if (freeTierPills) {
+      this._initTierPills(
+        freeTierPills,
+        QUEST_TIERS.map((t) => ({ value: t.key, label: t.label, ariaLabel: t.label })),
+        "customTier",
+        "",
+      );
+    }
 
-    /* Each select owns one state field and saves it on change — the class limit has to survive a reload
-       even if the player never presses Calculate. The two fields that decide which party is on screen
-       also swap it, so the old one is put away before the new one is named. */
-    const bind = (key, select, fallback) => {
-      const swaps = key === "questMain" || key === "questClass";
-      select.value = this.state[key];
-      if (!select.value) {
-        select.value = fallback;
-        this.state[key] = fallback;
-      }
-      select.addEventListener("change", () => {
-        if (swaps) this.stashParty();
-        if (!select.value) select.value = fallback;
-        this.state[key] = select.value;
-        if (swaps) {
-          this.applyParty();
-          this._refs?.ServantSelector?.resetFilters?.();
-        }
-        this.saveState();
-        this.syncGrandBondDisplay();
-        this.syncQuestRows();
-      });
-    };
-    bind("questMain", main, "fq");
-    bind("questClass", gdClass, GRAND_CLASSES[0].key);
-    bind("questDiff", gdDiff, GRAND_DIFFICULTIES[0].key);
+    if (raidTierPills) {
+      this._initTierPills(
+        raidTierPills,
+        QUEST_TIERS.map((t) => ({ value: t.key, label: t.label, ariaLabel: t.label })),
+        "raidTier",
+        "",
+      );
+    }
+
+    this._questSelects = { tabList, tabBtns, gdClass };
 
     if (recLvInput) {
       recLvInput.value = this.state.customRecLv;
@@ -244,35 +270,20 @@ export const BondApp = {
         this.saveState();
       });
     }
-    if (freeTierSelect) {
-      addOptions(
-        freeTierSelect,
-        QUEST_TIERS.map((t) => ({ value: t.key, label: t.label })),
-      );
-      freeTierSelect.value = this.state.customTier ?? "";
-      freeTierSelect.addEventListener("change", () => {
-        this.state.customTier = freeTierSelect.value;
-        this.syncFreeQuestBondDisplay();
-        this.saveState();
-      });
-    }
     if (customApInput) {
       customApInput.value = this.state.customAp;
+      customApInput.addEventListener("input", () => {
+        const parsed = parseFloat(customApInput.value);
+        if (!isNaN(parsed)) {
+          this.state.customAp = Validator.clamp(parsed, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
+          this.saveState();
+        }
+        this.syncQuestSummary();
+      });
       customApInput.addEventListener("change", () => {
         this.state.customAp = Validator.clamp(customApInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
         customApInput.value = this.state.customAp;
-        this.saveState();
-      });
-    }
-    if (raidTierSelect) {
-      addOptions(
-        raidTierSelect,
-        QUEST_TIERS.map((t) => ({ value: t.key, label: t.label })),
-      );
-      raidTierSelect.value = this.state.raidTier ?? "";
-      raidTierSelect.addEventListener("change", () => {
-        this.state.raidTier = raidTierSelect.value;
-        this.syncRaidBondDisplay();
+        this.syncQuestSummary();
         this.saveState();
       });
     }
@@ -299,55 +310,136 @@ export const BondApp = {
     }
     if (raidApInput) {
       raidApInput.value = this.state.raidAp ?? BOND_CONSTANTS.DEFAULT_RAID_AP;
+      raidApInput.addEventListener("input", () => {
+        const parsed = parseFloat(raidApInput.value);
+        if (!isNaN(parsed)) {
+          this.state.raidAp = Validator.clamp(parsed, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
+          this.saveState();
+        }
+        this.syncQuestSummary();
+      });
       raidApInput.addEventListener("change", () => {
         this.state.raidAp = Validator.clamp(raidApInput.value, 0, BOND_CONSTANTS.MAX_CUSTOM_AP);
         raidApInput.value = this.state.raidAp;
+        this.syncQuestSummary();
         this.saveState();
       });
     }
-    this.syncFreeQuestBondDisplay();
-    this.syncRaidBondDisplay();
-    this.syncGrandBondDisplay();
     this.syncQuestRows();
+    if (tabList.dataset) tabList.dataset.hydrated = "1";
   },
 
-  syncFreeQuestBondDisplay(recLv = this.state.customRecLv, tier = this.state.customTier) {
-    const bondDisplay = document.getElementById("freeQuestBondDisplay");
-    if (bondDisplay) {
-      bondDisplay.value = String(Quest.freeQuestBond(recLv, tier));
+  _initTierPills(container, items, stateKey, fallback) {
+    const valid = new Set(items.map((i) => i.value));
+    if (!valid.has(this.state[stateKey])) {
+      this.state[stateKey] = fallback;
     }
-  },
 
-  syncRaidBondDisplay(recLv = this.state.raidRecLv, tier = this.state.raidTier) {
-    const bondDisplay = document.getElementById("raidBondDisplay");
-    if (bondDisplay) {
-      bondDisplay.value = String(Quest.raidQuestBond(recLv, tier));
+    let btns = Array.from(container.querySelectorAll?.(".bond-tier-pill") || []);
+    if (btns.length !== items.length) {
+      const frag = document.createDocumentFragment();
+      btns = items.map((item) => {
+        const btn = DOMFactory.el("button", "bond-tier-pill", {
+          type: "button",
+          role: "radio",
+          "data-value": item.value,
+          "aria-label": item.ariaLabel,
+        });
+        btn.textContent = item.label;
+        frag.appendChild(btn);
+        return btn;
+      });
+      container.replaceChildren(frag);
     }
+
+    const syncActive = (val) => {
+      btns.forEach((btn) => {
+        const on = btn.dataset.value === val;
+        btn.classList.toggle("active", on);
+        btn.setAttribute("aria-checked", on ? "true" : "false");
+        btn.tabIndex = on ? 0 : -1;
+      });
+    };
+
+    const selectVal = (val) => {
+      if (!valid.has(val)) return;
+      this.state[stateKey] = val;
+      syncActive(val);
+      this.saveState();
+      this.syncQuestSummary();
+    };
+
+    btns.forEach((btn, idx) => {
+      btn.addEventListener("click", () => selectVal(btn.dataset.value));
+      btn.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+        e.preventDefault();
+        const delta = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1;
+        const nextIdx = (idx + delta + btns.length) % btns.length;
+        btns[nextIdx].focus();
+        selectVal(btns[nextIdx].dataset.value);
+      });
+    });
+
+    syncActive(this.state[stateKey]);
   },
 
-  syncGrandBondDisplay(questDiff = this.state.questDiff) {
-    const bondDisplay = document.getElementById("grandBondDisplay");
-    if (bondDisplay) {
-      bondDisplay.value = String(Quest.bondPerRun({ questMain: "gd", questDiff }));
+  syncQuestSummary(overrideRecLv = null) {
+    const apEl = document.getElementById("bondSummaryAp");
+    const recEl = document.getElementById("bondSummaryRecLv");
+    const bondEl = document.getElementById("bondSummaryBond");
+    if (!apEl || !recEl || !bondEl) return;
+
+    const main = this.state.questMain;
+    let ap = this.state.customAp;
+    let recText;
+    let bond;
+
+    if (main === "gd") {
+      ap = Quest.apPerRun({ questMain: "gd" });
+      const diffEntry = GRAND_DIFFICULTIES.find((d) => d.key === this.state.questDiff) || GRAND_DIFFICULTIES[0];
+      recText = diffEntry.lv.replace(/^Lv\./, "");
+      bond = Quest.bondPerRun({ questMain: "gd", questDiff: this.state.questDiff });
+    } else if (main === "rb") {
+      ap = this.state.raidAp ?? BOND_CONSTANTS.DEFAULT_RAID_AP;
+      const recLv = overrideRecLv ?? this.state.raidRecLv ?? BOND_CONSTANTS.DEFAULT_RAID_REC_LV;
+      recText = `${recLv}${this.state.raidTier || ""}`;
+      bond = Quest.raidQuestBond(recLv, this.state.raidTier);
+    } else {
+      const recLv = overrideRecLv ?? this.state.customRecLv;
+      recText = `${recLv}${this.state.customTier || ""}`;
+      bond = Quest.freeQuestBond(recLv, this.state.customTier);
     }
+
+    apEl.textContent = String(ap);
+    recEl.textContent = recText;
+    bondEl.textContent = bond.toLocaleString();
   },
 
-  /* Only the rows belonging to the chosen family show.
-     `hidden` cannot do this job: `.input-row` declares a display, which outranks the UA rule. */
+  syncFreeQuestBondDisplay(recLv = this.state.customRecLv) {
+    this.syncQuestSummary(recLv);
+  },
+
+  syncRaidBondDisplay(recLv = this.state.raidRecLv) {
+    this.syncQuestSummary(recLv);
+  },
+
+  syncGrandBondDisplay() {
+    this.syncQuestSummary();
+  },
+
+  /* Only the panel belonging to the chosen family shows via html[data-bond-quest]. */
   syncQuestRows() {
-    const { gdClass, gdDiff } = this._questSelects;
     const freeOn = this.state.questMain === "fq";
     const grandOn = this.state.questMain === "gd";
     const raidOn = this.state.questMain === "rb";
     this._syncQuestAttributes(freeOn, grandOn, raidOn);
-    document.querySelectorAll?.(".bond-quest-row--free").forEach((row) => {
-      row.style.display = freeOn ? "flex" : "none";
+    this._questSelects?.tabBtns?.forEach((btn) => {
+      const on = btn.dataset.questFamily === this.state.questMain;
+      btn.classList.toggle("active", on);
+      btn.setAttribute("aria-selected", on ? "true" : "false");
     });
-    document.querySelectorAll?.(".bond-quest-row--raid").forEach((row) => {
-      row.style.display = raidOn ? "flex" : "none";
-    });
-    gdClass.closest(".input-row").style.display = grandOn ? "flex" : "none";
-    gdDiff.closest(".input-row").style.display = grandOn ? "flex" : "none";
+    this.syncQuestSummary();
   },
 
   _syncQuestAttributes(freeOn, grandOn, raidOn = false) {
