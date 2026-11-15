@@ -37,7 +37,7 @@ export const BOND_CONSTANTS = {
   DEFAULT_CUSTOM_AP: 22,
   MAX_CUSTOM_AP: 999,
   MIN_REC_LV: 1,
-  MAX_REC_LV: 100,
+  MAX_REC_LV: 90,
   DEFAULT_REC_LV: 84,
   FREE_QUEST_BOND_PER_LV: 10,
   FREE_QUEST_BOND_BASE: 15,
@@ -132,7 +132,7 @@ export const GENDER_FILTERS = [
 export const QUEST_FAMILIES = [
   { key: "fq", name: "Free Quest" },
   { key: "rb", name: "Raid Boss/Bleached Earth" },
-  { key: "gd", name: "Grand Duel" },
+  { key: "gd", name: "Grand Duel/Raid" },
 ];
 
 export const QUEST_TIERS = [
@@ -179,4 +179,6 @@ export const GRAND_DIFFICULTIES = [
   { key: "5", roman: "V", lv: "Lv.100\u2605", tier: "\u2605", bond: 4147 },
   { key: "6", roman: "VI", lv: "Lv.100\u2605\u2605", tier: "\u2605\u2605", bond: 4438 },
   { key: "7", roman: "VII", lv: "Lv.100\u2605\u2605\u2605", tier: "\u2605\u2605\u2605", bond: 4748 },
+  { key: "8", roman: "VIII", lv: "Lv.110\u2605\u2605\u2605", tier: "\u2605\u2605\u2605", bond: 5081 },
+  { key: "9", roman: "IX", lv: "Lv.120\u2605\u2605\u2605", tier: "\u2605\u2605\u2605", bond: 5436 },
 ];

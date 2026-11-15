@@ -22,12 +22,13 @@ test("freeQuestBond and Free Quest bondPerRun compute recLv * 10 + 15 with clamp
   assert.equal(Quest.freeQuestBond(90), 915);
   assert.equal(Quest.freeQuestBond(0), 25);
   assert.equal(Quest.freeQuestBond(-10), 25);
-  assert.equal(Quest.freeQuestBond(9999), 1015);
+  assert.equal(Quest.freeQuestBond(91), 915);
+  assert.equal(Quest.freeQuestBond(9999), 915);
   assert.equal(Quest.freeQuestBond(83.9), 845);
   assert.equal(Quest.bondPerRun({ questMain: "fq" }), 855);
   assert.equal(Quest.bondPerRun({ questMain: "fq" }, 83), 845);
   assert.equal(Quest.bondPerRun({ questMain: "fq" }, 90), 915);
-  assert.equal(Quest.bondPerRun({ questMain: "fq" }, 9999), 1015);
+  assert.equal(Quest.bondPerRun({ questMain: "fq" }, 9999), 915);
   assert.equal(Quest.freeQuestBond(90, ""), 915);
   assert.equal(Quest.freeQuestBond(90, "+"), 1098);
   assert.equal(Quest.freeQuestBond(90, "++"), 1318);
@@ -61,12 +62,14 @@ test("golden fruit divides total AP by max AP rounded up", () => {
 test("a grand duel pays its difficulty whatever the class, and nothing pays zero", () => {
   assert.equal(Quest.bondPerRun({ questMain: "gd", questClass: "0100", questDiff: "1" }), 3164);
   assert.equal(Quest.bondPerRun({ questMain: "gd", questClass: "extra", questDiff: "7" }), 4748);
+  assert.equal(Quest.bondPerRun({ questMain: "gd", questClass: "all", questDiff: "8" }), 5081);
+  assert.equal(Quest.bondPerRun({ questMain: "gd", questClass: "all", questDiff: "9" }), 5436);
   assert.equal(Quest.bondPerRun({ questMain: "gd", questDiff: "" }), 0);
   assert.equal(Quest.bondPerRun({ questMain: "" }), 0);
 });
 
-test("the difficulties rise with their level, seven steps from Lv.100 to Lv.100★★★", () => {
-  assert.equal(GRAND_DIFFICULTIES.length, 7);
+test("the difficulties rise with their level, nine steps from Lv.100 to Lv.120★★★", () => {
+  assert.equal(GRAND_DIFFICULTIES.length, 9);
   GRAND_DIFFICULTIES.reduce((prev, d) => {
     assert.ok(d.bond > prev, `${d.roman} must pay more than the level below it`);
     return d.bond;
@@ -157,6 +160,8 @@ test("raidQuestBond, bondPerRun, and apPerRun compute Raid Boss / Storm Pod valu
   assert.equal(Quest.raidQuestBond(90, "★★"), 3797);
   assert.equal(Quest.raidQuestBond(90, "★★★"), 4557);
   assert.equal(Quest.raidQuestBond(90, "invalid"), 1830);
+  assert.equal(Quest.raidQuestBond(91, ""), 1830);
+  assert.equal(Quest.raidQuestBond(9999, ""), 1830);
   assert.equal(Quest.bondPerRun({ questMain: "rb" }), 1830);
   assert.equal(Quest.bondPerRun({ questMain: "rb", raidRecLv: 90, raidTier: "★" }), 3164);
   assert.equal(Quest.bondPerRun({ questMain: "rb", raidRecLv: 90, raidTier: "★★★" }), 4557);

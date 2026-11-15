@@ -374,7 +374,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                   role="tab"
                   aria-selected="false"
                 >
-                  Grand Duel
+                  Grand Duel/Raid
                 </button>
               </div>
 
@@ -399,7 +399,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                       class="input-field bond-quest-input"
                       id="freeQuestRecLv"
                       min="1"
-                      max="100"
+                      max="90"
                       value="84"
                       inputmode="numeric"
                     />
@@ -451,7 +451,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                       class="input-field bond-quest-input"
                       id="raidRecLv"
                       min="1"
-                      max="100"
+                      max="90"
                       value="90"
                       inputmode="numeric"
                     />
@@ -578,10 +578,10 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
 
                 var tierSteps = stepMap(tiers);
                 var customAp = b && b.customAp !== undefined ? clampInt(b.customAp, 0, 999, 22) : 22;
-                var customRecLv = b && b.customRecLv !== undefined ? clampInt(b.customRecLv, 1, 100, 84) : 84;
+                var customRecLv = b && b.customRecLv !== undefined ? clampInt(b.customRecLv, 1, 90, 84) : 84;
                 var customTier = b && typeof b.customTier === "string" && tierSteps[b.customTier] !== undefined ? b.customTier : "";
                 var raidAp = b && b.raidAp !== undefined ? clampInt(b.raidAp, 0, 999, 40) : 40;
-                var raidRecLv = b && b.raidRecLv !== undefined ? clampInt(b.raidRecLv, 1, 100, 90) : 90;
+                var raidRecLv = b && b.raidRecLv !== undefined ? clampInt(b.raidRecLv, 1, 90, 90) : 90;
                 var raidTier = b && typeof b.raidTier === "string" && tierSteps[b.raidTier] !== undefined ? b.raidTier : "";
                 var questClass = b && typeof b.questClass === "string" && b.questClass ? b.questClass : "all";
                 var questDiff = b && typeof b.questDiff === "string" ? b.questDiff : "1";

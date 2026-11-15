@@ -201,7 +201,9 @@ try {
             return {
               name: ((c.querySelector(".cefilter-servant-name") || {}).textContent || "?").trim().slice(0, 18),
               justify: kcs.justifyContent,
-              topInset: f(first.getBoundingClientRect().top - (c.getBoundingClientRect().top + parseFloat(kcs.borderTopWidth))),
+              topInset: f(
+                first.getBoundingClientRect().top - (c.getBoundingClientRect().top + parseFloat(kcs.borderTopWidth)),
+              ),
             };
           }),
         };
@@ -1167,7 +1169,8 @@ try {
     const br = btn.getBoundingClientRect();
     const ar = actions.getBoundingClientRect();
     return {
-      inActions: actions.classList.contains("bond-card-actions") && actions.classList.contains("bond-card-actions--end"),
+      inActions:
+        actions.classList.contains("bond-card-actions") && actions.classList.contains("bond-card-actions--end"),
       lastChild: actions === inner.lastElementChild,
       card: title ? title.textContent.trim() : null,
       ratio: br.width / actions.clientWidth,
@@ -1176,13 +1179,19 @@ try {
   });
   await page.click('.tab-btn[data-tab="bond"]');
   if (!eventBtn.inActions || eventBtn.card !== "Shop Requirements")
-    errors.push(`event tab(K5): #calculateBtn is not inside the Shop Requirements .bond-card-actions--end — ${JSON.stringify(eventBtn)}`);
+    errors.push(
+      `event tab(K5): #calculateBtn is not inside the Shop Requirements .bond-card-actions--end — ${JSON.stringify(eventBtn)}`,
+    );
   if (!eventBtn.lastChild)
     errors.push("event tab(K5): the actions row is not the last child of the Shop Requirements card-inner");
   if (!(eventBtn.ratio > 0 && eventBtn.ratio <= 0.5))
-    errors.push(`event tab(K5): #calculateBtn spans ${(eventBtn.ratio * 100).toFixed(0)}% of its row, want at most half — bond-button parity`);
+    errors.push(
+      `event tab(K5): #calculateBtn spans ${(eventBtn.ratio * 100).toFixed(0)}% of its row, want at most half — bond-button parity`,
+    );
   if (Math.abs(eventBtn.rightGap) > 1.5)
-    errors.push(`event tab(K5): the button's right edge is ${eventBtn.rightGap}px off the row's right edge, want flush`);
+    errors.push(
+      `event tab(K5): the button's right edge is ${eventBtn.rightGap}px off the row's right edge, want flush`,
+    );
   console.log(
     `NOTE: bond tab order — quest card first, button ${JSON.stringify(order.label)} at ` +
       `${(order.ratio * 100).toFixed(0)}% of the party card; event button ${(eventBtn.ratio * 100).toFixed(0)}% of its row, right gap ${eventBtn.rightGap}px`,
@@ -1202,7 +1211,7 @@ try {
           { servantId: "100100", type: "support", ces: ["0910"] },
         ],
         questMain: "fq",
-        customRecLv: 99,
+        customRecLv: 90,
       }),
     ),
   );
@@ -1237,9 +1246,9 @@ try {
       `support CE rate: the result card shows ${JSON.stringify(split.badges)}, want one +5% and one +15% badge`,
     );
   }
-  // 5%+15% = 201 of the 1,005-point base (REC Lv.99), x1.24 frontline (one borrowed support in the first three),
-  // +201 frontline flat and +40 for that support's +4% (floor(1005 * 0.04) = 40). Both essences boost the one calculated servant.
-  const wantBonus = Math.floor(201 * 1.24) + 201 + 40;
+  // 5%+15% = 183 of the 915-point base (REC Lv.90), x1.24 frontline (one borrowed support in the first three),
+  // +183 frontline flat and +36 for that support's +4% (floor(915 * 0.04) = 36). Both essences boost the one calculated servant.
+  const wantBonus = Math.floor(183 * 1.24) + 183 + 36;
   const gotBonus = Number((split.bonus || "").replace(/,/g, ""));
   if (gotBonus !== wantBonus) {
     errors.push(
@@ -1263,7 +1272,7 @@ try {
       JSON.stringify({
         slots: [{ servantId: "800100", bondNeeded: 2500, type: "normal", bondLevel: 0, targetLevel: 3, ces: [] }],
         questMain: "fq",
-        customRecLv: 99,
+        customRecLv: 90,
       }),
     ),
   );
@@ -1342,31 +1351,31 @@ try {
       `teapot: the "Out of" chip draws its teapot ${teapotSplit.exhaust.imgH}px tall, want 48px (--ce-badge-h)`,
     );
   }
-  // The one teapot buys one 2,412-point run (REC Lv.99 = 1,005 base), which does not clear Lv.0->1 — so it names no level at all.
+  // The one teapot buys one 2,196-point run (REC Lv.90 = 915 base), which does not clear Lv.0->1 — so it names no level at all.
   if (
     !teapotSplit.boosted ||
-    teapotSplit.boosted.info !== "1,005(+1,407)" ||
+    teapotSplit.boosted.info !== "915(+1,281)" ||
     teapotSplit.boosted.runs !== "1 run" ||
     !teapotSplit.boosted.teapot ||
     teapotSplit.boosted.levels.length !== 0
   ) {
     errors.push(
-      `teapot: the boosted block reads ${JSON.stringify(teapotSplit.boosted)}, want "1,005(+1,407)", "1 run", ` +
+      `teapot: the boosted block reads ${JSON.stringify(teapotSplit.boosted)}, want "915(+1,281)", "1 run", ` +
         `teapot badge and NO level row (the run cleared no level)`,
     );
   }
   // The continuation keeps the bond levels the teapots never got through, and their own run counts.
   if (
     !teapotSplit.plain ||
-    teapotSplit.plain.info !== "1,005(+201)" ||
-    teapotSplit.plain.runs !== "2 runs" ||
+    teapotSplit.plain.info !== "915(+183)" ||
+    teapotSplit.plain.runs !== "3 runs" ||
     teapotSplit.plain.teapot ||
-    JSON.stringify(teapotSplit.plain.levels) !== JSON.stringify(["Bond Lv.0->2", "Bond Lv.2->3"]) ||
-    JSON.stringify(teapotSplit.plain.levelRuns) !== JSON.stringify(["1 run", "1 run"])
+    JSON.stringify(teapotSplit.plain.levels) !== JSON.stringify(["Bond Lv.0->1", "Bond Lv.1->2", "Bond Lv.2->3"]) ||
+    JSON.stringify(teapotSplit.plain.levelRuns) !== JSON.stringify(["1 run", "1 run", "1 run"])
   ) {
     errors.push(
-      `teapot: the continuation reads ${JSON.stringify(teapotSplit.plain)}, want "1,005(+201)" / "2 runs" ` +
-        `with Lv.0->2 (1 run) and Lv.2->3 (1 run)`,
+      `teapot: the continuation reads ${JSON.stringify(teapotSplit.plain)}, want "915(+183)" / "3 runs" ` +
+        `with Lv.0->1 (1 run), Lv.1->2 (1 run) and Lv.2->3 (1 run)`,
     );
   }
 
@@ -1384,23 +1393,23 @@ try {
     teapotRemoved.grids !== 1 ||
     teapotRemoved.exhaust ||
     !teapotRemoved.boosted ||
-    teapotRemoved.boosted.info !== "1,005(+201)" ||
-    teapotRemoved.boosted.runs !== "4 runs" ||
+    teapotRemoved.boosted.info !== "915(+183)" ||
+    teapotRemoved.boosted.runs !== "5 runs" ||
     teapotRemoved.boosted.teapot ||
-    JSON.stringify(teapotRemoved.boosted.levels) !== JSON.stringify(["Bond Lv.0->2", "Bond Lv.2->3"])
+    JSON.stringify(teapotRemoved.boosted.levels) !== JSON.stringify(["Bond Lv.0->1", "Bond Lv.1->2", "Bond Lv.2->3"])
   ) {
     errors.push(
-      `teapot: after Remove it drew ${JSON.stringify(teapotRemoved)}, want one plain grid "1,005(+201)" / "4 runs" ` +
-        `over Lv.0->2 and Lv.2->3`,
+      `teapot: after Remove it drew ${JSON.stringify(teapotRemoved)}, want one plain grid "915(+183)" / "5 runs" ` +
+        `over Lv.0->1, Lv.1->2 and Lv.2->3`,
     );
   }
 
   /* Turning the teapot on must NOT re-price by itself: results stay as the last Calculate left them
-     (the plain 4-run plan above) until the button is pressed. */
+     (the plain 5-run plan above) until the button is pressed. */
   await setTeapotCount(99);
   await page.click("#teapotToggle");
   const idle = await readTeapot();
-  if (idle.boosted && idle.boosted.info === "1,005(+1,407)") {
+  if (idle.boosted && idle.boosted.info === "915(+1,281)") {
     errors.push("teapot: flipping the switch re-priced the plan without a Calculate click");
   }
 
@@ -1412,15 +1421,15 @@ try {
     enough.grids !== 1 ||
     enough.exhaust ||
     !enough.boosted ||
-    enough.boosted.info !== "1,005(+1,407)" ||
-    enough.boosted.runs !== "2 runs" ||
+    enough.boosted.info !== "915(+1,281)" ||
+    enough.boosted.runs !== "3 runs" ||
     !enough.boosted.teapot ||
-    JSON.stringify(enough.boosted.levels) !== JSON.stringify(["Bond Lv.0->3"]) ||
-    JSON.stringify(enough.boosted.levelRuns) !== JSON.stringify(["2 runs"])
+    JSON.stringify(enough.boosted.levels) !== JSON.stringify(["Bond Lv.0->2", "Bond Lv.2->3"]) ||
+    JSON.stringify(enough.boosted.levelRuns) !== JSON.stringify(["2 runs", "1 run"])
   ) {
     errors.push(
       `teapot: with the stock covering the plan it drew ${JSON.stringify(enough)}, ` +
-        `want one boosted grid "1,005(+1,407)" / "2 runs" with its Lv.0->3 row`,
+        `want one boosted grid "915(+1,281)" / "3 runs" with its Lv.0->2 and Lv.2->3 rows`,
     );
   }
   console.log(
@@ -1559,7 +1568,9 @@ try {
   await page.select("#bondGrandClassSelect", "extra1");
   await page.click('#bondGrandDiffPills .bond-tier-pill[data-value="1"]');
   if (!grandRows.gdClass || !grandRows.gdDiff || grandRows.ap || grandRows.recLv || !grandRows.bondDisplay) {
-    errors.push(`quest cascade: Grand Duel drew ${JSON.stringify(grandRows)}, want class, difficulty, and shared summary`);
+    errors.push(
+      `quest cascade: Grand Duel drew ${JSON.stringify(grandRows)}, want class, difficulty, and shared summary`,
+    );
   }
 
   /* Entering Grand Duel opens a rack of its own: the Mash picked under Free Quest does not follow, and a
@@ -1775,7 +1786,11 @@ try {
     sDefault.collapsible ||
     sDefault.subOpen ||
     ascIds.length < 2 ||
-    ascIds.join() !== ascIds.slice().sort((a, b) => cnoOf(a) - cnoOf(b)).join() ||
+    ascIds.join() !==
+      ascIds
+        .slice()
+        .sort((a, b) => cnoOf(a) - cnoOf(b))
+        .join() ||
     !underFilter.main ||
     !underFilter.sub ||
     topPeeled !== true ||
