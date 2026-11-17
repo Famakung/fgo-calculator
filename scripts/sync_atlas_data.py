@@ -1898,6 +1898,10 @@ def resolve_equip_name(equip_id: Optional[int], entry: dict, names: Dict[str, Di
 # --- Farm model (Amendment L): every repeatable quest that pays a shop currency on repeat runs ---
 
 
+def _is_http_404(err: Exception) -> bool:
+    return "HTTP Error 404" in str(err)
+
+
 def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, strict: bool = False) -> List[Tuple[dict, dict]]:
     """(spot, quest) pairs of one war the game reopens after a clear; a war that cannot be read has
     none. Strict is the farm-event test's call: there an unreadable war raises, because a swallowed
@@ -1905,9 +1909,10 @@ def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, str
     try:
         war = get_cached_json(cache_dir, f"nice_war_{war_id}.json", f"{API_BASE}/nice/JP/war/{war_id}?lang=en", force=force)
     except Exception as e:
-        if strict:
+        if strict and not _is_http_404(e):
             raise
-        print(f"  [WARN] War {war_id} unavailable, farm data skipped: {e}", file=sys.stderr)
+        if not _is_http_404(e):
+            print(f"  [WARN] War {war_id} unavailable, farm data skipped: {e}", file=sys.stderr)
         return []
     spots = war.get("spots") if isinstance(war, dict) else None
     return [
@@ -1929,9 +1934,10 @@ def _quest_phase_detail(cache_dir: str, quest: dict, force: bool = False, strict
             cache_dir, f"nice_quest_{quest_id}_{phase}.json", f"{API_BASE}/nice/JP/quest/{quest_id}/{phase}?lang=en", force=force
         )
     except Exception as e:
-        if strict:
+        if strict and not _is_http_404(e):
             raise
-        print(f"  [WARN] Quest {quest_id} phase {phase} unavailable: {e}", file=sys.stderr)
+        if not _is_http_404(e):
+            print(f"  [WARN] Quest {quest_id} phase {phase} unavailable: {e}", file=sys.stderr)
         return None
 
 
@@ -2258,24 +2264,34 @@ def _resolve_entry_icon(entry: dict, item_map: Dict[int, dict], cache_dir: str, 
     return None
 
 
+def _is_coin_asset(asset_path: str) -> bool:
+    """Servant coins (JP/Coins/...) have no _bordered.png variant on Atlas CDN."""
+    clean = str(asset_path).lstrip("/")
+    return "/Coins/" in f"/{clean}" or clean.startswith("Coins/")
+
+
 def _make_event_icon(asset_path: str, dest: str, kind: str):
     """Fetch one Atlas asset and encode it as lossless WebP (faces 142x155, item icons capped 160px).
 
     Bordered variant first (user directive); the plain variant of the SAME asset is fetched only
-    when the bordered URL 404s (coins have no bordered art). Any other fetch error — 5xx, timeout —
+    when the bordered URL 404s. Servant coins (JP/Coins/) have no bordered art, so they fetch the
+    plain asset directly without a 404 round-trip. Any other fetch error — 5xx, timeout —
     re-raises instead of falling back: _event_icon_file never re-fetches an existing dest, so a
     transient failure would otherwise permanently ship a borderless icon. The caller's WARN fires
     and no file is written, so the next sync retries the bordered asset."""
-    bordered = re.sub(r"\.png$", "_bordered.png", asset_path)
-    try:
-        raw, _ = fetch_url(_atlas_asset_url(bordered), timeout=10, retries=2)
-    except Exception as e:
-        # Match the HTTPError phrase, not bare "404": the message embeds the URL, and asset ids
-        # like f_94045200 contain "404", which would misread a bordered 5xx/timeout as a 404.
-        if "HTTP Error 404" not in str(e):
-            raise
-        print(f"  [INFO] plain-variant fallback for {asset_path}")
+    if _is_coin_asset(asset_path):
         raw, _ = fetch_url(_atlas_asset_url(asset_path), timeout=10, retries=2)
+    else:
+        bordered = re.sub(r"\.png$", "_bordered.png", asset_path)
+        try:
+            raw, _ = fetch_url(_atlas_asset_url(bordered), timeout=10, retries=2)
+        except Exception as e:
+            # Match the HTTPError phrase, not bare "404": the message embeds the URL, and asset ids
+            # like f_94045200 contain "404", which would misread a bordered 5xx/timeout as a 404.
+            if "HTTP Error 404" not in str(e):
+                raise
+            print(f"  [INFO] plain-variant fallback for {asset_path}")
+            raw, _ = fetch_url(_atlas_asset_url(asset_path), timeout=10, retries=2)
     img = Image.open(io.BytesIO(raw)).convert("RGBA")
     if kind == "item":
         if max(img.size) > EVENT_ICON_MAX_PX:
@@ -2443,9 +2459,15 @@ def _event_detail(cache_dir: str, event: dict, force: bool = False) -> dict:
     shop rows and war ids first, and the snapshot step reuses the same result."""
     event_id = event["id"]
     if event_id not in _event_detail_results:
-        _event_detail_results[event_id] = get_cached_json(
-            cache_dir, f"nice_event_{event_id}.json", f"{API_BASE}/nice/JP/event/{event_id}?lang=en", force=force
-        )
+        try:
+            _event_detail_results[event_id] = get_cached_json(
+                cache_dir, f"nice_event_{event_id}.json", f"{API_BASE}/nice/JP/event/{event_id}?lang=en", force=force
+            )
+        except Exception as e:
+            if _is_http_404(e):
+                _event_detail_results[event_id] = {}
+            else:
+                raise
     return _event_detail_results[event_id]
 
 
@@ -2711,7 +2733,12 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
             try:
                 region_url = f"{API_BASE}/export/{region}/basic_event.json"
                 basic_region = get_cached_json(cache_dir, f"{region.lower()}_basic_event.json", region_url, force=force)
-                region_events = _select_farm_events(cache_dir, basic_region, force=force)
+                region_jp_events = (
+                    [e for e in basic_region if isinstance(e, dict) and e.get("id") in jp_by_id]
+                    if isinstance(basic_region, list)
+                    else []
+                )
+                region_events = _select_farm_events(cache_dir, region_jp_events, force=force)
             except Exception as e:
                 print(f"  [WARN] {region} event list fetch failed, skipped: {e}", file=sys.stderr)
                 region_events = []
