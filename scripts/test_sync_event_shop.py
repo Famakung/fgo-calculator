@@ -894,12 +894,22 @@ def check_icon_candidates():
 
         os.remove(dest)
         with patch.object(m, "fetch_url", bordered_missing), patch.object(m, "Image", FakeImage):
+            m._make_event_icon("JP/Items/1605.png", dest, "item")
+        assert calls == [
+            f"{m.STATIC_BASE}/JP/Items/1605_bordered.png",
+            f"{m.STATIC_BASE}/JP/Items/1605.png",
+        ], "bordered 404 falls back to plain for non-coin assets"
+        assert os.path.exists(dest), "plain fallback writes the icon"
+
+        # Servant coins (JP/Coins/...) have no bordered art: fetch plain directly without 404 round-trip.
+        calls = []
+        os.remove(dest)
+        with patch.object(m, "fetch_url", bordered_missing), patch.object(m, "Image", FakeImage):
             m._make_event_icon("JP/Coins/705500.png", dest, "item")
         assert calls == [
-            f"{m.STATIC_BASE}/JP/Coins/705500_bordered.png",
             f"{m.STATIC_BASE}/JP/Coins/705500.png",
-        ], "bordered fetch failure falls back to plain (coins have no bordered variant)"
-        assert os.path.exists(dest), "plain fallback writes the icon"
+        ], "servant coins skip _bordered.png and fetch plain directly"
+        assert os.path.exists(dest), "direct coin fetch writes the icon"
 
         # bordered 5xx/timeout: re-raise, NEVER fall back to plain, write nothing —
         # _event_icon_file skips an existing dest forever, so shipping a plain icon here would
@@ -1234,6 +1244,45 @@ def check_qp_only_currencies_excluded():
     return 1
 
 
+def check_farm_404_and_region_filter():
+    """HTTP 404 on event/war/quest details is treated as absent (not an outage), and region-only
+    events absent from JP basic_event.json are skipped before querying /nice/JP/event/{id}."""
+    with Sandbox() as s:
+        inner = fixture_json
+
+        def detail_404(cache_dir, filename, url, force=False):
+            if filename == "nice_event_80639.json":
+                raise RuntimeError(f"Failed to fetch {url} after 4 retries: HTTP Error 404: Not Found")
+            return inner(cache_dir, filename, url, force=force)
+
+        m.get_cached_json = detail_404
+        assert not m._farm_event_passes(s.tmp, LIVE_EVENT), "404 event detail yields False without raising"
+
+    na_only_event = {
+        "id": 999999,
+        "type": "eventQuest",
+        "name": "NA Exclusive Campaign",
+        "shortName": "NA Exclusive",
+        "startedAt": NOW - 100,
+        "finishedAt": NOW + 3600,
+        "endedAt": NOW + 3600,
+    }
+    with Sandbox() as s, patch.object(m.time, "time", lambda: NOW):
+        inner = fixture_json
+        seen_urls = []
+
+        def with_na_only(cache_dir, filename, url, force=False):
+            seen_urls.append(filename)
+            if filename == "na_basic_event.json":
+                return [na_only_event]
+            return inner(cache_dir, filename, url, force=force)
+
+        m.get_cached_json = with_na_only
+        m.sync_event_shop(cache_dir=s.tmp)
+        assert "nice_event_999999.json" not in seen_urls, "region-only event not in JP is never queried on /nice/JP/event"
+    return 2
+
+
 def main():
     n = 0
     for check in (
@@ -1258,6 +1307,7 @@ def main():
         check_raid_boss_extraction,
         check_multi_server_event_lists,
         check_qp_only_currencies_excluded,
+        check_farm_404_and_region_filter,
     ):
         n += check()
     print(f"{n} tests passed")
