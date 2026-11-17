@@ -119,15 +119,6 @@ jobs:
         if: steps.do_work.outputs.DO_WORK == 'true'
         run: pip install Pillow
 
-      - uses: actions/setup-node@v7
-        if: steps.do_work.outputs.DO_WORK == 'true'
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - run: npm ci
-        if: steps.do_work.outputs.DO_WORK == 'true'
-
       # Run sync: regenerates game data from Atlas API (using cached images & raw JSON).
       # The generated JS is NOT wiped here: it survives in the cache, so the
       # incremental path (append new / replace drifted entries) runs instead of a
@@ -173,6 +164,17 @@ jobs:
           fi
 
       # Verify schema and image consistency (only when building)
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        if: steps.data_change.outputs.DEPLOY == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci --omit=dev
+        if: steps.data_change.outputs.DEPLOY == 'true'
+
       - name: Validate data integrity
         if: steps.data_change.outputs.DEPLOY == 'true'
         run: node scripts/validate_data.js

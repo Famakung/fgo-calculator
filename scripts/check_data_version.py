@@ -5,6 +5,7 @@ Never fails the workflow: any network/parse problem yields CHECK=UNKNOWN (contin
 """
 
 import argparse
+import concurrent.futures
 import gzip
 import hashlib
 import json
@@ -128,7 +129,11 @@ def check_shop_probe(probe_path, api_base=DEFAULT_API_BASE, now=None):
         return "CHANGED"
 
     base = api_base.rstrip("/")
-    for q in probe.get("activeQuests") or []:
+    quests = probe.get("activeQuests") or []
+    if not quests:
+        return "UNCHANGED"
+
+    def _check_one(q):
         qid = q.get("id")
         phase = q.get("phase")
         url = f"{base}/nice/JP/quest/{qid}/{phase}?lang=en"
@@ -136,9 +141,18 @@ def check_shop_probe(probe_path, api_base=DEFAULT_API_BASE, now=None):
         if state == "ERROR":
             return "UNKNOWN"
         if state == "NOT_MODIFIED":
-            continue
+            return "UNCHANGED"
         if _drops_digest(drops) != q.get("dropsHash"):
             return "CHANGED"
+        return "UNCHANGED"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(quests))) as pool:
+        results = list(pool.map(_check_one, quests))
+
+    if "CHANGED" in results:
+        return "CHANGED"
+    if "UNKNOWN" in results:
+        return "UNKNOWN"
     return "UNCHANGED"
 
 
