@@ -18,6 +18,7 @@ import re
 import shutil
 import sys
 import time
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
@@ -90,37 +91,42 @@ def migrate_ce_images(data: list, dry_run: bool = False):
         print(f"Migrated {migrated} CE image(s) to Atlas IDs.")
 
 
-def load_ce_face_map(cache_dir: str = DEFAULT_CACHE_DIR, force: bool = False, dry_run: bool = False) -> CEFaceMap:
+def load_ce_face_map(
+    cache_dir: str = DEFAULT_CACHE_DIR, force: bool = False, dry_run: bool = False, equip_data: list = None
+) -> CEFaceMap:
     """Load or download nice_equip_lang_en.json and build an Atlas equip ID -> face_id map."""
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_file = os.path.join(cache_dir, "nice_equip_lang_en.json")
-
-    if not force and os.path.exists(cache_file):
-        try:
-            with open(cache_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception:
-            data = None
+    if equip_data is not None:
+        data = equip_data
     else:
-        data = None
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_file = os.path.join(cache_dir, "nice_equip_lang_en.json")
 
-    if data is None:
-        print("Fetching latest Craft Essence catalog from Atlas Academy...")
-        req = urllib.request.Request(
-            EXPORT_URL,
-            headers={
-                "User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)",
-                "Accept-Encoding": "gzip",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw_bytes = resp.read()
-            if resp.headers.get("Content-Encoding") == "gzip":
-                raw_bytes = gzip.decompress(raw_bytes)
-            data = json.loads(raw_bytes.decode("utf-8"))
+        if not force and os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = None
+        else:
+            data = None
 
-        with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+        if data is None:
+            print("Fetching latest Craft Essence catalog from Atlas Academy...")
+            req = urllib.request.Request(
+                EXPORT_URL,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)",
+                    "Accept-Encoding": "gzip",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw_bytes = resp.read()
+                if resp.headers.get("Content-Encoding") == "gzip":
+                    raw_bytes = gzip.decompress(raw_bytes)
+                data = json.loads(raw_bytes.decode("utf-8"))
+
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
 
     migrate_ce_images(data, dry_run=dry_run)
 
@@ -181,6 +187,11 @@ def download_and_convert(item):
                 img.save(dest_file, "WEBP", lossless=True, method=6)
 
                 return (ce_id, True, f"{img.size[0]}x{img.size[1]}", url)
+            except urllib.error.HTTPError as e:
+                last_err = e
+                if 400 <= e.code < 500 and e.code != 429:
+                    break
+                time.sleep(0.5 * (attempt + 1))
             except Exception as e:
                 last_err = e
                 time.sleep(0.5 * (attempt + 1))
@@ -188,11 +199,13 @@ def download_and_convert(item):
     return (ce_id, False, str(last_err), bordered_url)
 
 
-def sync_ces(items_map=None, ids=None, workers=8, force=False, dry_run=False, cache_dir=DEFAULT_CACHE_DIR):
+def sync_ces(
+    items_map=None, ids=None, workers=8, force=False, dry_run=False, cache_dir=DEFAULT_CACHE_DIR, equip_data=None
+):
     """Sync CE icons from Atlas Academy, skipping existing files if force=False."""
     target_ids = None
     if items_map is None:
-        face_map = load_ce_face_map(cache_dir=cache_dir, force=force, dry_run=dry_run)
+        face_map = load_ce_face_map(cache_dir=cache_dir, force=force, dry_run=dry_run, equip_data=equip_data)
         cno_to_id = getattr(face_map, "cno_to_id", {})
         target_ids = [cno_to_id.get(cid, cid) for cid in ids] if ids else load_active_ce_ids()
         items_map = {cid: face_map[cid] for cid in target_ids if cid in face_map}

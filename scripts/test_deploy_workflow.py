@@ -113,10 +113,18 @@ def main():
         assert would_run(cond, "schedule", "CHANGED", "true", W, P), f"step {name!r} is blocked when data changed and dirty"
     n += 1
 
-    # 3. schedule, data changed, data clean: sync + hash check run, build/upload skip
+    # 3. schedule, data changed, data clean: sync + hash check run, node setup/install/build/upload skip
     W, P = scenario_values("schedule", "CHANGED", "false", "false")
     for name, cond in steps_after_check():
-        if name in ("Validate data integrity", "Build", "Check build output", "Verify build outputs", "Upload Pages artifact"):
+        if name in (
+            "Set up Node.js",
+            "Install Node dependencies",
+            "Validate data integrity",
+            "Build",
+            "Check build output",
+            "Verify build outputs",
+            "Upload Pages artifact",
+        ):
             assert not would_run(cond, "schedule", "CHANGED", "false", W, P), f"step {name!r} should skip when generated data is clean: if={cond!r}"
         else:
             assert would_run(cond, "schedule", "CHANGED", "false", W, P), f"step {name!r} should run when data changed (clean): if={cond!r}"

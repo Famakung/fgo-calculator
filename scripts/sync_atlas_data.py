@@ -29,9 +29,11 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Set, Tuple, Union
 from PIL import Image
 
@@ -196,14 +198,18 @@ class PoliteRateLimiter:
     def __init__(self, delay_seconds: float = 0.1):
         self.delay = delay_seconds
         self.last_request_time = 0.0
+        self._lock = threading.Lock()
 
     def wait(self):
         if self.delay <= 0:
             return
-        elapsed = time.time() - self.last_request_time
-        if elapsed < self.delay:
-            time.sleep(self.delay - elapsed)
-        self.last_request_time = time.time()
+        with self._lock:
+            now = time.time()
+            target = max(now, self.last_request_time + self.delay)
+            self.last_request_time = target
+        sleep_for = target - time.time()
+        if sleep_for > 0:
+            time.sleep(sleep_for)
 
 
 # Global rate limiter instance (defaults to 0.1s inter-request delay)
@@ -242,6 +248,8 @@ def fetch_url(url: str, timeout: int = 15, retries: int = 4, if_none_match: Opti
                 print(f"  [RATE-LIMIT] HTTP 429 encountered for {url}. Waiting {backoff:.1f}s before retry...", file=sys.stderr)
                 time.sleep(backoff)
                 continue
+            if 400 <= e.code < 500:
+                break
             time.sleep(1.0 * (attempt + 1))
         except Exception as e:
             last_err = e
@@ -275,8 +283,19 @@ def _save_etag(cache_dir: str, filename: str, etag: Optional[str]):
             f.write(etag)
 
 
+_json_mem_cache: Dict[Tuple[str, str], dict] = {}
+_json_mem_lock = threading.Lock()
+_json_unchanged_keys: Set[Tuple[str, str]] = set()
+
+
 def get_cached_json(cache_dir: str, filename: str, url: str, force: bool = False) -> dict:
     """Retrieve JSON payload, reading from cache with a conditional-GET revalidation."""
+    mem_key = (os.path.abspath(cache_dir), filename)
+    if not force:
+        with _json_mem_lock:
+            if mem_key in _json_mem_cache:
+                return _json_mem_cache[mem_key]
+
     os.makedirs(cache_dir, exist_ok=True)
     cache_path = os.path.join(cache_dir, filename)
 
@@ -286,25 +305,39 @@ def get_cached_json(cache_dir: str, filename: str, url: str, force: bool = False
             try:
                 raw_bytes, etag = fetch_url(url, if_none_match=_stored_etag(cache_dir, filename))
                 if raw_bytes is None:
+                    with _json_mem_lock:
+                        _json_unchanged_keys.add(mem_key)
+                        _json_mem_cache[mem_key] = cached
                     return cached  # 304: server data unchanged
                 data = json.loads(raw_bytes.decode("utf-8"))
                 if data == cached:
                     # Body differs (e.g. encoding) but payload is identical.
                     _save_etag(cache_dir, filename, etag)
+                    with _json_mem_lock:
+                        _json_unchanged_keys.add(mem_key)
+                        _json_mem_cache[mem_key] = data
                     return data
                 with open(cache_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
+                    json.dump(data, f, ensure_ascii=False)
                 _save_etag(cache_dir, filename, etag)
+                with _json_mem_lock:
+                    _json_unchanged_keys.discard(mem_key)
+                    _json_mem_cache[mem_key] = data
                 return data
             except Exception as e:
                 print(f"  [INFO] Offline/network error ({e}), using cached {filename}.")
+                with _json_mem_lock:
+                    _json_mem_cache[mem_key] = cached
                 return cached
 
     raw_bytes, etag = fetch_url(url)
     data = json.loads(raw_bytes.decode("utf-8"))
     with open(cache_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(data, f, ensure_ascii=False)
     _save_etag(cache_dir, filename, etag)
+    with _json_mem_lock:
+        _json_unchanged_keys.discard(mem_key)
+        _json_mem_cache[mem_key] = data
     return data
 
 
@@ -1021,7 +1054,10 @@ def sync_servants(args):
     # The basic-export scan above only reveals additions; this diff catches
     # changes to existing servants using the cached bulk detail export.
     drifted_cnos = set()
-    if not args.ids and nice_servants:
+    lore_key = (os.path.abspath(args.cache_dir), "nice_servant_lore_lang_en.json")
+    with _json_mem_lock:
+        lore_unchanged = (not args.force) and (lore_key in _json_unchanged_keys) and os.path.exists(SERVANTS_JS)
+    if not args.ids and nice_servants and not lore_unchanged:
         drifted_cnos = set(revalidate_servant_traits(playable_by_cno, nice_servants))
         if drifted_cnos:
             target_cnos = list(target_cnos) + sorted(drifted_cnos - set(target_cnos))
@@ -1033,6 +1069,7 @@ def sync_servants(args):
     print(f"Found {len(target_cnos)} servant(s) to synchronize: {target_cnos}")
 
     new_entries = {}
+    icon_tasks = []
     full_replacement = any("-" in k or (k.isdigit() and int(k) < 10000) for k in existing_keys)
     for cno in target_cnos:
         s_info = playable_by_cno[cno]
@@ -1066,17 +1103,17 @@ def sync_servants(args):
 
             if cno == 467:
                 # Handle François and Francesca Prélat unified entry
-                download_face_icon("505600", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                download_face_icon("505700", 505700, stage="000", force=args.force, dry_run=args.dry_run)
+                icon_tasks.append(("505600", 505600, "000", None))
+                icon_tasks.append(("505700", 505700, "000", None))
                 new_entries.update(format_467_split(svt_payload))
                 continue
 
-            download_face_icon(svt_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
+            icon_tasks.append((svt_id, long_id, "000", None))
             if asc_diffs:
-                download_face_icon(svt_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
-                download_face_icon(svt_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
+                icon_tasks.append((svt_id, long_id, "001", None))
+                icon_tasks.append((svt_id, long_id, "002", None))
             for stage in _extra_image_stages(asc_diffs, costume_battle_ids, opt_labels):
-                download_face_icon(svt_id, long_id, stage=stage, battle_chara_id=costume_battle_ids.get(stage), force=args.force, dry_run=args.dry_run)
+                icon_tasks.append((svt_id, long_id, stage, costume_battle_ids.get(stage)))
 
             entry_code = format_servant_js_entry(svt_id, name, base_traits, asc_diffs, opt_labels, opt_names, collection_no=cno)
             new_entries[svt_id] = entry_code
@@ -1087,8 +1124,8 @@ def sync_servants(args):
                 # with fresh data (name, traits, option labels) and backfill images.
                 if cno == 467:
                     # The unified entry stores as "505600"; rebuild and download both portraits
-                    download_face_icon("505600", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                    download_face_icon("505700", 505700, stage="000", force=args.force, dry_run=args.dry_run)
+                    icon_tasks.append(("505600", 505600, "000", None))
+                    icon_tasks.append(("505700", 505700, "000", None))
                     new_entries.update(format_467_split(svt_payload))
                     full_replacement = True
                     continue
@@ -1099,21 +1136,38 @@ def sync_servants(args):
                     or s_info.get("name", f"Servant {cno}")
                 )
                 base_traits, asc_diffs, opt_labels, opt_names, costume_battle_ids = extract_servant_traits(svt_payload)
-                download_face_icon(svt_id, long_id, stage="000", force=args.force, dry_run=args.dry_run)
+                icon_tasks.append((svt_id, long_id, "000", None))
                 if asc_diffs:
-                    download_face_icon(svt_id, long_id, stage="001", force=args.force, dry_run=args.dry_run)
-                    download_face_icon(svt_id, long_id, stage="002", force=args.force, dry_run=args.dry_run)
+                    icon_tasks.append((svt_id, long_id, "001", None))
+                    icon_tasks.append((svt_id, long_id, "002", None))
                 for stage in _extra_image_stages(asc_diffs, costume_battle_ids, opt_labels):
-                    download_face_icon(svt_id, long_id, stage=stage, battle_chara_id=costume_battle_ids.get(stage), force=args.force, dry_run=args.dry_run)
+                    icon_tasks.append((svt_id, long_id, stage, costume_battle_ids.get(stage)))
                 new_entries[svt_id] = format_servant_js_entry(svt_id, name, base_traits, asc_diffs, opt_labels, opt_names, collection_no=cno)
                 full_replacement = True
             elif cno == 467:
-                download_face_icon("505600", 505600, stage="000", force=args.force, dry_run=args.dry_run)
-                download_face_icon("505700", 505700, stage="000", force=args.force, dry_run=args.dry_run)
+                icon_tasks.append(("505600", 505600, "000", None))
+                icon_tasks.append(("505700", 505700, "000", None))
             else:
                 stages_to_fetch = servant_stages_map.get(svt_id, ["000"])
                 for st in stages_to_fetch:
-                    download_face_icon(svt_id, long_id, stage=st, force=args.force, dry_run=args.dry_run)
+                    icon_tasks.append((svt_id, long_id, st, None))
+
+    if icon_tasks:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [
+                executor.submit(
+                    download_face_icon,
+                    folder_id,
+                    long_id,
+                    stage=stage,
+                    battle_chara_id=battle_id,
+                    force=args.force,
+                    dry_run=args.dry_run,
+                )
+                for folder_id, long_id, stage, battle_id in icon_tasks
+            ]
+            for fut in as_completed(futures):
+                fut.result()
 
     if new_entries:
         if full_replacement:
@@ -1387,7 +1441,7 @@ def extract_bond_craft_essences(equips: List[dict], na_names: Optional[Dict[str,
 
 def extract_special_traits_from_ce_skills(cache_dir: str, equips: List[dict], force: bool = False) -> Dict[int, str]:
     """Dynamically extract bracketed trait names from NA CE skills for traits > 1000."""
-    extracted = {}
+    pending: List[Tuple[int, List[int]]] = []
     for ce in equips:
         long_id = ce.get("id")
         for s in ce.get("skills", []):
@@ -1408,19 +1462,43 @@ def extract_special_traits_from_ce_skills(cache_dir: str, equips: List[dict], fo
                                 target_tids.append(tid)
 
                     if target_tids and long_id:
-                        try:
-                            na_ce_url = f"{API_BASE}/nice/NA/equip/{long_id}"
-                            na_ce = get_cached_json(os.path.join(cache_dir, "equip"), f"{long_id}.json", na_ce_url, force=force)
-                            for ns in na_ce.get("skills", []):
-                                detail = ns.get("detail", "")
-                                matches = re.findall(r"\[([a-zA-Z\s]+?)(?:\s*\(.+?\))?\]", detail)
-                                for m in matches:
-                                    clean = m.strip()
-                                    if clean and clean.upper() != "MAX":
-                                        for tid in target_tids:
-                                            extracted[tid] = clean.title()
-                        except Exception:
-                            pass
+                        pending.append((long_id, target_tids))
+
+    if not pending:
+        return {}
+
+    equip_cache_dir = os.path.join(cache_dir, "equip")
+    unique_ids = list(dict.fromkeys(long_id for long_id, _ in pending))
+    na_ce_by_id: Dict[int, dict] = {}
+
+    def _fetch_na_ce(eid: int) -> Optional[dict]:
+        try:
+            na_ce_url = f"{API_BASE}/nice/NA/equip/{eid}"
+            return get_cached_json(equip_cache_dir, f"{eid}.json", na_ce_url, force=force)
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futs = {executor.submit(_fetch_na_ce, eid): eid for eid in unique_ids}
+        for fut in as_completed(futs):
+            eid = futs[fut]
+            res = fut.result()
+            if res is not None:
+                na_ce_by_id[eid] = res
+
+    extracted = {}
+    for long_id, target_tids in pending:
+        na_ce = na_ce_by_id.get(long_id)
+        if not na_ce:
+            continue
+        for ns in na_ce.get("skills", []):
+            detail = ns.get("detail", "")
+            matches = re.findall(r"\[([a-zA-Z\s]+?)(?:\s*\(.+?\))?\]", detail)
+            for m in matches:
+                clean = m.strip()
+                if clean and clean.upper() != "MAX":
+                    for tid in target_tids:
+                        extracted[tid] = clean.title()
     return extracted
 
 
@@ -1578,7 +1656,7 @@ def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from fetch_bordered_ces import sync_ces
-        sync_ces(force=force, dry_run=dry_run, cache_dir=cache_dir)
+        sync_ces(force=force, dry_run=dry_run, cache_dir=cache_dir, equip_data=equip_data)
     except Exception as e:
         print(f"Warning: CE icon sync failed: {e}", file=sys.stderr)
 
@@ -1613,6 +1691,8 @@ LORE_EXPORT_FILENAME = "nice_servant_lore_lang_en.json"
 
 # Icon files already produced this run, keyed "kind_id" -> site-relative path (unique URLs fetched once)
 _event_icon_results: Dict[str, Optional[str]] = {}
+_event_icon_inflight: Dict[str, threading.Event] = {}
+_event_icon_lock = threading.Lock()
 # servant id -> lore entry, built only when a costume detail has to be named; None means "not read"
 _servant_lore: Optional[Dict[int, dict]] = None
 # Event details and farmable quests already read this run (Amendment J): the farm-event test runs
@@ -1883,12 +1963,27 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
     stays lenient (an empty quest list), and a raise leaves this memo untouched."""
     key = tuple(war_ids or [])
     if key not in _farm_quests_results:
+        war_pairs: List[Tuple[dict, dict]] = []
+        if len(key) <= 1:
+            for war_id in key:
+                war_pairs.extend(_war_repeatable_quests(cache_dir, war_id, force=force, strict=strict))
+        else:
+            with ThreadPoolExecutor(max_workers=min(8, len(key))) as executor:
+                war_futs = [executor.submit(_war_repeatable_quests, cache_dir, war_id, force, strict) for war_id in key]
+                for fut in war_futs:
+                    war_pairs.extend(fut.result())
+
         quests = []
-        for war_id in key:
-            for spot, quest in _war_repeatable_quests(cache_dir, war_id, force=force, strict=strict):
-                detail = _quest_phase_detail(cache_dir, quest, force=force, strict=strict)
-                if detail:
-                    quests.append(_farm_quest(quest, detail, spot=spot))
+        if war_pairs:
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                detail_futs = [
+                    executor.submit(_quest_phase_detail, cache_dir, quest, force, strict)
+                    for _, quest in war_pairs
+                ]
+                for (spot, quest), fut in zip(war_pairs, detail_futs):
+                    detail = fut.result()
+                    if detail:
+                        quests.append(_farm_quest(quest, detail, spot=spot))
         _farm_quests_results[key] = quests
     return _farm_quests_results[key]
 
@@ -2196,20 +2291,44 @@ def _event_icon_file(kind: str, ident: int, asset_path: Optional[str], force: bo
     if not asset_path:
         return None
     cache_key = f"{kind}_{ident}"
-    if cache_key in _event_icon_results:
-        return _event_icon_results[cache_key]
-    dest = os.path.join(PUBLIC_EVENT_SHOP_DIR, f"{cache_key}.webp")
     if dry_run:
+        with _event_icon_lock:
+            if cache_key in _event_icon_results:
+                return _event_icon_results[cache_key]
         print(f"  [DRY-RUN] Would fetch {asset_path} -> event_shop/{cache_key}.webp")
         return f"event_shop/{cache_key}.webp"
-    if not os.path.exists(dest) or force:
-        try:
-            _make_event_icon(asset_path, dest, kind)
-        except Exception as e:
-            print(f"  [WARN] Event icon fetch failed for {asset_path}: {e}", file=sys.stderr)
-    result = f"event_shop/{cache_key}.webp" if os.path.exists(dest) else None
-    _event_icon_results[cache_key] = result
-    return result
+
+    with _event_icon_lock:
+        if cache_key in _event_icon_results:
+            return _event_icon_results[cache_key]
+        inflight = _event_icon_inflight.get(cache_key)
+        if inflight is None:
+            inflight = threading.Event()
+            _event_icon_inflight[cache_key] = inflight
+            owner = True
+        else:
+            owner = False
+
+    if not owner:
+        inflight.wait()
+        with _event_icon_lock:
+            return _event_icon_results.get(cache_key)
+
+    try:
+        dest = os.path.join(PUBLIC_EVENT_SHOP_DIR, f"{cache_key}.webp")
+        if not os.path.exists(dest) or force:
+            try:
+                _make_event_icon(asset_path, dest, kind)
+            except Exception as e:
+                print(f"  [WARN] Event icon fetch failed for {asset_path}: {e}", file=sys.stderr)
+        result = f"event_shop/{cache_key}.webp" if os.path.exists(dest) else None
+        with _event_icon_lock:
+            _event_icon_results[cache_key] = result
+        return result
+    finally:
+        with _event_icon_lock:
+            _event_icon_inflight.pop(cache_key, None)
+            inflight.set()
 
 
 def _entry_icon(entry: dict, item_map: Dict[int, dict], cache_dir: str, targets: Optional[list], force: bool, dry_run: bool) -> Optional[str]:
@@ -2297,11 +2416,22 @@ def _map_shop_entries(cache_dir: str, entries: List[dict], item_map: Dict[int, d
     }
     currencies: Dict[int, dict] = {}
     items = []
-    for entry in entries:
-        cid = ((entry.get("cost") or {}).get("item") or {}).get("id")
-        if real_cids and cid not in real_cids:
-            continue
-        item = _shop_item(entry, item_map, cache_dir, force=force, dry_run=dry_run, names=names)
+    kept_entries = [
+        entry
+        for entry in entries
+        if not (real_cids and ((entry.get("cost") or {}).get("item") or {}).get("id") not in real_cids)
+    ]
+    if not kept_entries:
+        return currencies, items
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        item_futs = [
+            executor.submit(_shop_item, entry, item_map, cache_dir, force, dry_run, names)
+            for entry in kept_entries
+        ]
+        mapped = [fut.result() for fut in item_futs]
+
+    for entry, item in zip(kept_entries, mapped):
         if item:
             _shop_currency(entry, currencies, names, force=force, dry_run=dry_run)
             items.append(item)
@@ -2382,6 +2512,7 @@ def _collect_bonus_ces(
     if not ind_to_currency or not equips:
         return []
     bonus_ces = []
+    pending_icons = []
     for equip in equips:
         if not isinstance(equip, dict):
             continue
@@ -2397,9 +2528,20 @@ def _collect_bonus_ces(
             "id": eid,
             "name": resolve_equip_name(eid, {}, names, equip),
             "rarity": rarity,
-            "icon": _event_icon_file("equip", eid, _equip_face_asset_path(equip), force=force, dry_run=dry_run),
+            "icon": None,
             "bonuses": bonuses,
         })
+        pending_icons.append((eid, _equip_face_asset_path(equip)))
+
+    if pending_icons:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            icon_futs = [
+                executor.submit(_event_icon_file, "equip", eid, asset_path, force, dry_run)
+                for eid, asset_path in pending_icons
+            ]
+            for ce, fut in zip(bonus_ces, icon_futs):
+                ce["icon"] = fut.result()
+
     bonus_ces.sort(key=lambda ce: (ce["rarity"], ce["id"]))
     return bonus_ces
 
