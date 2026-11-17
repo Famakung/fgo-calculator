@@ -27,7 +27,7 @@ export function renderFarmResults(snapshot, view) {
   refreshSlidingNames(inner);
 }
 
-function buildResultsFragment(snapshot, view) {
+export function buildResultsFragment(snapshot, view) {
   const fragment = document.createDocumentFragment();
   fragment.appendChild(buildTitle(RESULTS_TITLE, "card-title"));
   if (view.result.totalPlays === null) {
@@ -37,8 +37,11 @@ function buildResultsFragment(snapshot, view) {
   const currencies = snapshot.currencies || [];
   const bonusCes = snapshot.bonusCes || [];
   const raidQuestById = buildRaidQuestMap(snapshot);
-  fragment.appendChild(buildPlaysBlock(currencies, bonusCes, raidQuestById, view.result));
-  fragment.appendChild(buildReceiveBlock(currencies, view.result));
+  const isTradeOnly = view.result.plays.length === 0 && view.result.trades.length > 0;
+  if (!isTradeOnly) {
+    fragment.appendChild(buildPlaysBlock(currencies, bonusCes, raidQuestById, view.result));
+    fragment.appendChild(buildReceiveBlock(currencies, view.result));
+  }
   fragment.appendChild(buildTradesBlock(snapshot, view.result));
   return fragment;
 }

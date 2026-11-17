@@ -1099,31 +1099,39 @@ export const EventShop = {
     ceEquipLimit = Schema.ceEquipLimit.default,
     useAllQuests = false,
   } = {}) {
-    const deficits = planDeficits(totals, held, farm);
+    const { deficits, heldSurplus } = planDeficits(totals, held, farm);
     const keys = Object.keys(deficits);
     if (!keys.length || allCovered(deficits)) return emptyFarmPlan(keys);
+    const chain = tradeChain(trades);
+    const order = cascadeOrder(keys, chain);
+    const table = {
+      deficits,
+      heldSurplus,
+      keys,
+      bonus: bonus && typeof bonus === "object" ? bonus : {},
+      chain,
+      order,
+      quests: [],
+      selection: {},
+      defaultAllDropId: null,
+      topUps: [],
+      coveringIds: new Set(),
+    };
+    const zeroState = cascadeYields(table, {});
+    if (!hasShortfall(zeroState.short)) return finishFarmPlan(table, {}, zeroState, {});
     const quests = planQuests(farm, bonus);
     if (!quests.length) return infeasibleFarmPlan();
     const selection = !useAllQuests && currencyQuest && typeof currencyQuest === "object" ? currencyQuest : {};
     const coveringIds = new Set(
       this.allCoveringQuests(farm, currencyIds === null ? keys : currencyIds).map((quest) => String(quest.questId)),
     );
-    const chain = tradeChain(trades);
-    const defaultAllDropId = this.defaultFarmQuest(farm, currencyIds === null ? keys : currencyIds);
+    table.quests = quests;
+    table.selection = selection;
+    table.defaultAllDropId = this.defaultFarmQuest(farm, currencyIds === null ? keys : currencyIds);
+    table.topUps = quests.filter((quest) => !coveringIds.has(String(quest.meta.questId)));
+    table.coveringIds = coveringIds;
     const equipLimit = this.clampCeEquipLimit(ceEquipLimit);
     const normalizedCes = normalizeBonusCes(bonusCes, ceOwned, equipLimit);
-    const table = {
-      deficits,
-      keys,
-      bonus: bonus && typeof bonus === "object" ? bonus : {},
-      chain,
-      order: cascadeOrder(keys, chain),
-      quests,
-      selection,
-      defaultAllDropId,
-      topUps: quests.filter((quest) => !coveringIds.has(String(quest.meta.questId))),
-      coveringIds,
-    };
     const plan = normalizedCes.length
       ? bestCeFarmPlan(table, priorityQuestId, normalizedCes, equipLimit, useAllQuests)
       : bestFarmPlan(table, priorityQuestId, useAllQuests);
@@ -1308,10 +1316,13 @@ function planDeficits(totals, held, farm) {
   for (const key of Object.keys((farm && farm.best) || {})) keys.add(key);
   for (const quest of (farm && farm.quests) || []) for (const key of Object.keys(quest.drops || {})) keys.add(key);
   const deficits = {};
+  const heldSurplus = {};
   for (const key of [...keys].sort(numericKeys)) {
-    deficits[key] = Math.max(0, micro(count(totals[key]) - count((held || {})[key])));
+    const net = micro(count(totals[key]) - count((held || {})[key]));
+    deficits[key] = Math.max(0, net);
+    heldSurplus[key] = Math.max(0, -net);
   }
-  return deficits;
+  return { deficits, heldSurplus };
 }
 
 /* One shipped quest with its bonus-priced per-run rate in micro-units: dropExpected × (num + the
@@ -1402,7 +1413,7 @@ export function cascadeYields(table, yields) {
   const short = {};
   const trades = [];
   for (const key of table.order) {
-    const avail = count(yields[key]) + count(inUnits[key]);
+    const avail = count((table.heldSurplus || {})[key]) + count(yields[key]) + count(inUnits[key]);
     let free = avail - count(table.deficits[key]);
     let spent = 0;
     for (const trade of table.chain[key] || []) {
@@ -1471,12 +1482,14 @@ function cascadeOrder(keys, chain) {
    shortcut: one property this does not chase — a branching chain (several sources into one currency) is
    trimmed row by row, so its trade count can sit above the true global minimum. Shipped events are
    linear bronze→silver→gold chains, where each row lands on its own exact minimum. */
-function minCoverTrades(rawYieldsMicro, deficitsMicro, chain, order) {
+function minCoverTrades(rawYieldsMicro, deficitsMicro, chain, order, heldSurplusMicro = {}) {
   const rows = tradeRows(chain, order);
-  if (!rows.length) return { trades: [], final: rawYieldsMicro };
-  spendSurplusUpChain(rawYieldsMicro, deficitsMicro, rows);
-  if (rows.every((row) => row.count <= 0)) return { trades: [], final: rawYieldsMicro };
-  const final = stacksAfter(rows, rawYieldsMicro, order);
+  if (!rows.length) return { trades: [], final: stacksAfter([], rawYieldsMicro, order, heldSurplusMicro) };
+  spendSurplusUpChain(rawYieldsMicro, deficitsMicro, rows, heldSurplusMicro);
+  if (rows.every((row) => row.count <= 0)) {
+    return { trades: [], final: stacksAfter([], rawYieldsMicro, order, heldSurplusMicro) };
+  }
+  const final = stacksAfter(rows, rawYieldsMicro, order, heldSurplusMicro);
   for (let index = rows.length - 1; index >= 0; index--) trimRowToCover(rows[index], final, deficitsMicro);
   return { trades: keptTrades(rows), final };
 }
@@ -1493,13 +1506,16 @@ function tradeRows(chain, order) {
 /* Seed each row with the full cascade: every unit above a deficit pushed up the chain, the same
    floor(max(0, free) / costMicro) walk cascadeYields applies and the search's cascadeArrays already
    twins. A plan reaches the trim only after that cascade covered, so these rows are a covering set. */
-export function spendSurplusUpChain(rawYieldsMicro, deficitsMicro, rows) {
+export function spendSurplusUpChain(rawYieldsMicro, deficitsMicro, rows, heldSurplusMicro = {}) {
   const free = {};
   const pushed = {};
   for (const row of rows) {
     if (free[row.fromKey] === undefined)
       free[row.fromKey] =
-        count(rawYieldsMicro[row.fromKey]) + count(pushed[row.fromKey]) - count(deficitsMicro[row.fromKey]);
+        count(heldSurplusMicro[row.fromKey]) +
+        count(rawYieldsMicro[row.fromKey]) +
+        count(pushed[row.fromKey]) -
+        count(deficitsMicro[row.fromKey]);
     row.count = Math.floor(Math.max(0, free[row.fromKey]) / row.costMicro);
     free[row.fromKey] -= row.count * row.costMicro;
     pushed[row.toKey] = count(pushed[row.toKey]) + row.count * row.getMicro;
@@ -1510,9 +1526,9 @@ export function spendSurplusUpChain(rawYieldsMicro, deficitsMicro, rows) {
    own trades cost — all in micro units, so the figure is the sum of one trade list, never a re-run of
    the cascade. Rows run bottom-up, so a node's arrivals come from rows that trade before its own spend,
    and a covered node (stack ≥ deficit ≥ 0) has the items to pay for the trades it makes. */
-function stacksAfter(rows, rawYieldsMicro, order) {
+function stacksAfter(rows, rawYieldsMicro, order, heldSurplusMicro = {}) {
   const stacks = {};
-  for (const key of order) stacks[key] = count(rawYieldsMicro[key]);
+  for (const key of order) stacks[key] = count(heldSurplusMicro[key]) + count(rawYieldsMicro[key]);
   for (const row of rows) stacks[row.toKey] = count(stacks[row.toKey]) + row.count * row.getMicro;
   for (const row of rows) stacks[row.fromKey] -= row.count * row.costMicro;
   return stacks;
@@ -1649,7 +1665,7 @@ function sumYields(runs, quests) {
    and must not steer which equal-run plan wins) — neither shows up in deepEqual, JSON, or the frozen
    output shape. */
 function finishFarmPlan(table, runs, state, rawYields = sumYields(runs, table.quests), ceCombosByQuestId = null) {
-  const cover = minCoverTrades(rawYields, table.deficits, table.chain, table.order);
+  const cover = minCoverTrades(rawYields, table.deficits, table.chain, table.order, table.heldSurplus);
   const plan = {
     plays: playsFromRuns(runs, table.quests, table.keys, ceCombosByQuestId),
     trades: cover.trades,
@@ -1957,10 +1973,12 @@ function buildExactKernel(table, pool) {
   );
   const rates = pool.map((quest) => nodes.map((key) => count(quest.rates[key])));
   const deficits = nodes.map((key) => count(table.deficits[key]));
-  const { cTargets, cRates, cSuffixBest } = buildLinearConstraints(nodes, edges, deficits, rates);
+  const heldSurplus = nodes.map((key) => count((table.heldSurplus || {})[key]));
+  const netDeficits = deficits.map((deficit, index) => deficit - heldSurplus[index]);
+  const { cTargets, cRates, cSuffixBest } = buildLinearConstraints(nodes, edges, netDeficits, rates);
   return {
     nodes,
-    zeroYields: nodes.map(() => 0),
+    zeroYields: heldSurplus,
     deficits,
     inflow: nodes.map(() => 0),
     final: nodes.map(() => 0),
@@ -2705,7 +2723,7 @@ function buildTradeEdges(table) {
       }
     }
   }
-  const baseRhs = nodes.map((key) => count(table.deficits[key]) * scale);
+  const baseRhs = nodes.map((key) => (count(table.deficits[key]) - count((table.heldSurplus || {})[key])) * scale);
   return { nodes, edges, baseRhs, scale };
 }
 
