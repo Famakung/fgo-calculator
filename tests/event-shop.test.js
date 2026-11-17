@@ -767,6 +767,37 @@ test("farmPlan prices held over the deficit as covered — runs nothing it does 
   assert.equal(plan.totalPlays, 0);
 });
 
+test("farmPlan uses surplus held items to cover deficits via trade with zero farm plays", () => {
+  const plan = EventShop.farmPlan({
+    totals: { 94164000: 5590, 94164001: 5240, 94164002: 6160 },
+    held: { 94164000: 6090, 94164001: 5190, 94164002: 6160 },
+    bonus: {},
+    farm: C_FARM,
+    trades: C_TRADES,
+    priorityQuestId: null,
+  });
+  assert.equal(plan.totalPlays, 0);
+  assert.deepEqual(plan.plays, []);
+  assert.deepEqual(plan.trades, [{ fromId: 94164000, toId: 94164001, count: 50 }]);
+  assert.deepEqual(plan.farmed, { 94164000: 0, 94164001: 0, 94164002: 0 });
+  assert.deepEqual(plan.yields, { 94164000: 0, 94164001: 50, 94164002: 0 });
+  assert.deepEqual(plan.surplus, { 94164000: 0, 94164001: 0, 94164002: 0 });
+});
+
+test("farmPlan uses partial surplus held items to reduce required farm runs via trade", () => {
+  const plan = EventShop.farmPlan({
+    totals: { 94164000: 5590, 94164001: 5240, 94164002: 6160 },
+    held: { 94164000: 6090, 94164001: 5140, 94164002: 6160 },
+    bonus: {},
+    farm: C_FARM,
+    trades: C_TRADES,
+    priorityQuestId: null,
+  });
+  assert.equal(plan.totalPlays, 2);
+  assert.deepEqual(plan.trades, [{ fromId: 94164000, toId: 94164001, count: 34 }]);
+  assert.ok(plan.yields["94164001"] >= 100);
+});
+
 test("farmPlan with no farm quests or a currency nobody drops reports an infeasible plan, never a partial one", () => {
   const noQuests = EventShop.farmPlan({
     totals: { 1: 10 },
