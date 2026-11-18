@@ -12,17 +12,18 @@ const CE_EQUIP_INPUT_ID = "ceBonusEquipInput";
 
 export function buildCeImg(ce, className, fallbackClass) {
   const fallbackText = ce.rarity ? `\u2605${ce.rarity}` : String(ce.id);
-  if (!ce.icon) return buildCeFallback(fallbackClass, fallbackText);
+  const label = ce.name || String(ce.id);
+  if (!ce.icon) return buildCeFallback(fallbackClass, fallbackText, label);
   const img = DOMFactory.createLazyImg(`${ce.icon}?v=${IMAGE_VERSION}`, className, {
-    alt: ce.name || String(ce.id),
-    title: ce.name || String(ce.id),
+    alt: label,
+    title: label,
   });
   DOMFactory.addSimpleFallback(img, fallbackClass, fallbackText);
   return img;
 }
 
-function buildCeFallback(className, text) {
-  const fb = DOMFactory.el("div", className);
+function buildCeFallback(className, text, label) {
+  const fb = DOMFactory.el("div", className, label ? { title: label, "aria-label": label } : {});
   fb.textContent = text;
   return fb;
 }
@@ -158,7 +159,7 @@ export function syncCeEquipInput(snapshot) {
   const wrap = document.getElementById(CE_EQUIP_WRAP_ID);
   const input = document.getElementById(CE_EQUIP_INPUT_ID);
   const hasCes = Boolean(snapshot && Array.isArray(snapshot.bonusCes) && snapshot.bonusCes.length > 0);
-  if (wrap) wrap.style.display = hasCes ? "" : "none";
+  if (wrap) wrap.hidden = !hasCes;
   if (input && hasCes) input.value = String(EventPlanner.ceEquipLimit());
 }
 

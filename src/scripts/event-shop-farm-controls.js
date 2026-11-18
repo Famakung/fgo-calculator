@@ -64,6 +64,7 @@ function planFigureBox(spec) {
     id: `farm${spec.labelText}${spec.currency.id}`,
     min: "0",
     max: String(spec.schema.max),
+    step: "1",
     "aria-label": `${spec.currency.name} ${spec.labelText.toLowerCase()}`,
     inputmode: "numeric",
   });

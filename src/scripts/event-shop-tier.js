@@ -43,7 +43,8 @@ export function buildFallbackIcon(tier, alt) {
   const fallback = document.createElement("div");
   fallback.className = "icon-fallback";
   if (tier) fallback.dataset.tier = tier;
-  fallback.textContent = DOMFactory.capitalize(tier).charAt(0);
+  const safeTier = tier || "";
+  fallback.textContent = DOMFactory.capitalize(safeTier).charAt(0);
   if (alt === "") fallback.setAttribute("aria-hidden", "true");
   return fallback;
 }
@@ -84,6 +85,7 @@ function bindRequiredDisplay(input, currency) {
   input.readOnly = true;
   input.classList.add("eshop-require-display");
   input.setAttribute("aria-haspopup", "dialog");
+  input.setAttribute("aria-label", `${currency.name} required \u2014 open shop items`);
   input.dataset.currencyId = String(currency.id);
   bindCurrencyModalOpen(input);
 }
@@ -118,18 +120,34 @@ function applyEventTier({ tier, currency, card, needInput, need }) {
    have mapped it, and stale art would read as live shop data. Its Required box stays a read-only
    display (event mode never types it) but loses the modal cue — there is no currency to edit — and
    reads 0, because a tier with no currency has no spend. */
-function clearEventTier({ tier, card, needInput }) {
+function clearEventTier({ tier, card, needInput, readOnly = true }) {
   const iconBox = card?.querySelector(".material-icon");
-  if (iconBox) iconBox.replaceChildren(buildFallbackIcon(tier));
+  if (iconBox) {
+    iconBox.classList.remove("material-icon--event");
+    iconBox.replaceChildren(buildFallbackIcon(tier));
+  }
   const nameEl = card?.querySelector(".material-name");
   if (nameEl) applySlidingName(nameEl, DOMFactory.capitalize(tier));
   setResultLabels(tier, DOMFactory.capitalize(tier));
   if (!needInput) return;
   delete needInput.dataset.currencyId;
-  needInput.readOnly = true;
+  needInput.readOnly = readOnly;
   needInput.classList.remove("eshop-require-display");
   needInput.removeAttribute("aria-haspopup");
+  needInput.removeAttribute("aria-label");
   needInput.value = "0";
+}
+
+export function clearEventTiers({ elements, container, readOnly = true }) {
+  for (const tier of TIERS) {
+    clearEventTier({
+      tier,
+      card: container?.querySelector(`[data-tier="${tier}"]`),
+      needInput: elements[`${tier}Need`],
+      readOnly,
+    });
+  }
+  if (container) refreshSlidingNames(container);
 }
 
 export function hydrateTierCards({ elements, container, needs = {}, snapshot }) {
@@ -148,15 +166,22 @@ export function hydrateTierCards({ elements, container, needs = {}, snapshot }) 
 }
 
 function applyQuestTitle(quest, map) {
-  if (!map[quest]) return;
   const title = document.querySelector(`#questDropsGrid [data-tier="${quest}"] .quest-drops-title`);
-  if (title) title.textContent = map[quest].name + " Quest";
+  if (!title) return;
+  title.textContent = (map[quest] ? map[quest].name : DOMFactory.capitalize(quest)) + " Quest";
 }
 
 function applyDropIcons(quest, drops, map) {
   for (const material of [drops.primary, drops.secondary]) {
     const span = document.getElementById(`${quest}Quest_${material}_icon`);
-    if (span && map[material]) span.replaceChildren(buildCurrencyImg(map[material], material));
+    if (!span) continue;
+    if (map[material]) {
+      span.classList.add("material-icon--event");
+      span.replaceChildren(buildCurrencyImg(map[material], material));
+    } else {
+      span.classList.remove("material-icon--event");
+      span.replaceChildren(buildFallbackIcon(material));
+    }
   }
 }
 

@@ -26,7 +26,10 @@ function metaText(item, currency) {
    directly instead of firing a request for a null path. */
 function buildRowIcon(item) {
   if (!item.icon) {
-    const fb = DOMFactory.el("div", "eshop-item-icon-fallback");
+    const fb = DOMFactory.el("div", "eshop-item-icon-fallback", {
+      title: item.name,
+      "aria-label": item.name,
+    });
     fb.textContent = String(item.id);
     return fb;
   }
@@ -62,6 +65,7 @@ function buildStepper(item, require, handlers) {
     type: "number",
     min: "0",
     max: String(EventShop.maxRequire(item)),
+    step: "1",
     "data-item-id": String(item.id),
     "aria-label": item.name + " require",
     inputmode: "numeric",
