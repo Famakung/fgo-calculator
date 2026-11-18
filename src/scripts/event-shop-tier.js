@@ -1,4 +1,4 @@
-import { TIERS, QUEST_DROPS, IMAGE_VERSION, TIER_COLORS } from "./constants.js";
+import { TIERS, QUEST_DROPS, IMAGE_VERSION } from "./constants.js";
 import { EventShop } from "./domain.js";
 import { DOMFactory } from "./presentation.js";
 import { EventShopModal } from "./event-shop-modal.js";
@@ -42,14 +42,14 @@ export function eventTierNeeds(snapshot, requires) {
 export function buildFallbackIcon(tier, alt) {
   const fallback = document.createElement("div");
   fallback.className = "icon-fallback";
-  fallback.style.background = TIER_COLORS[tier] || TIER_COLORS.silver;
+  if (tier) fallback.dataset.tier = tier;
   fallback.textContent = DOMFactory.capitalize(tier).charAt(0);
   if (alt === "") fallback.setAttribute("aria-hidden", "true");
   return fallback;
 }
 
 /* Single fg-layer img so the icon rules size it — the tier box's own 96px height, the farm card's
-   48px header and 24px drop lines; a null icon shows the card's own letter fallback directly instead
+   64px header and 32px drop lines; a null icon shows the card's own letter fallback directly instead
    of requesting the string "null". The alt names the currency by default (farm card headers carry
    no visible name, so the alt is their only label, Amendment P1); callers whose own text already
    prints the name pass "" — a decorative icon, never a second reading of the same word. */

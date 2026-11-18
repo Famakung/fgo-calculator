@@ -63,7 +63,7 @@
  *    file, no badge) but decode is not demanded of nodes the user cannot see. Amendment K1: tier
  *    icon boxes are 96px tall, the fg-layer FILLS the box (100%, no 80px inset), the base
  *    .material-icon rule carries NO grey plate any more, and stub letter badges are 96px tall with
- *    their TIER_COLORS background;
+ *    their data-tier / --tier-bg background;
  *  - the currency modal contract: the tier cards' Required field is the SOLE opener (Amendment K2),
  *    Escape/✕/Cancel/
  *    backdrop discard, ALL clamping in the draft rows (limit clamp, focus-preserving typing,
@@ -71,9 +71,9 @@
  *  - Done agreement through storage (new {selectedEventId, plans} shape) + tier Required + the
  *    legacy fgo_calculator_data mirror; write discipline (draft writes 0, Done writes 1);
  *  - hostile storage sanitisation (both blob shapes), quota-failure path with the console warning,
- *    modal icon fallback badge (transparent, dashed), keyboard operation, zero sideways overflow at
+ *    modal icon fallback badge (accent-light, borderless), keyboard operation, zero sideways overflow at
  *    360px/1120px, zero runtime external fetches, the zero-background event (MULTI 80292, QP "zero")
- *    renders without crash and its farm card still gets a tier border via the :where() fallback.
+ *    renders without crash and its farm card gets the neutral border and :where() silver fallback.
  *
  * Legacy fallback (--legacy against a patched stub copy: events emptied) re-pins the untouched
  * calculator: grey plates with 9 tier-colour letter badges, editable Required, no modal, base-row +
@@ -129,7 +129,6 @@ import {
   EVENT_SHOP_STORAGE_KEY,
   STORAGE_KEY,
   QUEST_DROPS,
-  TIER_COLORS,
   IMAGE_VERSION,
   DEBOUNCE_MS,
 } from "../src/scripts/constants.js";
@@ -264,15 +263,14 @@ const dropValueRef = (dropExpected, num_, bonus = 0) =>
   (dropExpected * (num_ + bonus)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
   " / run";
 
-/* Amendment C: the stub badge's background is TIER_COLORS[tier] applied through style.background,
+/* Amendment C: the stub badge's background is var(--tier-bg) driven by dataset.tier,
    which the CSSOM normalises to rgb(...) — compare against the same normalisation here. */
 const rgbOf = (hex) => {
+  if (!hex || !hex.startsWith("#")) return hex;
   const v = hex.replace("#", "");
   return `rgb(${parseInt(v.slice(0, 2), 16)}, ${parseInt(v.slice(2, 4), 16)}, ${parseInt(v.slice(4, 6), 16)})`;
 };
-const BADGE_WANT = Object.fromEntries(
-  Object.entries(TIER_COLORS).map(([tier, hex]) => [tier, { bg: rgbOf(hex), letter: tier.charAt(0).toUpperCase() }]),
-);
+const BADGE_WANT = Object.fromEntries(TIERS.map((tier) => [tier, { letter: tier.charAt(0).toUpperCase() }]));
 /* the 9 icon containers Amendment C leaves empty in markup, and fills from JS */
 const ICON_CONTAINERS = [
   ...TIERS.map((t) => `${t}Icon`),
@@ -549,7 +547,12 @@ try {
           iconBoxBg: iconBox ? getComputedStyle(iconBox).backgroundColor : null,
           iconBoxH: iconBox ? iconBox.offsetHeight : 0,
           badge: badgeOf(iconBox),
-          imgs: imgs.map((i) => ({ cls: i.className, src: i.getAttribute("src"), w: i.naturalWidth, h: i.offsetHeight })),
+          imgs: imgs.map((i) => ({
+            cls: i.className,
+            src: i.getAttribute("src"),
+            w: i.naturalWidth,
+            h: i.offsetHeight,
+          })),
         };
       }
       const quests = {};
@@ -637,7 +640,8 @@ try {
                   const img = d.querySelector("img");
                   const dBox = d.querySelector(".mini-icon");
                   return {
-                    kind: d.dataset.dropLine === "currency" ? (idx === 0 ? "primary" : "secondary") : d.dataset.dropLine,
+                    kind:
+                      d.dataset.dropLine === "currency" ? (idx === 0 ? "primary" : "secondary") : d.dataset.dropLine,
                     currencyId: d.dataset.currencyId || null,
                     dropExpected: d.dataset.dropExpected || null,
                     num: d.dataset.num || null,
@@ -713,7 +717,12 @@ try {
      builder ran (stub) or hydration replaced it (event); anything else is a defect. */
   const readIconBoxes = () =>
     page.evaluate((ids) => {
-      const out = {};
+      const rootStyle = getComputedStyle(document.documentElement);
+      const tierBgs = {};
+      for (const t of ["bronze", "silver", "gold"]) {
+        tierBgs[t] = rootStyle.getPropertyValue(`--${t}-bg`).trim();
+      }
+      const out = { _tierBgs: tierBgs };
       for (const id of ids) {
         const el = document.getElementById(id);
         if (!el) {
@@ -729,6 +738,7 @@ try {
           badgeCount: badges.length,
           imgSrcs: imgs.map((i) => i.getAttribute("src")),
           imgW: imgs.map((i) => i.naturalWidth),
+          badgeTier: b ? b.dataset.tier || null : null,
           badgeText: b ? b.textContent : null,
           badgeBg: b ? getComputedStyle(b).backgroundColor : null,
           badgeW: b ? b.offsetWidth : 0,
@@ -760,13 +770,18 @@ try {
           `${label}: #${id} holds ${box.childCount} child node(s), ${box.badgeCount} .icon-fallback badge(s), want exactly 1 badge (buildTierFallback never ran or left residue)`,
         );
       const want = BADGE_WANT[tier];
+      const wantBg = rgbOf(boxes._tierBgs[tier]);
+      if (box.badgeTier !== tier)
+        errors.push(
+          `${label}: #${id} badge data-tier is ${JSON.stringify(box.badgeTier)}, want ${JSON.stringify(tier)}`,
+        );
       if (box.badgeText !== want.letter)
         errors.push(
-          `${label}: #${id} badge letter is ${JSON.stringify(box.badgeText)}, want ${JSON.stringify(want.letter)} (TIER_COLORS key "${tier}")`,
+          `${label}: #${id} badge letter is ${JSON.stringify(box.badgeText)}, want ${JSON.stringify(want.letter)} (tier "${tier}")`,
         );
-      if (box.badgeBg !== want.bg)
+      if (box.badgeBg !== wantBg)
         errors.push(
-          `${label}: #${id} badge background is ${JSON.stringify(box.badgeBg)}, want ${want.bg} = TIER_COLORS.${tier}`,
+          `${label}: #${id} badge background is ${JSON.stringify(box.badgeBg)}, want ${wantBg} (--${tier}-bg)`,
         );
       if (!(box.badgeW > 0 && box.badgeH > 0))
         errors.push(
@@ -847,9 +862,7 @@ try {
           firstCardTitle: titles[0] || null,
           secondCardTitle: titles[1] || null,
           cardTitles: titles,
-          orderTitles: [...panel.querySelectorAll(".card-inner > .card-title")].map((e) =>
-            e.textContent.trim(),
-          ),
+          orderTitles: [...panel.querySelectorAll(".card-inner > .card-title")].map((e) => e.textContent.trim()),
           calc: (() => {
             const b = document.getElementById("calculateBtn");
             if (!b) return null;
@@ -949,9 +962,8 @@ try {
           if (s === "input.eshop-require-display:hover" && /hover:\s*hover/.test(mediaText))
             out.hover = {
               media: mediaText,
-              decl: decl(r, ["border-style", "border-color", "background", "background-color"]),
+              decl: decl(r, ["border-color", "background", "background-color"]),
             };
-          if (s === "input.eshop-require-display:focus") out.focus = { decl: decl(r, ["border-style"]) };
           if (s === "input.eshop-require-display")
             out.requireBase = {
               decl: decl(r, [
@@ -966,11 +978,10 @@ try {
                 "display",
               ]),
             };
-          if (s === ".material-icon")
-            out.iconBase = { decl: decl(r, ["background", "background-color", "height"]) };
+          if (s === ".material-icon") out.iconBase = { decl: decl(r, ["background", "background-color", "height"]) };
           if (s === ".material-icon--event") out.iconEvent = { decl: decl(r, ["background", "background-color"]) };
           if (s === ".material-icon.fg-layer") out.iconFg = { decl: decl(r, ["width", "height"]) };
-          if (s === ":where(.farm-card)") out.farmFallback = { decl: decl(r, ["--tier-color", "--tier-text"]) };
+          if (s === ":where(.farm-card)") out.farmFallback = { decl: decl(r, ["--tier-bg", "--tier-text"]) };
           if (s === ".farm-grid") {
             if (mediaText) out.farmGridMedia++;
             else out.farmGrid = { decl: decl(r, ["display", "grid-template-columns", "justify-content"]) };
@@ -1294,10 +1305,22 @@ try {
       );
     if (pg.secondCardTitle !== "Drop Rates per Run")
       errors.push(`legacy(K4): second card title is ${JSON.stringify(pg.secondCardTitle)}, want "Drop Rates per Run"`);
-    if (JSON.stringify(pg.orderTitles) !== JSON.stringify(["Select Event", "Drop Rates per Run", "Shop Requirements", "Items Needed"]))
-      errors.push(`legacy(K4): card order is ${JSON.stringify(pg.orderTitles)}, want Select Event → Drop Rates per Run → Shop Requirements → Items Needed`);
-    if (!pg.calc || pg.calc.actions !== "bond-card-actions bond-card-actions--end" || !pg.calc.last || pg.calc.card !== "Shop Requirements")
-      errors.push(`legacy(K5): #calculateBtn placement wrong — ${JSON.stringify(pg.calc)}, want LAST child of the Shop Requirements .bond-card-actions--end`);
+    if (
+      JSON.stringify(pg.orderTitles) !==
+      JSON.stringify(["Select Event", "Drop Rates per Run", "Shop Requirements", "Items Needed"])
+    )
+      errors.push(
+        `legacy(K4): card order is ${JSON.stringify(pg.orderTitles)}, want Select Event → Drop Rates per Run → Shop Requirements → Items Needed`,
+      );
+    if (
+      !pg.calc ||
+      pg.calc.actions !== "bond-card-actions bond-card-actions--end" ||
+      !pg.calc.last ||
+      pg.calc.card !== "Shop Requirements"
+    )
+      errors.push(
+        `legacy(K5): #calculateBtn placement wrong — ${JSON.stringify(pg.calc)}, want LAST child of the Shop Requirements .bond-card-actions--end`,
+      );
     if (!pg.modalPresent || !pg.modalList)
       errors.push("legacy: #eventShopModal markup is static and must ship regardless of data");
 
@@ -1479,11 +1502,19 @@ try {
       errors.push(
         `select card(K4): the farm card must follow the select — second title ${JSON.stringify(pg.secondCardTitle)}`,
       );
-    if (JSON.stringify(pg.orderTitles) !== JSON.stringify(["Select Event", "Drop Rates per Run", "Shop Requirements", "Items Needed"]))
+    if (
+      JSON.stringify(pg.orderTitles) !==
+      JSON.stringify(["Select Event", "Drop Rates per Run", "Shop Requirements", "Items Needed"])
+    )
       errors.push(
         `select card(K4): card order is ${JSON.stringify(pg.orderTitles)}, want Select Event → Drop Rates per Run → Shop Requirements → Items Needed`,
       );
-    if (!pg.calc || pg.calc.actions !== "bond-card-actions bond-card-actions--end" || !pg.calc.last || pg.calc.card !== "Shop Requirements")
+    if (
+      !pg.calc ||
+      pg.calc.actions !== "bond-card-actions bond-card-actions--end" ||
+      !pg.calc.last ||
+      pg.calc.card !== "Shop Requirements"
+    )
       errors.push(
         `btn(K5): #calculateBtn placement wrong — ${JSON.stringify(pg.calc)}, want LAST child of the Shop Requirements .bond-card-actions--end`,
       );
@@ -1618,19 +1649,17 @@ try {
         );
       if (td.needBox.w !== td.heldBox.w)
         errors.push(`parity: ${t} offsetWidth mismatch — Required ${td.needBox.w}px, Held ${td.heldBox.w}px`);
-      if (td.needBox.borderStyle !== "dashed")
-        errors.push(`cues: ${t} Required computed border-style is ${td.needBox.borderStyle}, want dashed`);
+      if (td.needBox.borderStyle !== "solid")
+        errors.push(`cues: ${t} Required computed border-style is ${td.needBox.borderStyle}, want solid`);
       if (td.heldBox.borderStyle !== "solid")
-        errors.push(
-          `cues: ${t} Held computed border-style is ${td.heldBox.borderStyle}, want solid (dashed pin must discriminate)`,
-        );
+        errors.push(`cues: ${t} Held computed border-style is ${td.heldBox.borderStyle}, want solid`);
       if (td.needBox.cursor !== "pointer")
         errors.push(`cues: ${t} Required computed cursor is ${td.needBox.cursor}, want pointer`);
       if (td.needValue !== "0")
         errors.push(`parity: ${t} Required reads ${JSON.stringify(td.needValue)} on an empty plan, want "0"`);
     }
 
-    /* CSSOM: hover cue rule + focus cue rule + the base rule must carry NO geometry. */
+    /* CSSOM: hover cue rule + the base rule must carry NO geometry. */
     const css = await readCssCues();
     if (!css.hover)
       errors.push(
@@ -1638,8 +1667,6 @@ try {
       );
     else {
       const hd = css.hover.decl;
-      if (hd["border-style"] !== "solid")
-        errors.push(`cues CSSOM: hover border-style is ${JSON.stringify(hd["border-style"])}, want solid`);
       if (!/--accent/.test(hd["border-color"] || ""))
         errors.push(`cues CSSOM: hover border-color ${JSON.stringify(hd["border-color"])}, want the accent token`);
       if (!/--accent-light/.test((hd.background || "") + (hd["background-color"] || "")))
@@ -1647,13 +1674,7 @@ try {
           `cues CSSOM: hover background ${JSON.stringify([hd.background, hd["background-color"]])}, want --accent-light`,
         );
     }
-    if (!css.focus || css.focus.decl["border-style"] !== "solid")
-      errors.push("cues CSSOM: input.eshop-require-display:focus border-style solid rule missing");
-    if (
-      !css.requireBase ||
-      css.requireBase.decl["border-style"] !== "dashed" ||
-      css.requireBase.decl.cursor !== "pointer"
-    )
+    if (!css.requireBase || css.requireBase.decl.cursor !== "pointer" || css.requireBase.decl["user-select"] !== "none")
       errors.push(`cues CSSOM: base eshop-require-display rule wrong — ${JSON.stringify(css.requireBase)}`);
     if (css.requireBase) {
       const geometry = ["min-height", "height", "width", "padding", "font-size", "display"].filter(
@@ -1669,7 +1690,9 @@ try {
         `icons CSSOM(K1): base .material-icon declares a background (${JSON.stringify(css.iconBase.decl)}) — Amendment K deleted the grey plate, only --event keeps the box transparent`,
       );
     if (!css.iconBase || css.iconBase.decl.height !== "96px")
-      errors.push(`icons CSSOM(K1): base .material-icon height is ${JSON.stringify(css.iconBase && css.iconBase.decl.height)}, want 96px`);
+      errors.push(
+        `icons CSSOM(K1): base .material-icon height is ${JSON.stringify(css.iconBase && css.iconBase.decl.height)}, want 96px`,
+      );
     if (!css.iconFg || css.iconFg.decl.width !== "100%" || css.iconFg.decl.height !== "100%")
       errors.push(
         `icons CSSOM(K1): .material-icon .fg-layer is ${JSON.stringify(css.iconFg && css.iconFg.decl)}, want 100%/100% fill — the 80px inset must not come back`,
@@ -1696,20 +1719,30 @@ try {
       );
     /* Amendment K2: the header is a plain display — no cursor cue rule, no hover/focus opener cue */
     if (css.farmTitle && css.farmTitle.decl.cursor && css.farmTitle.decl.cursor !== "auto")
-      errors.push(`farm CSSOM(K2): .farm-card-title cursor is ${css.farmTitle.decl.cursor}, want none/auto (not a control)`);
+      errors.push(
+        `farm CSSOM(K2): .farm-card-title cursor is ${css.farmTitle.decl.cursor}, want none/auto (not a control)`,
+      );
     if (css.farmTitleCues !== 0)
       errors.push(
         `farm CSSOM(K2): ${css.farmTitleCues} rule(s) style .farm-card-title as a control (:hover/:focus-visible cues) — the opener cues were deleted by Amendment K`,
       );
     if (!css.farmTitleFg || css.farmTitleFg.decl.width !== "100%" || css.farmTitleFg.decl.height !== "100%")
-      errors.push(`farm CSSOM(K3): the header fg-layer fill rule is ${JSON.stringify(css.farmTitleFg)}, want 100%/100%`);
+      errors.push(
+        `farm CSSOM(K3): the header fg-layer fill rule is ${JSON.stringify(css.farmTitleFg)}, want 100%/100%`,
+      );
     if (!css.dropLine || css.dropLine.decl.height !== "32px")
-      errors.push(`farm CSSOM(27bb180): the drop-line .mini-icon height rule is ${JSON.stringify(css.dropLine)}, want 32px`);
+      errors.push(
+        `farm CSSOM(27bb180): the drop-line .mini-icon height rule is ${JSON.stringify(css.dropLine)}, want 32px`,
+      );
     /* Amendment K5: the event Calculate button rides the bond actions house rule */
     if (!css.btnActions || css.btnActions.decl.width !== "auto")
-      errors.push(`btn CSSOM(K5): .bond-card-actions .calculate-btn width is ${JSON.stringify(css.btnActions && css.btnActions.decl.width)}, want auto ≥380px`);
+      errors.push(
+        `btn CSSOM(K5): .bond-card-actions .calculate-btn width is ${JSON.stringify(css.btnActions && css.btnActions.decl.width)}, want auto ≥380px`,
+      );
     if (!css.btnSmall || css.btnSmall.decl.width !== "100%")
-      errors.push(`btn CSSOM(K5): the <380px media rule for .bond-card-actions .calculate-btn is ${JSON.stringify(css.btnSmall)}, want width: 100%`);
+      errors.push(
+        `btn CSSOM(K5): the <380px media rule for .bond-card-actions .calculate-btn is ${JSON.stringify(css.btnSmall)}, want width: 100%`,
+      );
     /* K5 live geometry at the 1120px viewport: auto width, flush to the actions row's right edge */
     const btnGeo = await page.evaluate(() => {
       const b = document.getElementById("calculateBtn");
@@ -1719,12 +1752,16 @@ try {
       return { ratio: br.width / a.clientWidth, rightGap: Math.round(ar.right - br.right) };
     });
     if (!(btnGeo.ratio > 0 && btnGeo.ratio <= 0.5))
-      errors.push(`btn(K5): #calculateBtn spans ${(btnGeo.ratio * 100).toFixed(0)}% of its row at 1120px, want at most half (bond parity)`);
-    if (Math.abs(btnGeo.rightGap) > 1.5)
-      errors.push(`btn(K5): the button's right edge is ${btnGeo.rightGap}px off the actions row's right edge, want flush (right-aligned)`);
-    if (!css.farmFallback || !/var\(--silver\)/.test(css.farmFallback.decl["--tier-color"] || ""))
       errors.push(
-        `farm CSSOM: :where(.farm-card) silver --tier-color fallback missing — ${JSON.stringify(css.farmFallback)} — an unknown tier background (QP "zero") would lose its border colour`,
+        `btn(K5): #calculateBtn spans ${(btnGeo.ratio * 100).toFixed(0)}% of its row at 1120px, want at most half (bond parity)`,
+      );
+    if (Math.abs(btnGeo.rightGap) > 1.5)
+      errors.push(
+        `btn(K5): the button's right edge is ${btnGeo.rightGap}px off the actions row's right edge, want flush (right-aligned)`,
+      );
+    if (!css.farmFallback || !/var\(--silver-bg\)/.test(css.farmFallback.decl["--tier-bg"] || ""))
+      errors.push(
+        `farm CSSOM: :where(.farm-card) silver --tier-bg fallback missing — ${JSON.stringify(css.farmFallback)} — an unknown tier background (QP "zero") would lose its fallback badge background`,
       );
     /* live :focus flip */
     await page.focus("#goldNeed");
@@ -1733,8 +1770,8 @@ try {
       errors.push(`cues live: focused gold Required border-style is ${focusBorder}, want solid`);
     await page.focus("#goldHave");
     const blurBorder = await page.evaluate(() => getComputedStyle(document.getElementById("goldNeed")).borderStyle);
-    if (blurBorder !== "dashed")
-      errors.push(`cues live: blurred gold Required border-style is ${blurBorder}, want dashed`);
+    if (blurBorder !== "solid")
+      errors.push(`cues live: blurred gold Required border-style is ${blurBorder}, want solid`);
 
     /* ================= 4. event-native tier cards: standalone icons, names, EN names ========== */
     for (const currency of CURRENCIES) {
@@ -1759,7 +1796,9 @@ try {
       /* Amendment K1 geometry: the 96px box, filled by the fg-layer (no 80px inset) */
       if (td.iconBoxH !== 96) errors.push(`icons(K1): ${tier} tier icon box is ${td.iconBoxH}px tall, want 96px`);
       if (fg[0] && fg[0].h !== 96)
-        errors.push(`icons(K1): ${tier} fg-layer is ${fg[0].h}px tall, want it to FILL the 96px box (the 80px inset must not return)`);
+        errors.push(
+          `icons(K1): ${tier} fg-layer is ${fg[0].h}px tall, want it to FILL the 96px box (the 80px inset must not return)`,
+        );
       if (td.badge)
         errors.push(
           `icons: ${tier} icon box still shows the ${JSON.stringify(td.badge.text)} fallback badge in event mode — hydration did not replace it`,
@@ -1864,8 +1903,12 @@ try {
         ];
         for (const [re, what] of absent)
           if (re.test(gridText))
-            errors.push(`farm absence(I7): #farmGrid visible text still carries the ${what} — ${JSON.stringify(gridText.slice(0, 160))}`);
-        const strayInputs = f.cards.flatMap((c) => c.inputs.filter((i) => i.displayClass || /^farmRequired/.test(i.id)));
+            errors.push(
+              `farm absence(I7): #farmGrid visible text still carries the ${what} — ${JSON.stringify(gridText.slice(0, 160))}`,
+            );
+        const strayInputs = f.cards.flatMap((c) =>
+          c.inputs.filter((i) => i.displayClass || /^farmRequired/.test(i.id)),
+        );
         if (strayInputs.length)
           errors.push(
             `farm absence(I7): ${strayInputs.length} require-display/farmRequired input(s) inside #farmGrid — ${JSON.stringify(strayInputs.map((i) => i.id))}`,
@@ -1874,12 +1917,21 @@ try {
            (The inverted I7 pin: role=button/tabindex/aria-haspopup/aria-label/data-currency-id on
            any .farm-card-title, or a pointer cursor, means the header-opener regression is back.) */
         const openerAttrs = f.cards.filter(
-          (c) => c.header && (c.header.role || c.header.tabindex || c.header.haspopup || c.header.ariaLabel || c.header.currencyId),
+          (c) =>
+            c.header &&
+            (c.header.role || c.header.tabindex || c.header.haspopup || c.header.ariaLabel || c.header.currencyId),
         );
         if (openerAttrs.length)
           errors.push(
             `farm(K2): ${openerAttrs.length}/${f.cards.length} headers still carry opener attrs — ${JSON.stringify(
-              openerAttrs.map((c) => [c.name, c.header.role, c.header.tabindex, c.header.haspopup, c.header.ariaLabel, c.header.currencyId]),
+              openerAttrs.map((c) => [
+                c.name,
+                c.header.role,
+                c.header.tabindex,
+                c.header.haspopup,
+                c.header.ariaLabel,
+                c.header.currencyId,
+              ]),
             )}`,
           );
         const pointerHeaders = f.cards.filter((c) => c.header && c.header.cursor !== "auto");
@@ -1888,7 +1940,11 @@ try {
             `farm(K2): ${pointerHeaders.length} header(s) are not cursor:auto — ${JSON.stringify(pointerHeaders.map((c) => [c.name, c.header.cursor]))}`,
           );
 
-        const mapped = new Set(TIERS.map((t) => currencyForTierRef(CURRENCIES, t)).filter(Boolean).map((c) => String(c.id)));
+        const mapped = new Set(
+          TIERS.map((t) => currencyForTierRef(CURRENCIES, t))
+            .filter(Boolean)
+            .map((c) => String(c.id)),
+        );
         for (const currency of CURRENCIES) {
           const id = String(currency.id);
           const card = f.cards.find((c) => c.name === currency.name);
@@ -1916,7 +1972,8 @@ try {
               errors.push(
                 `farm(${currency.name}): header icon ${JSON.stringify(h.imgSrc)}, want ${wantFile}?v=${IMAGE_VERSION}`,
               );
-            if (!(h.imgW > 0)) errors.push(`farm(${currency.name}): header icon never decoded (naturalWidth ${h.imgW})`);
+            if (!(h.imgW > 0))
+              errors.push(`farm(${currency.name}): header icon never decoded (naturalWidth ${h.imgW})`);
             if (h.boxH !== 64 || h.imgH !== 64)
               errors.push(
                 `farm(27bb180)(${currency.name}): header art is box ${h.boxH}px / img ${h.imgH}px, want 64px/64px (box and image)`,
@@ -1928,7 +1985,10 @@ try {
               );
           }
           /* only Held on unmapped farm cards, never on a tier-mapped card */
-          const gotLabels = card.inputs.map((i) => i.label).sort().join(",");
+          const gotLabels = card.inputs
+            .map((i) => i.label)
+            .sort()
+            .join(",");
           const wantLabels = mapped.has(id) ? "" : "Held";
           if (gotLabels !== wantLabels)
             errors.push(
@@ -1954,7 +2014,9 @@ try {
           if (entry.recommendLv) wantStats.push(`REC Lv. ${entry.recommendLv}`);
           const statsNoDash = card.lines.filter((l) => l !== "\u2014");
           if (JSON.stringify(statsNoDash) !== JSON.stringify(wantStats))
-            errors.push(`farm(${currency.name}): stat lines ${JSON.stringify(statsNoDash)}, want ${JSON.stringify(wantStats)}`);
+            errors.push(
+              `farm(${currency.name}): stat lines ${JSON.stringify(statsNoDash)}, want ${JSON.stringify(wantStats)}`,
+            );
           const dashCount = card.lines.filter((l) => l === "\u2014").length;
           const wantDash = entry.secondary ? 0 : 1;
           if (dashCount !== wantDash)
@@ -1965,9 +2027,7 @@ try {
             errors.push(
               `farm(${currency.name}): ${card.drops.length} drop line(s), want ${entry.secondary ? 2 : 1} (primary${entry.secondary ? " + secondary" : ""})`,
             );
-          const wantDrops = [
-            { kind: "primary", id, de: entry.dropExpected, num: entry.num, icon: currency.icon },
-          ];
+          const wantDrops = [{ kind: "primary", id, de: entry.dropExpected, num: entry.num, icon: currency.icon }];
           if (entry.secondary) {
             const sec = CURRENCIES.find((c) => String(c.id) === String(entry.secondary.currencyId));
             if (!sec)
@@ -1986,7 +2046,9 @@ try {
           for (const want of wantDrops) {
             const d = card.drops.find((x) => x.kind === want.kind);
             if (!d) {
-              errors.push(`farm(${currency.name}): no ${want.kind} drop line — ${JSON.stringify(card.drops.map((x) => x.kind))}`);
+              errors.push(
+                `farm(${currency.name}): no ${want.kind} drop line — ${JSON.stringify(card.drops.map((x) => x.kind))}`,
+              );
               continue;
             }
             if (d.currencyId !== want.id)
@@ -2003,10 +2065,14 @@ try {
               );
             const wantPct = dropPctRef(want.de);
             if (d.material !== wantPct)
-              errors.push(`farm(${currency.name}): ${want.kind} drop % reads ${JSON.stringify(d.material)}, want "${wantPct}"`);
+              errors.push(
+                `farm(${currency.name}): ${want.kind} drop % reads ${JSON.stringify(d.material)}, want "${wantPct}"`,
+              );
             const wantValue = dropValueRef(want.de, want.num, 0);
             if (d.value !== wantValue)
-              errors.push(`farm(${currency.name}): ${want.kind} amount reads ${JSON.stringify(d.value)}, want "${wantValue}"`);
+              errors.push(
+                `farm(${currency.name}): ${want.kind} amount reads ${JSON.stringify(d.value)}, want "${wantValue}"`,
+              );
             const wantFile = `event_shop/${want.icon.split("/").pop()}`;
             if (!(d.imgSrc || "").includes(wantFile) || !(d.imgSrc || "").includes(`?v=${IMAGE_VERSION}`))
               errors.push(
@@ -2014,7 +2080,9 @@ try {
               );
             if (!(d.imgW > 0)) errors.push(`farm(${currency.name}): ${want.kind} line icon never decoded (${d.imgW})`);
             if (d.boxH !== 32 || d.imgH !== 32)
-              errors.push(`farm(27bb180)(${currency.name}): ${want.kind} line art is box ${d.boxH}px / img ${d.imgH}px, want 32px/32px`);
+              errors.push(
+                `farm(27bb180)(${currency.name}): ${want.kind} line art is box ${d.boxH}px / img ${d.imgH}px, want 32px/32px`,
+              );
           }
         }
         /* non-vacuity: with the shipped snapshot every card must be on the FULL-data path, and the
@@ -2026,18 +2094,24 @@ try {
         const wantDash = CURRENCIES.filter((c) => FARM[String(c.id)] && !FARM[String(c.id)].secondary).length;
         const gotDash = f.cards.filter((c) => c.lines.includes("\u2014")).length;
         if (gotDash !== wantDash)
-          errors.push(`farm: ${gotDash} dash card(s), want ${wantDash} (secondary-null) — ${JSON.stringify(f.cards.map((c) => c.lines))}`);
+          errors.push(
+            `farm: ${gotDash} dash card(s), want ${wantDash} (secondary-null) — ${JSON.stringify(f.cards.map((c) => c.lines))}`,
+          );
         /* the pinned farm truth (plan tracker verified against the live API): the snapshot must
            still carry it — if this drifts, the reference math below pins the app to stale numbers */
         for (const [id, truth] of Object.entries(FARM_TRUTH)) {
           const entry = FARM[id];
-          const drift = Object.keys(truth).filter((k) => JSON.stringify(entry && entry[k]) !== JSON.stringify(truth[k]));
+          const drift = Object.keys(truth).filter(
+            (k) => JSON.stringify(entry && entry[k]) !== JSON.stringify(truth[k]),
+          );
           if (!entry || drift.length)
             errors.push(
               `farm truth: FARM[${id}] ${JSON.stringify(entry)} drifted from the pinned snapshot ${JSON.stringify(truth)} on [${drift.join(",")}]`,
             );
           if (entry && !(entry.sampleRuns > 0))
-            errors.push(`farm truth: FARM[${id}].sampleRuns is ${JSON.stringify(entry.sampleRuns)} — the data field stays in the schema (I3 removed the DISPLAY only)`);
+            errors.push(
+              `farm truth: FARM[${id}].sampleRuns is ${JSON.stringify(entry.sampleRuns)} — the data field stays in the schema (I3 removed the DISPLAY only)`,
+            );
         }
         if (IMAGE_VERSION !== "4")
           errors.push(
@@ -2050,12 +2124,18 @@ try {
     if (base.farm) {
       const goldCe = (EACTIVE.bonusCes || []).find((c) => c.bonuses && c.bonuses[String(goldCurrency.id)]);
       if (goldCe) {
-        const beforeDrops = (await readTier()).farm.cards.map((c) => c.drops.map((d) => [d.iconCount, d.material, d.value]));
+        const beforeDrops = (await readTier()).farm.cards.map((c) =>
+          c.drops.map((d) => [d.iconCount, d.material, d.value]),
+        );
         await typeInto(`#bonusCe_${goldCe.id}_lb`, "2");
         await wait(SETTLE_MS);
-        const afterDrops = (await readTier()).farm.cards.map((c) => c.drops.map((d) => [d.iconCount, d.material, d.value]));
+        const afterDrops = (await readTier()).farm.cards.map((c) =>
+          c.drops.map((d) => [d.iconCount, d.material, d.value]),
+        );
         if (JSON.stringify(beforeDrops) !== JSON.stringify(afterDrops))
-          errors.push(`farm drop lines changed after editing CE count: ${JSON.stringify(beforeDrops)} → ${JSON.stringify(afterDrops)}`);
+          errors.push(
+            `farm drop lines changed after editing CE count: ${JSON.stringify(beforeDrops)} → ${JSON.stringify(afterDrops)}`,
+          );
         await resetPlan();
       }
     }
@@ -2272,16 +2352,27 @@ try {
         if (await modalGate(true, `tier Required: ${currency.name} modal`)) {
           const mt = await readModal();
           if (mt.title !== `${currency.name} \u2014 Shop Items`)
-            errors.push(`tier Required: ${currency.background} opened ${JSON.stringify(mt.title)}, want the mapped currency's modal`);
-          if (mt.rows.map((r) => r.id).sort().join() !== expectedRows(EACTIVE, id))
+            errors.push(
+              `tier Required: ${currency.background} opened ${JSON.stringify(mt.title)}, want the mapped currency's modal`,
+            );
+          if (
+            mt.rows
+              .map((r) => r.id)
+              .sort()
+              .join() !== expectedRows(EACTIVE, id)
+          )
             errors.push(`tier Required: ${currency.background} modal rows differ from the currency's own item list`);
           await closeBy("Escape", "tier Required then Escape");
         }
       }
       /* a farm input click never opens anything (MULTI is where unmapped cards carry inputs) */
       if (MULTI) {
-        await switchEvent(PIN_ZERO, '8b: switch → 80292 (unmapped QP + second silver)');
-        const unmapped = EZERO.currencies.filter((c) => !currencyForTierRef(EZERO.currencies, c.background) || String(currencyForTierRef(EZERO.currencies, c.background).id) !== String(c.id));
+        await switchEvent(PIN_ZERO, "8b: switch → 80292 (unmapped QP + second silver)");
+        const unmapped = EZERO.currencies.filter(
+          (c) =>
+            !currencyForTierRef(EZERO.currencies, c.background) ||
+            String(currencyForTierRef(EZERO.currencies, c.background).id) !== String(c.id),
+        );
         for (const currency of unmapped) {
           const id = String(currency.id);
           const held = `#farmHeld${id}`;
@@ -2604,7 +2695,9 @@ try {
       const flatRuns = Math.ceil(5610 / (FARM[goldId].dropExpected * FARM[goldId].num + 2));
       const noBonusRuns = Math.ceil(5610 / (FARM[goldId].dropExpected * FARM[goldId].num));
       if (goldRef.deficit !== 5610)
-        errors.push(`farm math: the reference deficit moved off 5610 (${JSON.stringify(goldRef)}) — re-verify BUY_ALL_TRUTH before blaming the app`);
+        errors.push(
+          `farm math: the reference deficit moved off 5610 (${JSON.stringify(goldRef)}) — re-verify BUY_ALL_TRUTH before blaming the app`,
+        );
       if (goldRef.runs === flatRuns || goldRef.runs === noBonusRuns)
         errors.push(
           `farm math: the reference is blind — bonus-in-stack ${goldRef.runs} equals flat-bonus ${flatRuns} / no-bonus ${noBonusRuns} at this drop rate, re-pick the scene numbers`,
@@ -2613,7 +2706,9 @@ try {
       const plays = (res.farmResults && res.farmResults.plays) || [];
       const goldPlay = plays.find((p) => p.questName === FARM[goldId].questName);
       if (!res.farmResults || res.farmResults.title !== "Best Farm Runs")
-        errors.push(`farm math: #results title is ${JSON.stringify(res.farmResults && res.farmResults.title)}, want "Best Farm Runs"`);
+        errors.push(
+          `farm math: #results title is ${JSON.stringify(res.farmResults && res.farmResults.title)}, want "Best Farm Runs"`,
+        );
       if (plays.length !== 1 || !goldPlay)
         errors.push(
           `farm math: #results plays ${JSON.stringify(plays)}, want single quest ${JSON.stringify(FARM[goldId].questName)}`,
@@ -2629,7 +2724,9 @@ try {
       /* K6 absence sweep: no "AP" text anywhere in the visible #results surface */
       const resultsText = await page.evaluate(() => (document.getElementById("results") || {}).textContent || "");
       if (/\bAP\b/.test(resultsText))
-        errors.push(`results(K6): #results still prints AP — ${JSON.stringify(resultsText.replace(/\s+/g, " ").slice(0, 160))}`);
+        errors.push(
+          `results(K6): #results still prints AP — ${JSON.stringify(resultsText.replace(/\s+/g, " ").slice(0, 160))}`,
+        );
       console.log(
         `NOTE: farm results gold = 5610 deficit, ${goldPlay && goldPlay.count} ${goldPlay && goldPlay.label} (bonus-in-stack ref ${goldRef.runs}; the flat-bonus bug would say ${flatRuns}, dropping the bonus entirely ${noBonusRuns})`,
       );
@@ -2733,7 +2830,9 @@ try {
             `isolation(G): A's bronze Required after the round trip reads ${JSON.stringify(backA.tiers.bronze.needValue)}, want ${3 * freeRow.cost.amount}`,
           );
         if (backA.tiers.gold.heldValue !== "1000")
-          errors.push(`isolation(G): A's held after the round trip reads ${JSON.stringify(backA.tiers.gold.heldValue)}, want "1000"`);
+          errors.push(
+            `isolation(G): A's held after the round trip reads ${JSON.stringify(backA.tiers.gold.heldValue)}, want "1000"`,
+          );
         const fullShape = (c) => {
           const cur = CURRENCIES.find((x) => x.name === c.name);
           const entry = cur ? FARM[String(cur.id)] : null;
@@ -2798,7 +2897,9 @@ try {
         );
       const unnamed = s79.farm.cards.filter((c) => !EMULTI.currencies.some((x) => x.name === c.name));
       if (unnamed.length)
-        errors.push(`farm: 80379 card names ${JSON.stringify(unnamed.map((c) => c.name))} are not the event's own currencies`);
+        errors.push(
+          `farm: 80379 card names ${JSON.stringify(unnamed.map((c) => c.name))} are not the event's own currencies`,
+        );
       await switchEvent(ACTIVE_ID, "switch back → 80639");
       const back = await readTier();
       if (back.results.gold.deficitLabel !== BUY_ALL_NAMES[String(goldCurrency.id)])
@@ -2825,7 +2926,7 @@ try {
         const silverCard = s92.farm.cards.find((c) => c.tier === "silver");
         if (silverCard && qpCard.borderColor !== silverCard.borderColor)
           errors.push(
-            `zero tier: the QP card border ${qpCard.borderColor} lost the :where() silver fallback (silver sibling ${silverCard.borderColor})`,
+            `zero tier: the QP card border ${qpCard.borderColor} differs from silver sibling ${silverCard.borderColor}`,
           );
         if (!/rgba\(|rgb\(/.test(qpCard.borderColor) || qpCard.borderColor === "rgba(0, 0, 0, 0)")
           errors.push(
@@ -2874,17 +2975,21 @@ try {
         if (card.lines.includes("\u2014"))
           errors.push(`dash(${currency.name}): unexpected "\u2014" line — ${JSON.stringify(card.lines)}`);
         if (JSON.stringify(card.lines) !== JSON.stringify(wantStats))
-          errors.push(
-            `dash(${currency.name}): stats ${JSON.stringify(card.lines)}, want ${JSON.stringify(wantStats)}`,
-          );
+          errors.push(`dash(${currency.name}): stats ${JSON.stringify(card.lines)}, want ${JSON.stringify(wantStats)}`);
         if (card.drops.length !== 1 || card.drops[0].kind !== "primary")
-          errors.push(`dash(${currency.name}): ${card.drops.length} drop line(s) ${JSON.stringify(card.drops.map((d) => d.kind))}, want the primary line alone`);
+          errors.push(
+            `dash(${currency.name}): ${card.drops.length} drop line(s) ${JSON.stringify(card.drops.map((d) => d.kind))}, want the primary line alone`,
+          );
         if (card.drops[0] && (card.drops[0].currencyId !== id || card.drops[0].num !== String(entry.num)))
-          errors.push(`dash(${currency.name}): primary line data wrong — ${JSON.stringify([card.drops[0].currencyId, card.drops[0].num])}`);
+          errors.push(
+            `dash(${currency.name}): primary line data wrong — ${JSON.stringify([card.drops[0].currencyId, card.drops[0].num])}`,
+          );
         /* Amendment K: the secondary-less card's header is still inert, and the tier Required
            (this fixture's currencies are all tier-mapped) opens its modal */
         if (card.header && (card.header.role || card.header.currencyId))
-          errors.push(`dash(K2)(${currency.name}): the fixture header carries opener attrs ${JSON.stringify([card.header.role, card.header.currencyId])}`);
+          errors.push(
+            `dash(K2)(${currency.name}): the fixture header carries opener attrs ${JSON.stringify([card.header.role, card.header.currencyId])}`,
+          );
         await safeClick(sel.tierNeed(currency.background));
         if (await modalGate(true, `17D: ${currency.name} tier Required opens its modal`)) {
           const m = await readModal();
@@ -2906,7 +3011,9 @@ try {
       const dashGoldEntry = dashFarm[String(dashGold.id)];
       const refD = refFarmRow(dashGoldEntry, totalsD[String(dashGold.id)], 0, 0);
       if (refD.runs === null)
-        errors.push("dash: the fixture's gold farm row priced to nothing — the scene is blind, re-check the fixture data");
+        errors.push(
+          "dash: the fixture's gold farm row priced to nothing — the scene is blind, re-check the fixture data",
+        );
       const playsD = (resD && resD.plays) || [];
       const goldPlayD = playsD.find((p) => p.questName === dashGoldEntry.questName);
       if (!resD || resD.title !== "Best Farm Runs" || playsD.length !== 1 || !goldPlayD)
@@ -2916,7 +3023,9 @@ try {
           `dash: gold runs is ${JSON.stringify(goldPlayD.count)}, want ${refD.runs} — missing secondary unchanged`,
         );
       if (pageErrors.length !== before17)
-        errors.push(`dash: the secondary-null fixture raised page errors — ${JSON.stringify(pageErrors.slice(before17))}`);
+        errors.push(
+          `dash: the secondary-null fixture raised page errors — ${JSON.stringify(pageErrors.slice(before17))}`,
+        );
       await resetPlan();
       await switchEvent(ACTIVE_ID, "17D: leave the fixture");
     }
@@ -2955,7 +3064,8 @@ try {
                 headerHaspopup: header ? header.getAttribute("aria-haspopup") : null,
                 headerAria: header ? header.getAttribute("aria-label") : null,
                 headerText:
-                  (hImg && hImg.getAttribute("alt")) || (header ? header.textContent.replace(/\s+/g, " ").trim() : null),
+                  (hImg && hImg.getAttribute("alt")) ||
+                  (header ? header.textContent.replace(/\s+/g, " ").trim() : null),
                 requireDisplays: c.querySelectorAll("input.eshop-require-display").length,
                 requiredIds: inputs.filter((i) => /^farmRequired/.test(i.id)).map((i) => i.id),
                 cardBg: getComputedStyle(c).backgroundColor,
@@ -2980,9 +3090,12 @@ try {
         );
 
       const mappedIdsOf = (currencies) =>
-        new Set(TIERS.map((t) => currencyForTierRef(currencies, t)).filter(Boolean).map((c) => String(c.id)));
-      const itemsOf = (snap, currencyId) =>
-        snap.items.filter((i) => String(i.cost.itemId) === String(currencyId));
+        new Set(
+          TIERS.map((t) => currencyForTierRef(currencies, t))
+            .filter(Boolean)
+            .map((c) => String(c.id)),
+        );
+      const itemsOf = (snap, currencyId) => snap.items.filter((i) => String(i.cost.itemId) === String(currencyId));
 
       /* The shared ensureEventTab readiness test keys on #goldNeed carrying the display class, which
          an event with NO gold currency never does (its tier card reverts to the legacy editable
@@ -2992,8 +3105,7 @@ try {
         await page.reload({ waitUntil: "networkidle0" });
         await page.evaluate(() => {
           const active = document.querySelector(".tab-btn.active");
-          if (!active || active.dataset.tab !== "event")
-            document.querySelector('.tab-btn[data-tab="event"]').click();
+          if (!active || active.dataset.tab !== "event") document.querySelector('.tab-btn[data-tab="event"]').click();
         });
         try {
           await page.waitForFunction(
@@ -3036,7 +3148,14 @@ try {
         if (attrHeaders.length)
           errors.push(
             `H1(K2)(${snap.event.id}): ${attrHeaders.length} header(s) still carry opener attrs — ${JSON.stringify(
-              attrHeaders.map((c) => [c.headerText, c.headerRole, c.headerTabindex, c.headerHaspopup, c.headerAria, c.headerCurrencyId]),
+              attrHeaders.map((c) => [
+                c.headerText,
+                c.headerRole,
+                c.headerTabindex,
+                c.headerHaspopup,
+                c.headerAria,
+                c.headerCurrencyId,
+              ]),
             )}`,
           );
         const tierState = await readTier();
@@ -3046,7 +3165,9 @@ try {
           if (!card) {
             errors.push(
               `H1(${snap.event.id}): no farm card header named ${currency.name} (${id}, background ${currency.background}) — ${
-                mapped.has(id) ? "its tier Required is the modal door" : "unmapped: the card and its Held/Bonus pair must still render"
+                mapped.has(id)
+                  ? "its tier Required is the modal door"
+                  : "unmapped: the card and its Held/Bonus pair must still render"
               }`,
             );
             continue;
@@ -3078,7 +3199,10 @@ try {
           } else if (totals[id] !== 0 && mapped.has(id))
             errors.push(`H1(${snap.event.id}): ${currency.name} is first-match mapped but its tier box is missing`);
           const wantLabels = mapped.has(id) ? "" : "Held";
-          const gotLabels = card.boxes.map((b) => b.label).sort().join(",");
+          const gotLabels = card.boxes
+            .map((b) => b.label)
+            .sort()
+            .join(",");
           if (gotLabels !== wantLabels)
             errors.push(
               `H1(${snap.event.id}): ${currency.name} (${id}) farm card holds [${gotLabels}], want [${wantLabels}] — ${
@@ -3130,7 +3254,9 @@ try {
         await hit.click();
         await wait(SETTLE_MS);
         if ((await readModal()).open) {
-          errors.push(`${label}: clicking ${name}'s farm header opened the modal — K2 says the header is not a control`);
+          errors.push(
+            `${label}: clicking ${name}'s farm header opened the modal — K2 says the header is not a control`,
+          );
           await closeBy("Escape", `${label}: recover after header click`);
         }
         await hit.focus();
@@ -3171,9 +3297,13 @@ try {
         if (m2f.title !== `${firstGold.name} \u2014 Shop Items`)
           errors.push(`H2: the tier Required opened ${JSON.stringify(m2f.title)}, want the first gold's own modal`);
         if (m2f.rows.some((r) => r.id === String(secondItem.id)))
-          errors.push(`H2: the ${firstGold.name} modal lists ${secondGold.name}'s row — first-match must not merge the golds`);
+          errors.push(
+            `H2: the ${firstGold.name} modal lists ${secondGold.name}'s row — first-match must not merge the golds`,
+          );
         if (m2f.rows.some((r) => r.value !== "0"))
-          errors.push(`H2: the ${firstGold.name} modal shows spend ${JSON.stringify(m2f.rows.map((r) => r.value))} — the seeded plan belongs to the OTHER gold`);
+          errors.push(
+            `H2: the ${firstGold.name} modal shows spend ${JSON.stringify(m2f.rows.map((r) => r.value))} — the seeded plan belongs to the OTHER gold`,
+          );
         await closeBy("Escape", "H2: Escape discards the draft");
       }
 
@@ -3223,15 +3353,21 @@ try {
         if (m3.title !== `${firstSilver.name} \u2014 Shop Items`)
           errors.push(`H3: the tier Required opened ${JSON.stringify(m3.title)}, want the mapped ${firstSilver.name}`);
         if (m3.rows.some((r) => r.id === String(kpItem.id)))
-          errors.push(`H3: the ${firstSilver.name} modal lists ${secondSilver.name}'s row — the silvers must stay separate`);
+          errors.push(
+            `H3: the ${firstSilver.name} modal lists ${secondSilver.name}'s row — the silvers must stay separate`,
+          );
         if (m3.rows.some((r) => r.id === String(qpBig.id) || r.id === String(qpSmall.id)))
           errors.push(`H3: the ${firstSilver.name} modal lists QP rows — "zero" maps to no tier card`);
         if (m3.rows.some((r) => r.value !== "0"))
-          errors.push(`H3: the ${firstSilver.name} modal shows ${JSON.stringify(m3.rows.map((r) => r.value))} — the seeded spend belongs to OTHER currencies`);
+          errors.push(
+            `H3: the ${firstSilver.name} modal shows ${JSON.stringify(m3.rows.map((r) => r.value))} — the seeded spend belongs to OTHER currencies`,
+          );
         await closeBy("Escape", "H3: close the mapped silver's modal");
       }
       for (const currency of EZERO.currencies) {
-        const mappedHere = TIERS.includes(currency.background) ? currencyForTierRef(EZERO.currencies, currency.background) : null;
+        const mappedHere = TIERS.includes(currency.background)
+          ? currencyForTierRef(EZERO.currencies, currency.background)
+          : null;
         if (!mappedHere || String(mappedHere.id) !== String(currency.id)) continue;
         const td = h3tier.tiers[currency.background];
         if (td && td.needValue !== String(want3[String(currency.id)]))
@@ -3244,7 +3380,9 @@ try {
           `H3: the silver TIER Required reads ${JSON.stringify(h3tier.tiers.silver.needValue)} after spending QP and ${secondSilver.name} — the mapped ${firstSilver.name} plan is empty`,
         );
       if (h3tier.tiers.gold.needValue !== "0")
-        errors.push(`H3: 80292 has no gold currency but the gold Required reads ${JSON.stringify(h3tier.tiers.gold.needValue)}`);
+        errors.push(
+          `H3: 80292 has no gold currency but the gold Required reads ${JSON.stringify(h3tier.tiers.gold.needValue)}`,
+        );
 
       /* --- H4. Calculate inside the debounce window prices the FARM box's fresh figure --- */
       await resetPlan();
@@ -3275,7 +3413,9 @@ try {
         { second: String(secondGold.id), key: KEY, event: PIN_MULTI },
       );
       if (h4.ms >= DEBOUNCE_MS)
-        errors.push(`H4: input→Calculate took ${h4.ms}ms, outside DEBOUNCE_MS ${DEBOUNCE_MS} — the scene did not test the window`);
+        errors.push(
+          `H4: input→Calculate took ${h4.ms}ms, outside DEBOUNCE_MS ${DEBOUNCE_MS} — the scene did not test the window`,
+        );
       if (h4.held[String(secondGold.id)] !== 500)
         errors.push(
           `H4: Calculate ${h4.ms}ms after typing 500 into the farm Held box priced ${JSON.stringify(h4.held[String(secondGold.id)])} — the synchronous farm commit did not run, so a fast Calculate prices a stale figure`,
@@ -3313,7 +3453,9 @@ try {
       const h5 = await readTier();
       const h5ctl = await readFarmCtl(PIN_MULTI);
       if (h5.tiers.gold.heldValue !== "1234")
-        errors.push(`H5: the gold tier Held box did not receive the stored tier key — ${JSON.stringify(h5.tiers.gold.heldValue)}, want "1234"`);
+        errors.push(
+          `H5: the gold tier Held box did not receive the stored tier key — ${JSON.stringify(h5.tiers.gold.heldValue)}, want "1234"`,
+        );
       const secondBoxes = (h5ctl.cards.find((c) => c.headerText === secondGold.name) || { boxes: [] }).boxes;
       if (secondBoxes.some((b) => b.value !== "0"))
         errors.push(
@@ -3326,12 +3468,19 @@ try {
       await typeInto(`#farmHeld${secondGold.id}`, "3");
       await wait(SETTLE_MS);
       const h5w = (await readFarmCtl(PIN_MULTI)).plan;
-      if (JSON.stringify(Object.keys(h5w.held).sort()) !== JSON.stringify([firstGold.id, secondGold.id].map(String).sort()))
-        errors.push(`H5: after the rewrite held keys are ${JSON.stringify(Object.keys(h5w.held))}, want the two currency ids only`);
+      if (
+        JSON.stringify(Object.keys(h5w.held).sort()) !==
+        JSON.stringify([firstGold.id, secondGold.id].map(String).sort())
+      )
+        errors.push(
+          `H5: after the rewrite held keys are ${JSON.stringify(Object.keys(h5w.held))}, want the two currency ids only`,
+        );
       if (h5w.held[String(firstGold.id)] !== 1234 || h5w.held[String(secondGold.id)] !== 3)
         errors.push(`H5: the migrated figures did not survive the rewrite — held is ${JSON.stringify(h5w.held)}`);
       if (h5w.bonus[String(firstGold.id)] !== 7 || Object.keys(h5w.bonus).some((k) => k === "gold"))
-        errors.push(`H5: bonus after rewrite is ${JSON.stringify(h5w.bonus)} — the tier key must be gone, 7 on ${firstGold.name}`);
+        errors.push(
+          `H5: bonus after rewrite is ${JSON.stringify(h5w.bonus)} — the tier key must be gone, 7 on ${firstGold.name}`,
+        );
       const migZ = JSON.stringify({
         selectedEventId: PIN_ZERO,
         plans: { [String(PIN_ZERO)]: { held: { silver: 50, zero: 99, bronze: 7 }, bonus: { silver: 2 } } },
@@ -3357,11 +3506,22 @@ try {
       await typeInto(`#farmHeld${secondSilver.id}`, "1");
       await wait(SETTLE_MS);
       const h5zw = (await readFarmCtl(PIN_ZERO)).plan;
-      const wantZKeys = EZERO.currencies.map((c) => String(c.id)).sort().join();
+      const wantZKeys = EZERO.currencies
+        .map((c) => String(c.id))
+        .sort()
+        .join();
       if (Object.keys(h5zw.held).sort().join() !== wantZKeys)
-        errors.push(`H5: 80292 held keys after rewrite are ${JSON.stringify(Object.keys(h5zw.held))}, want ${wantZKeys}`);
-      if (h5zw.held[String(secondSilver.id)] !== 1 || h5zw.held[String(firstSilver.id)] !== 50 || h5zw.held[String(qp.id)] !== 0)
-        errors.push(`H5: 80292 held after rewrite is ${JSON.stringify(h5zw.held)} — want 50 on ${firstSilver.name}, 1 on ${secondSilver.name}, 0 on QP`);
+        errors.push(
+          `H5: 80292 held keys after rewrite are ${JSON.stringify(Object.keys(h5zw.held))}, want ${wantZKeys}`,
+        );
+      if (
+        h5zw.held[String(secondSilver.id)] !== 1 ||
+        h5zw.held[String(firstSilver.id)] !== 50 ||
+        h5zw.held[String(qp.id)] !== 0
+      )
+        errors.push(
+          `H5: 80292 held after rewrite is ${JSON.stringify(h5zw.held)} — want 50 on ${firstSilver.name}, 1 on ${secondSilver.name}, 0 on QP`,
+        );
 
       /* --- H6. a debounce pending across an Event Select switch must not reach the new plan --- */
       await resetPlan();
@@ -3386,13 +3546,17 @@ try {
         { qp: String(qp.id), other: PIN_OTHER, event: PIN_ZERO, key: KEY },
       );
       if (h6.ms >= DEBOUNCE_MS)
-        errors.push(`H6: input→switch took ${h6.ms}ms, outside DEBOUNCE_MS ${DEBOUNCE_MS} — the scene did not test the window`);
+        errors.push(
+          `H6: input→switch took ${h6.ms}ms, outside DEBOUNCE_MS ${DEBOUNCE_MS} — the scene did not test the window`,
+        );
       if (!h6.detached)
         errors.push(
           "H6: the farm box was still connected after the switch — replaceChildren did not detach it, so the stale-timer guard never ran",
         );
       if (h6.newStillThere)
-        errors.push("H6: the new event's grid still holds 80292's QP Held box — the farm grid did not repaint on switch");
+        errors.push(
+          "H6: the new event's grid still holds 80292's QP Held box — the farm grid did not repaint on switch",
+        );
       if (h6.oldHeld !== 424242)
         errors.push(
           `H6: switching mid-debounce lost a typed farm figure — plans["${PIN_ZERO}"].held["${qp.id}"] is ${JSON.stringify(h6.oldHeld)}, want 424242 (flushPlanBoxes must commit to the event that was active while typing)`,
@@ -3417,9 +3581,7 @@ try {
           `H6c: a real-typed farm figure was lost on switch — plans["${PIN_ZERO}"].held["${qp.id}"] reads ${JSON.stringify((h6c[String(PIN_ZERO)].held || {})[String(qp.id)])}, want 777`,
         );
       if (Object.prototype.hasOwnProperty.call(h6c[String(PIN_OTHER)].held || {}, String(qp.id)))
-        errors.push(
-          `H6c: event ${PIN_OTHER} inherited QP's figure — ${JSON.stringify(h6c[String(PIN_OTHER)].held)}`,
-        );
+        errors.push(`H6c: event ${PIN_OTHER} inherited QP's figure — ${JSON.stringify(h6c[String(PIN_OTHER)].held)}`);
 
       /* --- H7. the shipped mask rule, and the tier-card chip it must not touch --- */
       const mask = await page.evaluate(() => {
@@ -3428,7 +3590,10 @@ try {
           try {
             for (const r of sheet.cssRules) {
               if (r.selectorText && r.selectorText.replace(/\s+/g, "") === ".farm-card.material-input-box-label")
-                rule = { background: r.style.getPropertyValue("background"), bg: r.style.getPropertyValue("background-color") };
+                rule = {
+                  background: r.style.getPropertyValue("background"),
+                  bg: r.style.getPropertyValue("background-color"),
+                };
             }
           } catch {
             /* cross-origin sheets are unreadable; the shipped CSS is inline, so this never fires */
@@ -3657,8 +3822,7 @@ try {
       m.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
     });
     await wait(SETTLE_MS);
-    if (!(await readModal()).open)
-      errors.push("backdrop-immunity: mousedown on backdrop closed #eventShopModal");
+    if (!(await readModal()).open) errors.push("backdrop-immunity: mousedown on backdrop closed #eventShopModal");
     await closeBy("Cancel", "Cancel discards the draft after backdrop check");
     const backdropState = await readTier();
     assertPlan(backdropState, {}, "backdrop-immunity leaves the plan");
@@ -3708,16 +3872,27 @@ try {
           );
           if (!fb) return null;
           const cs = getComputedStyle(fb);
-          return { bg: cs.backgroundColor, borderStyle: cs.borderStyle, w: fb.offsetWidth, h: fb.offsetHeight };
+          const probe = document.createElement("span");
+          probe.style.backgroundColor = "var(--accent-light)";
+          document.body.appendChild(probe);
+          const accentLight = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return {
+            bg: cs.backgroundColor,
+            accentLight,
+            borderStyle: cs.borderStyle,
+            w: fb.offsetWidth,
+            h: fb.offsetHeight,
+          };
         }, String(fallbackItem.id));
         if (!fbStyle) errors.push("modal fallback: .eshop-item-icon-fallback node vanished before the style read");
         else {
-          if (fbStyle.bg !== "rgba(0, 0, 0, 0)")
+          if (fbStyle.bg !== fbStyle.accentLight)
             errors.push(
-              `modal fallback: badge background ${JSON.stringify(fbStyle.bg)}, want transparent rgba(0,0,0,0)`,
+              `modal fallback: badge background ${JSON.stringify(fbStyle.bg)}, want --accent-light ${JSON.stringify(fbStyle.accentLight)}`,
             );
-          if (fbStyle.borderStyle !== "dashed")
-            errors.push(`modal fallback: badge border-style ${JSON.stringify(fbStyle.borderStyle)}, want dashed`);
+          if (fbStyle.borderStyle !== "none")
+            errors.push(`modal fallback: badge border-style ${JSON.stringify(fbStyle.borderStyle)}, want none`);
           if (!(fbStyle.w >= 40 && fbStyle.h >= 40))
             errors.push(`modal fallback: badge collapsed to ${fbStyle.w}×${fbStyle.h}px`);
         }
@@ -3748,7 +3923,9 @@ try {
         const g = document.getElementById("farmGrid");
         const b = document.getElementById("calculateBtn");
         return {
-          tracks: getComputedStyle(g).gridTemplateColumns.split(" ").map((t) => parseFloat(t)),
+          tracks: getComputedStyle(g)
+            .gridTemplateColumns.split(" ")
+            .map((t) => parseFloat(t)),
           justify: getComputedStyle(g).justifyContent,
           cardW: [...g.querySelectorAll(".farm-card")].map((c) => c.offsetWidth),
           btnRatio: b.getBoundingClientRect().width / b.parentElement.clientWidth,
@@ -3766,7 +3943,9 @@ try {
       if (gridInfo.justify !== "center")
         errors.push(`farm grid(P3) @${width}: justify-content is ${gridInfo.justify}, want center`);
       if (gridInfo.cardW.some((w) => w > 241))
-        errors.push(`farm grid(P3) @${width}: a farm card is ${Math.max(...gridInfo.cardW)}px wide, want at most 240px`);
+        errors.push(
+          `farm grid(P3) @${width}: a farm card is ${Math.max(...gridInfo.cardW)}px wide, want at most 240px`,
+        );
       if (width < 380 ? gridInfo.btnRatio < 0.95 : !(gridInfo.btnRatio > 0 && gridInfo.btnRatio <= 0.5))
         errors.push(
           `btn(K5) @${width}: #calculateBtn spans ${(gridInfo.btnRatio * 100).toFixed(0)}% of its row, want ${width < 380 ? "house full-width" : "at most half"}`,
@@ -3933,35 +4112,50 @@ try {
         .map((ce) => String(ce.id));
       const gotCeOrder = ceDom.cards.map((c) => c.ceId);
       if (JSON.stringify(gotCeOrder) !== JSON.stringify(wantCeOrder))
-        errors.push(`bonus-ce: card order ${JSON.stringify(gotCeOrder)}, want tier column order ${JSON.stringify(wantCeOrder)}`);
+        errors.push(
+          `bonus-ce: card order ${JSON.stringify(gotCeOrder)}, want tier column order ${JSON.stringify(wantCeOrder)}`,
+        );
       for (const c of ceDom.cards) {
         const specCe = (EACTIVE.bonusCes || []).find((x) => String(x.id) === c.ceId);
         const spec = specCe ? Object.values(specCe.bonuses || {})[0] : null;
         if (!c.hasImg || !c.imgComplete || !(c.imgSrc || "").includes(`equip_${c.ceId}.webp?v=${IMAGE_VERSION}`))
           errors.push(`bonus-ce(${c.ceId}): image not decoded or bad src ${JSON.stringify(c)}`);
-        if (c.bonusRows !== 0)
-          errors.push(`bonus-ce(${c.ceId}): old .bonus-ce-bonuses row returned (${c.bonusRows})`);
+        if (c.bonusRows !== 0) errors.push(`bonus-ce(${c.ceId}): old .bonus-ce-bonuses row returned (${c.bonusRows})`);
         const wantLabels = spec
           ? [`Limit Break (+${spec.limitBreak})`, `Non-Limit Break (+${spec.nonLimitBreak})`]
           : ["Limit Break", "Non-Limit Break"];
         const gotLabels = c.inputs.map((i) => i.label);
         if (JSON.stringify(gotLabels) !== JSON.stringify(wantLabels))
-          errors.push(`bonus-ce(${c.ceId}): input labels ${JSON.stringify(gotLabels)}, want ${JSON.stringify(wantLabels)}`);
+          errors.push(
+            `bonus-ce(${c.ceId}): input labels ${JSON.stringify(gotLabels)}, want ${JSON.stringify(wantLabels)}`,
+          );
       }
-      if (!ceDom.equipPresent || !ceDom.equipBeforeCalc || ceDom.equipValue !== "6" || ceDom.equipMin !== "1" || ceDom.equipMax !== "6")
+      if (
+        !ceDom.equipPresent ||
+        !ceDom.equipBeforeCalc ||
+        ceDom.equipValue !== "6" ||
+        ceDom.equipMin !== "1" ||
+        ceDom.equipMax !== "6"
+      )
         errors.push(`bonus-ce: CE Bonus Equip control invalid ${JSON.stringify(ceDom)}`);
 
       /* Clamping 0 -> 1 and 9 -> 6 on #ceBonusEquipInput */
       await typeInto("#ceBonusEquipInput", "0");
-      await page.evaluate(() => document.getElementById("ceBonusEquipInput").dispatchEvent(new Event("change", { bubbles: true })));
+      await page.evaluate(() =>
+        document.getElementById("ceBonusEquipInput").dispatchEvent(new Event("change", { bubbles: true })),
+      );
       await wait(120);
       const clampLow = await page.evaluate(() => document.getElementById("ceBonusEquipInput").value);
       await typeInto("#ceBonusEquipInput", "9");
-      await page.evaluate(() => document.getElementById("ceBonusEquipInput").dispatchEvent(new Event("change", { bubbles: true })));
+      await page.evaluate(() =>
+        document.getElementById("ceBonusEquipInput").dispatchEvent(new Event("change", { bubbles: true })),
+      );
       await wait(120);
       const clampHigh = await page.evaluate(() => document.getElementById("ceBonusEquipInput").value);
       if (clampLow !== "1" || clampHigh !== "6")
-        errors.push(`bonus-ce: CE Bonus Equip clamp 0->${JSON.stringify(clampLow)}, 9->${JSON.stringify(clampHigh)}, want "1"/"6"`);
+        errors.push(
+          `bonus-ce: CE Bonus Equip clamp 0->${JSON.stringify(clampLow)}, 9->${JSON.stringify(clampHigh)}, want "1"/"6"`,
+        );
 
       /* Calculate with 0 CEs vs owned gold CE (LB=1, NLB=1, equip=2) and inspect .farm-res-ce-list */
       await openTierModal("gold", "open gold modal for CE combo QA");
@@ -4053,9 +4247,17 @@ try {
         });
         const row0 = alignRes.filter((r) => Math.abs(r.cardTop - alignRes[0].cardTop) <= 1);
         if (alignRes.length < 2 || row0.length < 2 || new Set(row0.map((r) => r.ceH)).size < 2)
-          errors.push(`bonus-ce align: differential invalid (need >=2 cards in row with unequal CE heights): ${JSON.stringify(alignRes)}`);
-        else if (row0.some((r) => Math.abs(r.countTop - row0[0].countTop) > 1 || r.gapAboveCount === null || r.gapAboveCount > 8))
-          errors.push(`bonus-ce align: uneven CE heights shifted play-count or left excess gap: ${JSON.stringify(alignRes)}`);
+          errors.push(
+            `bonus-ce align: differential invalid (need >=2 cards in row with unequal CE heights): ${JSON.stringify(alignRes)}`,
+          );
+        else if (
+          row0.some(
+            (r) => Math.abs(r.countTop - row0[0].countTop) > 1 || r.gapAboveCount === null || r.gapAboveCount > 8,
+          )
+        )
+          errors.push(
+            `bonus-ce align: uneven CE heights shifted play-count or left excess gap: ${JSON.stringify(alignRes)}`,
+          );
       }
 
       /* 320px mobile overflow + label clipping check on CE cards, drop-lines, and CE combo results */
@@ -4069,7 +4271,15 @@ try {
           const br = box.getBoundingClientRect();
           const lr = lbl.getBoundingClientRect();
           return lbl.scrollWidth > lbl.clientWidth + 1 || lr.right > br.right - 0.5 || lr.left < br.left - 0.5
-            ? [{ text: lbl.textContent, scrollW: lbl.scrollWidth, clientW: lbl.clientWidth, lr: lr.right, br: br.right }]
+            ? [
+                {
+                  text: lbl.textContent,
+                  scrollW: lbl.scrollWidth,
+                  clientW: lbl.clientWidth,
+                  lr: lr.right,
+                  br: br.right,
+                },
+              ]
             : [];
         });
         const dropLinesOverflow = [...document.querySelectorAll("#farmGrid .drop-line")].filter(

@@ -18,7 +18,7 @@ import { buildQuestName, refreshSlidingNames } from "./event-shop-farm-names.js"
 
 /* ===...=== Best-quest farm view (Amendment D, L, M) ===...=== */
 /* Everything the Event tab shows instead of the legacy drop-rate model: three per-currency cards —
-   each header is that currency's own 48px art, centered and alone (Amendment M2, P1), the body its OWN quest
+   each header is that currency's own 64px art, centered and alone (Amendment M2, P1), the body its OWN quest
    dropdown (Amendment M4, N1/N2: every quest dropping this currency and not covering the whole
     shop, REC Lv ascending, default the currency's best non-all-covering quest — never the 3-in-1
     card's pick, Amendment M3), the chosen quest's name, its REC
@@ -91,7 +91,7 @@ function bestDropperQuest(farm, currency) {
   return ((farm || {}).quests || []).find((quest) => quest && quest.questId === id) || null;
 }
 
-/* The header is a plain display (Amendment K): one centered 48px icon, no name, no role, no tab
+/* The header is a plain display (Amendment K): one centered 64px icon, no name, no role, no tab
    stop, no modal opener. Shop items are reached through the tier cards' Required field. The card's
    own tier border and its body's drop lines already say which currency it speaks for (Amendment P1). */
 function buildCardHeader(currency) {
@@ -152,7 +152,7 @@ function questDropLines(currency, quest, view) {
   return lines;
 }
 
-/* The 3-in-1 card (Amendment L3): header = every currency icon, 48px (Amendment M2), NO names —
+/* The 3-in-1 card (Amendment L3): header = every currency icon, 64px (Amendment M2), NO names —
    the icons are the
    list of what this card covers. Body = the dropdown, then the picked quest's name, its REC line
    and one icon-only drop line per currency. The pick is the plan's farmQuest when the list still

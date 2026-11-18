@@ -134,11 +134,11 @@
  *  - r28.neutral       the results play AND trade cards compute the neutral house skin: background
  *                      == the Item Receive card's --bg and border-color == its --border, NEVER their
  *                      own tier colour, with data-tier still present (R28 keeps the attribute, drops
- *                      the paint; the override must land after .quest-drops-item[data-tier]). Runs
+ *                      the paint; .quest-drops-item carries the neutral --border directly). Runs
  *                      where trade cards exist: fx B, fx slide, MAIN.
  *  - r28.keepTier      R28b extends the neutral house skin to the WHOLE Event Shop tab: the #farmGrid
- *                      input cards (.quest-drops-item[data-tier]) border in --border and the Shop
- *                      Requirements tier cards (.material-card[data-tier]) take --bg + --border — the
+ *                      input cards (.quest-drops-item) border in --border and the Shop
+ *                      Requirements tier cards (.material-card) take --bg + --border — the
  *                      tier ring survives only in the art and badges, never the card skin. data-tier
  *                      stays on every card that had one.
  *  - r25.motion        the fx slide scene re-opened under emulated prefers-reduced-motion: the JS
@@ -197,8 +197,8 @@
  *  - tier.skin         each receive fruit wears its OWN currency's art, keyed by the row's snapshot order
  *                      (the per-block data-tier skin was owner-deleted with the tier-card markup — R4; card
  *                      skin --bg/--border): an iconed currency prints img.fg-layer whose src carries the
- *                      currency icon path; an iconless one (fixture 99997 Token) prints .icon-fallback in
- *                      TIER_COLORS[background] — the tier identity survives in the art.
+ *                      currency icon path; an iconless one (fixture 99997 Token) prints .icon-fallback with
+ *                      data-tier / --tier-bg — the tier identity survives in the art.
  *  - removals.absent   no "Required", no ✓, no +figure surplus anywhere in the card.
  *  - nullplan.shape    null plan (no farm data): exactly title + "No drop data can cover this plan",
  *                      zero receive cards, zero play cards.
@@ -281,7 +281,7 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { EVENT_SHOP_DATA } from "../src/scripts/data/event_shop.js";
-import { EVENT_SHOP_STORAGE_KEY, TIER_COLORS } from "../src/scripts/constants.js";
+import { EVENT_SHOP_STORAGE_KEY } from "../src/scripts/constants.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(REPO, "dist");
@@ -1119,6 +1119,7 @@ async function readCard(page) {
         artSrc: art && art.tagName === "IMG" ? art.getAttribute("src") || "" : null,
         artAlt: art && art.tagName === "IMG" ? art.getAttribute("alt") : null,
         artLetter: art && art.classList.contains("icon-fallback") ? art.textContent.trim() : null,
+        artTier: art && art.classList.contains("icon-fallback") ? art.dataset.tier || null : null,
         artBg: art && art.classList.contains("icon-fallback") ? getComputedStyle(art).backgroundColor : null,
       };
     });
@@ -1212,7 +1213,7 @@ async function readCard(page) {
         iconSrcs: icons.map((i) => (i.querySelector("img") ? i.querySelector("img").getAttribute("src") || "" : null)),
         iconFallbacks: icons.map((i) => {
           const fb = i.querySelector(".icon-fallback");
-          return fb ? getComputedStyle(fb).backgroundColor : null;
+          return fb ? { tier: fb.dataset.tier || null, bg: getComputedStyle(fb).backgroundColor } : null;
         }),
         name: nameSpan ? nameSpan.textContent.trim() : null,
         runsText: countEl ? countEl.textContent.trim() : null,
@@ -1367,6 +1368,17 @@ async function readCard(page) {
       receiveRowCount: receiveRows.length,
       receiveNameNodes: receiveEl ? receiveEl.querySelectorAll(".farm-res-quest-name").length : 0,
       receiveCardText: receiveCard ? receiveCard.textContent.replace(/\s+/g, "") : null,
+      tierVars: (function () {
+        const rs = getComputedStyle(document.documentElement);
+        const out = {};
+        for (const t of ["bronze", "silver", "gold"]) {
+          out[t] = {
+            color: rs.getPropertyValue(`--${t}-text`).trim(),
+            bg: rs.getPropertyValue(`--${t}-bg`).trim(),
+          };
+        }
+        return out;
+      })(),
       receiveCardStyle: receiveCard
         ? (function (s) {
             return {
@@ -1716,12 +1728,9 @@ function assertNeutralResultsSkin(card, label) {
       );
     if (c.bc !== ref.borderTopColor)
       fail("r28.neutral", `${at} border-color ${c.bc}, want the neutral --border ${ref.borderTopColor}`);
-    const tier = c.tier && TIER_COLORS[c.tier] ? hexToRgb(TIER_COLORS[c.tier]) : null;
+    const tier = c.tier && card.tierVars[c.tier] ? hexToRgb(card.tierVars[c.tier].color) : null;
     if (tier && c.bc === tier)
-      fail(
-        "r28.neutral",
-        `${at} border is STILL the ${c.tier} tier colour ${c.bc} — the results-card override must land after .quest-drops-item[data-tier]`,
-      );
+      fail("r28.neutral", `${at} border is STILL the ${c.tier} tier colour ${c.bc} — neutral house border expected`);
     // data-tier is KEPT by R28 on every card that ever had one; the all-drop combo card has none by contract
     if (!c.tier && !c.combo)
       fail(
@@ -1747,7 +1756,7 @@ function assertTierSkinKept(card, label) {
       return void fail("r28.keepTier", `${label}: zero ${what} skin samples — the R28b scope pin did not run`);
     for (const c of list) {
       if (!c.tier) continue; // the all-drop combo card carries no tier by contract
-      const stale = TIER_COLORS[c.tier] ? hexToRgb(TIER_COLORS[c.tier]) : null;
+      const stale = card.tierVars[c.tier] ? hexToRgb(card.tierVars[c.tier].color) : null;
       if (!stale)
         return void fail("r28.keepTier", `${label}: ${what} data-tier "${c.tier}" is no tier colour — re-derive`);
       if (c.bc !== ref.borderTopColor)
@@ -1818,8 +1827,12 @@ function assertPlayCards(card, label, { currencies, quests }) {
           header.push(`icon ${i} src ${JSON.stringify(c.iconSrcs[i])}, want ${cur.icon}`);
         if (c.iconAlts[i] !== cur.name)
           header.push(`icon ${i} alt ${JSON.stringify(c.iconAlts[i])}, want the currency name "${cur.name}"`);
-      } else if (c.iconFallbacks[i] !== hexToRgb(TIER_COLORS[cur.background] || TIER_COLORS.silver))
-        header.push(`icon ${i} fallback ${JSON.stringify(c.iconFallbacks[i])}, want the ${cur.background} colour`);
+      } else {
+        const fb = c.iconFallbacks[i];
+        const wantBg = hexToRgb((card.tierVars[cur.background] || card.tierVars.silver).bg);
+        if (!fb || fb.tier !== (cur.background || null) || fb.bg !== wantBg)
+          header.push(`icon ${i} fallback ${JSON.stringify(fb)}, want ${cur.background} (${wantBg})`);
+      }
     });
     for (let i = wantIcons.length; i < c.iconH.length; i++)
       header.push(`unexpected header icon ${i} (alt ${JSON.stringify(c.iconAlts[i])})`);
@@ -2315,8 +2328,8 @@ function assertFigs(card, label, { quests, bonusMap, tradeList, keys, exactWant,
    so position + art are the identity (the owner-deleted per-block data-tier skin left with the old
    .farm-res-item markup — Amendment R4, card skin --bg/--border): an iconed currency must print
    img.fg-layer whose src carries its icon path and whose ALT carries its name (house Q1: the art is the
-   only thing naming it), an iconless one (fixture 99997 Token) must print .icon-fallback in
-   TIER_COLORS[background]. A fruit wearing another currency's art, or the wrong tier letter, reddens here. */
+   only thing naming it), an iconless one (fixture 99997 Token) must print .icon-fallback with
+   data-tier / --tier-bg. A fruit wearing another currency's art, or the wrong tier letter, reddens here. */
 function assertArt(card, label, currencies) {
   if (card.receive.length !== currencies.length)
     return void fail(
@@ -2340,11 +2353,14 @@ function assertArt(card, label, currencies) {
           "r5a.nonames",
           `${label}/${cur.name}: fruit alt ${JSON.stringify(r.artAlt)}, want the currency name as the accessible name`,
         );
-    } else if (r.artCls !== "icon-fallback" || r.artBg !== hexToRgb(TIER_COLORS[cur.background] || TIER_COLORS.silver))
-      fail(
-        "tier.skin",
-        `${label}/${cur.name}: fallback ${JSON.stringify([r.artCls, r.artBg])}, want .icon-fallback in the ${cur.background} colour`,
-      );
+    } else {
+      const wantBg = hexToRgb((card.tierVars[cur.background] || card.tierVars.silver).bg);
+      if (r.artCls !== "icon-fallback" || r.artTier !== (cur.background || null) || r.artBg !== wantBg)
+        fail(
+          "tier.skin",
+          `${label}/${cur.name}: fallback ${JSON.stringify([r.artCls, r.artTier, r.artBg])}, want .icon-fallback in ${cur.background} (${wantBg})`,
+        );
+    }
   }
 }
 
@@ -2390,9 +2406,7 @@ async function runMain(browser, url) {
   });
   if (figsMain) {
     const expectedMain = gateMinCover(figsMain.farmed, currencyNeeds(LIVE.items, MAIN_REQUIRES), LIVE.trades);
-    if (
-      JSON.stringify(expectedMain) !== JSON.stringify([{ fromId: 94164001, toId: 94164002, count: 6 }])
-    )
+    if (JSON.stringify(expectedMain) !== JSON.stringify([{ fromId: 94164001, toId: 94164002, count: 6 }]))
       fail(
         "main.plan",
         `gate-propagated minimum cover ${JSON.stringify(expectedMain)}, want [{ fromId: 94164001, toId: 94164002, count: 6 }]`,
@@ -2496,7 +2510,12 @@ async function runFx(browser, url) {
     if (herd.tier !== "silver") off.push(`data-tier ${JSON.stringify(herd.tier)}, want the Pie (silver) main drop`);
     if (herd.cls.includes("farm-card--combo")) off.push("combo class on a one-currency play");
     if (herd.iconAlts.join() !== "Pie") off.push(`header icons ${JSON.stringify(herd.iconAlts)}, want only Pie`);
-    if (herd.bodySeq.slice(0, 4).map((k) => k.text).join(" | ") !== "パンプキン収穫 牛追いファーム | REC Lv. 85 | 14 | runs")
+    if (
+      herd.bodySeq
+        .slice(0, 4)
+        .map((k) => k.text)
+        .join(" | ") !== "パンプキン収穫 牛追いファーム | REC Lv. 85 | 14 | runs"
+    )
       off.push(`body ${JSON.stringify(herd.bodySeq.map((k) => k.text))}`);
     if (!herd.ceChips || herd.ceChips.length !== 2)
       off.push(`ceChips ${JSON.stringify(herd.ceChips)}, want 2 CE chips`);

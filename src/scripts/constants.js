@@ -51,12 +51,6 @@ export const BOND_CONSTANTS = {
   MAX_PLAYER_AP: 999,
 };
 
-export const TIER_COLORS = {
-  bronze: "#cd7f32",
-  silver: "#71717a",
-  gold: "#eab308",
-};
-
 export const QUEST_DROPS = {
   bronze: { primary: "bronze", secondary: "silver" },
   silver: { primary: "silver", secondary: "gold" },
