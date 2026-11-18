@@ -36,6 +36,7 @@ export const EventShopModal = {
     this._draft = this._cloneDraft();
     this._setTitle();
     this._renderRows(list);
+    list.scrollTop = 0;
     modal.classList.add("open");
   },
 

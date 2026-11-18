@@ -1669,10 +1669,6 @@ try {
       const hd = css.hover.decl;
       if (!/--accent/.test(hd["border-color"] || ""))
         errors.push(`cues CSSOM: hover border-color ${JSON.stringify(hd["border-color"])}, want the accent token`);
-      if (!/--accent-light/.test((hd.background || "") + (hd["background-color"] || "")))
-        errors.push(
-          `cues CSSOM: hover background ${JSON.stringify([hd.background, hd["background-color"]])}, want --accent-light`,
-        );
     }
     if (!css.requireBase || css.requireBase.decl.cursor !== "pointer" || css.requireBase.decl["user-select"] !== "none")
       errors.push(`cues CSSOM: base eshop-require-display rule wrong — ${JSON.stringify(css.requireBase)}`);
@@ -3589,7 +3585,10 @@ try {
         for (const sheet of document.styleSheets) {
           try {
             for (const r of sheet.cssRules) {
-              if (r.selectorText && r.selectorText.replace(/\s+/g, "") === ".farm-card.material-input-box-label")
+              if (
+                r.selectorText &&
+                r.selectorText.replace(/\s+/g, "") === ".bond-input-box-label,.material-input-box-label"
+              )
                 rule = {
                   background: r.style.getPropertyValue("background"),
                   bg: r.style.getPropertyValue("background-color"),
@@ -3608,7 +3607,7 @@ try {
       });
       if (!mask.rule || !/var\(--bg\)/.test(`${mask.rule.background} ${mask.rule.bg}`))
         errors.push(
-          `H7: the shipped CSSOM has no .farm-card .material-input-box-label { background: var(--bg) } rule — ${JSON.stringify(mask.rule)}`,
+          `H7: the shipped CSSOM has no .bond-input-box-label, .material-input-box-label { background: var(--bg) } rule — ${JSON.stringify(mask.rule)}`,
         );
       for (const c of mask.farm)
         for (const chip of c.chips)

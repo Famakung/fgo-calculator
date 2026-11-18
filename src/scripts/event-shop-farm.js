@@ -216,7 +216,7 @@ function buildRaidBossCard(boss, view) {
   );
   card.appendChild(buildRaidCardHeader(dropped));
 
-  const lines = [buildQuestName(boss.bossName), select];
+  const lines = [select, buildQuestName(boss.bossName)];
   if (quest.recommendLv) lines.push(buildMessage(`REC Lv. ${quest.recommendLv}`));
   for (const currency of dropped) lines.push(buildCurrencyDropLine(currency, drops[String(currency.id)]));
   const body = DOMFactory.el("div", "farm-card-body");
