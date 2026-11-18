@@ -18,11 +18,11 @@
     "ce-match-worker": 2622,
     "constants-chunk": 3821,
     "data-chunk": 79093,
-    "event-lazy": 242815,
+    "event-lazy": 244593,
     "index.astro_astro_type_script_index_0_lang": 33,
     "main-entry": 3282,
-    "selectors-chunk": 79448,
-    "tab-navigator-chunk": 1709
+    "selectors-chunk": 79854,
+    "tab-navigator-chunk": 2151
   },
   "chunkMinBytes": {
     "bond-lazy": 7474,
@@ -30,12 +30,12 @@
     "ce-match-worker": 655,
     "constants-chunk": 955,
     "data-chunk": 19773,
-    "event-lazy": 60703,
+    "event-lazy": 61148,
     "index.astro_astro_type_script_index_0_lang": 8,
     "main-entry": 820,
-    "selectors-chunk": 19862,
-    "tab-navigator-chunk": 427
+    "selectors-chunk": 19963,
+    "tab-navigator-chunk": 537
   },
-  "rawTextSha": "2c74bd06c531818e008fc38d2e3670678adf82d55f74aa86ef4c80c6803866d2",
+  "rawTextSha": "eb0dd0e6efba5c0630cb476714fc6af28b33151bd6c296b273ae01e5f53a39ca",
   "normalisedTextSha": "c28fe0ca7da4042e58c602a93b3ec80b2f91177f395011a49d008d941c362bf8"
 }
