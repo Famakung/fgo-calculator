@@ -1984,6 +1984,49 @@ try {
       `restored ${JSON.stringify(questRestored)} on "${lv100}" — priced ${JSON.stringify(gdPlan.boosted)}`,
   );
 
+  // Dark mode toggle: positioned immediately to the right of .navbar-title, toggles data-theme="dark" and aria-pressed
+  const themeLayout = await page.evaluate(() => {
+    const toggle = document.querySelector(".theme-toggle");
+    const title = document.querySelector(".navbar-title");
+    if (!toggle || !title) return null;
+    const tr = toggle.getBoundingClientRect();
+    const nr = title.getBoundingClientRect();
+    return {
+      titleRight: nr.right,
+      toggleLeft: tr.left,
+      pressed: toggle.getAttribute("aria-pressed"),
+      theme: document.documentElement.dataset.theme || null,
+      bg: getComputedStyle(document.body).backgroundColor,
+    };
+  });
+  if (!themeLayout) {
+    errors.push("dark mode: .theme-toggle or .navbar-title missing");
+  } else {
+    if (themeLayout.titleRight > themeLayout.toggleLeft) {
+      errors.push(
+        `dark mode: .theme-toggle (left=${themeLayout.toggleLeft}) should be to the right of .navbar-title (right=${themeLayout.titleRight})`,
+      );
+    }
+    await page.click(".theme-toggle");
+    const darkState = await page.evaluate(() => ({
+      theme: document.documentElement.dataset.theme || null,
+      pressed: document.querySelector(".theme-toggle")?.getAttribute("aria-pressed"),
+      bg: getComputedStyle(document.body).backgroundColor,
+    }));
+    if (darkState.theme !== "dark" || darkState.pressed !== "true" || darkState.bg === themeLayout.bg) {
+      errors.push(`dark mode: toggle on failed (${JSON.stringify(darkState)} vs light bg ${themeLayout.bg})`);
+    }
+    await page.click(".theme-toggle");
+    const lightState = await page.evaluate(() => ({
+      theme: document.documentElement.dataset.theme || null,
+      pressed: document.querySelector(".theme-toggle")?.getAttribute("aria-pressed"),
+      bg: getComputedStyle(document.body).backgroundColor,
+    }));
+    if (lightState.theme || lightState.pressed !== "false" || lightState.bg !== themeLayout.bg) {
+      errors.push(`dark mode: toggle off failed (${JSON.stringify(lightState)})`);
+    }
+  }
+
   if (pageErrors.length) for (const e of pageErrors) errors.push(`pageerror: ${e}`);
 } finally {
   await browser.close();

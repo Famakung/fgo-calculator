@@ -8,6 +8,28 @@ export const TabNavigator = {
 
     const hamburger = navbar.querySelector(".navbar-hamburger");
     const dropdown = navbar.querySelector(".navbar-dropdown");
+    const themeToggle = navbar.querySelector(".theme-toggle");
+
+    if (themeToggle) {
+      const syncThemeBtn = (isDark) => {
+        themeToggle.setAttribute("aria-pressed", String(isDark));
+      };
+      syncThemeBtn(document.documentElement.getAttribute("data-theme") === "dark");
+      themeToggle.addEventListener("click", () => {
+        const nextDark = document.documentElement.getAttribute("data-theme") !== "dark";
+        if (nextDark) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        } else {
+          document.documentElement.removeAttribute("data-theme");
+        }
+        syncThemeBtn(nextDark);
+        try {
+          localStorage.setItem("fgo_theme", nextDark ? "dark" : "light");
+        } catch (_e) {
+          /* ignore */
+        }
+      });
+    }
 
     // Restore active tab
     try {
