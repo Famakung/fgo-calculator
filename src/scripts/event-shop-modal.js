@@ -1,4 +1,5 @@
 import { EventShop } from "./domain.js";
+import { DOMFactory } from "./presentation.js";
 import { buildDraftRow, fmt } from "./event-planner-parts.js";
 
 /* ===...=== Event Shop currency modal (draft editor) ===...=== */
@@ -36,6 +37,7 @@ export const EventShopModal = {
     this._draft = this._cloneDraft();
     this._setTitle();
     this._renderRows(list);
+    list.scrollTop = 0;
     modal.classList.add("open");
   },
 
@@ -67,6 +69,12 @@ export const EventShopModal = {
   },
 
   _renderRows(list) {
+    if (!this._items.length) {
+      const empty = DOMFactory.el("div", "ceoverlap-empty");
+      empty.textContent = "No shop items for this currency.";
+      list.replaceChildren(empty);
+      return;
+    }
     const ctx = { state: { requires: this._draft }, handlers: this._draftHandlers() };
     const fragment = document.createDocumentFragment();
     for (const item of this._items) fragment.appendChild(buildDraftRow(item, this._currency, ctx));

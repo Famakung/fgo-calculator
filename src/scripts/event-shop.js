@@ -3,7 +3,13 @@ import { Schema, Validator, Calculator, EventShop } from "./domain.js";
 import { StateManager, Persistence } from "./state.js";
 import { debounce } from "./presentation.js";
 import { EventPlanner } from "./event-planner.js";
-import { eventTierNeeds, hydrateTierCards, hydrateQuestIcons, buildFallbackIcon } from "./event-shop-tier.js";
+import {
+  eventTierNeeds,
+  hydrateTierCards,
+  clearEventTiers,
+  hydrateQuestIcons,
+  buildFallbackIcon,
+} from "./event-shop-tier.js";
 import { hydrateFarmGrid, showFarmResults, syncPlanBoxes, showFarmCard, showLegacyCard } from "./event-shop-farm.js";
 import {
   hydrateBonusCeGrid,
@@ -148,12 +154,9 @@ export const EventHandler = {
     const calcBtn = document.getElementById("calculateBtn");
     if (calcBtn) calcBtn.addEventListener("click", () => app.calculate());
 
-    if (EventPlanner.activeEvent()) {
-      this.bindPlanBoxes();
-      bindCeEquipInput();
-    } else {
-      this.bindLegacyBoxes(app);
-    }
+    this.bindPlanBoxes();
+    bindCeEquipInput();
+    this.bindLegacyBoxes(app);
   },
 
   /* Tier Held and Bonus boxes edit the plan figure of the currency mapped to that tier (Amendment H),
@@ -238,7 +241,17 @@ export const App = {
      a switch re-points the one bound listener instead of stacking another per switch. */
   rehydrate() {
     const snapshot = EventPlanner.activeEvent();
-    if (!snapshot) return;
+    if (!snapshot) {
+      delete document.documentElement.dataset.eventCombo;
+      clearEventTiers({
+        elements: UIBuilder.elements,
+        container: document.getElementById("materialsGrid"),
+        readOnly: false,
+      });
+      this._initLegacyMode();
+      ViewManager.resetResults();
+      return;
+    }
     const plan = EventPlanner.activePlan();
     UIBuilder.buildMaterialsGrid(document.getElementById("materialsGrid"), this.state);
     hydrateBonusCeGrid(snapshot, plan);
