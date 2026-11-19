@@ -1113,6 +1113,7 @@ export const EventShop = {
       order,
       quests: [],
       selection: {},
+      currencyIds: currencyIds === null ? keys : currencyIds,
       defaultAllDropId: null,
       topUps: [],
       coveringIds: new Set(),
@@ -1173,11 +1174,23 @@ export const EventShop = {
     return ranked[0].questId;
   },
 
-  /* The default quest of a per-currency card (Amendment N2): the best-rate quest that drops this
-     currency among the ones that do NOT cover every shop currency — an all-covering quest is card
-     4's quest and never a card's own pick. Plain data figures (dropExpected×num, bonus-free like
-     the dropdown sort), ties to the lower quest id. null when no non-all-covering quest drops the
-     currency at all — the card then shows its best dropper with no dropdown. */
+  isMainDrop(quest, currencyId, currencyIds) {
+    return isMainDrop(quest, currencyId, currencyIds);
+  },
+
+  /* Restrict the 3-in-1 card's pick to all-covering quests so saved/set state matches the UI dropdown. */
+  sanitizedFarmQuest({ farm = {}, currencyIds = [], saved } = {}) {
+    const covering = this.allCoveringQuests(farm, currencyIds);
+    const id = Number(saved);
+    const kept =
+      saved !== null && saved !== undefined && Number.isInteger(id) && covering.some((quest) => quest.questId === id);
+    return kept ? id : this.defaultFarmQuest(farm, currencyIds);
+  },
+
+  /* The default quest of a per-currency card (Amendment N2, O): the best-rate non-all-covering
+     quest whose main drop is this currency, falling back to any non-all-covering dropper when the
+     currency is only dropped as a secondary. Plain data figures (dropExpected×num), ties to the
+     lower quest id. null when no non-all-covering quest drops the currency at all. */
   defaultCurrencyQuest(farm, currencyIds, currencyKey) {
     const key = String(currencyKey);
     const covering = new Set(this.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
@@ -1185,7 +1198,9 @@ export const EventShop = {
     const droppers = quests.filter(
       (quest) => quest && hasPositiveDrop((quest.drops || {})[key]) && !covering.has(quest.questId),
     );
-    const best = droppers.reduce((top, quest) => {
+    const mainDroppers = droppers.filter((quest) => isMainDrop(quest, key, currencyIds));
+    const candidates = mainDroppers.length ? mainDroppers : droppers;
+    const best = candidates.reduce((top, quest) => {
       if (!top) return quest;
       const amount = dropAmount(quest.drops[key]);
       const topAmount = dropAmount(top.drops[key]);
@@ -1194,18 +1209,29 @@ export const EventShop = {
     return best ? best.questId : null;
   },
 
-  /* A per-currency card's quest pick (Amendment M4, N2): the saved quest survives only when this
-     event's farm list carries it, it drops this currency AND it is not all-covering — a card cannot
-     show a quest its dropdown excludes. Anything else re-defaults through defaultCurrencyQuest, the
-     same rule the card's default and the dropdown writer use. null only when the currency has no
-     non-all-covering dropper at all. */
+  /* A per-currency card's quest pick (Amendment M4, N2, O): the saved quest survives only when
+     this event's farm list carries it, it drops this currency, is not all-covering, and (when a
+     main-drop quest exists) is a main drop for this currency. Anything else re-defaults through
+     defaultCurrencyQuest. null only when the currency has no non-all-covering dropper at all. */
   sanitizedCurrencyQuest({ farm = {}, currencyIds = [], currencyKey, saved } = {}) {
     const key = String(currencyKey);
     const covering = new Set(this.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
     const quests = Array.isArray(farm.quests) ? farm.quests : [];
+    const hasMain = quests.some(
+      (quest) =>
+        quest &&
+        hasPositiveDrop((quest.drops || {})[key]) &&
+        !covering.has(quest.questId) &&
+        isMainDrop(quest, key, currencyIds),
+    );
     const id = Number(saved);
     const kept = quests.some(
-      (quest) => quest && quest.questId === id && hasPositiveDrop((quest.drops || {})[key]) && !covering.has(id),
+      (quest) =>
+        quest &&
+        quest.questId === id &&
+        hasPositiveDrop((quest.drops || {})[key]) &&
+        !covering.has(id) &&
+        (!hasMain || isMainDrop(quest, key, currencyIds)),
     );
     return kept ? id : this.defaultCurrencyQuest(farm, currencyIds, key);
   },
@@ -1735,6 +1761,37 @@ function dropAmount(drop) {
   return count(drop.dropExpected) * count(drop.num);
 }
 
+/* True when currencyId has the highest plain dropExpected×num on quest among currencyIds (ties to lower id). */
+function isMainDrop(quest, currencyId, currencyIds) {
+  const drops = (quest || {}).drops || {};
+  let top = null;
+  let topAmount = 0;
+  for (const id of (Array.isArray(currencyIds) ? currencyIds : []).map(String)) {
+    const drop = drops[id];
+    if (!drop) continue;
+    const amount = dropAmount(drop);
+    if (!(amount > 0)) continue;
+    if (top === null || amount > topAmount || (amount === topAmount && Number(id) < Number(top))) {
+      top = id;
+      topAmount = amount;
+    }
+  }
+  return top === String(currencyId);
+}
+
+function currencyPoolPick(table, key, rateOf = defaultRateOf) {
+  const topUpOptions = table.topUps.filter((quest) => rateOf(quest, key) > 0);
+  const options = topUpOptions.length ? topUpOptions : table.quests.filter((quest) => rateOf(quest, key) > 0);
+  if (!options.length) return null;
+  const selectedId = table.selection[key];
+  if (selectedId !== null && selectedId !== undefined) {
+    const chosen = options.find((quest) => String(quest.meta.questId) === String(selectedId));
+    if (chosen) return chosen;
+  }
+  const mainTopUps = topUpOptions.filter((quest) => isMainDrop(quest.meta, key, table.currencyIds));
+  return bestRateQuest(mainTopUps.length ? mainTopUps : options, key, rateOf);
+}
+
 /* Best farm plan over the user's selected quests across the currency cards and optional all-drop
    card: compute the greedy incumbent over that selected pool, then run exact search bounded by it. */
 function bestFarmPlan(table, priorityQuestId, useAllQuests = false) {
@@ -1772,9 +1829,7 @@ function selectedPool(table, priorityQuestId) {
 }
 
 function selectedCurrencyQuest(table, key) {
-  const topUpOptions = table.topUps.filter((quest) => count(quest.rates[key]) > 0);
-  const options = topUpOptions.length ? topUpOptions : table.quests.filter((quest) => count(quest.rates[key]) > 0);
-  return options.length ? topUpQuest(options, key, table.selection[key]) : null;
+  return currencyPoolPick(table, key, defaultRateOf);
 }
 
 function selectedAllDropQuest(table, priorityQuestId) {
@@ -2262,19 +2317,11 @@ function sanitizeRaidEnded(saved, snapshot) {
    including a saved null, re-defaults to the best all-covering quest, and an event with no
    all-covering quest has no plan pick at all (null → per-currency best everywhere). */
 function sanitizeFarmQuest(saved, snapshot) {
-  const quests = (snapshot.farm || {}).quests || [];
-  const currencyIds = snapshotCurrencyIds(snapshot);
-  const filterIds = currencyIds.length ? currencyIds : null;
-  const id = Number(saved);
-  if (
-    saved !== null &&
-    saved !== undefined &&
-    Number.isInteger(id) &&
-    quests.some((quest) => quest && quest.questId === id && hasDropData(quest, filterIds))
-  ) {
-    return id;
-  }
-  return EventShop.defaultFarmQuest(snapshot.farm || {}, currencyIds);
+  return EventShop.sanitizedFarmQuest({
+    farm: snapshot.farm || {},
+    currencyIds: snapshotCurrencyIds(snapshot),
+    saved,
+  });
 }
 
 /* The cards 1-to-3 quest picks (Amendment M4, N2): a saved map keeps only entries keyed by one of
@@ -2491,9 +2538,8 @@ function selectCePool(table, priorityQuestId, maxRatesByQuestId) {
   };
   for (const key of table.keys) {
     if (table.deficits[key] <= 0) continue;
-    const topUpOptions = table.topUps.filter((quest) => maxRateOf(quest, key) > 0);
-    const options = topUpOptions.length ? topUpOptions : table.quests.filter((quest) => maxRateOf(quest, key) > 0);
-    if (options.length) picked.add(topUpQuest(options, key, table.selection[key], maxRateOf));
+    const quest = currencyPoolPick(table, key, maxRateOf);
+    if (quest) picked.add(quest);
   }
   const allDrop = selectedAllDropQuest(table, priorityQuestId);
   if (allDrop) picked.add(allDrop);

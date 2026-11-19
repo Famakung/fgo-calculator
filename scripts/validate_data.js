@@ -233,13 +233,26 @@ function validateEventShopCurrencies(currencies, ctx) {
   return currencyIds;
 }
 
+const EVENT_SERVERS = new Set(["JP", "NA", "CN", "TW", "KR"]);
+
 function validateEventShopItems(items, currencyIds, ctx) {
   if (!Array.isArray(items)) {
     errors.push(`${ctx}: items must be an array (got ${JSON.stringify(items)})`);
     return;
   }
+  const seenIds = new Set();
   items.forEach((item, i) => {
     const itemCtx = `Event Shop item ${item.id}`;
+    if (!Number.isInteger(item.id) || item.id <= 0) {
+      errors.push(`${ctx}: items[${i}].id must be a positive integer (got ${JSON.stringify(item.id)})`);
+    } else if (seenIds.has(item.id)) {
+      errors.push(`${ctx}: duplicate item.id ${item.id}`);
+    } else {
+      seenIds.add(item.id);
+    }
+    if (typeof item.purchaseType !== "string" || !item.purchaseType) {
+      errors.push(`${itemCtx}: purchaseType must be a non-empty string (got ${JSON.stringify(item.purchaseType)})`);
+    }
     const amount = (item.cost || {}).amount;
     if (!currencyIds.has(item.cost && item.cost.itemId)) {
       errors.push(`${itemCtx}: cost.itemId ${JSON.stringify(item.cost && item.cost.itemId)} is not a known currency`);
@@ -457,6 +470,18 @@ function validateEventShopBonusCes(bonusCes, currencyIds, ctx) {
   });
 }
 
+function validateEventMeta(event, label) {
+  if (typeof event.shortName !== "string") {
+    errors.push(`${label}: shortName must be a string (got ${JSON.stringify(event.shortName)})`);
+  }
+  if (!Number.isInteger(event.startedAt)) {
+    errors.push(`${label}: startedAt must be an integer (got ${JSON.stringify(event.startedAt)})`);
+  }
+  if (!Number.isInteger(event.endedAt)) {
+    errors.push(`${label}: endedAt must be an integer (got ${JSON.stringify(event.endedAt)})`);
+  }
+}
+
 function validateEventShopSnapshot(snapshot, index, total) {
   if (!snapshot || typeof snapshot.event !== "object" || snapshot.event === null) {
     errors.push(`Event Shop: events[${index}].event must be an object (got ${JSON.stringify(snapshot)})`);
@@ -468,6 +493,7 @@ function validateEventShopSnapshot(snapshot, index, total) {
     errors.push(`Event Shop: events[${index}].event.id must be a positive integer (got ${JSON.stringify(event.id)})`);
   }
   checkShopName(event, "event");
+  validateEventMeta(event, ctx);
   const currencyIds = validateEventShopCurrencies(snapshot.currencies, ctx);
   validateEventShopItems(snapshot.items, currencyIds, ctx);
   validateEventShopFarm(snapshot.farm, currencyIds, ctx);
@@ -494,6 +520,9 @@ function validateEventShop(data) {
     }
     const knownIds = new Set(data.events.map((s) => s.event && s.event.id));
     for (const [server, list] of Object.entries(data.servers)) {
+      if (!EVENT_SERVERS.has(server)) {
+        errors.push(`Event Shop: unknown server key ${JSON.stringify(server)}`);
+      }
       if (!Array.isArray(list)) {
         errors.push(`Event Shop server ${server}: list must be an array`);
         continue;
@@ -503,6 +532,7 @@ function validateEventShop(data) {
           errors.push(`Event Shop server ${server}[${idx}]: unknown event id ${JSON.stringify(ev && ev.id)}`);
         }
         checkShopName(ev || {}, `server ${server}`);
+        validateEventMeta(ev || {}, `Event Shop server ${server}[${idx}]`);
       });
     }
   }

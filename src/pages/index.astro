@@ -16,10 +16,10 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
           </svg>
         </button>
-        <div class="navbar-tabs">
-          <button class="tab-btn active" data-tab="cefilter">Bond Gain CE</button>
-          <button class="tab-btn" data-tab="bond">Bond Calculator</button>
-          <button class="tab-btn" data-tab="event">Event Shop</button>
+        <div class="navbar-tabs" role="tablist" aria-label="Calculator sections">
+          <button class="tab-btn active" data-tab="cefilter" role="tab" aria-selected="true">Bond Gain CE</button>
+          <button class="tab-btn" data-tab="bond" role="tab" aria-selected="false">Bond Calculator</button>
+          <button class="tab-btn" data-tab="event" role="tab" aria-selected="false">Event Shop</button>
         </div>
         <button class="navbar-hamburger" type="button" aria-label="Menu" aria-expanded="false">
           <span></span><span></span><span></span>
@@ -315,7 +315,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
             </div>
               <div class="bonus-ce-grid grid" id="bonusCeGrid"></div>
               <div class="bond-card-actions bond-card-actions--end">
-                <div class="material-input-box eshop-ce-equip-box" id="ceBonusEquipWrap">
+                <div class="material-input-box eshop-ce-equip-box" id="ceBonusEquipWrap" hidden>
                   <label class="material-input-box-label" for="ceBonusEquipInput">CE Bonus Equip</label>
                   <input
                     type="number"
@@ -335,7 +335,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
             </div>
           </div>
 
-          <div class="results" id="results">
+          <div class="results" id="results" aria-live="polite">
             <div class="card results-card">
               <div class="card-inner">
                 <div class="card-title">Items Needed</div>
@@ -1299,7 +1299,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
               </div>
               <div class="cefilter-modal-footer-right">
                 <button type="button" class="cefilter-footer-btn" id="eventShopModalCancelBtn">Cancel</button>
-                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="eventShopModalDoneBtn">OK</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="eventShopModalOkBtn">OK</button>
               </div>
             </div>
           </div>

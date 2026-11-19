@@ -2,6 +2,7 @@ import { DEBOUNCE_MS, TIERS } from "./constants.js";
 import { EventShop, Schema } from "./domain.js";
 import { DOMFactory, debounce } from "./presentation.js";
 import { EventPlanner } from "./event-planner.js";
+import { EventShopModal } from "./event-shop-modal.js";
 
 /* ===...=== Farm-card currency controls (Amendment H, I7, L4, N) ===...=== */
 /* The controls a farm card owns but a tier card never shows for the same currency: a currency with
@@ -38,15 +39,21 @@ export function recLvRank(recommendLv) {
   const text = recommendLv === null || recommendLv === undefined ? "" : String(recommendLv).trim();
   const level = /^\d+/.exec(text);
   if (!level) return Number.POSITIVE_INFINITY;
-  const suffixRank = REC_SUFFIX_RANK[text.slice(level[0].length).trim()] ?? UNKNOWN_SUFFIX_RANK;
+  const suffix = text.slice(level[0].length).trim();
+  const suffixRank = Object.hasOwn(REC_SUFFIX_RANK, suffix) ? REC_SUFFIX_RANK[suffix] : UNKNOWN_SUFFIX_RANK;
   return Number(level[0]) * REC_RANK_STRIDE + suffixRank;
 }
 
 /* Dropdown order for the farm cards (Amendment N1, reversed): highest REC Lv first, missing levels
-   last; ties — and two missing levels, whose Infinity difference is NaN — fall to the lower quest
-   id, so the sort is stable. */
+   last; ties — and two missing levels — fall to the lower quest id, so the sort is stable. */
 export function byRecommendLv(a, b) {
-  return recLvRank(b.recommendLv) - recLvRank(a.recommendLv) || a.questId - b.questId;
+  const rankA = recLvRank(a.recommendLv);
+  const rankB = recLvRank(b.recommendLv);
+  const missingA = !Number.isFinite(rankA);
+  const missingB = !Number.isFinite(rankB);
+  if (missingA !== missingB) return missingA ? 1 : -1;
+  if (!missingA && rankA !== rankB) return rankB - rankA;
+  return a.questId - b.questId;
 }
 
 /* A labelled box in the house shape: .material-input-box wrapping label + field. */
@@ -80,6 +87,12 @@ function planFigureBox(spec) {
       spec.onWritten?.();
     }, DEBOUNCE_MS),
   );
+  input.addEventListener("change", () => {
+    if (!input.isConnected) return;
+    spec.write(input.value);
+    if (spec.read) input.value = String(spec.read());
+    spec.onWritten?.();
+  });
   return labelledBox(spec.labelText, input);
 }
 
@@ -92,8 +105,20 @@ export function buildHeldBonusBoxes(currency, plan) {
     schema: Schema.tier.Have,
     value: plan.held[key] || 0,
     write: (v) => EventPlanner.setHeld(key, v),
+    read: () => EventPlanner.heldOf(key),
     currency,
   });
+}
+
+export function buildShopItemsTrigger(currency) {
+  const btn = DOMFactory.el("button", ["cefilter-footer-btn", "farm-shop-items-btn"], {
+    type: "button",
+    "aria-haspopup": "dialog",
+    "aria-label": `${currency.name} shop items`,
+  });
+  btn.textContent = "Shop Items";
+  btn.addEventListener("click", () => EventShopModal.open(currency.id));
+  return btn;
 }
 
 /* The 3-in-1 card's quest dropdown (Amendment L3/L4, N1): the list is ONLY the event's all-covering
@@ -118,7 +143,7 @@ export function buildFarmQuestSelect(quests, selectedQuestId, onChange = null) {
 
 function buildQuestOption(quest, label = quest.questName) {
   const option = DOMFactory.el("option", null, { value: String(quest.questId) });
-  option.textContent = quest.recommendLv ? `${label} \u00b7 Lv.${quest.recommendLv}` : label;
+  option.textContent = quest.recommendLv ? `${label} \u00b7 Lv. ${quest.recommendLv}` : label;
   return option;
 }
 
@@ -135,43 +160,24 @@ function pickedQuestId(quests, selectedQuestId) {
   return chosen ? chosen.questId : quests[0].questId;
 }
 
-/* A quest's main drop (Amendment O): the shop currency whose dropExpected×num is the highest over
-   the quest's drops — plain data figures, bonus-free like every other ranking here — ties to the
-   lower currency id. currencyIds bounds the candidates to the event's shop currencies. */
-function isMainDrop(quest, currencyId, currencyIds) {
-  const drops = (quest || {}).drops || {};
-  let top = null;
-  let topAmount = 0;
-  for (const id of (Array.isArray(currencyIds) ? currencyIds : []).map(String)) {
-    const drop = drops[id];
-    if (!drop) continue;
-    const amount = Number(drop.dropExpected) * Number(drop.num) || 0;
-    if (!(amount > 0)) continue;
-    if (top === null || amount > topAmount || (amount === topAmount && Number(id) < Number(top))) {
-      top = id;
-      topAmount = amount;
-    }
-  }
-  return top === String(currencyId);
-}
-
-/* The cards 1-to-3 dropdown list (Amendment M4, N2, O): the event's quests whose MAIN drop is this
-   currency — a quest where the card's currency is only a secondary drop never appears here, and an
-   all-covering quest is card 4's own. Sorted by REC Lv descending (Amendment N1), ties to the lower
-   quest id. The default pick is NOT the first entry any more: EventShop.defaultCurrencyQuest names
-   the currency's best-rate non-all-covering quest, the same figure the optimizer's top-up fallback
-   resolves to — the card falls to the first listed quest when that best rate is a secondary drop. */
+/* The cards 1-to-3 dropdown list (Amendment M4, N2, O): non-all-covering quests whose MAIN drop is
+   this currency, falling back to all non-all-covering droppers only when no main-drop quest exists
+   (matching EventShop.defaultCurrencyQuest / farmPlan). Sorted by REC Lv descending, ties to lower
+   quest id. */
 export function questsDroppingCurrency(farm, currency, currencyIds) {
   const key = String(currency.id);
   const covering = new Set(EventShop.allCoveringQuests(farm, currencyIds).map((quest) => quest.questId));
-  const droppers = ((farm || {}).quests || []).filter(
+  const nonCovering = ((farm || {}).quests || []).filter(
     (quest) =>
       quest &&
       EventShop.hasDropData(quest, currencyIds) &&
       !covering.has(quest.questId) &&
-      isMainDrop(quest, key, currencyIds),
+      quest.drops &&
+      Number(quest.drops[key]?.dropExpected) > 0 &&
+      Number(quest.drops[key]?.num) > 0,
   );
-  return droppers.sort(byRecommendLv);
+  const mainDroppers = nonCovering.filter((quest) => EventShop.isMainDrop(quest, key, currencyIds));
+  return (mainDroppers.length ? mainDroppers : nonCovering).sort(byRecommendLv);
 }
 
 /* A per-currency card's quest dropdown (Amendment M4, N1/N2): one per card, listing the quests that

@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
     _eventModule.initEvent();
   };
 
-  TabNavigator.init(initCEFilter, initBond);
+  TabNavigator.init(initCEFilter, initBond, initEvent);
 
   // Eagerly init ONLY the active tab
   if (activeTab === "event") {

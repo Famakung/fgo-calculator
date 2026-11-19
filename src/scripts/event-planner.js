@@ -185,11 +185,12 @@ export const EventPlanner = {
   setFarmQuest(questId) {
     const event = this.activeEvent();
     if (!event) return;
-    const quests = (event.farm || {}).quests || [];
-    const currencyIds = currencyIdsOf(event);
-    const id = Number(questId);
-    const known = quests.some((quest) => quest.questId === id && EventShop.hasDropData(quest, currencyIds));
-    this._mutatePlan({ farmQuest: known ? id : EventShop.defaultFarmQuest(event.farm || {}, currencyIds) });
+    const farmQuest = EventShop.sanitizedFarmQuest({
+      farm: event.farm || {},
+      currencyIds: currencyIdsOf(event),
+      saved: questId,
+    });
+    this._mutatePlan({ farmQuest });
   },
 
   /* A per-currency card's quest pick (Amendment M4, N2): the card's dropdown only offers this event's

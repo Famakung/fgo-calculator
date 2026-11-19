@@ -37,6 +37,7 @@ export const EventShopModal = {
     this._draft = this._cloneDraft();
     this._setTitle();
     this._renderRows(list);
+    this._syncFooterButtons();
     list.scrollTop = 0;
     modal.classList.add("open");
   },
@@ -66,6 +67,14 @@ export const EventShopModal = {
   _setTitle() {
     const title = document.getElementById("eventShopModalTitle");
     if (title) title.textContent = this._currency.name + " \u2014 Shop Items";
+  },
+
+  _syncFooterButtons() {
+    const empty = this._items.length === 0;
+    for (const id of ["eventShopModalDefaultBtn", "eventShopModalSelectAllBtn"]) {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = empty;
+    }
   },
 
   _renderRows(list) {
@@ -171,7 +180,7 @@ export const EventShopModal = {
     this._bindButton("eventShopModalCancelBtn", () => this.close());
     this._bindButton("eventShopModalDefaultBtn", () => this._zeroDraft());
     this._bindButton("eventShopModalSelectAllBtn", () => this._buyOutDraft());
-    this._bindButton("eventShopModalDoneBtn", () => this._commitDraft());
+    this._bindButton("eventShopModalOkBtn", () => this._commitDraft());
     document.addEventListener("keydown", (e) => this._onKeydown(e, modal));
   },
 

@@ -1490,7 +1490,7 @@ export const BondApp = {
         img.style.display = "none";
       };
       const count = DOMFactory.el("span", "bond-result-fruit-count");
-      count.textContent = `x${fruitCount.toLocaleString()}`;
+      count.textContent = `×${fruitCount.toLocaleString()}`;
       row.appendChild(img);
       row.appendChild(count);
       return row;
