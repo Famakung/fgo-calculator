@@ -875,7 +875,7 @@ try {
           selectCardHasSelect: !!(cards[0] && cards[0].querySelector("#eventSelect")),
           modalPresent: !!document.getElementById("eventShopModal"),
           modalList: !!document.getElementById("eventShopModalList"),
-          footerBtns: ["Default", "SelectAll", "Cancel", "Done"].map(
+          footerBtns: ["Default", "SelectAll", "Cancel", "Ok"].map(
             (n) => !!document.getElementById(`eventShopModal${n}Btn`),
           ),
           closeBtn: !!document.getElementById("eventShopModalClose"),
@@ -1156,7 +1156,7 @@ try {
     await modalGate(false, label || `close modal via ${via}`);
   };
   const clickDone = async () => {
-    await safeClick("#eventShopModalDoneBtn");
+    await safeClick("#eventShopModalOkBtn");
     await modalGate(false, "Done closes the modal");
     await wait(SETTLE_MS);
   };
@@ -3781,7 +3781,7 @@ try {
     await openTierModal("bronze", "open modal for quota scene");
     await typeInto(sel.modalInput(freeRow.id), "1");
     const beforeQuotaErrors = pageErrors.length;
-    await safeClick("#eventShopModalDoneBtn");
+    await safeClick("#eventShopModalOkBtn");
     await modalGate(false, "Done closes even when the save throws");
     await wait(SETTLE_MS);
     const quotaState = await readTier();
@@ -3980,7 +3980,7 @@ try {
         const modal = document.getElementById("eventShopModal");
         const content = modal.querySelector(".servant-modal-content");
         const list = document.getElementById("eventShopModalList");
-        const done = document.getElementById("eventShopModalDoneBtn");
+        const done = document.getElementById("eventShopModalOkBtn");
         const cr = content.getBoundingClientRect();
         const dr = done.getBoundingClientRect();
         return {

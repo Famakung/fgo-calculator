@@ -19,7 +19,16 @@ const CURRENCIES = [
   { id: 94164001, name: "NEGI", background: "silver", icon: null },
 ];
 const ITEMS = [
-  { id: 1, name: "coin", cost: { itemId: 94164000, amount: 10 }, limitNum: 1, setNum: 1, priority: 1, icon: null },
+  {
+    id: 1,
+    name: "coin",
+    purchaseType: "item",
+    cost: { itemId: 94164000, amount: 10 },
+    limitNum: 1,
+    setNum: 1,
+    priority: 1,
+    icon: null,
+  },
 ];
 const QUEST = {
   questId: 5,
@@ -35,33 +44,39 @@ function farmWith(quests, best) {
   return { quests, best };
 }
 
-function runValidator(farm, trades = [TRADE]) {
+function runValidator(farm, trades = [TRADE], { items = ITEMS, eventOverrides = {}, servers } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fgo-validate-"));
   try {
     fs.mkdirSync(path.join(tmp, "scripts"), { recursive: true });
     fs.cpSync(VALIDATOR, path.join(tmp, "scripts", "validate_data.js"));
     const data = path.join(tmp, "src", "scripts", "data");
     fs.mkdirSync(data, { recursive: true });
+    const payload = {
+      events: [
+        {
+          event: {
+            id: 80639,
+            name: "S",
+            shortName: "S",
+            startedAt: 1794394800,
+            endedAt: 1796000000,
+            ...eventOverrides,
+          },
+          currencies: CURRENCIES,
+          items,
+          farm,
+          trades,
+          bonusCes: [],
+        },
+      ],
+    };
+    if (servers !== undefined) payload.servers = servers;
     const modules = {
       "servants.js": "export const SERVANT_DATA = {};",
       "craft_essences.js": "export const CE_DATA = {};",
       "traits.js": 'export const TRAIT_DATA = { "0100": { name: "Servant" } };',
       "bond_growth.js": "export const BOND_TABLES = {};\nexport const BOND_TABLE_BY_SVT = {};",
-      "event_shop.js":
-        "export const EVENT_SHOP_DATA = " +
-        JSON.stringify({
-          events: [
-            {
-              event: { id: 80639, name: "S", shortName: "S", startedAt: 1794394800 },
-              currencies: CURRENCIES,
-              items: ITEMS,
-              farm,
-              trades,
-              bonusCes: [],
-            },
-          ],
-        }) +
-        ";",
+      "event_shop.js": "export const EVENT_SHOP_DATA = " + JSON.stringify(payload) + ";",
     };
     for (const [name, text] of Object.entries(modules)) fs.writeFileSync(path.join(data, name), text, "utf8");
     const result = spawnSync(process.execPath, [path.join(tmp, "scripts", "validate_data.js")], { encoding: "utf8" });
@@ -130,4 +145,28 @@ test("validate_data rejects a zero drop figure inside a quest", () => {
   const { status, output } = runValidator(farmWith([zero], {}));
   assert.equal(status, 1, output);
   assert.match(output, /drops\[94164000\]: dropExpected must be a number above 0/);
+});
+
+test("validate_data rejects duplicate/non-positive item.id, missing purchaseType, bad event meta, and unknown servers (#17)", () => {
+  const validFarm = farmWith([QUEST], { 94164000: 5, 94164001: 5 });
+
+  const dupItems = [ITEMS[0], { ...ITEMS[0] }];
+  const dup = runValidator(validFarm, [TRADE], { items: dupItems });
+  assert.equal(dup.status, 1, dup.output);
+  assert.match(dup.output, /duplicate item\.id 1/);
+
+  const badType = runValidator(validFarm, [TRADE], { items: [{ ...ITEMS[0], purchaseType: "" }] });
+  assert.equal(badType.status, 1, badType.output);
+  assert.match(badType.output, /purchaseType must be a non-empty string/);
+
+  const badMeta = runValidator(validFarm, [TRADE], { eventOverrides: { shortName: 123, endedAt: "soon" } });
+  assert.equal(badMeta.status, 1, badMeta.output);
+  assert.match(badMeta.output, /shortName must be a string/);
+  assert.match(badMeta.output, /endedAt must be an integer/);
+
+  const badServer = runValidator(validFarm, [TRADE], {
+    servers: { EU: [{ id: 80639, name: "S", shortName: "S", startedAt: 1794394800, endedAt: 1796000000 }] },
+  });
+  assert.equal(badServer.status, 1, badServer.output);
+  assert.match(badServer.output, /unknown server key "EU"/);
 });

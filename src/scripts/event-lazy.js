@@ -6,8 +6,11 @@ import { EventShopModal } from "./event-shop-modal.js";
 import { DOMFactory } from "./presentation.js";
 
 const NO_EVENT_OPTION = "No active event";
+let _initialized = false;
 
 export function initEvent() {
+  if (_initialized) return;
+  _initialized = true;
   /* The modal edits a draft of the selected event's plan and commits it whole: applyRequires
      persists, refreshNeeds folds the new totals into the tier cards (event mode only). Planner is
      inited before App so App.init already reads the loaded plan. */
@@ -86,9 +89,11 @@ function populateEventOptions(select, events, selectedEventId) {
   if (events.length === 0) {
     select.replaceChildren(buildDisabledOption());
     select.disabled = true;
+    select.tabIndex = -1;
     return;
   }
   select.disabled = false;
+  select.tabIndex = 0;
   select.replaceChildren(...events.map(buildOption));
   select.value = String(selectedEventId);
 }

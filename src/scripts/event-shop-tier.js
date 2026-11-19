@@ -84,6 +84,7 @@ export function bindCurrencyModalOpen(node) {
 function bindRequiredDisplay(input, currency) {
   input.readOnly = true;
   input.classList.add("eshop-require-display");
+  input.setAttribute("role", "button");
   input.setAttribute("aria-haspopup", "dialog");
   input.setAttribute("aria-label", `${currency.name} required \u2014 open shop items`);
   input.dataset.currencyId = String(currency.id);
@@ -133,6 +134,7 @@ function clearEventTier({ tier, card, needInput, readOnly = true }) {
   delete needInput.dataset.currencyId;
   needInput.readOnly = readOnly;
   needInput.classList.remove("eshop-require-display");
+  needInput.removeAttribute("role");
   needInput.removeAttribute("aria-haspopup");
   needInput.removeAttribute("aria-label");
   needInput.value = "0";

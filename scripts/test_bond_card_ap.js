@@ -99,11 +99,11 @@ function assert(condition, message) {
 }
 
 /* en-US grouping oracle, node-side. §15 matchers: AP line "N AP" exact; fruit side is a
-   48px img + overlay span with exact text `x<N grouped>` — no "Golden Fruit" textContent remains
+   48px img + overlay span with exact text `×<N grouped>` — no "Golden Fruit" textContent remains
    on cards (it survives only as the img alt, the AT name carrier). */
 const fmt = (n) => new Intl.NumberFormat("en-US").format(n);
 const apLine = (cardAp) => new RegExp(`^${fmt(cardAp)} AP$`, "u");
-const overlayText = (fruit) => `x${fmt(fruit)}`;
+const overlayText = (fruit) => `×${fmt(fruit)}`;
 
 const emptySlot = () => ({
   servantId: null,
@@ -309,9 +309,9 @@ try {
       if (apPerRun > 0 && runs > 0) {
         assert(card.apText !== null && card.fruitCountText !== null, `${id} card ${i} ap+fruit present when runs > 0`);
         const am = card.apText && card.apText.match(/^([\d,]+) AP$/u);
-        const fm = card.fruitCountText && card.fruitCountText.match(/^x([\d,]+)$/u);
+        const fm = card.fruitCountText && card.fruitCountText.match(/^×([\d,]+)$/u);
         assert(!!am, `${id} card ${i} ap text shape "N AP" no · no \\n (got: ${JSON.stringify(card.apText)})`);
-        assert(!!fm, `${id} card ${i} fruit overlay shape "x<M>" (got: ${JSON.stringify(card.fruitCountText)})`);
+        assert(!!fm, `${id} card ${i} fruit overlay shape "×<M>" (got: ${JSON.stringify(card.fruitCountText)})`);
         assert(
           card.cardHasGoldenText === false,
           `${id} card ${i} no "Golden Fruit" textContent on card (§15: name lives in alt only)`,
@@ -351,7 +351,7 @@ try {
   );
   assert(
     a1.cards[0].fruitCountText === overlayText(2),
-    `AC1 fruit overlay exact "x2" — §15: side text and its NBSP pins DIED (name now carried by alt, pinned below) (got: ${JSON.stringify(a1.cards[0].fruitCountText)})`,
+    `AC1 fruit overlay exact "×2" — §15: side text and its NBSP pins DIED (name now carried by alt, pinned below) (got: ${JSON.stringify(a1.cards[0].fruitCountText)})`,
   );
   assert(
     a1.cards[0].cardHasGoldenText === false,

@@ -20,11 +20,25 @@ const TRADES_SECTION = "Shop Trades";
 const NO_PLAN_MESSAGE = "No drop data can cover this plan";
 const FIGURE_FORMAT = { maximumFractionDigits: 1 };
 
+let legacyResultNodes = null;
+
+function captureLegacyResults(inner) {
+  if (legacyResultNodes || !inner.querySelector("#deficitGrid")) return;
+  legacyResultNodes = [...inner.childNodes];
+}
+
 export function renderFarmResults(snapshot, view) {
   const inner = document.querySelector("#results .results-card .card-inner");
   if (!inner) return;
+  captureLegacyResults(inner);
   inner.replaceChildren(buildResultsFragment(snapshot, view));
   refreshSlidingNames(inner);
+}
+
+export function restoreLegacyResults() {
+  const inner = document.querySelector("#results .results-card .card-inner");
+  if (!inner || !legacyResultNodes || inner.querySelector("#deficitGrid")) return;
+  inner.replaceChildren(...legacyResultNodes);
 }
 
 export function buildResultsFragment(snapshot, view) {
@@ -205,9 +219,11 @@ function buildTradeIcon(currency, amount) {
 
 function buildTradeCardHeader(from, to, ratio) {
   const header = DOMFactory.el("div", "farm-card-title farm-card-title--icons");
+  const arrow = buildNode("\u2192", "farm-res-trade-arrow");
+  arrow.setAttribute("aria-hidden", "true");
   header.replaceChildren(
     buildTradeIcon(from, ratio ? ratio.costAmount : null),
-    buildNode("\u2192", "farm-res-trade-arrow"),
+    arrow,
     buildTradeIcon(to, ratio ? ratio.getNum : null),
   );
   return header;

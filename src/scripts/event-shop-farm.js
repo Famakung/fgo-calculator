@@ -7,13 +7,14 @@ import {
   tierMappedIds,
   byRecommendLv,
   buildHeldBonusBoxes,
+  buildShopItemsTrigger,
   buildFarmQuestSelect,
   buildCurrencyQuestSelect,
   buildRaidQuestSelect,
   buildRaidEndedToggle,
   questsDroppingCurrency,
 } from "./event-shop-farm-controls.js";
-import { renderFarmResults } from "./event-shop-farm-results.js";
+import { renderFarmResults, restoreLegacyResults } from "./event-shop-farm-results.js";
 import { buildQuestName, refreshSlidingNames } from "./event-shop-farm-names.js";
 
 /* ===...=== Best-quest farm view (Amendment D, L, M) ===...=== */
@@ -78,8 +79,17 @@ function buildCurrencyCard(currency, view) {
     ? selectedQuest(view, currency, options)
     : bestDropperQuest(view.snapshot.farm, currency);
   card.appendChild(buildCardBody(currency, quest, view, options));
-  if (!view.mapped.has(String(currency.id))) card.appendChild(buildHeldBonusBoxes(currency, view.plan));
+  if (!view.mapped.has(String(currency.id))) {
+    card.appendChild(buildHeldBonusBoxes(currency, view.plan));
+    if (hasShopItems(view.snapshot, currency.id)) {
+      card.appendChild(buildShopItemsTrigger(currency));
+    }
+  }
   return card;
+}
+
+function hasShopItems(snapshot, currencyId) {
+  return (snapshot.items || []).some((item) => item && item.cost && String(item.cost.itemId) === String(currencyId));
 }
 
 /* The cards 1-to-3 graceful fallback (Amendment N2): when every quest that drops this currency is
@@ -301,6 +311,7 @@ export function showLegacyCard() {
   setDisplay(document.getElementById("questDropsGrid"), "grid");
   setDisplay(document.getElementById("farmGrid"), "none");
   hydrateFarmGrid(null);
+  restoreLegacyResults();
 }
 
 function setDisplay(element, value) {

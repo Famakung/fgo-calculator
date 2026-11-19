@@ -18,6 +18,19 @@ function isQpDumpItem(item) {
   );
 }
 
+function pruneQuestDrops(quests, keepKeys) {
+  if (!Array.isArray(quests)) return [];
+  return quests
+    .map((q) => {
+      const drops = {};
+      for (const [k, v] of Object.entries((q && q.drops) || {})) {
+        if (keepKeys.has(k)) drops[k] = v;
+      }
+      return Object.keys(drops).length ? { ...q, drops } : null;
+    })
+    .filter(Boolean);
+}
+
 /* Strip currencies whose only shop rows are unlimited leftover-to-QP exchanges (e.g. crafting
    materials or event points) when real shop currencies exist. Keeps farm cards and all-covering
    quest detection scoped to actual event shop currencies. */
@@ -70,17 +83,17 @@ function pruneQpOnlyCurrencies(snap) {
   for (const [k, v] of Object.entries(farm.best || {})) {
     if (keepKeys.has(k)) best[k] = v;
   }
-  const quests = Array.isArray(farm.quests)
-    ? farm.quests
-        .map((q) => {
-          const drops = {};
-          for (const [k, v] of Object.entries((q && q.drops) || {})) {
-            if (keepKeys.has(k)) drops[k] = v;
-          }
-          return Object.keys(drops).length ? { ...q, drops } : null;
-        })
-        .filter(Boolean)
-    : [];
+  const quests = pruneQuestDrops(farm.quests, keepKeys);
+  const nextFarm = { ...farm, quests, best };
+  if (Array.isArray(farm.raids)) {
+    nextFarm.raids = farm.raids
+      .map((boss) => {
+        if (!boss || typeof boss !== "object") return null;
+        const bossQuests = pruneQuestDrops(boss.quests, keepKeys);
+        return bossQuests.length ? { ...boss, quests: bossQuests } : null;
+      })
+      .filter(Boolean);
+  }
   const bonusCes = Array.isArray(snap.bonusCes)
     ? snap.bonusCes
         .map((ce) => {
@@ -97,7 +110,7 @@ function pruneQpOnlyCurrencies(snap) {
     currencies: snap.currencies.filter((c) => c && keepIds.has(c.id)),
     items: snap.items.filter((it) => it && it.cost && keepIds.has(it.cost.itemId)),
     trades: Array.isArray(snap.trades) ? snap.trades.filter((t) => keepIds.has(t.fromId) && keepIds.has(t.toId)) : [],
-    farm: { ...farm, quests, best },
+    farm: nextFarm,
     bonusCes,
   };
 }

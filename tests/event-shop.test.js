@@ -2136,3 +2136,164 @@ test("snapshotEvents prunes undropped non-main currencies (e.g. 80514 chocolates
     false,
   );
 });
+
+test("pruneQpOnlyCurrencies prunes farm.raids[].quests[].drops to kept currencies (#9)", async () => {
+  const { snapshotEvents } = await import("../src/scripts/event-planner-state.js");
+  const raw = {
+    events: [
+      {
+        event: { id: 80999, name: "Raid Prune", shortName: "RP", startedAt: 1700000000, endedAt: 1701000000 },
+        currencies: [
+          { id: 94140201, name: "Bronze", background: "bronze", icon: null },
+          { id: 94140202, name: "Silver", background: "silver", icon: null },
+          { id: 94140305, name: "Chocolate", background: "gold", icon: null },
+        ],
+        items: [
+          {
+            id: 1,
+            name: "Lore",
+            purchaseType: "item",
+            cost: { itemId: 94140201, amount: 100 },
+            limitNum: 1,
+            setNum: 1,
+            priority: 1,
+            icon: null,
+          },
+          {
+            id: 2,
+            name: "QP",
+            purchaseType: "item",
+            cost: { itemId: 94140305, amount: 1 },
+            limitNum: 0,
+            setNum: 1,
+            priority: 10,
+            icon: "event_shop/item_1.webp",
+          },
+        ],
+        farm: {
+          quests: [
+            {
+              questId: 10,
+              questName: "Free",
+              recommendLv: "90",
+              ap: 40,
+              sampleRuns: 10,
+              drops: { 94140201: { dropExpected: 5, num: 3 }, 94140305: { dropExpected: 2, num: 1 } },
+            },
+          ],
+          best: { 94140201: 10, 94140305: 10 },
+          raids: [
+            {
+              bossId: 1,
+              bossName: "Mixed Raid",
+              quests: [
+                {
+                  questId: 20,
+                  questName: "Mixed",
+                  recommendLv: "90+",
+                  ap: 40,
+                  sampleRuns: 10,
+                  drops: { 94140201: { dropExpected: 4, num: 3 }, 94140305: { dropExpected: 3, num: 1 } },
+                },
+                {
+                  questId: 21,
+                  questName: "Pruned Only",
+                  recommendLv: "90",
+                  ap: 40,
+                  sampleRuns: 10,
+                  drops: { 94140305: { dropExpected: 5, num: 1 } },
+                },
+              ],
+            },
+            {
+              bossId: 2,
+              bossName: "Gone Raid",
+              quests: [
+                {
+                  questId: 22,
+                  questName: "Gone",
+                  recommendLv: "90",
+                  ap: 40,
+                  sampleRuns: 10,
+                  drops: { 94140305: { dropExpected: 5, num: 1 } },
+                },
+              ],
+            },
+          ],
+        },
+        trades: [],
+        bonusCes: [],
+      },
+    ],
+  };
+  const [snap] = snapshotEvents(raw);
+  assert.equal(snap.farm.raids.length, 1);
+  assert.equal(snap.farm.raids[0].quests.length, 1);
+  assert.deepEqual(Object.keys(snap.farm.raids[0].quests[0].drops), ["94140201"]);
+});
+
+test("sanitizeFarmQuest and EventPlanner.setFarmQuest restrict farmQuest to all-covering quests (#10)", async () => {
+  const storage = fakeStorage();
+  const planner = await plannerWith(storage, [B_SNAPSHOT]);
+  planner.setFarmQuest(94161103);
+  assert.equal(planner.activePlan().farmQuest, 94161108, "non-all-covering quest re-defaults to best all-covering");
+  const sanitized = EventShop.sanitizedFarmQuest({
+    farm: B_FARM,
+    currencyIds: [94160901, 94160902, 94160903],
+    saved: 94161103,
+  });
+  assert.equal(sanitized, 94161108);
+});
+
+test("defaultCurrencyQuest, sanitizedCurrencyQuest, and farmPlan align with isMainDrop (#4)", () => {
+  const ids = [1, 2, 3];
+  const farm = {
+    quests: [
+      {
+        questId: 101,
+        questName: "Bronze Main",
+        recommendLv: "80",
+        ap: 40,
+        sampleRuns: 10,
+        drops: { 1: { dropExpected: 5, num: 3 } },
+      },
+      {
+        questId: 102,
+        questName: "Silver Main (higher secondary bronze)",
+        recommendLv: "90",
+        ap: 40,
+        sampleRuns: 10,
+        drops: { 1: { dropExpected: 7, num: 3 }, 2: { dropExpected: 10, num: 3 } },
+      },
+      {
+        questId: 103,
+        questName: "Gold Main",
+        recommendLv: "90+",
+        ap: 40,
+        sampleRuns: 10,
+        drops: { 3: { dropExpected: 10, num: 3 } },
+      },
+    ],
+    best: { 1: 102, 2: 102, 3: 103 },
+  };
+  assert.equal(EventShop.isMainDrop(farm.quests[0], 1, ids), true);
+  assert.equal(EventShop.isMainDrop(farm.quests[1], 1, ids), false);
+  assert.equal(EventShop.defaultCurrencyQuest(farm, ids, 1), 101);
+  assert.equal(EventShop.sanitizedCurrencyQuest({ farm, currencyIds: ids, currencyKey: 1, saved: 102 }), 101);
+  const plan = EventShop.farmPlan({
+    totals: { 1: 15, 2: 0, 3: 0 },
+    held: {},
+    farm,
+    currencyIds: ids,
+  });
+  assert.equal(plan.plays[0].questId, 101);
+  const cePlan = EventShop.farmPlan({
+    totals: { 1: 15, 2: 0, 3: 0 },
+    held: {},
+    farm,
+    currencyIds: ids,
+    bonusCes: [{ id: 9001, name: "CE", rarity: 5, bonuses: { 1: { nonLimitBreak: 1, limitBreak: 2 } } }],
+    ceOwned: { 9001: { nonLimitBreak: 1, limitBreak: 0 } },
+  });
+  assert.equal(cePlan.plays[0].questId, 101);
+});

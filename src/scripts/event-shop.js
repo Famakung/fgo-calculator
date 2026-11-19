@@ -11,6 +11,7 @@ import {
   buildFallbackIcon,
 } from "./event-shop-tier.js";
 import { hydrateFarmGrid, showFarmResults, syncPlanBoxes, showFarmCard, showLegacyCard } from "./event-shop-farm.js";
+import { restoreLegacyResults } from "./event-shop-farm-results.js";
 import {
   hydrateBonusCeGrid,
   commitBonusCeInputs,
@@ -99,14 +100,15 @@ export const ViewManager = {
   },
 
   showResults(deficits, runs) {
+    restoreLegacyResults();
     revealResults();
 
     TIERS.forEach((tier) => {
       const deficitEl = document.getElementById(`${tier}Deficit`);
-      if (deficitEl) deficitEl.textContent = Math.max(0, Math.ceil(deficits[tier]));
+      if (deficitEl) deficitEl.textContent = Math.max(0, Math.ceil(deficits[tier])).toLocaleString("en-US");
 
       const runEl = document.getElementById(`${tier}Play`);
-      if (runEl) runEl.textContent = runs[tier];
+      if (runEl) runEl.textContent = runs[tier].toLocaleString("en-US");
       const labelEl = document.getElementById(`${tier}Label`);
       if (labelEl) labelEl.textContent = runs[tier] === 1 ? "run" : "runs";
     });
@@ -174,18 +176,6 @@ export const EventHandler = {
     const debouncedUpdate = debounce(() => {
       ViewManager.updateDropDisplay(app.state);
     }, DEBOUNCE_MS);
-
-    // Tier bonus inputs
-    TIERS.forEach((tier) => {
-      const input = UIBuilder.elements[`${tier}Bonus`];
-      if (input) {
-        input.addEventListener("input", (e) => {
-          const value = Validator.validate(e.target.value, Schema.tier.Bonus);
-          app.state = StateManager.updateTier(app.state, tier, "bonus", value);
-          debouncedUpdate();
-        });
-      }
-    });
 
     // Base drop and multiplier inputs
     ["baseDrop", "primaryMultiplier", "secondaryMultiplier"].forEach((key) => {
@@ -260,7 +250,7 @@ export const App = {
     UIBuilder.loadQuestIcons();
     hydrateFarmGrid(snapshot, plan, this._farmHandlers());
     ViewManager.resetResults();
-    this.refreshNeeds();
+    this.refreshNeeds({ flush: false });
   },
 
   /* The farm grid's two write paths (Amendment L, M4): a Bonus figure repaints the live drop
@@ -277,6 +267,7 @@ export const App = {
   onFarmQuestChanged() {
     const snapshot = EventPlanner.activeEvent();
     if (!snapshot) return;
+    this._commitFarmBoxes(snapshot);
     hydrateFarmGrid(snapshot, EventPlanner.activePlan(), this._farmHandlers());
     ViewManager.resetResults();
   },
@@ -289,9 +280,10 @@ export const App = {
   /* The planner's requires are the single source of truth while an event is mapped: recompute
      every mapped tier's need from Σ require × cost, keep the legacy mirror in step, and refresh the
      read-only displays. Legacy mode returns from the first line — state and storage untouched. */
-  refreshNeeds() {
+  refreshNeeds({ flush = true } = {}) {
     const needs = this._eventNeeds();
     if (!needs) return;
+    if (flush) this._commitTierBoxes();
     for (const tier of Object.keys(needs)) {
       this.state = StateManager.updateTier(this.state, tier, "need", needs[tier]);
     }
@@ -365,7 +357,10 @@ export const App = {
     TIERS.forEach((tier) => {
       const currency = EventShop.currencyForTier(currencies, tier);
       if (!currency) return;
-      EventPlanner.setHeld(currency.id, boxValue(`${tier}Have`));
+      const input = UIBuilder.elements[`${tier}Have`];
+      if (!input) return;
+      EventPlanner.setHeld(currency.id, input.value);
+      input.value = String(EventPlanner.heldOf(currency.id));
     });
   },
 
@@ -375,7 +370,9 @@ export const App = {
     for (const currency of snapshot.currencies) {
       const key = String(currency.id);
       const held = document.getElementById(`farmHeld${key}`);
-      if (held) EventPlanner.setHeld(key, held.value);
+      if (!held) continue;
+      EventPlanner.setHeld(key, held.value);
+      held.value = String(EventPlanner.heldOf(key));
     }
   },
 
@@ -441,11 +438,6 @@ export const App = {
   },
 };
 
-function boxValue(id) {
-  const input = UIBuilder.elements[id];
-  return input ? input.value : 0;
-}
-
 /* One plan-box listener, debounced through the house debounce(fn, DEBOUNCE_MS) pattern so typing
    persists at most once per window. The mapped currency and the box value are read when the write
    fires, not when it was scheduled: an Event Select switch inside the debounce window repaints the
@@ -461,6 +453,12 @@ function bindPlanBox(tier, field, write) {
       if (currency) write(currency.id, input.value);
     }, DEBOUNCE_MS),
   );
+  input.addEventListener("change", () => {
+    const currency = EventShop.currencyForTier(EventPlanner.activeEvent()?.currencies, tier);
+    if (!currency) return;
+    write(currency.id, input.value);
+    input.value = String(EventPlanner.heldOf(currency.id));
+  });
 }
 
 /* Both plan figures, read per currency (Amendment H) through the tier map and keyed by tier the way

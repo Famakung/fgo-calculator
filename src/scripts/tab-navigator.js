@@ -2,7 +2,7 @@
    TAB NAVIGATION
    ============================================ */
 export const TabNavigator = {
-  init(ceFilterInit, bondInit) {
+  init(ceFilterInit, bondInit, eventInit) {
     const navbar = document.querySelector(".navbar");
     if (!navbar) return;
 
@@ -36,13 +36,19 @@ export const TabNavigator = {
       const savedTab = localStorage.getItem("fgo_active_tab");
       if (savedTab) {
         navbar.querySelectorAll(".tab-btn").forEach((btn) => {
-          btn.classList.toggle("active", btn.dataset.tab === savedTab);
+          const isActive = btn.dataset.tab === savedTab;
+          btn.classList.toggle("active", isActive);
+          btn.setAttribute("aria-selected", String(isActive));
         });
         navbar.querySelectorAll(".navbar-dropdown-item").forEach((btn) => {
           btn.classList.toggle("active", btn.dataset.tab === savedTab);
         });
         document.querySelectorAll(".tab-panel").forEach((panel) => {
           panel.classList.toggle("active", panel.id === "panel-" + savedTab);
+        });
+      } else {
+        navbar.querySelectorAll(".tab-btn").forEach((btn) => {
+          btn.setAttribute("aria-selected", String(btn.classList.contains("active")));
         });
       }
     } catch (_e) {
@@ -53,16 +59,21 @@ export const TabNavigator = {
     document.documentElement.removeAttribute("data-tab");
 
     function switchTab(tab) {
-      navbar.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-      navbar.querySelectorAll(".navbar-dropdown-item").forEach((b) => b.classList.remove("active"));
+      navbar.querySelectorAll(".tab-btn").forEach((b) => {
+        const isActive = b.dataset.tab === tab;
+        b.classList.toggle("active", isActive);
+        b.setAttribute("aria-selected", String(isActive));
+      });
+      navbar.querySelectorAll(".navbar-dropdown-item").forEach((b) => {
+        b.classList.toggle("active", b.dataset.tab === tab);
+      });
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
 
-      // Activate matching buttons in both tab bar and dropdown
-      navbar.querySelectorAll('[data-tab="' + tab + '"]').forEach((b) => b.classList.add("active"));
       document.getElementById("panel-" + tab).classList.add("active");
 
-      if (tab === "cefilter") ceFilterInit();
-      if (tab === "bond") bondInit();
+      if (tab === "cefilter" && ceFilterInit) ceFilterInit();
+      if (tab === "bond" && bondInit) bondInit();
+      if (tab === "event" && eventInit) eventInit();
 
       try {
         localStorage.setItem("fgo_active_tab", tab);
