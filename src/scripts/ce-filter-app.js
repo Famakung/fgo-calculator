@@ -10,7 +10,15 @@ const CE_MODES = ["all", "any", "custom"];
 
 /* === Worker setup for off-thread CE match computation === */
 let _worker = null;
+let _workerReqId = 0;
 let _workerResolve = null;
+
+function resolvePendingWorker(value) {
+  if (!_workerResolve) return;
+  const resolve = _workerResolve;
+  _workerResolve = null;
+  resolve(value);
+}
 
 function getWorker() {
   if (_worker) return _worker;
@@ -22,25 +30,21 @@ function getWorker() {
   }
   _worker.onerror = function (e) {
     console.warn("Worker error:", e.message);
-    if (_workerResolve) {
-      const resolve = _workerResolve;
-      _workerResolve = null;
-      resolve(null);
+    if (_worker) {
+      _worker.terminate();
+      _worker = null;
     }
+    resolvePendingWorker(null);
   };
   _worker.onmessage = function (e) {
-    if (e.data.type === "result") {
-      CEFilterApp._processWorkerResults(e.data);
-      if (_workerResolve) {
-        const resolve = _workerResolve;
-        _workerResolve = null;
-        resolve(e.data);
-      }
-    } else if (e.data.type === "error" && _workerResolve) {
-      console.warn("Worker computation error:", e.data.message);
-      const resolve = _workerResolve;
-      _workerResolve = null;
-      resolve(null);
+    const data = e.data || {};
+    if (data.reqId !== undefined && data.reqId !== _workerReqId) return;
+    if (data.type === "result") {
+      CEFilterApp._processWorkerResults(data);
+      resolvePendingWorker(data);
+    } else if (data.type === "error") {
+      console.warn("Worker computation error:", data.message);
+      resolvePendingWorker(null);
     }
   };
   return _worker;
@@ -48,14 +52,20 @@ function getWorker() {
 
 function initWorker() {
   const worker = getWorker();
-  if (!worker) return;
+  if (!worker) return null;
+  resolvePendingWorker(null);
+  const reqId = ++_workerReqId;
+  const promise = new Promise((resolve) => {
+    _workerResolve = resolve;
+  });
   worker.postMessage({
     type: "init",
     servants: ServantData.servants,
     traitCEs: TraitCEs,
     traitNames: TraitNames,
   });
-  worker.postMessage({ type: "compute" });
+  worker.postMessage({ type: "compute", reqId });
+  return promise;
 }
 
 export const CEFilterApp = {
@@ -465,9 +475,13 @@ export const CEFilterApp = {
     const selected = new Set(this.state.matchCustomCounts);
 
     for (let n = 1; n <= maxCount; n++) {
-      const btn = DOMFactory.el("div", "ce-count-btn" + (selected.has(n) ? " active" : ""));
+      const btn = DOMFactory.el("div", "ce-count-btn" + (selected.has(n) ? " active" : ""), {
+        role: "button",
+        tabindex: "0",
+        "aria-pressed": String(selected.has(n)),
+      });
       btn.textContent = n;
-      btn.addEventListener("click", () => {
+      const toggleCount = () => {
         if (selected.has(n)) {
           selected.delete(n);
         } else {
@@ -476,6 +490,13 @@ export const CEFilterApp = {
         this.state.matchCustomCounts = [...selected];
         this.state.currentPage = 1;
         this._debouncedRender();
+      };
+      btn.addEventListener("click", toggleCount);
+      btn.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleCount();
+        }
       });
       container.appendChild(btn);
     }

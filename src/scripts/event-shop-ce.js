@@ -134,6 +134,7 @@ function buildCeCountBox(ce, kind, suffix, labelText, initialValue) {
     }, DEBOUNCE_MS),
   );
   input.addEventListener("change", () => {
+    if (!input.isConnected) return;
     EventPlanner.setCeOwned(ce.id, kind, input.value);
     input.value = String(EventPlanner.ceOwnedOf(ce.id)[kind]);
   });
@@ -170,12 +171,12 @@ export function bindCeEquipInput() {
   input.addEventListener(
     "input",
     debounce(() => {
-      if (!EventPlanner.activeEvent()) return;
+      if (!input.isConnected || !EventPlanner.activeEvent()) return;
       EventPlanner.setCeEquipLimit(input.value);
     }, DEBOUNCE_MS),
   );
   input.addEventListener("change", () => {
-    if (!EventPlanner.activeEvent()) return;
+    if (!input.isConnected || !EventPlanner.activeEvent()) return;
     EventPlanner.setCeEquipLimit(input.value);
     input.value = String(EventPlanner.ceEquipLimit());
   });

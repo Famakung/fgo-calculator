@@ -8,6 +8,162 @@ import { DOMFactory, CollapsibleFactory, debounce, ComboCardRenderer } from "./p
    has no hope of matching, and the box itself is left free to hold what the player typed. */
 const MAX_SEARCH = 40;
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const TEXT_INPUT_SELECTOR =
+  'input[type="search"]:not([disabled]), input[type="text"]:not([disabled]), input:not([type]):not([disabled])';
+
+function focusNoScroll(el) {
+  if (!el || typeof el.focus !== "function") return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    el.focus();
+  }
+}
+
+function isVisibleFocusable(el) {
+  if (!el || el.disabled) return false;
+  if (el.hidden || el.closest?.("[hidden]")) return false;
+  if (typeof el.getClientRects === "function" && el.getClientRects().length === 0) return false;
+  if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+    const style = window.getComputedStyle(el);
+    if (style && (style.display === "none" || style.visibility === "hidden")) return false;
+  }
+  return true;
+}
+
+function getFocusableElements(modal) {
+  if (!modal || typeof modal.querySelectorAll !== "function") return [];
+  return [...modal.querySelectorAll(FOCUSABLE_SELECTOR)].filter(isVisibleFocusable);
+}
+
+function focusModalContainer(modal) {
+  const container = modal?.querySelector?.(".servant-modal-content") || modal;
+  if (!container) return;
+  if (!container.hasAttribute?.("tabindex")) container.setAttribute?.("tabindex", "-1");
+  focusNoScroll(container);
+}
+
+function focusModalInitial(modal) {
+  if (!modal) return;
+  const textInputs =
+    typeof modal.querySelectorAll === "function"
+      ? [...modal.querySelectorAll(TEXT_INPUT_SELECTOR)].filter(isVisibleFocusable)
+      : [];
+  if (textInputs.length > 0) {
+    focusNoScroll(textInputs[0]);
+    return;
+  }
+  const focusables = getFocusableElements(modal);
+  if (focusables.length > 0) {
+    focusNoScroll(focusables[0]);
+    return;
+  }
+  focusModalContainer(modal);
+}
+
+const ModalFocus = {
+  _stack: [],
+  _boundDoc: null,
+
+  _ensureBound() {
+    if (typeof document === "undefined" || this._boundDoc === document) return;
+    if (typeof document.addEventListener !== "function") return;
+    this._boundDoc = document;
+    document.addEventListener("keydown", (e) => this._onKeydown(e));
+  },
+
+  open(modal) {
+    if (!modal) return;
+    this._ensureBound();
+    const existingIdx = this._stack.findIndex((entry) => entry.modal === modal);
+    let opener = null;
+    if (existingIdx !== -1) {
+      opener = this._stack[existingIdx].opener;
+      this._stack.splice(existingIdx, 1);
+    } else {
+      const active = document.activeElement;
+      if (
+        active &&
+        active !== document.body &&
+        active !== document.documentElement &&
+        !(typeof modal.contains === "function" && modal.contains(active))
+      ) {
+        opener = active;
+      }
+    }
+    this._stack.push({ modal, opener });
+    focusModalInitial(modal);
+  },
+
+  close(modal, { restore = true } = {}) {
+    if (!modal) return;
+    let idx = -1;
+    for (let i = this._stack.length - 1; i >= 0; i--) {
+      if (this._stack[i].modal === modal) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx === -1) return;
+    const [entry] = this._stack.splice(idx, 1);
+    if (restore && entry.opener && entry.opener.isConnected !== false && !entry.opener.disabled) {
+      focusNoScroll(entry.opener);
+    }
+  },
+
+  _topOpenModal() {
+    for (let i = this._stack.length - 1; i >= 0; i--) {
+      const modal = this._stack[i].modal;
+      if (modal?.classList?.contains("open")) return modal;
+    }
+    return null;
+  },
+
+  _onKeydown(e) {
+    if (e.key !== "Tab") return;
+    const modal = this._topOpenModal();
+    if (!modal) return;
+    const focusables = getFocusableElements(modal);
+    if (focusables.length === 0) {
+      e.preventDefault();
+      focusModalContainer(modal);
+      return;
+    }
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    const inside = typeof modal.contains === "function" ? modal.contains(active) : false;
+    if (e.shiftKey) {
+      if (
+        !inside ||
+        active === first ||
+        active === modal ||
+        active === modal.querySelector?.(".servant-modal-content")
+      ) {
+        e.preventDefault();
+        focusNoScroll(last);
+      }
+    } else if (!inside || active === last) {
+      e.preventDefault();
+      focusNoScroll(first);
+    }
+  },
+};
+
+function bindClickableItem(item, onActivate) {
+  item.setAttribute("role", "button");
+  item.setAttribute("tabindex", "0");
+  item.addEventListener("click", onActivate);
+  item.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      if (e.key === " ") e.preventDefault();
+      onActivate(e);
+    }
+  });
+}
+
 /* ============================================
    SERVANT SELECTOR MODAL
    ============================================ */
@@ -159,7 +315,10 @@ export const ServantSelector = {
     this.syncPickerControls();
     this.renderGrid(this.getFilteredServants());
     const modal = document.getElementById("servantModal");
-    if (modal) modal.classList.add("open");
+    if (modal) {
+      modal.classList.add("open");
+      ModalFocus.open(modal);
+    }
   },
 
   resetFilters() {
@@ -186,13 +345,22 @@ export const ServantSelector = {
     if (this.pendingSlot && this.activeSlotIndex !== null) {
       this._callbacks?.onPendingRemove?.(this.activeSlotIndex);
     }
-    const modal = document.getElementById("servantModal");
-    if (modal) modal.classList.remove("open");
     // Sub-modals belong to this one: never leave them sitting over the tab behind.
     const subModal = document.getElementById("servantFilterModal");
-    if (subModal) subModal.classList.remove("open");
+    if (subModal) {
+      subModal.classList.remove("open");
+      ModalFocus.close(subModal, { restore: false });
+    }
     const ascModal = document.getElementById("ascensionModal");
-    if (ascModal) ascModal.classList.remove("open");
+    if (ascModal) {
+      ascModal.classList.remove("open");
+      ModalFocus.close(ascModal, { restore: false });
+    }
+    const modal = document.getElementById("servantModal");
+    if (modal) {
+      modal.classList.remove("open");
+      ModalFocus.close(modal);
+    }
     const footer = document.getElementById("servantModalFooter");
     if (footer) footer.hidden = true;
     this.activeSlotIndex = null;
@@ -274,7 +442,7 @@ export const ServantSelector = {
     const name = DOMFactory.el("div", "servant-picker-name");
     DOMFactory.fillSwapName(name, servant.name, servant.altName);
     item.appendChild(name);
-    item.addEventListener("click", () =>
+    bindClickableItem(item, () =>
       this._multi ? this._handleMultiItemClick(item, servant.id) : this._handleSingleItemClick(servant),
     );
     return item;
@@ -364,13 +532,17 @@ export const ServantSelector = {
     this.draftFilters = FilterModalController.clone(this);
     this._renderFilterRows(this.draftFilters);
     subModal.classList.add("open");
+    ModalFocus.open(subModal);
   },
 
   _cancelFilterModal() {
     this.draftFilters = null;
     this._renderFilterRows();
     const subModal = document.getElementById("servantFilterModal");
-    if (subModal) subModal.classList.remove("open");
+    if (subModal) {
+      subModal.classList.remove("open");
+      ModalFocus.close(subModal);
+    }
   },
 
   _okFilterModal() {
@@ -380,7 +552,10 @@ export const ServantSelector = {
     }
     this.filter();
     const subModal = document.getElementById("servantFilterModal");
-    if (subModal) subModal.classList.remove("open");
+    if (subModal) {
+      subModal.classList.remove("open");
+      ModalFocus.close(subModal);
+    }
   },
 
   _defaultFilterModal() {
@@ -435,12 +610,18 @@ export const AscensionSelector = {
 
     if (title) title.textContent = servant.name;
     this.renderGrid();
-    if (modal) modal.classList.add("open");
+    if (modal) {
+      modal.classList.add("open");
+      ModalFocus.open(modal);
+    }
   },
 
   close() {
     const modal = document.getElementById("ascensionModal");
-    if (modal) modal.classList.remove("open");
+    if (modal) {
+      modal.classList.remove("open");
+      ModalFocus.close(modal);
+    }
     this.servant = null;
     this.slotIndex = null;
     this._options = null;
@@ -461,7 +642,7 @@ export const AscensionSelector = {
     label.textContent = labelText;
     item.appendChild(img);
     item.appendChild(label);
-    item.addEventListener("click", () => {
+    bindClickableItem(item, () => {
       ServantSelector.pendingSlot = false;
       this._callbacks?.onSelect?.(this.slotIndex, this.servant.id, asc);
       this.close();
@@ -618,17 +799,26 @@ export const CESelector = {
     this.renderGrid(CEList);
 
     const modal = document.getElementById("ceModal");
-    if (modal) modal.classList.add("open");
+    if (modal) {
+      modal.classList.add("open");
+      ModalFocus.open(modal);
+    }
   },
 
   close() {
     if (this.pendingSlot && this.activeSlotIndex !== null) {
       this._callbacks?.onPendingRemove?.(this.activeSlotIndex);
     }
-    const modal = document.getElementById("ceModal");
-    if (modal) modal.classList.remove("open");
     const subModal = document.getElementById("ceSubModal");
-    if (subModal) subModal.classList.remove("open");
+    if (subModal) {
+      subModal.classList.remove("open");
+      ModalFocus.close(subModal, { restore: false });
+    }
+    const modal = document.getElementById("ceModal");
+    if (modal) {
+      modal.classList.remove("open");
+      ModalFocus.close(modal);
+    }
     this.activeSlotIndex = null;
     this.pendingSlot = false;
   },
@@ -650,7 +840,7 @@ export const CESelector = {
       item.appendChild(img);
       item.appendChild(name);
 
-      item.addEventListener("click", () => {
+      bindClickableItem(item, () => {
         if (ce.isGroup) {
           const idx = this.activeSlotIndex;
           CESubSelector.open(ce, idx, this._callbacks);
@@ -725,12 +915,18 @@ export const CESubSelector = {
 
     if (title) title.textContent = groupCE.name;
     this.renderGrid();
-    if (modal) modal.classList.add("open");
+    if (modal) {
+      modal.classList.add("open");
+      ModalFocus.open(modal);
+    }
   },
 
   close() {
     const modal = document.getElementById("ceSubModal");
-    if (modal) modal.classList.remove("open");
+    if (modal) {
+      modal.classList.remove("open");
+      ModalFocus.close(modal);
+    }
     this.groupCE = null;
     this.activeSlotIndex = null;
     this._callbacks = null;
@@ -750,7 +946,7 @@ export const CESubSelector = {
     label.textContent = colonIdx !== -1 ? opt.name.substring(colonIdx + 2) : opt.name;
     item.appendChild(img);
     item.appendChild(label);
-    item.addEventListener("click", () => {
+    bindClickableItem(item, () => {
       this._selected = true;
       CESelector.pendingSlot = false;
       this._callbacks?.onSelect?.(this.activeSlotIndex, this.groupCE.id, opt.id);
@@ -837,12 +1033,18 @@ export const CEFilterPicker = {
     this.renderGrid(traitCEs);
 
     const modal = document.getElementById("ceFilterModal");
-    if (modal) modal.classList.add("open");
+    if (modal) {
+      modal.classList.add("open");
+      ModalFocus.open(modal);
+    }
   },
 
   close() {
     const modal = document.getElementById("ceFilterModal");
-    if (modal) modal.classList.remove("open");
+    if (modal) {
+      modal.classList.remove("open");
+      ModalFocus.close(modal);
+    }
     this.tempSelected = new Set();
   },
 
@@ -887,7 +1089,7 @@ export const CEFilterPicker = {
       name.textContent = ce.name;
       item.appendChild(name);
 
-      item.addEventListener("click", () => {
+      bindClickableItem(item, () => {
         if (this.tempSelected.has(ce.id)) {
           this.tempSelected.delete(ce.id);
           item.classList.remove("selected");
@@ -1064,14 +1266,17 @@ export const CEServantOverlap = {
     this._groups = ServantComboCalculator.buildServantOverlapGroups(allMatches, entry);
     this.renderGrid();
     this._modal.classList.add("open");
+    ModalFocus.open(this._modal);
   },
 
   close() {
     if (this._subModal) {
       this._subModal.classList.remove("open");
+      ModalFocus.close(this._subModal, { restore: false });
     }
     if (this._modal) {
       this._modal.classList.remove("open");
+      ModalFocus.close(this._modal);
     }
   },
 
@@ -1080,11 +1285,15 @@ export const CEServantOverlap = {
     this.draftFilters = FilterModalController.clone(this.filterState);
     this._renderFilterRows(this.draftFilters);
     this._subModal.classList.add("open");
+    ModalFocus.open(this._subModal);
   },
 
   _cancelFilterModal() {
     this.draftFilters = null;
-    if (this._subModal) this._subModal.classList.remove("open");
+    if (this._subModal) {
+      this._subModal.classList.remove("open");
+      ModalFocus.close(this._subModal);
+    }
   },
 
   _defaultFilterModal() {
@@ -1107,7 +1316,10 @@ export const CEServantOverlap = {
       Object.assign(this.filterState, this.draftFilters);
       this.draftFilters = null;
     }
-    if (this._subModal) this._subModal.classList.remove("open");
+    if (this._subModal) {
+      this._subModal.classList.remove("open");
+      ModalFocus.close(this._subModal);
+    }
     this.renderGrid();
   },
 

@@ -161,13 +161,17 @@ export const EventHandler = {
     this.bindLegacyBoxes(app);
   },
 
-  /* Tier Held and Bonus boxes edit the plan figure of the currency mapped to that tier (Amendment H),
-      so an event with two golds keeps their numbers apart. Required is the plan's spend and is
-      written by the hydration, never typed. A Bonus write also repaints the farm cards' drop lines
-      (Amendment I): the stack a line prints is num + that currency's bonus. */
+  /* Tier Held boxes edit the plan figure of the currency mapped to that tier (Amendment H),
+     so an event with two golds keeps their numbers apart. Required is the plan's spend and is
+     written by the hydration, never typed. */
   bindPlanBoxes() {
     TIERS.forEach((tier) => {
-      bindPlanBox(tier, "Have", (currencyId, value) => EventPlanner.setHeld(currencyId, value));
+      bindPlanBox(
+        tier,
+        "Have",
+        (currencyId, value) => EventPlanner.setHeld(currencyId, value),
+        (currencyId) => EventPlanner.heldOf(currencyId),
+      );
     });
   },
 
@@ -443,21 +447,23 @@ export const App = {
    fires, not when it was scheduled: an Event Select switch inside the debounce window repaints the
    box, and the write then carries the shown figure rather than a stale one. A tier the event has
    no currency for has no plan figure to write. */
-function bindPlanBox(tier, field, write) {
+function bindPlanBox(tier, field, write, read) {
   const input = UIBuilder.elements[`${tier}${field}`];
   if (!input) return;
   input.addEventListener(
     "input",
     debounce(() => {
+      if (!input.isConnected) return;
       const currency = EventShop.currencyForTier(EventPlanner.activeEvent()?.currencies, tier);
       if (currency) write(currency.id, input.value);
     }, DEBOUNCE_MS),
   );
   input.addEventListener("change", () => {
+    if (!input.isConnected) return;
     const currency = EventShop.currencyForTier(EventPlanner.activeEvent()?.currencies, tier);
     if (!currency) return;
     write(currency.id, input.value);
-    input.value = String(EventPlanner.heldOf(currency.id));
+    if (read) input.value = String(read(currency.id));
   });
 }
 

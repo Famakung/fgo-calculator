@@ -17,14 +17,14 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
           </svg>
         </button>
         <div class="navbar-tabs" role="tablist" aria-label="Calculator sections">
-          <button class="tab-btn active" data-tab="cefilter" role="tab" aria-selected="true">Bond Gain CE</button>
-          <button class="tab-btn" data-tab="bond" role="tab" aria-selected="false">Bond Calculator</button>
-          <button class="tab-btn" data-tab="event" role="tab" aria-selected="false">Event Shop</button>
+          <button class="tab-btn active" id="tab-cefilter" data-tab="cefilter" role="tab" aria-selected="true" aria-controls="panel-cefilter">Bond Gain CE</button>
+          <button class="tab-btn" id="tab-bond" data-tab="bond" role="tab" aria-selected="false" aria-controls="panel-bond">Bond Calculator</button>
+          <button class="tab-btn" id="tab-event" data-tab="event" role="tab" aria-selected="false" aria-controls="panel-event">Event Shop</button>
         </div>
-        <button class="navbar-hamburger" type="button" aria-label="Menu" aria-expanded="false">
+        <button class="navbar-hamburger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="navbarDropdown">
           <span></span><span></span><span></span>
         </button>
-        <div class="navbar-dropdown" aria-hidden="true">
+        <div class="navbar-dropdown" id="navbarDropdown" aria-hidden="true">
           <button class="navbar-dropdown-item active" data-tab="cefilter">Bond Gain CE</button>
           <button class="navbar-dropdown-item" data-tab="bond">Bond Calculator</button>
           <button class="navbar-dropdown-item" data-tab="event">Event Shop</button>
@@ -32,7 +32,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
       </nav>
 
       <main id="main-content">
-        <section class="tab-panel" id="panel-event">
+        <section class="tab-panel" id="panel-event" role="tabpanel" aria-labelledby="tab-event">
           <div class="card" id="eventSelectCard">
             <div class="card-inner">
               <div class="card-title">Select Event</div>
@@ -379,7 +379,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
           </div>
         </section>
 
-        <section class="tab-panel" id="panel-bond">
+        <section class="tab-panel" id="panel-bond" role="tabpanel" aria-labelledby="tab-bond">
           <div class="card">
             <div class="card-inner bond-quest-card-inner">
               <div class="card-title">Select Quest</div>
@@ -766,7 +766,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
           </div>
         </section>
 
-        <section class="tab-panel active" id="panel-cefilter">
+        <section class="tab-panel active" id="panel-cefilter" role="tabpanel" aria-labelledby="tab-cefilter">
           <div class="card">
             <div class="card-inner">
               <div class="cefilter-subtabs" id="cefilterSubtabs">
@@ -844,6 +844,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                     type="text"
                     class="search-filter cefilter-search-input"
                     id="cefilterSearchInput"
+                    aria-label="Search servants by ID or name"
                     placeholder="Search by ID or name..."
                     autocomplete="off"
                   />
@@ -914,6 +915,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                 type="text"
                 class="search-filter cefilter-search-input"
                 id="servantPickerSearch"
+                aria-label="Search servants by ID or name"
                 placeholder="Search by ID or name..."
                 autocomplete="off"
               />
@@ -1097,6 +1099,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
               type="text"
               class="search-filter"
               id="ceFilterPickerSearch"
+              aria-label="Search craft essences by ID or name"
               placeholder="Search by ID or name..."
               autocomplete="off"
             />

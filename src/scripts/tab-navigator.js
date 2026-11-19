@@ -1,3 +1,5 @@
+import { ACTIVE_TAB_KEY, THEME_STORAGE_KEY, VALID_TABS } from "./constants.js";
+
 /* ============================================
    TAB NAVIGATION
    ============================================ */
@@ -24,65 +26,90 @@ export const TabNavigator = {
         }
         syncThemeBtn(nextDark);
         try {
-          localStorage.setItem("fgo_theme", nextDark ? "dark" : "light");
+          localStorage.setItem(THEME_STORAGE_KEY, nextDark ? "dark" : "light");
         } catch (_e) {
           /* ignore */
         }
       });
     }
 
+    const tabBtns = Array.from(navbar.querySelectorAll(".tab-btn"));
+
     // Restore active tab
+    let initialTab = "cefilter";
     try {
-      const savedTab = localStorage.getItem("fgo_active_tab");
-      if (savedTab) {
-        navbar.querySelectorAll(".tab-btn").forEach((btn) => {
-          const isActive = btn.dataset.tab === savedTab;
-          btn.classList.toggle("active", isActive);
-          btn.setAttribute("aria-selected", String(isActive));
-        });
-        navbar.querySelectorAll(".navbar-dropdown-item").forEach((btn) => {
-          btn.classList.toggle("active", btn.dataset.tab === savedTab);
-        });
-        document.querySelectorAll(".tab-panel").forEach((panel) => {
-          panel.classList.toggle("active", panel.id === "panel-" + savedTab);
-        });
-      } else {
-        navbar.querySelectorAll(".tab-btn").forEach((btn) => {
-          btn.setAttribute("aria-selected", String(btn.classList.contains("active")));
-        });
-      }
+      const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+      if (VALID_TABS.includes(savedTab)) initialTab = savedTab;
     } catch (_e) {
       /* ignore */
     }
+    tabBtns.forEach((btn) => {
+      const isActive = btn.dataset.tab === initialTab;
+      btn.classList.toggle("active", isActive);
+      btn.setAttribute("aria-selected", String(isActive));
+      btn.tabIndex = isActive ? 0 : -1;
+    });
+    navbar.querySelectorAll(".navbar-dropdown-item").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.tab === initialTab);
+    });
+    document.querySelectorAll(".tab-panel").forEach((panel) => {
+      panel.classList.toggle("active", panel.id === "panel-" + initialTab);
+    });
 
     // Remove CSS-only tab override — JS now controls tab state
     document.documentElement.removeAttribute("data-tab");
 
     function switchTab(tab) {
-      navbar.querySelectorAll(".tab-btn").forEach((b) => {
+      if (!VALID_TABS.includes(tab)) return;
+      tabBtns.forEach((b) => {
         const isActive = b.dataset.tab === tab;
         b.classList.toggle("active", isActive);
         b.setAttribute("aria-selected", String(isActive));
+        b.tabIndex = isActive ? 0 : -1;
       });
       navbar.querySelectorAll(".navbar-dropdown-item").forEach((b) => {
         b.classList.toggle("active", b.dataset.tab === tab);
       });
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
 
-      document.getElementById("panel-" + tab).classList.add("active");
+      document.getElementById("panel-" + tab)?.classList.add("active");
 
       if (tab === "cefilter" && ceFilterInit) ceFilterInit();
       if (tab === "bond" && bondInit) bondInit();
       if (tab === "event" && eventInit) eventInit();
 
       try {
-        localStorage.setItem("fgo_active_tab", tab);
+        localStorage.setItem(ACTIVE_TAB_KEY, tab);
       } catch (_e) {
         /* ignore */
       }
 
       closeDropdown();
     }
+
+    // Roving keyboard navigation on main tablist
+    tabBtns.forEach((btn, idx) => {
+      btn.addEventListener("keydown", (e) => {
+        let nextIdx;
+        if (e.key === "ArrowRight") {
+          nextIdx = (idx + 1) % tabBtns.length;
+        } else if (e.key === "ArrowLeft") {
+          nextIdx = (idx - 1 + tabBtns.length) % tabBtns.length;
+        } else if (e.key === "Home") {
+          nextIdx = 0;
+        } else if (e.key === "End") {
+          nextIdx = tabBtns.length - 1;
+        } else {
+          return;
+        }
+        e.preventDefault();
+        const nextBtn = tabBtns[nextIdx];
+        if (nextBtn && nextBtn.dataset.tab) {
+          nextBtn.focus();
+          switchTab(nextBtn.dataset.tab);
+        }
+      });
+    });
 
     function closeDropdown() {
       if (dropdown.contains(document.activeElement)) {

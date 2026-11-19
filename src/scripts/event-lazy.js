@@ -36,7 +36,10 @@ function bindServerSelect() {
   select.value = EventPlanner.server();
   select.addEventListener("change", () => {
     App.flushPlanBoxes();
-    if (!EventPlanner.setServer(select.value)) return;
+    if (!EventPlanner.setServer(select.value)) {
+      select.value = EventPlanner.server();
+      return;
+    }
     const eventSelect = document.getElementById("eventSelect");
     if (eventSelect) {
       populateEventOptions(eventSelect, EventPlanner.events(), EventPlanner.state.selectedEventId);
@@ -56,7 +59,10 @@ function bindEventSelect() {
   select.addEventListener("change", () => {
     /* Flush first, while the old event is still active and the boxes hold the typed figures. */
     App.flushPlanBoxes();
-    EventPlanner.select(Number(select.value));
+    if (!EventPlanner.select(Number(select.value))) {
+      select.value = EventPlanner.state.selectedEventId === null ? "" : String(EventPlanner.state.selectedEventId);
+      return;
+    }
     syncQuestTypeSelect();
     App.rehydrate();
   });

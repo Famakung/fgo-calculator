@@ -14,6 +14,82 @@ import { buildDraftRow, fmt } from "./event-planner-parts.js";
 
 const MODAL_ELEMENT_ID = "eventShopModal";
 const LIST_ELEMENT_ID = "eventShopModalList";
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const TEXT_INPUT_SELECTOR =
+  'input[type="search"]:not([disabled]), input[type="text"]:not([disabled]), input:not([type]):not([disabled])';
+
+function focusNoScroll(el) {
+  if (!el || typeof el.focus !== "function") return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    el.focus();
+  }
+}
+
+function isVisibleFocusable(el) {
+  if (!el || el.disabled) return false;
+  if (el.hidden || el.closest?.("[hidden]")) return false;
+  if (typeof el.getClientRects === "function" && el.getClientRects().length === 0) return false;
+  if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+    const style = window.getComputedStyle(el);
+    if (style && (style.display === "none" || style.visibility === "hidden")) return false;
+  }
+  return true;
+}
+
+function getFocusableElements(modal) {
+  if (!modal || typeof modal.querySelectorAll !== "function") return [];
+  return [...modal.querySelectorAll(FOCUSABLE_SELECTOR)].filter(isVisibleFocusable);
+}
+
+function focusModalContainer(modal) {
+  const container = modal?.querySelector?.(".servant-modal-content") || modal;
+  if (!container) return;
+  if (!container.hasAttribute?.("tabindex")) container.setAttribute?.("tabindex", "-1");
+  focusNoScroll(container);
+}
+
+function focusModalInitial(modal) {
+  if (!modal) return;
+  const textInputs =
+    typeof modal.querySelectorAll === "function"
+      ? [...modal.querySelectorAll(TEXT_INPUT_SELECTOR)].filter(isVisibleFocusable)
+      : [];
+  if (textInputs.length > 0) {
+    focusNoScroll(textInputs[0]);
+    return;
+  }
+  const focusables = getFocusableElements(modal);
+  if (focusables.length > 0) {
+    focusNoScroll(focusables[0]);
+    return;
+  }
+  focusModalContainer(modal);
+}
+
+function trapModalTab(e, modal) {
+  const focusables = getFocusableElements(modal);
+  if (focusables.length === 0) {
+    e.preventDefault();
+    focusModalContainer(modal);
+    return;
+  }
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+  const active = document.activeElement;
+  const inside = typeof modal.contains === "function" ? modal.contains(active) : false;
+  if (e.shiftKey) {
+    if (!inside || active === first || active === modal || active === modal.querySelector?.(".servant-modal-content")) {
+      e.preventDefault();
+      focusNoScroll(last);
+    }
+  } else if (!inside || active === last) {
+    e.preventDefault();
+    focusNoScroll(first);
+  }
+}
 
 export const EventShopModal = {
   _config: null,
@@ -21,6 +97,7 @@ export const EventShopModal = {
   _currency: null,
   _items: [],
   _draft: {},
+  _opener: null,
 
   configure(config) {
     this._config = config;
@@ -33,6 +110,15 @@ export const EventShopModal = {
     if (!modal || !list || !this._config) return;
     this._currency = this._findCurrency(currencyId);
     if (!this._currency) return;
+    const active = document.activeElement;
+    if (
+      active &&
+      active !== document.body &&
+      active !== document.documentElement &&
+      !(typeof modal.contains === "function" && modal.contains(active))
+    ) {
+      this._opener = active;
+    }
     this._items = this._config.itemsOf(this._currency.id) || [];
     this._draft = this._cloneDraft();
     this._setTitle();
@@ -40,14 +126,20 @@ export const EventShopModal = {
     this._syncFooterButtons();
     list.scrollTop = 0;
     modal.classList.add("open");
+    focusModalInitial(modal);
   },
 
   close() {
     const modal = document.getElementById(MODAL_ELEMENT_ID);
     if (modal) modal.classList.remove("open");
+    const opener = this._opener;
+    this._opener = null;
     this._currency = null;
     this._items = [];
     this._draft = {};
+    if (opener && opener.isConnected !== false && !opener.disabled) {
+      focusNoScroll(opener);
+    }
   },
 
   _findCurrency(currencyId) {
@@ -121,8 +213,19 @@ export const EventShopModal = {
   },
 
   _rowNodes(itemId) {
-    const selector = `.eshop-item[data-item-id="${String(itemId)}"]`;
-    const row = document.getElementById(LIST_ELEMENT_ID)?.querySelector(selector);
+    const list = document.getElementById(LIST_ELEMENT_ID);
+    if (!list) return null;
+    const key = String(itemId);
+    let row = null;
+    if (
+      typeof window !== "undefined" &&
+      typeof window.CSS?.escape === "function" &&
+      typeof list.querySelector === "function"
+    ) {
+      row = list.querySelector(`.eshop-item[data-item-id="${window.CSS.escape(key)}"]`);
+    } else if (typeof list.querySelectorAll === "function") {
+      row = [...list.querySelectorAll(".eshop-item")].find((el) => el.dataset?.itemId === key) || null;
+    }
     if (!row) return null;
     return { row, input: row.querySelector(".eshop-require-input"), total: row.querySelector(".eshop-item-total") };
   },
@@ -163,8 +266,10 @@ export const EventShopModal = {
     for (const item of this._items) this._syncRowValue(String(item.id));
   },
 
+  /* Keep the modal open and preserve the draft if onCommit throws so errors stay visible and edits
+     are not silently lost; Cancel/Close/Escape still close cleanly. */
   _commitDraft() {
-    this._config.onCommit({ ...this._draft });
+    if (this._config?.onCommit) this._config.onCommit({ ...this._draft });
     this.close();
   },
 
@@ -190,7 +295,13 @@ export const EventShopModal = {
   },
 
   _onKeydown(e, modal) {
-    if (e.key !== "Escape" || !modal.classList.contains("open")) return;
-    this.close();
+    if (!modal.classList.contains("open")) return;
+    if (e.key === "Escape") {
+      this.close();
+      return;
+    }
+    if (e.key === "Tab") {
+      trapModalTab(e, modal);
+    }
   },
 };

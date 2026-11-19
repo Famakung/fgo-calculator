@@ -1,3 +1,4 @@
+import { ACTIVE_TAB_KEY, VALID_TABS } from "./constants.js";
 import { ServantData } from "./data.js";
 import { CEFilterApp } from "./ce-filter-app.js";
 import { TabNavigator } from "./tab-navigator.js";
@@ -10,7 +11,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // Determine active tab before initializing apps
   let activeTab = "cefilter";
   try {
-    activeTab = localStorage.getItem("fgo_active_tab") || "cefilter";
+    const saved = localStorage.getItem(ACTIVE_TAB_KEY);
+    if (VALID_TABS.includes(saved)) activeTab = saved;
   } catch (_e) {
     /* ignore */
   }
@@ -38,19 +40,29 @@ document.addEventListener("DOMContentLoaded", () => {
   // Lazy-load bond tab (selectors + bond-app ≈ 66KB, ~13KB gzipped)
   let _bondModule = null;
   const initBond = async () => {
-    if (!_bondModule) {
-      _bondModule = await import("./bond-lazy.js");
+    try {
+      if (!_bondModule) {
+        const mod = await import("./bond-lazy.js");
+        _bondModule = mod;
+      }
+      _bondModule.initBond();
+    } catch (e) {
+      console.warn("Failed to load Bond Calculator module:", e);
     }
-    _bondModule.initBond();
   };
 
   // Lazy-load event shop (~9KB, ~2KB gzipped)
   let _eventModule = null;
   const initEvent = async () => {
-    if (!_eventModule) {
-      _eventModule = await import("./event-lazy.js");
+    try {
+      if (!_eventModule) {
+        const mod = await import("./event-lazy.js");
+        _eventModule = mod;
+      }
+      _eventModule.initEvent();
+    } catch (e) {
+      console.warn("Failed to load Event Shop module:", e);
     }
-    _eventModule.initEvent();
   };
 
   TabNavigator.init(initCEFilter, initBond, initEvent);
