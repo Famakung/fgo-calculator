@@ -4,7 +4,7 @@ import { ACTIVE_TAB_KEY, THEME_STORAGE_KEY, VALID_TABS } from "./constants.js";
    TAB NAVIGATION
    ============================================ */
 export const TabNavigator = {
-  init(ceFilterInit, bondInit, eventInit) {
+  init(ceFilterInit, bondInit, eventInit, servantInfoInit) {
     const navbar = document.querySelector(".navbar");
     if (!navbar) return;
 
@@ -74,6 +74,7 @@ export const TabNavigator = {
 
       document.getElementById("panel-" + tab)?.classList.add("active");
 
+      if (tab === "servantinfo" && servantInfoInit) servantInfoInit();
       if (tab === "cefilter" && ceFilterInit) ceFilterInit();
       if (tab === "bond" && bondInit) bondInit();
       if (tab === "event" && eventInit) eventInit();

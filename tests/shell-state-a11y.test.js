@@ -8,7 +8,7 @@ describe("constants storage keys", () => {
   test("exports ACTIVE_TAB_KEY, THEME_STORAGE_KEY, and VALID_TABS", () => {
     assert.equal(ACTIVE_TAB_KEY, "fgo_active_tab");
     assert.equal(THEME_STORAGE_KEY, "fgo_theme");
-    assert.deepEqual(VALID_TABS, ["cefilter", "bond", "event"]);
+    assert.deepEqual(VALID_TABS, ["servantinfo", "cefilter", "bond", "event"]);
   });
 });
 
@@ -140,11 +140,13 @@ describe("TabNavigator whitelist and roving keyboard nav (B2, S2, A3)", () => {
     const prevDoc = globalThis.document;
 
     const tabs = [
+      makeEl({ dataset: { tab: "servantinfo" }, classes: ["tab-btn"] }),
       makeEl({ dataset: { tab: "cefilter" }, classes: ["tab-btn", "active"] }),
       makeEl({ dataset: { tab: "bond" }, classes: ["tab-btn"] }),
       makeEl({ dataset: { tab: "event" }, classes: ["tab-btn"] }),
     ];
     const panels = {
+      "panel-servantinfo": makeEl({ id: "panel-servantinfo", classes: ["tab-panel"] }),
       "panel-cefilter": makeEl({ id: "panel-cefilter", classes: ["tab-panel"] }),
       "panel-bond": makeEl({ id: "panel-bond", classes: ["tab-panel"] }),
       "panel-event": makeEl({ id: "panel-event", classes: ["tab-panel"] }),
@@ -188,36 +190,40 @@ describe("TabNavigator whitelist and roving keyboard nav (B2, S2, A3)", () => {
         () => calls.push("cefilter"),
         () => calls.push("bond"),
         () => calls.push("event"),
+        () => calls.push("servantinfo"),
       );
 
       // Invalid saved tab falls back to cefilter
-      assert.equal(tabs[0].classList.contains("active"), true);
-      assert.equal(tabs[0].getAttribute("aria-selected"), "true");
-      assert.equal(tabs[0].tabIndex, 0);
-      assert.equal(tabs[1].tabIndex, -1);
+      assert.equal(tabs[1].classList.contains("active"), true);
+      assert.equal(tabs[1].getAttribute("aria-selected"), "true");
+      assert.equal(tabs[1].tabIndex, 0);
+      assert.equal(tabs[0].tabIndex, -1);
+      assert.equal(tabs[2].tabIndex, -1);
       assert.equal(panels["panel-cefilter"].classList.contains("active"), true);
 
       // ArrowRight from cefilter -> bond
       let prevented = false;
-      tabs[0].dispatch("keydown", { key: "ArrowRight", preventDefault: () => (prevented = true) });
+      tabs[1].dispatch("keydown", { key: "ArrowRight", preventDefault: () => (prevented = true) });
       assert.equal(prevented, true);
-      assert.equal(tabs[1].focused, true);
-      assert.equal(tabs[1].getAttribute("aria-selected"), "true");
-      assert.equal(tabs[1].tabIndex, 0);
-      assert.equal(tabs[0].getAttribute("aria-selected"), "false");
-      assert.equal(tabs[0].tabIndex, -1);
+      assert.equal(tabs[2].focused, true);
+      assert.equal(tabs[2].getAttribute("aria-selected"), "true");
+      assert.equal(tabs[2].tabIndex, 0);
+      assert.equal(tabs[1].getAttribute("aria-selected"), "false");
+      assert.equal(tabs[1].tabIndex, -1);
       assert.equal(storage.get(ACTIVE_TAB_KEY), "bond");
       assert.deepEqual(calls, ["bond"]);
 
       // End -> event
-      tabs[1].dispatch("keydown", { key: "End", preventDefault: () => {} });
-      assert.equal(tabs[2].getAttribute("aria-selected"), "true");
+      tabs[2].dispatch("keydown", { key: "End", preventDefault: () => {} });
+      assert.equal(tabs[3].getAttribute("aria-selected"), "true");
       assert.equal(storage.get(ACTIVE_TAB_KEY), "event");
 
-      // Home -> cefilter
-      tabs[2].dispatch("keydown", { key: "Home", preventDefault: () => {} });
+      // Home -> servantinfo
+      tabs[3].dispatch("keydown", { key: "Home", preventDefault: () => {} });
       assert.equal(tabs[0].getAttribute("aria-selected"), "true");
-      assert.equal(storage.get(ACTIVE_TAB_KEY), "cefilter");
+      assert.equal(panels["panel-servantinfo"].classList.contains("active"), true);
+      assert.equal(storage.get(ACTIVE_TAB_KEY), "servantinfo");
+      assert.deepEqual(calls, ["bond", "event", "servantinfo"]);
 
       // Theme toggle persists under THEME_STORAGE_KEY
       themeToggle.dispatch("click");

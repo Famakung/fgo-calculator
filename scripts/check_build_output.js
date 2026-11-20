@@ -33,7 +33,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
 const baselinePath = path.join(root, "scripts", "build_baseline.json");
 
-// Chunk layout. The six names come from the codeSplitting groups in
+// Chunk layout. The seven names come from the codeSplitting groups in
 // astro.config.mjs; the rest are split automatically and are what the first-visit
 // tab imports and the Bond Gain CE worker resolve to.
 const REQUIRED_CHUNKS = [
@@ -42,6 +42,7 @@ const REQUIRED_CHUNKS = [
   "selectors-chunk",
   "tab-navigator-chunk",
   "ce-filter-chunk",
+  "servant-info-lazy",
   "main-entry",
   "bond-lazy",
   "event-lazy",

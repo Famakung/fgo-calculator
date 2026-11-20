@@ -37,6 +37,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   };
 
+  // Lazy-load servant info tab
+  let _servantInfoModule = null;
+  const initServantInfo = async () => {
+    try {
+      if (!_servantInfoModule) {
+        const mod = await import("./servant-info-lazy.js");
+        _servantInfoModule = mod;
+      }
+      _servantInfoModule.initServantInfo();
+    } catch (e) {
+      console.warn("Failed to load Servant Info module:", e);
+    }
+  };
+
   // Lazy-load bond tab (selectors + bond-app ≈ 66KB, ~13KB gzipped)
   let _bondModule = null;
   const initBond = async () => {
@@ -65,10 +79,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  TabNavigator.init(initCEFilter, initBond, initEvent);
+  TabNavigator.init(initCEFilter, initBond, initEvent, initServantInfo);
 
   // Eagerly init ONLY the active tab
-  if (activeTab === "event") {
+  if (activeTab === "servantinfo") {
+    initServantInfo();
+  } else if (activeTab === "event") {
     initEvent();
   } else if (activeTab === "bond") {
     initBond();
@@ -91,7 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
      `overscroll-behavior: contain` (BaseLayout) covers a list whose gesture reaches its end.
      shortcut: keyboard scrolling (PageDown, arrows) and dragging the page scrollbar still move the
      background; add a keydown guard here if the owner wants a hard lock. */
-  const modalScrollAreas = ".servant-picker-grid, .cefilter-modal-body, .ceoverlap-scroll";
+  const modalScrollAreas = ".servant-picker-grid, .cefilter-modal-body, .ceoverlap-scroll, #servantInfoModalBody";
   for (const modal of document.querySelectorAll(".servant-modal")) {
     const blockBackgroundScroll = (e) => {
       if (!modal.classList.contains("open")) return;

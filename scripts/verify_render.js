@@ -67,6 +67,50 @@ try {
   );
   if (!hasPoller) errors.push("no inline script contains fgo_build_etag: stale-version prompt is gone");
 
+  // Servant Info tab must pull its lazy module, render servant cards, and open/close the detail modal.
+  const [servantInfoRes] = await Promise.all([
+    page.waitForResponse((r) => /servant-info-lazy/.test(r.url()), { timeout: 15000 }).catch(() => null),
+    page.click('.tab-btn[data-tab="servantinfo"]'),
+  ]);
+  let servantInfoCards = 0;
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll("#servantInfoResults > .servant-info-card").length > 0,
+      { timeout: 15000 },
+    );
+    servantInfoCards = await page.evaluate(
+      () => document.querySelectorAll("#servantInfoResults > .servant-info-card").length,
+    );
+  } catch {
+    errors.push("servantinfo tab: #servantInfoResults never rendered any .servant-info-card");
+  }
+  console.log(
+    `NOTE: servantinfo tab rendered ${servantInfoCards} card(s), servant-info-lazy responded ${servantInfoRes ? servantInfoRes.status() : "never"}`,
+  );
+  if (!servantInfoRes || servantInfoRes.status() !== 200) {
+    errors.push(
+      `servantinfo tab: servant-info-lazy was not fetched successfully (status ${servantInfoRes ? servantInfoRes.status() : "no request"})`,
+    );
+  }
+  if (servantInfoCards > 0) {
+    await page.click("#servantInfoResults > .servant-info-card");
+    try {
+      await page.waitForFunction(
+        () =>
+          document.getElementById("servantInfoModal")?.classList.contains("open") &&
+          document.querySelectorAll("#servantInfoModalBody > *").length > 0,
+        { timeout: 15000 },
+      );
+    } catch {
+      errors.push("servantinfo tab: clicking a card did not open #servantInfoModal with body content");
+    }
+    await page.click("#servantInfoModalClose");
+    const closed = await page.evaluate(
+      () => !document.getElementById("servantInfoModal")?.classList.contains("open"),
+    );
+    if (!closed) errors.push("servantinfo tab: #servantInfoModalClose did not close the detail modal");
+  }
+
   // Bond tab must pull its lazy module and render its slots.
   const [bondRes] = await Promise.all([
     page.waitForResponse((r) => /bond-lazy/.test(r.url()), { timeout: 15000 }).catch(() => null),

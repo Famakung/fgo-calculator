@@ -17,6 +17,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
           </svg>
         </button>
         <div class="navbar-tabs" role="tablist" aria-label="Calculator sections">
+          <button class="tab-btn" id="tab-servantinfo" data-tab="servantinfo" role="tab" aria-selected="false" aria-controls="panel-servantinfo">Servant Info</button>
           <button class="tab-btn active" id="tab-cefilter" data-tab="cefilter" role="tab" aria-selected="true" aria-controls="panel-cefilter">Bond Gain CE</button>
           <button class="tab-btn" id="tab-bond" data-tab="bond" role="tab" aria-selected="false" aria-controls="panel-bond">Bond Calculator</button>
           <button class="tab-btn" id="tab-event" data-tab="event" role="tab" aria-selected="false" aria-controls="panel-event">Event Shop</button>
@@ -25,6 +26,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
           <span></span><span></span><span></span>
         </button>
         <div class="navbar-dropdown" id="navbarDropdown" aria-hidden="true">
+          <button class="navbar-dropdown-item" data-tab="servantinfo">Servant Info</button>
           <button class="navbar-dropdown-item active" data-tab="cefilter">Bond Gain CE</button>
           <button class="navbar-dropdown-item" data-tab="bond">Bond Calculator</button>
           <button class="navbar-dropdown-item" data-tab="event">Event Shop</button>
@@ -32,6 +34,55 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
       </nav>
 
       <main id="main-content">
+        <section class="tab-panel" id="panel-servantinfo" role="tabpanel" aria-labelledby="tab-servantinfo">
+          <div class="card">
+            <div class="card-inner">
+              <div class="card-title cefilter-results-header">
+                <span>Servants</span>
+              </div>
+              <div class="cefilter-search-container">
+                <input
+                  type="text"
+                  class="search-filter cefilter-search-input"
+                  id="servantInfoSearchInput"
+                  aria-label="Search servants by ID or name"
+                  placeholder="Search by ID or name..."
+                  autocomplete="off"
+                />
+              </div>
+              <div class="cefilter-sort-row">
+                <button
+                  type="button"
+                  class="cefilter-filter-btn"
+                  id="servantInfoFilterBtn"
+                  aria-haspopup="dialog"
+                  aria-label="Open filter settings modal"
+                >
+                  Filter
+                </button>
+                <select class="select-field cefilter-sort-select" id="servantInfoSortSelect" aria-label="Sort by">
+                  <option value="id" selected>ID</option>
+                  <option value="rarity">Rarity</option>
+                  <option value="class">Class</option>
+                </select>
+                <button
+                  type="button"
+                  class="cefilter-sort-order-btn"
+                  id="servantInfoSortDirBtn"
+                  data-order="asc"
+                  aria-label="Sort ascending"
+                  title="Sort ascending"
+                >
+                  <span class="cefilter-sort-order-icon">&#9650;</span>
+                </button>
+              </div>
+              <div class="cefilter-pagination" id="servantInfoPaginationTop"></div>
+              <div class="cefilter-results-grid grid" id="servantInfoResults"></div>
+              <div class="cefilter-pagination" id="servantInfoPaginationBottom"></div>
+            </div>
+          </div>
+        </section>
+
         <section class="tab-panel" id="panel-event" role="tabpanel" aria-labelledby="tab-event">
           <div class="card" id="eventSelectCard">
             <div class="card-inner">
@@ -1305,6 +1356,87 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                 <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="eventShopModalOkBtn">OK</button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Servant Info Filter Modal -->
+        <div class="servant-modal" id="servantInfoFilterModal" role="dialog" aria-modal="true" aria-labelledby="servantInfoFilterModalTitle">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <span class="ascension-modal-title" id="servantInfoFilterModalTitle">Filter Settings</span>
+              <button
+                class="servant-modal-close"
+                id="servantInfoFilterModalClose"
+                type="button"
+                aria-label="Close"
+              >
+                &#10005;
+              </button>
+            </div>
+            <div class="cefilter-modal-body">
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantInfoRarityLabel">Rarity</div>
+                <div class="rarity-filter" id="servantInfoRarityFilter" role="group" aria-labelledby="servantInfoRarityLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantInfoClassLabel">Class</div>
+                <div class="class-filter" id="servantInfoClassFilter" role="group" aria-labelledby="servantInfoClassLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantInfoGroupLabel">Class (Group)</div>
+                <div class="rarity-filter cefilter-modal-row" id="servantInfoGroupFilter" role="group" aria-labelledby="servantInfoGroupLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantInfoAliLabel">Alignment (Lawful/Neutral/Chaotic)</div>
+                <div class="rarity-filter" id="servantInfoAliFilter" role="group" aria-labelledby="servantInfoAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantInfoSubAliLabel">Alignment (Good/Balanced/Evil)</div>
+                <div class="rarity-filter" id="servantInfoSubAliFilter" role="group" aria-labelledby="servantInfoSubAliLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantInfoAttrLabel">Sub-Attribute</div>
+                <div class="rarity-filter" id="servantInfoAttrFilter" role="group" aria-labelledby="servantInfoAttrLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantInfoGenderLabel">Gender</div>
+                <div class="rarity-filter" id="servantInfoGenderFilter" role="group" aria-labelledby="servantInfoGenderLabel"></div>
+              </div>
+            </div>
+            <div class="cefilter-modal-footer">
+              <div class="cefilter-modal-footer-left">
+                <button type="button" class="cefilter-footer-btn" id="servantInfoFilterDefaultBtn">Default</button>
+                <button type="button" class="cefilter-footer-btn" id="servantInfoFilterSelectAllBtn">Select All</button>
+              </div>
+              <div class="cefilter-modal-footer-right">
+                <button type="button" class="cefilter-footer-btn" id="servantInfoFilterCancelBtn">Cancel</button>
+                <button type="button" class="cefilter-footer-btn cefilter-footer-btn--primary" id="servantInfoFilterOkBtn">OK</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Servant Info Detail Modal -->
+        <div class="servant-modal servant-info-modal" id="servantInfoModal" role="dialog" aria-modal="true" aria-labelledby="servantInfoModalTitle">
+          <div class="servant-modal-content">
+            <div class="servant-modal-header">
+              <span class="ascension-modal-title" id="servantInfoModalTitle">Servant Info</span>
+              <button
+                class="servant-modal-close"
+                id="servantInfoModalClose"
+                type="button"
+                aria-label="Close"
+              >
+                &#10005;
+              </button>
+            </div>
+            <div class="cefilter-modal-body servant-info-modal-body" id="servantInfoModalBody"></div>
           </div>
         </div>
       </main>

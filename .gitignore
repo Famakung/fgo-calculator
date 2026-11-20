@@ -13,6 +13,7 @@ dist/
 .cache/
 .ci-baselines/
 public/servants/
+public/servant_info/
 public/craft_essences/
 # Directory kept via .gitkeep (a bare `public/event_shop/` exclusion would block the negation).
 public/event_shop/*

@@ -144,6 +144,41 @@ for (const id of Object.keys(SERVANT_DATA)) {
   }
 }
 
+// 2c. Validate per-servant info JSONs when public/servant_info/ exists
+const servantInfoDir = path.join(ROOT_DIR, "public", "servant_info");
+const servantKeys = Object.keys(SERVANT_DATA);
+if (servantKeys.length > 0 && !fs.existsSync(servantInfoDir)) {
+  warnings.push("public/servant_info/ not found; run 'npm run data:sync' to generate per-servant info JSON files");
+} else if (fs.existsSync(servantInfoDir)) {
+  console.log(`Validating public/servant_info (${servantKeys.length} expected)...`);
+  for (const [id, svt] of Object.entries(SERVANT_DATA)) {
+    const infoPath = path.join(servantInfoDir, `${id}.json`);
+    if (!fs.existsSync(infoPath)) {
+      errors.push(`Servant ${id}: Missing servant info JSON at public/servant_info/${id}.json`);
+      continue;
+    }
+    try {
+      const raw = fs.readFileSync(infoPath, "utf8");
+      if (raw.includes("https://")) {
+        errors.push(`Servant ${id}: public/servant_info/${id}.json must not contain external https:// URLs`);
+      }
+      const info = JSON.parse(raw);
+      if (info.collectionNo !== svt.collectionNo) {
+        errors.push(`Servant ${id}: servant_info collectionNo mismatch (${info.collectionNo} !== ${svt.collectionNo})`);
+      }
+      if ("convertedText" in info || "charaGraphs" in info || "faceUrl" in info || "borderedFaceUrl" in info) {
+        errors.push(`Servant ${id}: servant_info contains disallowed raw/media keys`);
+      }
+      const fmt = info.formatted;
+      if (!fmt || !fmt.profile || !Array.isArray(fmt.profile.forms) || !Array.isArray(fmt.slots) || !Array.isArray(fmt.passives)) {
+        errors.push(`Servant ${id}: servant_info.formatted missing required profile/slots/passives arrays`);
+      }
+    } catch (e) {
+      errors.push(`Servant ${id}: Invalid JSON in public/servant_info/${id}.json (${e.message})`);
+    }
+  }
+}
+
 // 3. Validate CE_DATA
 console.log(`Validating CE_DATA (${Object.keys(CE_DATA).length} entries)...`);
 for (const [id, ce] of Object.entries(CE_DATA)) {
