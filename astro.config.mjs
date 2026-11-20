@@ -24,6 +24,7 @@ export default defineConfig({
               { name: "selectors-chunk", test: /\/selectors\.js$/, priority: 4 },
               { name: "tab-navigator-chunk", test: /\/tab-navigator\.js$/, priority: 3 },
               { name: "ce-filter-chunk", test: /\/ce-filter-app\.js$/, priority: 2 },
+              { name: "servant-info-lazy", test: /\/servant-info-(?:lazy|app)\.js$/, priority: 2 },
               { name: "main-entry", test: /\/main\.js$/, priority: 1 },
             ],
           },

@@ -10,6 +10,7 @@ dist/
 .cache/
 .ci-baselines/
 public/servants/
+public/servant_info/
 public/craft_essences/
 public/event_shop/*
 !public/event_shop/.gitkeep

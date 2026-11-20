@@ -101,12 +101,13 @@ jobs:
           path: |
             .cache/atlas/
             public/servants/
+            public/servant_info/
             public/craft_essences/
             public/event_shop/
             src/scripts/data/
-          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/fetch_bordered_ces.py') }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
+          key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/fetch_bordered_ces.py', 'scripts/servant_info_converter/*.py') }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
           restore-keys: |
-            fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/fetch_bordered_ces.py') }}-
+            fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/fetch_bordered_ces.py', 'scripts/servant_info_converter/*.py') }}-
 
       # Every step below is skipped when DO_WORK=false (idle poll / no-force dispatch)
       - name: Set up Python
@@ -137,7 +138,7 @@ jobs:
         run: |
           mkdir -p .ci-baselines
           HASH_FILE=".ci-baselines/data_hash.txt"
-          NEW_HASH=$(cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js src/scripts/data/bond_growth.js src/scripts/data/event_shop.js | sha256sum | cut -d' ' -f1)
+          NEW_HASH=$({ cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js src/scripts/data/bond_growth.js src/scripts/data/event_shop.js; LC_ALL=C find public/servant_info -maxdepth 1 -name '*.json' -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum; } | sha256sum | cut -d' ' -f1)
           DIRTY=true
           if [ -f "$HASH_FILE" ] && [ "$(cat "$HASH_FILE")" = "$NEW_HASH" ]; then
             DIRTY=false

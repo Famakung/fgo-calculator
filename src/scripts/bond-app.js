@@ -46,6 +46,7 @@ export const BondApp = {
     return {
       onSelect: (_slotIdx, servantId, ascension) => this.setServant(slotIndex, servantId, ascension),
       onPendingRemove: () => {
+        this.flushInputsToState();
         this.state.slots[slotIndex] = defaultSlot();
         this.saveState();
         this.buildServantSlots();
@@ -517,10 +518,21 @@ export const BondApp = {
 
   /* A blank position, or a pending hole the picker owns. */
   _buildCEAddChip(slotIndex, position) {
-    const chip = DOMFactory.el("div", ["ce-chip", "ce-chip--add"]);
+    const chip = DOMFactory.el("div", ["ce-chip", "ce-chip--add"], {
+      role: "button",
+      tabindex: "0",
+      "aria-label": "Add craft essence",
+    });
     chip.textContent = "+";
     chip.title = "Add craft essence";
-    chip.addEventListener("click", () => this.addCE(slotIndex, position));
+    const activate = () => this.addCE(slotIndex, position);
+    chip.addEventListener("click", activate);
+    chip.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        activate();
+      }
+    });
     return chip;
   },
 
@@ -538,7 +550,11 @@ export const BondApp = {
     const ceImage = grouped ? (option ? option.image : ce ? ce.image : null) : ce ? ce.image : null;
     const idText = grouped ? ceEntry.groupId : ceEntry;
 
-    const chip = DOMFactory.el("div", "ce-chip");
+    const chip = DOMFactory.el("div", "ce-chip", {
+      role: "button",
+      tabindex: "0",
+      "aria-label": `Change ${ceName}`,
+    });
     chip.title = ce ? `${ceName} \u00b7 ${this._ceBonusText(ce, ceEntry, slotData.type === "support")}` : ceName;
     if (ceImage) {
       const img = DOMFactory.createLazyImg(ceImage, "ce-chip-img", { alt: ceName });
@@ -550,10 +566,18 @@ export const BondApp = {
       chip.appendChild(fb);
     }
 
-    // Click to re-pick this position via main CE selector.
-    chip.addEventListener("click", () => {
+    const openSelector = () => {
       const callbacks = this._createCECallbacks(slotIndex, position);
       this._refs.CESelector.open(position, false, callbacks);
+    };
+    // Click to re-pick this position via main CE selector.
+    chip.addEventListener("click", openSelector);
+    chip.addEventListener("keydown", (e) => {
+      if (e.target !== chip) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openSelector();
+      }
     });
 
     const removeBtn = DOMFactory.el("button", "ce-chip-x", { type: "button" });
@@ -983,6 +1007,8 @@ export const BondApp = {
       } else {
         // --- Empty slot (Add Servant) ---
         slot.classList.add("servant-add-slot");
+        slot.setAttribute("role", "button");
+        slot.setAttribute("tabindex", "0");
 
         const addPortrait = DOMFactory.el("div", "servant-slot-portrait-fallback");
         addPortrait.textContent = "+";
@@ -995,13 +1021,21 @@ export const BondApp = {
         slot.appendChild(addInfo);
 
         const selectorSlotIndex = i;
-        slot.addEventListener("click", () => {
+        const openServantSelector = () => {
           this._refs.ServantSelector.open(
             selectorSlotIndex,
             true,
             this._createServantCallbacks(selectorSlotIndex),
             this._pickerOptions(),
           );
+        };
+        slot.addEventListener("click", openServantSelector);
+        slot.addEventListener("keydown", (e) => {
+          if (e.target !== slot) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openServantSelector();
+          }
         });
       }
 
@@ -1537,8 +1571,8 @@ export const BondApp = {
   saveState() {
     try {
       localStorage.setItem(BOND_STORAGE_KEY, JSON.stringify(this.state));
-    } catch (_e) {
-      /* ignore */
+    } catch (e) {
+      console.warn("Failed to save bond state:", e);
     }
   },
 

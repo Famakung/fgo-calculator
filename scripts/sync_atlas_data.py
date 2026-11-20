@@ -46,6 +46,7 @@ BOND_GROWTH_JS = os.path.join(DATA_DIR, "bond_growth.js")
 EVENT_SHOP_JS = os.path.join(DATA_DIR, "event_shop.js")
 DEFAULT_SHOP_PROBE_FILE = os.path.join(BASE_DIR, ".ci-baselines", "shop_probe.json")
 PUBLIC_SERVANTS_DIR = os.path.join(BASE_DIR, "public", "servants")
+PUBLIC_SERVANT_INFO_DIR = os.path.join(BASE_DIR, "public", "servant_info")
 PUBLIC_EVENT_SHOP_DIR = os.path.join(BASE_DIR, "public", "event_shop")
 
 API_BASE = "https://api.atlasacademy.io"
@@ -54,6 +55,7 @@ EQUIP_EXPORT_URL = f"{API_BASE}/export/JP/nice_equip_lang_en.json"
 NA_NICE_TRAIT_URL = f"{API_BASE}/export/NA/nice_trait.json"
 BASIC_SERVANT_URL = f"{API_BASE}/export/JP/basic_servant.json"
 NICE_SERVANT_URL = f"{API_BASE}/export/JP/nice_servant_lore_lang_en.json"
+NICE_SKILL_URL = f"{API_BASE}/export/JP/nice_skill_lang_en.json"
 BASIC_EVENT_URL = f"{API_BASE}/export/JP/basic_event.json"
 NICE_ITEM_EXPORT_URL = f"{API_BASE}/export/JP/nice_item.json"
 # Event shop name chain (Amendment E): NA item names first, then Atlas' JP-EN translations, then JP.
@@ -1176,6 +1178,98 @@ def sync_servants(args):
             update_servants_js_full(new_entries, dry_run=args.dry_run)
         else:
             update_servants_js(new_entries, dry_run=args.dry_run)
+
+
+def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
+    """Export per-servant formatted JSON files into public/servant_info/<id>.json."""
+    try:
+        from servant_info_converter.export_servant_info import export_all_servant_info
+    except ImportError:
+        from scripts.servant_info_converter.export_servant_info import export_all_servant_info
+
+    lore_mem_key = (os.path.abspath(args.cache_dir), "nice_servant_lore_lang_en.json")
+    if nice_servants is None:
+        with _json_mem_lock:
+            nice_servants = _json_mem_cache.get(lore_mem_key)
+    if nice_servants is None:
+        nice_servants = get_cached_json(
+            args.cache_dir,
+            "nice_servant_lore_lang_en.json",
+            NICE_SERVANT_URL,
+            force=args.force,
+        )
+
+    nice_skills = None
+    try:
+        nice_skills = get_cached_json(
+            args.cache_dir,
+            "nice_skill_lang_en.json",
+            NICE_SKILL_URL,
+            force=args.force,
+        )
+    except Exception as e:
+        print(
+            f"Bulk nice_skill_lang_en.json fetch failed ({e}), continuing with servant-embedded skills.",
+            file=sys.stderr,
+        )
+
+    target_ids = None
+    if getattr(args, "ids", None):
+        target_ids = set()
+        by_cno = {
+            s.get("collectionNo"): str(s.get("id"))
+            for s in nice_servants
+            if s.get("type") in ("normal", "heroine") and s.get("collectionNo", 0) > 0
+        }
+        by_id = {
+            str(s.get("id")): str(s.get("id"))
+            for s in nice_servants
+            if s.get("type") in ("normal", "heroine") and s.get("collectionNo", 0) > 0
+        }
+        for raw_id in args.ids:
+            s_raw = str(raw_id)
+            if s_raw.isdigit() and int(s_raw) in by_cno:
+                target_ids.add(by_cno[int(s_raw)])
+            elif s_raw in by_id:
+                target_ids.add(by_id[s_raw])
+
+    skill_mem_key = (os.path.abspath(args.cache_dir), "nice_skill_lang_en.json")
+    with _json_mem_lock:
+        lore_unchanged = lore_mem_key in _json_unchanged_keys
+        skill_unchanged = (nice_skills is None) or (skill_mem_key in _json_unchanged_keys)
+
+    if (
+        not args.force
+        and not target_ids
+        and not getattr(args, "servant_info_only", False)
+        and lore_unchanged
+        and skill_unchanged
+        and os.path.isdir(PUBLIC_SERVANT_INFO_DIR)
+    ):
+        expected_ids = [
+            str(s["id"])
+            for s in nice_servants
+            if s.get("type") in ("normal", "heroine") and s.get("collectionNo", 0) > 0
+        ]
+        if expected_ids and all(
+            os.path.exists(os.path.join(PUBLIC_SERVANT_INFO_DIR, f"{sid}.json"))
+            for sid in expected_ids
+        ):
+            print(f"Servant info JSONs ({len(expected_ids)} files) are already up-to-date.")
+            return
+
+    res = export_all_servant_info(
+        nice_servants,
+        output_dir=PUBLIC_SERVANT_INFO_DIR,
+        nice_skills=nice_skills,
+        target_ids=target_ids,
+        name_overrides=UNOFFICIAL_SERVANT_TRANSLATIONS,
+        dry_run=args.dry_run,
+    )
+    print(f"Exported {res['exported']} servant info JSON file(s) to {PUBLIC_SERVANT_INFO_DIR}.")
+    if res["errors"]:
+        for err in res["errors"]:
+            print(f"  [WARN] {err}", file=sys.stderr)
 
 
 def sync_bond_growth(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), force: bool = False, dry_run: bool = False):
@@ -2841,6 +2935,7 @@ def main():
     parser.add_argument("--force", action="store_true", help="Force re-fetching and overwriting assets")
     parser.add_argument("--dry-run", action="store_true", help="Perform dry run without writing files")
     parser.add_argument("--skip-servants", action="store_true", help="Skip servant synchronization")
+    parser.add_argument("--servant-info-only", action="store_true", help="Export only public/servant_info/*.json from bulk servant/skill data")
     parser.add_argument("--skip-ces", action="store_true", help="Skip Craft Essence synchronization")
     parser.add_argument("--skip-traits", action="store_true", help="Skip trait synchronization")
     parser.add_argument("--skip-event-shop", action="store_true", help="Skip event shop synchronization")
@@ -2852,10 +2947,18 @@ def main():
     if rate_limiter.delay > 0:
         print(f"Polite rate limiter active: minimum {rate_limiter.delay}s delay between requests.")
 
+    if args.servant_info_only:
+        sync_servant_info(args)
+        if args.clean_cache:
+            cleanup_cache_dir(args.cache_dir)
+        print("Sync process completed.")
+        return
+
     # 1. Sync Servants
     if not args.skip_servants:
         sync_servants(args)
         sync_bond_growth(cache_dir=args.cache_dir, force=args.force, dry_run=args.dry_run)
+        sync_servant_info(args)
 
     # 2. Sync Craft Essences & Traits
     if not args.skip_ces:

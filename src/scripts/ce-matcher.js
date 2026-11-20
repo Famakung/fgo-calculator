@@ -3,10 +3,10 @@
 export const TraitMatcher = {
   matches(servantTraitSet, ce) {
     if (ce.alsoMatch && ce.alsoMatch.some((t) => servantTraitSet.has(t))) return true;
-    if (ce.traitGroups.length > 0) {
+    if (Array.isArray(ce.traitGroups) && ce.traitGroups.length > 0) {
       return ce.traitGroups.every((group) => group.some((t) => servantTraitSet.has(t)));
     }
-    if (ce.traits.length === 0) return true;
+    if (!Array.isArray(ce.traits) || ce.traits.length === 0) return true;
     if (ce.matchAll) {
       return ce.traits.every((t) => servantTraitSet.has(t));
     }
@@ -70,8 +70,10 @@ function buildGroupEntry(servant, entries, isPartial, traitSetsLength, relevantT
 export function computeCEMatchMatrix(servants, traitCEs, traitNames = {}) {
   const relevantTraitIds = new Set();
   traitCEs.forEach((ce) => {
-    ce.traits.forEach((t) => relevantTraitIds.add(t));
-    ce.traitGroups.forEach((group) => group.forEach((t) => relevantTraitIds.add(t)));
+    if (Array.isArray(ce.traits)) ce.traits.forEach((t) => relevantTraitIds.add(t));
+    if (Array.isArray(ce.traitGroups)) {
+      ce.traitGroups.forEach((group) => group.forEach((t) => relevantTraitIds.add(t)));
+    }
   });
 
   const results = [];

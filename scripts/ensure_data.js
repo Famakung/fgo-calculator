@@ -25,7 +25,11 @@ const requiredFiles = [
   path.join(dataDir, "event_shop.js"),
 ];
 
+const servantInfoDir = path.join(baseDir, "public", "servant_info");
+
 const missing = requiredFiles.filter((file) => !fs.existsSync(file));
+const hasServantInfo =
+  fs.existsSync(servantInfoDir) && fs.readdirSync(servantInfoDir).some((name) => name.endsWith(".json"));
 
 if (missing.length > 0) {
   console.log("Local game dataset missing. Auto-generating from Atlas Academy API...");
@@ -36,6 +40,17 @@ if (missing.length > 0) {
     });
   } catch (error) {
     console.error("Failed to generate game dataset via sync_atlas_data.py:", error.message);
+    process.exit(1);
+  }
+} else if (!hasServantInfo) {
+  console.log("Local servant info JSON missing. Auto-generating via sync_atlas_data.py --servant-info-only...");
+  try {
+    execSync("python3 scripts/sync_atlas_data.py --servant-info-only", {
+      cwd: baseDir,
+      stdio: "inherit",
+    });
+  } catch (error) {
+    console.error("Failed to generate servant info JSON:", error.message);
     process.exit(1);
   }
 }
