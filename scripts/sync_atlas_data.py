@@ -1182,9 +1182,19 @@ def sync_servants(args):
 def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
     """Export per-servant formatted JSON files into public/servant_info/<id>.json."""
     try:
-        from servant_info_converter.export_servant_info import export_all_servant_info
+        from servant_info_converter.export_servant_info import (
+            build_skill_by_id,
+            build_svt_by_id,
+            collect_missing_inner_skill_ids,
+            export_all_servant_info,
+        )
     except ImportError:
-        from scripts.servant_info_converter.export_servant_info import export_all_servant_info
+        from scripts.servant_info_converter.export_servant_info import (
+            build_skill_by_id,
+            build_svt_by_id,
+            collect_missing_inner_skill_ids,
+            export_all_servant_info,
+        )
 
     lore_mem_key = (os.path.abspath(args.cache_dir), "nice_servant_lore_lang_en.json")
     if nice_servants is None:
@@ -1218,6 +1228,57 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
             elif s_raw in by_id:
                 target_ids.add(by_id[s_raw])
 
+    svt_by_id = build_svt_by_id(nice_servants)
+    inner_skills_path = os.path.join(args.cache_dir, "inner_skills.json")
+    inner_skills_cache: Dict[str, dict] = {}
+    if not args.force and os.path.exists(inner_skills_path):
+        try:
+            with open(inner_skills_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, dict):
+                    inner_skills_cache = loaded
+        except Exception:
+            inner_skills_cache = {}
+
+    skill_by_id = build_skill_by_id(nice_servants)
+    skill_by_id.update(inner_skills_cache)
+
+    fetched_new_skills = False
+    for _pass in range(2):
+        missing_ids = collect_missing_inner_skill_ids(
+            nice_servants,
+            svt_by_id=svt_by_id,
+            skill_by_id=skill_by_id,
+            target_ids=target_ids,
+        )
+        # Skip IDs already cached as None (known unavailable) unless --force
+        to_fetch = sorted(sid for sid in missing_ids if sid not in inner_skills_cache)
+        if not to_fetch:
+            break
+
+        print(f"Fetching {len(to_fetch)} missing inner trigger skill(s) from Atlas Academy...")
+
+        def _fetch_one_skill(sid: str):
+            url = f"{API_BASE}/nice/JP/skill/{sid}?lang=en"
+            try:
+                raw_bytes, _ = fetch_url(url)
+                return sid, json.loads(raw_bytes.decode("utf-8"))
+            except Exception as exc:
+                print(f"Warning: failed to fetch inner skill {sid}: {exc}", file=sys.stderr)
+                return sid, None
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            for sid, sk_data in pool.map(_fetch_one_skill, to_fetch):
+                if sk_data is not None:
+                    inner_skills_cache[sid] = sk_data
+                    skill_by_id[sid] = sk_data
+                    fetched_new_skills = True
+
+    if fetched_new_skills and not args.dry_run:
+        os.makedirs(args.cache_dir, exist_ok=True)
+        with open(inner_skills_path, "w", encoding="utf-8") as f:
+            json.dump(inner_skills_cache, f, ensure_ascii=False, separators=(",", ":"))
+
     with _json_mem_lock:
         lore_unchanged = lore_mem_key in _json_unchanged_keys
 
@@ -1226,6 +1287,7 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
         and not target_ids
         and not getattr(args, "servant_info_only", False)
         and lore_unchanged
+        and not fetched_new_skills
         and os.path.isdir(PUBLIC_SERVANT_INFO_DIR)
     ):
         expected_ids = [
@@ -1243,6 +1305,7 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
     res = export_all_servant_info(
         nice_servants,
         output_dir=PUBLIC_SERVANT_INFO_DIR,
+        skill_by_id=skill_by_id,
         target_ids=target_ids,
         name_overrides=UNOFFICIAL_SERVANT_TRANSLATIONS,
         dry_run=args.dry_run,

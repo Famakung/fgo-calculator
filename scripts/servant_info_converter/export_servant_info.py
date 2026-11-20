@@ -107,6 +107,48 @@ def is_playable_servant(svt: dict) -> bool:
     )
 
 
+def collect_missing_inner_skill_ids(
+    nice_servants: List[dict],
+    svt_by_id: Optional[Dict[int, dict]] = None,
+    skill_by_id: Optional[Dict] = None,
+    target_ids: Optional[Iterable[str | int]] = None,
+) -> Set[str]:
+    """Dry-scan playable servants to discover inner skill IDs absent from skill_by_id."""
+    if svt_by_id is None:
+        svt_by_id = build_svt_by_id(nice_servants)
+    base_skills = skill_by_id if skill_by_id is not None else build_skill_by_id(nice_servants)
+    missing: Set[str] = set()
+
+    class _TrackingSkills(dict):
+        def get(self, key, default=None):
+            if key in self:
+                return self[key]
+            skey = str(key)
+            if skey in self:
+                return self[skey]
+            if skey.isdigit() and int(skey) in self:
+                return self[int(skey)]
+            missing.add(skey)
+            return default
+
+    tracked = _TrackingSkills(base_skills)
+    target_set: Optional[Set[str]] = (
+        {str(tid) for tid in target_ids} if target_ids is not None else None
+    )
+
+    for svt in nice_servants:
+        if not is_playable_servant(svt):
+            continue
+        if target_set is not None and str(svt["id"]) not in target_set:
+            continue
+        try:
+            build_formatted_servant(svt, svt_by_id=svt_by_id, skill_by_id=tracked)
+        except Exception:
+            pass
+
+    return missing
+
+
 def export_all_servant_info(
     nice_servants: List[dict],
     output_dir: str | Path,

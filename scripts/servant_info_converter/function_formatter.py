@@ -469,6 +469,13 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
             continue
 
         template, divisor, is_pct = entry.template, entry.divisor, entry.is_pct
+        if template is None:
+            delegated = fmt_function(inner_fn, ctx=ctx)
+            if delegated:
+                inner_parts.append(f"{inner_rate_prefix}{delegated}")
+            else:
+                inner_parts.append(f"{inner_rate_prefix}{inner_buffs[0].get('name', inner_buff_type)} {inner_target}")
+            continue
         card_prefix = get_card_prefix(inner_buffs[0])
         template = apply_card_prefix(inner_buff_type, template, card_prefix)
 
@@ -479,7 +486,13 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
             part = f"{template}{inner_cond_str} {inner_target}{demerit_suffix}"
         else:
             val_str = fmt_val_range(inner_val0, inner_val9, divisor, is_pct)
-            part = f"{template.format(val=val_str)}{inner_cond_str} {inner_target}{demerit_suffix}"
+            if "{traits}" in template:
+                tvals = inner_buffs[0].get("tvals", []) or inner_buffs[0].get("ckOpIndv", [])
+                traits_str = " / ".join(fmt_trait_name(t) for t in tvals) if tvals else "Target"
+                rendered = template.format(val=val_str, traits=traits_str)
+            else:
+                rendered = template.format(val=val_str)
+            part = f"{rendered}{inner_cond_str} {inner_target}{demerit_suffix}"
 
         state_trait_vals = [
             v

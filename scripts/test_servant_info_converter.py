@@ -776,14 +776,21 @@ class ServantInfoConverterTests(unittest.TestCase):
                     return nice_servants
                 raise AssertionError(f"Unexpected fetch: {filename} ({url})")
 
+            sample_inner = _make_sample_skills()[0]
+
+            def fake_fetch_url(url):
+                return json.dumps(sample_inner).encode("utf-8"), None
+
             with (
                 patch.object(sync_atlas_data, "PUBLIC_SERVANT_INFO_DIR", str(out_dir)),
                 patch.object(sync_atlas_data, "get_cached_json", side_effect=fake_get_cached_json),
+                patch.object(sync_atlas_data, "fetch_url", side_effect=fake_fetch_url),
             ):
                 sync_atlas_data.sync_servant_info(args)
 
             expected = out_dir / "100100.json"
             self.assertTrue(expected.exists())
+            self.assertTrue((cache_dir / "inner_skills.json").exists())
             data = json.loads(expected.read_text(encoding="utf-8"))
             self._assert_clean_schema(data)
 
