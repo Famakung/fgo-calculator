@@ -759,7 +759,6 @@ class ServantInfoConverterTests(unittest.TestCase):
     def test_sync_atlas_data_servant_info_only_with_mocked_cache(self):
         std = _make_standard_servant()
         nice_servants = [std]
-        nice_skills = _make_sample_skills()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             out_dir = Path(tmpdir) / "public" / "servant_info"
@@ -775,8 +774,6 @@ class ServantInfoConverterTests(unittest.TestCase):
             def fake_get_cached_json(cdir, filename, url, force=False):
                 if filename == "nice_servant_lore_lang_en.json":
                     return nice_servants
-                if filename == "nice_skill_lang_en.json":
-                    return nice_skills
                 raise AssertionError(f"Unexpected fetch: {filename} ({url})")
 
             with (

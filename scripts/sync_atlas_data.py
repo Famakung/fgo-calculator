@@ -55,7 +55,6 @@ EQUIP_EXPORT_URL = f"{API_BASE}/export/JP/nice_equip_lang_en.json"
 NA_NICE_TRAIT_URL = f"{API_BASE}/export/NA/nice_trait.json"
 BASIC_SERVANT_URL = f"{API_BASE}/export/JP/basic_servant.json"
 NICE_SERVANT_URL = f"{API_BASE}/export/JP/nice_servant_lore_lang_en.json"
-NICE_SKILL_URL = f"{API_BASE}/export/JP/nice_skill_lang_en.json"
 BASIC_EVENT_URL = f"{API_BASE}/export/JP/basic_event.json"
 NICE_ITEM_EXPORT_URL = f"{API_BASE}/export/JP/nice_item.json"
 # Event shop name chain (Amendment E): NA item names first, then Atlas' JP-EN translations, then JP.
@@ -1199,20 +1198,6 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
             force=args.force,
         )
 
-    nice_skills = None
-    try:
-        nice_skills = get_cached_json(
-            args.cache_dir,
-            "nice_skill_lang_en.json",
-            NICE_SKILL_URL,
-            force=args.force,
-        )
-    except Exception as e:
-        print(
-            f"Bulk nice_skill_lang_en.json fetch failed ({e}), continuing with servant-embedded skills.",
-            file=sys.stderr,
-        )
-
     target_ids = None
     if getattr(args, "ids", None):
         target_ids = set()
@@ -1233,17 +1218,14 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
             elif s_raw in by_id:
                 target_ids.add(by_id[s_raw])
 
-    skill_mem_key = (os.path.abspath(args.cache_dir), "nice_skill_lang_en.json")
     with _json_mem_lock:
         lore_unchanged = lore_mem_key in _json_unchanged_keys
-        skill_unchanged = (nice_skills is None) or (skill_mem_key in _json_unchanged_keys)
 
     if (
         not args.force
         and not target_ids
         and not getattr(args, "servant_info_only", False)
         and lore_unchanged
-        and skill_unchanged
         and os.path.isdir(PUBLIC_SERVANT_INFO_DIR)
     ):
         expected_ids = [
@@ -1261,7 +1243,6 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
     res = export_all_servant_info(
         nice_servants,
         output_dir=PUBLIC_SERVANT_INFO_DIR,
-        nice_skills=nice_skills,
         target_ids=target_ids,
         name_overrides=UNOFFICIAL_SERVANT_TRANSLATIONS,
         dry_run=args.dry_run,
