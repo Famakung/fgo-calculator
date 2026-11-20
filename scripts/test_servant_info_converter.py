@@ -16,6 +16,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from servant_info_converter.export_servant_info import (  # noqa: E402
+    extract_saint_graphs,
     build_servant_info_payload,
     build_skill_by_id,
     build_svt_by_id,
@@ -778,14 +779,16 @@ class ServantInfoConverterTests(unittest.TestCase):
 
             sample_inner = _make_sample_skills()[0]
 
-            def fake_fetch_url(url):
+            def fake_fetch_url(url, **kwargs):
                 return json.dumps(sample_inner).encode("utf-8"), None
 
             with (
                 patch.object(sync_atlas_data, "PUBLIC_SERVANT_INFO_DIR", str(out_dir)),
+                patch.object(sync_atlas_data, "PUBLIC_SAINT_GRAPHS_DIR", str(Path(tmpdir) / "public" / "saint_graphs")),
                 patch.object(sync_atlas_data, "get_cached_json", side_effect=fake_get_cached_json),
                 patch.object(sync_atlas_data, "fetch_url", side_effect=fake_fetch_url),
             ):
+                args.skip_saint_graphs = True
                 sync_atlas_data.sync_servant_info(args)
 
             expected = out_dir / "100100.json"
@@ -793,6 +796,36 @@ class ServantInfoConverterTests(unittest.TestCase):
             self.assertTrue((cache_dir / "inner_skills.json").exists())
             data = json.loads(expected.read_text(encoding="utf-8"))
             self._assert_clean_schema(data)
+
+    def test_extract_saint_graphs(self):
+        u = "https://static.atlasacademy.io/JP/CharaGraph/100100/100100%s@%s.png"
+        svt = {
+            "id": 100100,
+            "relateId": {"transform": [100200]},
+            "extraAssets": {"charaGraph": {
+                "ascension": {"2": u % ("a", "2"), "1": u % ("a", "1"), "10": u % ("a", "1")},
+                "costume": {"11": u % ("b", "11")},
+            }},
+            "profile": {"costume": {"11": {"shortName": "Summer"}}},
+        }
+        partner = {"id": 100200, "name": "Alt", "extraAssets": {"charaGraph": {"ascension": {"1": u % ("c", "1")}}}}
+        entries, urls = extract_saint_graphs(svt, {100100: svt, 100200: partner})
+        self.assertEqual(
+            [(e["key"], e["label"], e["file"], e["kind"]) for e in entries],
+            [
+                ("1", "Stage 1", "100100a@1.webp", "ascension"),
+                ("2", "Stage 2", "100100a@2.webp", "ascension"),
+                ("11", "Summer", "100100b@11.webp", "costume"),
+                ("1", "Alt Stage 1", "100100c@1.webp", "form"),
+            ],
+        )
+        self.assertEqual(len(urls), 4)
+        self.assertNotIn("https://", json.dumps(entries))
+        svt2 = dict(svt, id=600710, relateId={"transform": [100200]})
+        self.assertNotIn("form", [e["kind"] for e in extract_saint_graphs(svt2, {100200: partner})[0]])
+        svt3 = dict(svt, relateId={"transform": [600710]})
+        p710 = dict(partner, id=600710)
+        self.assertNotIn("form", [e["kind"] for e in extract_saint_graphs(svt3, {600710: p710})[0]])
 
 
 if __name__ == "__main__":

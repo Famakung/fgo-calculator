@@ -8,9 +8,11 @@ import argparse
 import json
 import os
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 from .servant_formatter import build_formatted_servant
+from .utils import find_transform_svt_id
 
 _FORBIDDEN_KEYS = {"convertedText", "charaGraphs", "faceUrl", "borderedFaceUrl"}
 
@@ -57,6 +59,52 @@ def build_skill_by_id(
     return skill_by_id
 
 
+_NO_SAINT_GRAPH_FORM_IDS = {600710, 1002100, 2501500}  # Transform partner CharaGraphs that 404 on Atlas CDN
+
+
+def _sg_sorted_keys(d: dict) -> List[str]:
+    return sorted(d, key=lambda k: (0, int(k)) if str(k).lstrip("-").isdigit() else (1, 0))
+
+
+def _sg_file(url: str) -> str:
+    base = os.path.basename(urlparse(url).path)
+    return os.path.splitext(base)[0] + ".webp"
+
+
+def extract_saint_graphs(svt: dict, svt_by_id: Optional[Dict[int, dict]] = None) -> Tuple[List[dict], Dict[str, str]]:
+    """Return (saintGraphs entries, {webp filename: source url}), deduped by filename."""
+    entries: List[dict] = []
+    url_by_filename: Dict[str, str] = {}
+
+    def add(key, label, url, kind):
+        if not isinstance(url, str) or not url:
+            return
+        fname = _sg_file(url)
+        if fname in url_by_filename:
+            return
+        url_by_filename[fname] = url
+        entries.append({"key": str(key), "label": label, "file": fname, "kind": kind})
+
+    graph = (svt.get("extraAssets") or {}).get("charaGraph") or {}
+    asc = graph.get("ascension") or {}
+    for k in _sg_sorted_keys(asc):
+        add(k, f"Stage {k}", asc[k], "ascension")
+    costumes = (svt.get("profile") or {}).get("costume") or {}
+    cos = graph.get("costume") or {}
+    for k in _sg_sorted_keys(cos):
+        info = costumes.get(str(k)) or {}
+        add(k, info.get("shortName") or info.get("name") or f"Costume {k}", cos[k], "costume")
+
+    partner_id = find_transform_svt_id(svt)
+    if svt_by_id and partner_id and partner_id not in _NO_SAINT_GRAPH_FORM_IDS and svt.get("id") not in _NO_SAINT_GRAPH_FORM_IDS:
+        partner = svt_by_id.get(partner_id)
+        if partner:
+            passets = ((partner.get("extraAssets") or {}).get("charaGraph") or {}).get("ascension") or {}
+            for k in _sg_sorted_keys(passets):
+                add(k, f"{partner.get('name', 'Form')} Stage {k}", passets[k], "form")
+    return entries, url_by_filename
+
+
 def build_servant_info_payload(
     data: dict,
     svt_by_id: Optional[Dict[int, dict]] = None,
@@ -94,6 +142,7 @@ def build_servant_info_payload(
         "atkBase": data.get("atkBase"),
         "atkMax": data.get("atkMax"),
         "formatted": formatted_data,
+        "saintGraphs": extract_saint_graphs(data, svt_by_id)[0],
     }
     return _sanitize_no_forbidden(payload)
 
@@ -174,6 +223,7 @@ def export_all_servant_info(
     exported = 0
     exported_ids: List[str] = []
     errors: List[str] = []
+    saint_graph_urls: Dict[str, str] = {}
 
     for svt in nice_servants:
         if not is_playable_servant(svt):
@@ -189,6 +239,7 @@ def export_all_servant_info(
                 skill_by_id=skill_by_id,
                 name_overrides=name_overrides,
             )
+            saint_graph_urls.update(extract_saint_graphs(svt, svt_by_id)[1])
             if not dry_run:
                 dest = out_path / f"{svt_id_str}.json"
                 serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -202,6 +253,7 @@ def export_all_servant_info(
         "exported": exported,
         "ids": exported_ids,
         "errors": errors,
+        "saint_graph_urls": saint_graph_urls,
         "output_dir": str(out_path),
     }
 

@@ -169,6 +169,19 @@ if (servantKeys.length > 0 && !fs.existsSync(servantInfoDir)) {
       if ("convertedText" in info || "charaGraphs" in info || "faceUrl" in info || "borderedFaceUrl" in info) {
         errors.push(`Servant ${id}: servant_info contains disallowed raw/media keys`);
       }
+      if (!Array.isArray(info.saintGraphs)) {
+        errors.push(`Servant ${id}: servant_info.saintGraphs must be an array`);
+      } else {
+        for (const sg of info.saintGraphs) {
+          const ok =
+            sg &&
+            ["key", "label", "file", "kind"].every((f) => typeof sg[f] === "string" && sg[f]) &&
+            sg.file.endsWith(".webp") &&
+            !sg.file.includes("/") &&
+            ["ascension", "costume", "form"].includes(sg.kind);
+          if (!ok) errors.push(`Servant ${id}: invalid saintGraphs entry ${JSON.stringify(sg)}`);
+        }
+      }
       const fmt = info.formatted;
       if (!fmt || !fmt.profile || !Array.isArray(fmt.profile.forms) || !Array.isArray(fmt.slots) || !Array.isArray(fmt.passives)) {
         errors.push(`Servant ${id}: servant_info.formatted missing required profile/slots/passives arrays`);

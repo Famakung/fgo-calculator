@@ -777,6 +777,9 @@ export const ServantInfoApp = {
     frag.appendChild(heroEl);
 
     const cardsWrap = DOMFactory.el("div", "servant-info-cards");
+    if (Array.isArray(svt.saintGraphs) && svt.saintGraphs.length > 0) {
+      cardsWrap.appendChild(this._buildSaintGraphCard(svt.saintGraphs, svt.name || baseServant.name || ""));
+    }
     const profileCard = this._buildProfileCard(svt, formsToUse, isAscensionProfile, isServantFormProfile, modalState);
     modalState.profileCard = profileCard;
     cardsWrap.appendChild(profileCard);
@@ -795,6 +798,88 @@ export const ServantInfoApp = {
 
     frag.appendChild(cardsWrap);
     bodyEl.replaceChildren(frag);
+  },
+
+  _buildSaintGraphCard(entries, name) {
+    const card = DOMFactory.el("div", "f-section-box");
+    const header = DOMFactory.el("div", "f-section-header");
+    const title = DOMFactory.el("span", "f-section-title");
+    title.textContent = "Saint Graph";
+    header.appendChild(title);
+    card.appendChild(header);
+
+    const total = entries.length;
+    let idx = 0;
+
+    const viewer = DOMFactory.el("div", "f-sg-viewer");
+    const wrap = DOMFactory.el("div", "f-sg-stage-wrap");
+    const img = DOMFactory.el("img", "f-sg-img", { width: "512", height: "724", decoding: "async" });
+    const caption = DOMFactory.el("div", "f-sg-caption");
+    const errorEl = DOMFactory.el("div", "f-sg-error");
+    errorEl.hidden = true;
+
+    img.addEventListener("error", () => {
+      img.hidden = true;
+      errorEl.textContent = "Saint Graph image not available locally.";
+      errorEl.hidden = false;
+    });
+
+    let prev = null;
+    let next = null;
+
+    const update = () => {
+      const entry = entries[idx];
+      const label = entry.label || `Stage ${idx + 1}`;
+      caption.textContent = label;
+      errorEl.hidden = true;
+      img.hidden = false;
+      img.setAttribute("alt", `${name} — ${label}`);
+      img.setAttribute("src", `saint_graphs/${entry.file}?v=${IMAGE_VERSION}`);
+      if (prev) {
+        const atStart = idx <= 0;
+        prev.classList.toggle("f-sg-nav-btn--hidden", atStart);
+        prev.disabled = atStart;
+        prev.setAttribute("aria-hidden", atStart ? "true" : "false");
+        prev.tabIndex = atStart ? -1 : 0;
+      }
+      if (next) {
+        const atEnd = idx >= total - 1;
+        next.classList.toggle("f-sg-nav-btn--hidden", atEnd);
+        next.disabled = atEnd;
+        next.setAttribute("aria-hidden", atEnd ? "true" : "false");
+        next.tabIndex = atEnd ? -1 : 0;
+      }
+    };
+
+    const step = (delta) => {
+      const nextIdx = Math.max(0, Math.min(total - 1, idx + delta));
+      if (nextIdx === idx) return;
+      idx = nextIdx;
+      update();
+    };
+
+    if (total > 1) {
+      prev = DOMFactory.el("button", ["f-option-btn", "f-sg-nav-btn"], {
+        type: "button",
+        "aria-label": "Previous stage",
+      });
+      prev.textContent = "‹";
+      prev.addEventListener("click", () => step(-1));
+      next = DOMFactory.el("button", ["f-option-btn", "f-sg-nav-btn"], {
+        type: "button",
+        "aria-label": "Next stage",
+      });
+      next.textContent = "›";
+      next.addEventListener("click", () => step(1));
+      wrap.append(prev, img, next);
+    } else {
+      wrap.appendChild(img);
+    }
+
+    viewer.append(wrap, caption, errorEl);
+    card.appendChild(viewer);
+    update();
+    return card;
   },
 
   _buildHero(svt, baseServant, modalState) {

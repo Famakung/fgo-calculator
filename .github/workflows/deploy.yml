@@ -109,6 +109,15 @@ jobs:
           restore-keys: |
             fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/fetch_bordered_ces.py', 'scripts/servant_info_converter/*.py') }}-
 
+      # Dedicated Saint Graph cache: keyed only on game data version so Python edits never re-download images.
+      - name: Restore Saint Graph Cache
+        if: steps.do_work.outputs.DO_WORK == 'true'
+        uses: actions/cache@v6
+        with:
+          path: public/saint_graphs/
+          key: fgo-saint-graphs-v1-${{ runner.os }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
+          restore-keys: fgo-saint-graphs-v1-${{ runner.os }}-
+
       # Every step below is skipped when DO_WORK=false (idle poll / no-force dispatch)
       - name: Set up Python
         if: steps.do_work.outputs.DO_WORK == 'true'
