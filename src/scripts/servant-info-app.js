@@ -22,6 +22,24 @@ const OPTION_TRANSLATIONS = {
   "威力アップ〔人の力〕": "STR Up [Human]",
   入れ替えない: "Do not switch",
   入れ替える: "Switch",
+  ガッツなし: "No Guts",
+  "ガッツ50%回復": "Guts (50% HP)",
+  ガッツ1回復: "Guts (1 HP)",
+  無敵: "Invincible",
+  ガッツ: "Guts",
+  Artsアップ: "Arts Up",
+  Busterアップ: "Buster Up",
+  Quickアップ: "Quick Up",
+  クリティカル威力アップ: "Critical STR Up",
+  宝具威力アップ: "NP STR Up",
+  単体化しない: "Do not change to Single-Target",
+  単体化する: "Change to Single-Target",
+  "天国化(Arts強化)": "Heaven (Arts Up)",
+  "地獄化(Buster強化)": "Hell (Buster Up)",
+  通常状態: "Normal State",
+  "〔冥界の花園〕状態": "[Underworld Flower Garden] State",
+  付与しない: "Do not apply",
+  付与する: "Apply",
   Normal: "Normal",
   "When loaded with the Holy Sword": "When loaded with the Holy Sword",
   聖剣装填時: "When loaded with the Holy Sword",
@@ -47,6 +65,7 @@ const OPTION_TRANSLATIONS = {
   笠無し彦斎: "Hatless Gensai",
   "ボンバー☆ギャル": "Bomber☆Gal",
   "メイク無し（第一再臨）": "No Makeup (First Ascension)",
+  キューティ駒: "Cutie Koma",
 };
 
 function formatNumber(val) {
@@ -153,9 +172,17 @@ function parseSkillOptions(rawEffects) {
     const m = line.match(/^\[([^[\]]+)\]\s+/);
     if (m) {
       const tag = m[1].trim();
+      const lowerTag = tag.toLowerCase();
+      const isAllowedOptionTag =
+        hasSelectHeader ||
+        Object.prototype.hasOwnProperty.call(OPTION_TRANSLATIONS, tag) ||
+        /^option\s+\d+$/i.test(tag) ||
+        /^\d+個消費する$/.test(tag);
       if (
-        tag.toLowerCase() !== "demerit" &&
-        !tag.toLowerCase().startsWith("usable only when") &&
+        isAllowedOptionTag &&
+        lowerTag !== "demerit" &&
+        !lowerTag.startsWith("usable only when") &&
+        !lowerTag.startsWith("unknown ") &&
         !tagsFound.includes(tag)
       ) {
         tagsFound.push(tag);
@@ -222,7 +249,8 @@ function parseSkillOptions(rawEffects) {
 
 function appendHighlightedEffect(container, text) {
   const str = String(text || "");
-  const tokenRegex = /(\[Demerit\]|<effect increases with [^>]+>)/g;
+  const tokenRegex =
+    /(\[Demerit\]|<(?:(?:effect|Special Attack damage|strength|STR)\s+increases\s+(?:with|when|by)|times\s+increase\s+with|increases\s+by)\s+[^>]+>)/g;
   let lastIdx = 0;
   let match;
 

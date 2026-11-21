@@ -457,3 +457,157 @@ test("_buildSlotCard & _renderSkillContent: renders 32px skill icon before Skill
   assert.equal(passiveCard._refs.skillIconEl.hidden, true);
   assert.equal(passiveCard._refs.skillIconEl.style.display, "none");
 });
+
+test("parseSkillOptions, OPTION_TRANSLATIONS, and appendHighlightedEffect: ignores [unknown ...] lines, translates JP option labels, and highlights scaling notes", async () => {
+  const { ServantInfoApp } = await import("../src/scripts/servant-info-app.js");
+
+  const modalState = {
+    svt: { formatted: {} },
+    activeFormIndex: 0,
+    servantForms: null,
+    slotCards: [],
+  };
+
+  // 1. Non-option [unknown ...] lines without Select header must NOT create option tabs
+  const unknownSkillSlot = {
+    slotKey: "skill_1",
+    type: "skill",
+    slotNum: 1,
+    tiers: [0],
+    maxTier: 0,
+    activeTier: 0,
+    activeTierByForm: {},
+    variantsByTier: {
+      0: {
+        tier: 0,
+        type: "skill",
+        cleanTitle: "Skill 1",
+        cooldown: "Cooldown 7-5 turns",
+        effects: [
+          "Increase ATK by 20% (3 turns) for all allies",
+          "[unknown buff type: downStarweight] for yourself",
+          "[unknown func type: extendBuffturn (id: 21123)] for all allies",
+        ],
+        forms: [],
+      },
+    },
+  };
+
+  const unknownCard = ServantInfoApp._buildSlotCard(unknownSkillSlot, modalState);
+  const unknownEffectsWrap = unknownCard._refs.effectsContainer;
+  assert.equal(
+    unknownEffectsWrap.children.some((c) => c.classList && c.classList.contains("f-option-selector-bar")),
+    false,
+    "[unknown ...] lines without Select header must not render an option selector bar",
+  );
+  const bulletList = unknownEffectsWrap.children[0];
+  assert.equal(bulletList.children.length, 3, "All 3 lines must render directly as bullet items");
+
+  // 2. Real selectable skills (Select X Options with JP labels AND Mash [Normal]/[When loaded with the Holy Sword]) create translated option tabs
+  const jpSelectVariant = {
+    tier: 1,
+    type: "skill",
+    cleanTitle: "Skill 3",
+    cooldown: "Cooldown 8-6 turns",
+    effects: [
+      "Select 3 Options ([ガッツなし] / [ガッツ50%回復] / [ガッツ1回復])",
+      "Apply Quick Card effectiveness up (3 turns) for yourself",
+      "[ガッツ50%回復] Apply Guts by 50% (1 time, 6 turns) for yourself",
+      "[ガッツ1回復] Apply Guts by 1 (1 time, 6 turns) for yourself",
+    ],
+    forms: [],
+  };
+  ServantInfoApp._renderSkillContent(unknownCard, jpSelectVariant, "0", "0", modalState);
+  const optBar = unknownEffectsWrap.children.find((c) => c.classList && c.classList.contains("f-option-selector-bar"));
+  assert.ok(optBar, "Select 3 Options skill must render option selector bar");
+  const optButtons = optBar.children[0].children;
+  assert.equal(optButtons.length, 3);
+  assert.equal(optButtons[0].textContent, "No Guts");
+  assert.equal(optButtons[1].textContent, "Guts (50% HP)");
+  assert.equal(optButtons[2].textContent, "Guts (1 HP)");
+
+  // Check additional JP option labels (e.g. Dante, Charlotte, Barghest, Flora, Lilith, Aśvatthāman, Van Gogh Miner)
+  const extraOptionLabels = [
+    ["無敵", "ガッツ", "Invincible", "Guts"],
+    ["Artsアップ", "クリティカル威力アップ", "Arts Up", "Critical STR Up"],
+    ["宝具威力アップ", "Quickアップ", "NP STR Up", "Quick Up"],
+    ["Busterアップ", "単体化しない", "Buster Up", "Do not change to Single-Target"],
+    ["単体化する", "付与しない", "Change to Single-Target", "Do not apply"],
+    ["付与する", "通常状態", "Apply", "Normal State"],
+    ["〔冥界の花園〕状態", "天国化(Arts強化)", "[Underworld Flower Garden] State", "Heaven (Arts Up)"],
+    ["地獄化(Buster強化)", "消費しない", "Hell (Buster Up)", "Do not expend"],
+  ];
+  for (const [rawA, rawB, expA, expB] of extraOptionLabels) {
+    ServantInfoApp._renderSkillContent(
+      unknownCard,
+      {
+        tier: 0,
+        type: "skill",
+        cleanTitle: "Skill 1",
+        effects: [`Select 2 Options ([${rawA}] / [${rawB}])`, `[${rawA}] Effect A`, `[${rawB}] Effect B`],
+        forms: [],
+      },
+      "0",
+      "0",
+      modalState,
+    );
+    const bar = unknownEffectsWrap.children.find((c) => c.classList && c.classList.contains("f-option-selector-bar"));
+    assert.ok(bar);
+    assert.equal(bar.children[0].children[0].textContent, expA);
+    assert.equal(bar.children[0].children[1].textContent, expB);
+  }
+
+  // Mash [Normal] / [When loaded with the Holy Sword] (no Select header, known option tags) still splits into 2 options
+  ServantInfoApp._renderSkillContent(
+    unknownCard,
+    {
+      tier: 0,
+      type: "skill",
+      cleanTitle: "Skill 2",
+      effects: [
+        "[Normal] Increase NP Gauge by 20% for a single ally",
+        "[When loaded with the Holy Sword] Increase NP Strength by 50-100% (3 turns) for yourself",
+      ],
+      forms: [],
+    },
+    "0",
+    "0",
+    modalState,
+  );
+  const mashBar = unknownEffectsWrap.children.find((c) => c.classList && c.classList.contains("f-option-selector-bar"));
+  assert.ok(mashBar, "Mash [Normal] / [When loaded with the Holy Sword] must still render option tabs");
+  assert.equal(mashBar.children[0].children[0].textContent, "Normal");
+  assert.equal(mashBar.children[0].children[1].textContent, "When loaded with the Holy Sword");
+
+  // 3. appendHighlightedEffect highlights [Demerit] and scaling notes, but keeps <Apply a state ...> and <Change NP Card type ...> as plain text
+  ServantInfoApp._renderEffectsList(unknownEffectsWrap, [
+    "Deal heavy damage <Special Attack damage increases with Overcharge> by 300-500% <effect increases with Level> [Demerit]",
+    "Increase ATK <effect increases when HP is low> & <strength increases with Overcharge> & <times increase with Overcharge>",
+    "Deal damage <STR increases by 5% based on the number of [Likes!] states (Max 10) on yourself> & <Special Attack damage increases by 10% with each [Burn] status (Maximum 10) on the target> & <increases by 25%>",
+    'Inflict state <Apply a state that "Inflict Curse" at turn end> and <Change NP Card type to [Buster]>',
+  ]);
+  const renderedUl = unknownEffectsWrap.children[0];
+  const li0 = renderedUl.children[0];
+  const li0Notes = li0.children.filter((c) => c.tagName === "EM" && c.classList.contains("f-overcharge-note"));
+  const li0Demerits = li0.children.filter((c) => c.tagName === "SPAN" && c.classList.contains("f-demerit-tag"));
+  assert.equal(li0Notes.length, 2);
+  assert.equal(li0Notes[0].textContent, "<Special Attack damage increases with Overcharge>");
+  assert.equal(li0Notes[1].textContent, "<effect increases with Level>");
+  assert.equal(li0Demerits.length, 1);
+  assert.equal(li0Demerits[0].textContent, "Demerit");
+
+  const li1Notes = renderedUl.children[1].children.filter(
+    (c) => c.tagName === "EM" && c.classList.contains("f-overcharge-note"),
+  );
+  assert.equal(li1Notes.length, 3);
+
+  const li2Notes = renderedUl.children[2].children.filter(
+    (c) => c.tagName === "EM" && c.classList.contains("f-overcharge-note"),
+  );
+  assert.equal(li2Notes.length, 3);
+
+  const li3Notes = renderedUl.children[3].children.filter(
+    (c) => c.tagName === "EM" && c.classList.contains("f-overcharge-note"),
+  );
+  assert.equal(li3Notes.length, 0, "<Apply a state ...> and <Change NP Card type ...> must not be italicized");
+});

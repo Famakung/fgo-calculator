@@ -64,7 +64,9 @@ FIELD_TRAITS = {
     2073,  # Forest
     2121,  # Burning
     2392,  # City
+    2730,  # Void Space
     2829,  # Millennium Castle
+    2878,  # Mid-Air
 }
 
 CARD_MAP = {
@@ -111,7 +113,7 @@ def get_card_prefix(buff):
     traits = buff.get("ckSelfIndv", []) or buff.get("ckOpIndv", [])
     for indv in traits:
         tid = indv["id"]
-        if tid == 3139:
+        if tid in (3139, 4008):
             continue
         label = TRAIT_ID_LABELS.get(tid, fmt_trait_name(indv))
         if label:
@@ -124,6 +126,8 @@ def apply_card_prefix(buff_type, template, card_prefix):
         "overwriteSvtCardType",
         "buffConvert",
         "avoidFunctionExecuteSelf",
+        "upHate",
+        "preventDeathByDamage",
     ):
         return template
     clean_prefix = card_prefix.strip()
@@ -161,6 +165,8 @@ def is_demerit(fn):
     # If the function itself targets the enemy team, it's not a demerit for the player.
     if target in ("enemy", "enemyOne", "enemyAll") or team == "enemy":
         return False
+    if (fn.get("svals") or [{}])[0].get("FieldBuffApplyTarget") == 2:
+        return False
     # Check for specific demerit buff (id 3005) or demerit func types
     for b in fn.get("buffs", []):
         if any(v.get("id") == 3005 for v in b.get("vals", [])):
@@ -192,13 +198,17 @@ def apply_tvals_target(target, tvals):
     if target in ("for yourself", "yourself"):
         return target
 
+    tval_ids = {t.get("id") for t in tvals}
     trait_labels = []
     for t in tvals:
-        if t.get("id") == 3139:
+        tid = t.get("id")
+        if tid == 3139:
             continue
-        name = fmt_trait_name(t)
-        if t.get("negative") and t.get("id") in NEGATIVE_TRAIT_LABELS:
-            label = NEGATIVE_TRAIT_LABELS[t["id"]]
+        if tid in (2018, 2040) and (tval_ids & {1002, 1119, 2000}):
+            continue
+        name = "Genderless" if tid == 3 else fmt_trait_name(t)
+        if t.get("negative") and tid in NEGATIVE_TRAIT_LABELS:
+            label = NEGATIVE_TRAIT_LABELS[tid]
         else:
             label = f"not {name}" if t.get("negative") else name
         if label not in trait_labels:
