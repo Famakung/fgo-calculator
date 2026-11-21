@@ -1283,6 +1283,52 @@ def check_farm_404_and_region_filter():
     return 2
 
 
+def check_settled_ended_event_cache():
+    assert not m._is_settled_ended_event(LIVE_EVENT, now=NOW), "live event must not trust cache"
+    recent_ended = {**ENDED_FARM_EVENT, "finishedAt": NOW - 3 * 24 * 60 * 60}
+    assert not m._is_settled_ended_event(recent_ended, now=NOW), "event ended 3 days ago must stay within 7-day grace"
+    assert m._is_settled_ended_event(ENDED_FARM_EVENT, now=NOW), "event ended >7 days ago is settled"
+
+    with Sandbox() as s:
+        files_to_cache = {
+            "nice_event_70001.json": fixture_json(s.tmp, "nice_event_70001.json", ""),
+            "nice_war_9208.json": WAR,
+            **QUEST_FIXTURES,
+        }
+        for fn, payload in files_to_cache.items():
+            with open(os.path.join(s.tmp, fn), "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+
+        calls = []
+
+        def spy(cache_dir, filename, url, force=False):
+            calls.append(filename)
+            return fixture_json(cache_dir, filename, url, force=force)
+
+        m.get_cached_json = spy
+        assert m._farm_event_passes(s.tmp, ENDED_FARM_EVENT, now=NOW), "settled ended event passes from disk cache"
+        assert calls == [], f"settled ended event must make 0 get_cached_json calls when cached, got {calls}"
+
+        m._event_detail_results.clear()
+        m._farm_quests_results.clear()
+        assert m._farm_event_passes(s.tmp, ENDED_FARM_EVENT, force=True, now=NOW), "force=True revalidates settled event"
+        assert "nice_event_70001.json" in calls, "force=True must bypass settled cache"
+
+    with Sandbox() as s:
+        with open(os.path.join(s.tmp, "nice_event_70001.json"), "w", encoding="utf-8") as f:
+            json.dump(fixture_json(s.tmp, "nice_event_70001.json", ""), f)
+        recent_calls = []
+
+        def spy_recent(cache_dir, filename, url, force=False):
+            recent_calls.append(filename)
+            return fixture_json(cache_dir, filename, url, force=force)
+
+        m.get_cached_json = spy_recent
+        assert m._farm_event_passes(s.tmp, recent_ended, now=NOW)
+        assert "nice_event_70001.json" in recent_calls, "event within 7-day post-end grace must still call get_cached_json"
+    return 4
+
+
 def main():
     n = 0
     for check in (
@@ -1308,6 +1354,7 @@ def main():
         check_multi_server_event_lists,
         check_qp_only_currencies_excluded,
         check_farm_404_and_region_filter,
+        check_settled_ended_event_cache,
     ):
         n += check()
     print(f"{n} tests passed")
