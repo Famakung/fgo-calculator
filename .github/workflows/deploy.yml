@@ -138,7 +138,7 @@ jobs:
         run: |
           mkdir -p .ci-baselines
           FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
-          python3 scripts/sync_atlas_data.py $FORCE_FLAG
+          python3 -u scripts/sync_atlas_data.py $FORCE_FLAG
 
       # Compare generated data hash vs last run; gate the build on it
       - name: Check if generated data changed
