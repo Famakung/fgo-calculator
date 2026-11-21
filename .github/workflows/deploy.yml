@@ -91,20 +91,30 @@ jobs:
             echo "Atlas data unchanged and no force requested (event=$EVENT). Nothing to do."
           fi
 
-      # Restore cached generated data and raw API payloads only when doing work.
-      # Keyed on sync scripts + version baseline so format changes rebuild cleanly
-      # while new game versions incrementally restore prior payloads and re-save under the new key.
+      # Restore cached generated outputs only when doing work.
+      # Keyed on sync scripts + version baseline so format/logic edits rebuild cleanly
+      # while new game versions incrementally restore prior outputs and re-save under the new key.
       - name: Restore Atlas Data & Asset Cache
         if: steps.do_work.outputs.DO_WORK == 'true'
         uses: actions/cache@v6
         with:
           path: |
-            .cache/atlas/
             public/servant_info/
             src/scripts/data/
           key: fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/fetch_bordered_ces.py', 'scripts/servant_info_converter/*.py') }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
           restore-keys: |
             fgo-atlas-cache-${{ runner.os }}-${{ hashFiles('scripts/sync_atlas_data.py', 'scripts/fetch_bordered_ces.py', 'scripts/servant_info_converter/*.py') }}-
+
+      # Dedicated raw Atlas API cache: keyed only on game data version so Python edits reuse ETag-validated JSONs
+      # while game updates (rank ups, new costumes, new traits) still revalidate via If-None-Match (304/200).
+      - name: Restore Atlas Raw API Cache
+        if: steps.do_work.outputs.DO_WORK == 'true'
+        uses: actions/cache@v6
+        with:
+          path: .cache/atlas/
+          key: fgo-atlas-raw-v1-${{ runner.os }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
+          restore-keys: |
+            fgo-atlas-raw-v1-${{ runner.os }}-
 
       # Dedicated static image cache: keyed only on game data version so Python edits never re-download icons.
       - name: Restore Static Image Cache

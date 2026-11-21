@@ -167,8 +167,17 @@ def main():
     cache_key = cache_step["with"]["key"]
     sync_run = next(s for s in steps if s.get("name") == "Sync latest game data from Atlas Academy")["run"]
     assert "src/scripts/data/" in cache_path, "data dir not in cache path"
+    assert ".cache/atlas/" not in cache_path, ".cache/atlas/ must not share the script-hashed cache"
     for static_img_dir in ("public/servants/", "public/craft_essences/", "public/event_shop/"):
         assert static_img_dir not in cache_path, f"{static_img_dir} must not share the script-hashed cache"
+    raw_cache_step = next(s for s in steps if s.get("name") == "Restore Atlas Raw API Cache")
+    raw_cache_path = raw_cache_step["with"]["path"]
+    raw_cache_key = raw_cache_step["with"]["key"]
+    assert ".cache/atlas/" in raw_cache_path, ".cache/atlas/ missing from raw API cache"
+    assert raw_cache_step.get("if") == "steps.do_work.outputs.DO_WORK == 'true'", "raw API cache restore must skip on idle runs"
+    assert "data_version.txt" in raw_cache_key, "raw API cache key must hash .ci-baselines/data_version.txt"
+    assert "sync_atlas_data.py" not in raw_cache_key, "raw API cache key must not hash sync_atlas_data.py"
+    assert "fetch_bordered_ces.py" not in raw_cache_key, "raw API cache key must not hash fetch_bordered_ces.py"
     img_cache_step = next(s for s in steps if s.get("name") == "Restore Static Image Cache")
     img_cache_path = img_cache_step["with"]["path"]
     img_cache_key = img_cache_step["with"]["key"]
