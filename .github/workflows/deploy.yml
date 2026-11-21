@@ -117,6 +117,7 @@ jobs:
             fgo-atlas-raw-v1-${{ runner.os }}-
 
       # Dedicated static image cache: keyed only on game data version so Python edits never re-download icons.
+      # actions/cache hashes `path:` into its internal version, so give future asset dirs their own cache step instead of editing this list.
       - name: Restore Static Image Cache
         if: steps.do_work.outputs.DO_WORK == 'true'
         uses: actions/cache@v6
@@ -129,7 +130,6 @@ jobs:
           key: fgo-static-images-v2-${{ runner.os }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
           restore-keys: |
             fgo-static-images-v2-${{ runner.os }}-
-            fgo-static-images-v1-${{ runner.os }}-
 
       # Dedicated Saint Graph cache: keyed only on game data version so Python edits never re-download images.
       - name: Restore Saint Graph Cache

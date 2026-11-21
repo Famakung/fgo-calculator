@@ -191,7 +191,7 @@ def main():
     assert "sync_atlas_data.py" not in img_cache_key, "static image cache key must not hash sync_atlas_data.py"
     assert "fetch_bordered_ces.py" not in img_cache_key, "static image cache key must not hash fetch_bordered_ces.py"
     assert "fgo-static-images-v2-${{ runner.os }}-" in img_restore_keys, "static image restore-keys must include v2 prefix"
-    assert "fgo-static-images-v1-${{ runner.os }}-" in img_restore_keys, "static image restore-keys must include v1 fallback"
+    assert "fgo-static-images-v1-" not in img_restore_keys, "v1 restore-key cannot match v2 path-version hash"
     assert "rm -f" not in sync_run, "sync still wipes generated data"
     assert cache_step.get("if") == "steps.do_work.outputs.DO_WORK == 'true'", "asset cache restore must skip on idle runs"
     assert "sync_atlas_data.py" in cache_key, "cache key must hash sync_atlas_data.py"

@@ -84,7 +84,7 @@
 ## Zero-Commit Architecture
 - Game images (`public/servants/`, `public/saint_graphs/`, `public/skill_icons/`, `public/craft_essences/`, `public/event_shop/`), static servant info (`public/servant_info/`), and generated data (`src/scripts/data/*.js`) follow **Zero-Commit Architecture**:
   - Ignored in `.gitignore`, dir structure kept via `.gitkeep`.
-  - In CI (`.github/workflows/deploy.yml`): restored in seconds via `actions/cache@v6` (`fgo-atlas-cache-*`, `fgo-static-images-v2-*` with `v1` fallback, and `fgo-saint-graphs-v1-*`).
+  - In CI (`.github/workflows/deploy.yml`): restored in seconds via `actions/cache@v6` (`fgo-atlas-cache-*`, `fgo-static-images-v2-*`, and `fgo-saint-graphs-v1-*`).
   - Local dev: `scripts/ensure_data.js` (`predev` / `prebuild` npm hooks) auto-generates missing data files on fresh clone.
   - Git repo stays 100% pure source code, zero asset bloat, zero data diff noise.
 
