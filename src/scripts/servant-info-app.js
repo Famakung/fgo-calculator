@@ -323,6 +323,7 @@ export const ServantInfoApp = {
   _lastFiltered: [],
   _draftFilters: null,
   _infoCache: new Map(),
+  _imagePreloadCache: new Map(),
   _activeRequestId: 0,
   _modalOpener: null,
   _modalState: null,
@@ -695,6 +696,79 @@ export const ServantInfoApp = {
 
   /* ===...=== Detail Popup Modal ===...=== */
 
+  _collectModalImageUrls(svt, baseServant) {
+    const urls = new Set();
+    const svtId = (svt && svt.id) || (baseServant && baseServant.id);
+    const baseImgSrc =
+      (baseServant && baseServant.image) || (svtId ? `servants/${svtId}/000.webp?v=${IMAGE_VERSION}` : "");
+    if (baseImgSrc) urls.add(baseImgSrc);
+    if (baseServant && baseServant.altImage) urls.add(baseServant.altImage);
+
+    if (svt && Array.isArray(svt.saintGraphs)) {
+      svt.saintGraphs.forEach((entry) => {
+        if (!entry) return;
+        if (entry.file) urls.add(`saint_graphs/${entry.file}?v=${IMAGE_VERSION}`);
+        if (entry.face) urls.add(`servants/${entry.face}?v=${IMAGE_VERSION}`);
+      });
+    }
+
+    const formConfig = (svt && svt.formatted && svt.formatted.formConfig) || (svt && svt.formConfig) || null;
+    if (formConfig && typeof formConfig === "object") {
+      Object.values(formConfig).forEach((rule) => {
+        if (rule && rule.faces && typeof rule.faces === "object") {
+          Object.values(rule.faces).forEach((face) => {
+            if (face) urls.add(`servants/${face}?v=${IMAGE_VERSION}`);
+          });
+        }
+      });
+    }
+
+    return [...urls];
+  },
+
+  _preloadImageUrl(url) {
+    if (!url) return Promise.resolve();
+    if (this._imagePreloadCache.has(url)) {
+      return this._imagePreloadCache.get(url);
+    }
+    const promise = new Promise((resolve) => {
+      if (typeof document === "undefined" || typeof document.createElement !== "function") {
+        resolve();
+        return;
+      }
+      const img = DOMFactory.el("img");
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      img.onload = () => {
+        if (typeof img.decode === "function") {
+          Promise.resolve(img.decode()).then(done, done);
+        } else {
+          done();
+        }
+      };
+      img.onerror = done;
+      img.setAttribute("src", url);
+      if (img.complete) {
+        if (img.naturalWidth > 0 && typeof img.decode === "function") {
+          Promise.resolve(img.decode()).then(done, done);
+        } else {
+          done();
+        }
+      }
+    });
+    this._imagePreloadCache.set(url, promise);
+    return promise;
+  },
+
+  _preloadModalImages(svt, baseServant) {
+    const urls = this._collectModalImageUrls(svt, baseServant);
+    return Promise.all(urls.map((url) => this._preloadImageUrl(url)));
+  },
+
   async _openDetailModal(servant, openerEl) {
     const modal = document.getElementById("servantInfoModal");
     const titleEl = document.getElementById("servantInfoModalTitle");
@@ -719,8 +793,10 @@ export const ServantInfoApp = {
 
     const svtId = String(servant.id);
     if (this._infoCache.has(svtId)) {
+      const cachedData = this._infoCache.get(svtId);
+      await this._preloadModalImages(cachedData, servant);
       if (reqId === this._activeRequestId && modal.classList.contains("open")) {
-        this._renderDetailModal(this._infoCache.get(svtId), servant, bodyEl, titleEl);
+        this._renderDetailModal(cachedData, servant, bodyEl, titleEl);
       }
       return;
     }
@@ -732,9 +808,11 @@ export const ServantInfoApp = {
       }
       const data = await resp.json();
       this._infoCache.set(svtId, data);
+      await this._preloadModalImages(data, servant);
       if (reqId !== this._activeRequestId || !modal.classList.contains("open")) return;
       this._renderDetailModal(data, servant, bodyEl, titleEl);
     } catch (_err) {
+      await this._preloadModalImages(null, servant);
       if (reqId !== this._activeRequestId || !modal.classList.contains("open")) return;
       this._renderFallbackModal(servant, bodyEl);
     }

@@ -1014,8 +1014,10 @@ def sync_servants(args):
     bulk_svt_map = {}
     if not args.dry_run:
         try:
+            print("Loading bulk servant lore export (nice_servant_lore_lang_en.json)...", flush=True)
             nice_servants = get_cached_json(args.cache_dir, "nice_servant_lore_lang_en.json", NICE_SERVANT_URL, force=args.force)
             bulk_svt_map = {s.get("id"): s for s in nice_servants if s.get("id")}
+            print(f"Loaded bulk servant lore export ({len(nice_servants)} entries).", flush=True)
         except Exception as e:
             print(f"Bulk nice_servant_lore_lang_en.json fetch failed ({e}), trait revalidation skipped.", file=sys.stderr)
 
@@ -1155,6 +1157,12 @@ def sync_servants(args):
                     icon_tasks.append((svt_id, long_id, st, None))
 
     if icon_tasks:
+        total_icons = len(icon_tasks)
+        print(f"Synchronizing {total_icons} servant face icon(s)...", flush=True)
+        t0 = time.monotonic()
+        last_log = t0
+        done = 0
+        ok = 0
         with ThreadPoolExecutor(max_workers=8) as executor:
             futures = [
                 executor.submit(
@@ -1169,7 +1177,19 @@ def sync_servants(args):
                 for folder_id, long_id, stage, battle_id in icon_tasks
             ]
             for fut in as_completed(futures):
-                fut.result()
+                done += 1
+                if fut.result():
+                    ok += 1
+                now = time.monotonic()
+                if done == total_icons or done % 50 == 0 or (now - last_log) >= 5.0:
+                    elapsed = max(now - t0, 0.001)
+                    pct = (done * 100.0) / total_icons
+                    print(
+                        f"  Servant icons: {done}/{total_icons} ({pct:.1f}%) | ok={ok} | elapsed {elapsed:.0f}s",
+                        flush=True,
+                    )
+                    last_log = now
+        print(f"Servant icons: {ok}/{total_icons} synchronized.", flush=True)
 
     if new_entries:
         if full_replacement:
@@ -1192,6 +1212,7 @@ def sync_saint_graphs(url_by_filename: Dict[str, str], force: bool = False, dry_
         if force or not _nonempty_file(os.path.join(PUBLIC_SAINT_GRAPHS_DIR, fn))
     }
     if not todo:
+        print(f"Saint Graphs ({len(url_by_filename)} files) are already up-to-date.", flush=True)
         return 0
     if dry_run:
         print(f"[dry-run] Would download {len(todo)} Saint Graph image(s).")
@@ -1252,6 +1273,7 @@ def sync_servant_faces(face_urls: Dict[str, str], force: bool = False, dry_run: 
         if force or not _nonempty_file(os.path.join(PUBLIC_SERVANTS_DIR, rel))
     }
     if not todo:
+        print(f"Servant faces ({len(face_urls or {})} files) are already up-to-date.", flush=True)
         return 0
     if dry_run:
         print(f"[dry-run] Would download {len(todo)} servant face icon(s).")
@@ -1347,12 +1369,14 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
         with _json_mem_lock:
             nice_servants = _json_mem_cache.get(lore_mem_key)
     if nice_servants is None:
+        print("Loading bulk servant lore export (nice_servant_lore_lang_en.json)...", flush=True)
         nice_servants = get_cached_json(
             args.cache_dir,
             "nice_servant_lore_lang_en.json",
             NICE_SERVANT_URL,
             force=args.force,
         )
+        print(f"Loaded bulk servant lore export ({len(nice_servants)} entries).", flush=True)
 
     target_ids = None
     if getattr(args, "ids", None):
@@ -1402,7 +1426,8 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
         if not to_fetch:
             break
 
-        print(f"Fetching {len(to_fetch)} missing inner trigger skill(s) from Atlas Academy...")
+        total_skills = len(to_fetch)
+        print(f"Fetching {total_skills} missing inner trigger skill(s) from Atlas Academy...", flush=True)
 
         def _fetch_one_skill(sid: str):
             url = f"{API_BASE}/nice/JP/skill/{sid}?lang=en"
@@ -1413,12 +1438,27 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
                 print(f"Warning: failed to fetch inner skill {sid}: {exc}", file=sys.stderr)
                 return sid, None
 
+        t0 = time.monotonic()
+        last_log = t0
+        done_skills = 0
+        ok_skills = 0
         with ThreadPoolExecutor(max_workers=min(6, os.cpu_count() or 4)) as pool:
             for sid, sk_data in pool.map(_fetch_one_skill, to_fetch):
+                done_skills += 1
                 if sk_data is not None:
                     inner_skills_cache[sid] = sk_data
                     skill_by_id[sid] = sk_data
                     fetched_new_skills = True
+                    ok_skills += 1
+                now = time.monotonic()
+                if done_skills == total_skills or done_skills % 25 == 0 or (now - last_log) >= 5.0:
+                    pct = (done_skills * 100.0) / total_skills
+                    print(
+                        f"  Inner skills: {done_skills}/{total_skills} ({pct:.1f}%) | ok={ok_skills}",
+                        flush=True,
+                    )
+                    last_log = now
+        print(f"Inner trigger skills: {ok_skills}/{total_skills} fetched.", flush=True)
 
     if fetched_new_skills and not args.dry_run:
         os.makedirs(args.cache_dir, exist_ok=True)
@@ -1467,6 +1507,12 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
                 print(f"Servant info JSONs ({len(expected_ids)} files) are already up-to-date.")
                 return
 
+    playable_count = (
+        len(target_ids)
+        if target_ids is not None
+        else sum(1 for s in nice_servants if s.get("type") in ("normal", "heroine") and s.get("collectionNo", 0) > 0)
+    )
+    print(f"Exporting {playable_count} servant info JSON file(s)...", flush=True)
     res = export_all_servant_info(
         nice_servants,
         output_dir=PUBLIC_SERVANT_INFO_DIR,
@@ -1777,6 +1823,8 @@ def extract_special_traits_from_ce_skills(cache_dir: str, equips: List[dict], fo
     equip_cache_dir = os.path.join(cache_dir, "equip")
     unique_ids = list(dict.fromkeys(long_id for long_id, _ in pending))
     na_ce_by_id: Dict[int, dict] = {}
+    total_ces = len(unique_ids)
+    print(f"Scanning {total_ces} NA Craft Essence skill detail(s) for special traits...", flush=True)
 
     def _fetch_na_ce(eid: int) -> Optional[dict]:
         try:
@@ -1785,13 +1833,26 @@ def extract_special_traits_from_ce_skills(cache_dir: str, equips: List[dict], fo
         except Exception:
             return None
 
+    t0 = time.monotonic()
+    last_log = t0
+    done_ces = 0
     with ThreadPoolExecutor(max_workers=8) as executor:
         futs = {executor.submit(_fetch_na_ce, eid): eid for eid in unique_ids}
         for fut in as_completed(futs):
             eid = futs[fut]
             res = fut.result()
+            done_ces += 1
             if res is not None:
                 na_ce_by_id[eid] = res
+            now = time.monotonic()
+            if done_ces == total_ces or done_ces % 50 == 0 or (now - last_log) >= 5.0:
+                pct = (done_ces * 100.0) / total_ces
+                print(
+                    f"  NA CE trait skills: {done_ces}/{total_ces} ({pct:.1f}%) | loaded={len(na_ce_by_id)}",
+                    flush=True,
+                )
+                last_log = now
+    print(f"Scanned {len(na_ce_by_id)}/{total_ces} NA Craft Essence skill detail(s).", flush=True)
 
     extracted = {}
     for long_id, target_tids in pending:
@@ -1952,7 +2013,9 @@ def sync_craft_essences(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas
     except Exception as e:
         print(f"  [WARN] NA basic_equip fetch failed, falling back to JP names/overrides: {e}", file=sys.stderr)
 
+    print("Loading bulk Craft Essence export (nice_equip_lang_en.json)...", flush=True)
     equip_data = get_cached_json(cache_dir, "nice_equip_lang_en.json", EQUIP_EXPORT_URL, force=force)
+    print(f"Loaded bulk Craft Essence export ({len(equip_data)} entries).", flush=True)
     ce_entries = extract_bond_craft_essences(equip_data, na_names=na_names)
     update_craft_essences_js(ce_entries, dry_run=dry_run)
 
@@ -2089,9 +2152,21 @@ def _latest_past_farm_event(
         ),
         key=lambda e: -(e.get("startedAt") or 0),
     )
-    for event in ended[:FARM_FALLBACK_SCAN_CAP]:
-        if _farm_event_passes(cache_dir, event, force=force):
+    candidates = ended[:FARM_FALLBACK_SCAN_CAP]
+    t0 = time.monotonic()
+    last_log = t0
+    for idx, event in enumerate(candidates, 1):
+        passed = _farm_event_passes(cache_dir, event, force=force)
+        now_mono = time.monotonic()
+        if passed:
+            print(
+                f"  Past farm event scan: selected event {event.get('id')} (checked {idx}/{len(candidates)} ended event(s)).",
+                flush=True,
+            )
             return event
+        if idx % 10 == 0 or (now_mono - last_log) >= 5.0:
+            print(f"  Past farm event scan: checked {idx}/{len(candidates)} ended event(s)...", flush=True)
+            last_log = now_mono
     return None
 
 
@@ -2288,6 +2363,10 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
 
         quests = []
         if war_pairs:
+            total_q = len(war_pairs)
+            t0 = time.monotonic()
+            last_log = t0
+            done_q = 0
             with ThreadPoolExecutor(max_workers=8) as executor:
                 detail_futs = [
                     executor.submit(_quest_phase_detail, cache_dir, quest, force, strict)
@@ -2295,8 +2374,16 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
                 ]
                 for (spot, quest), fut in zip(war_pairs, detail_futs):
                     detail = fut.result()
+                    done_q += 1
                     if detail:
                         quests.append(_farm_quest(quest, detail, spot=spot))
+                    now = time.monotonic()
+                    if done_q % 50 == 0 or (now - last_log) >= 5.0:
+                        print(
+                            f"  Event war quests: {done_q}/{total_q} ({(done_q * 100.0) / total_q:.1f}%) fetched...",
+                            flush=True,
+                        )
+                        last_log = now
         _farm_quests_results[key] = quests
     return _farm_quests_results[key]
 
@@ -3030,6 +3117,7 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
     if event_id is not None:
         events = select_events(basic, event_id)
         region_selected["JP"] = events
+        print(f"  Selected override event id {event_id} ({len(events)} match(es)).", flush=True)
     else:
         jp_events = _select_farm_events(cache_dir, basic, force=force)
         region_selected["JP"] = jp_events
@@ -3056,6 +3144,11 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
                     seen_ids.add(eid)
                     events.append(jp_by_id.get(eid) or ev)
         events.sort(key=lambda e: -(e.get("startedAt") or 0))
+        region_counts = ", ".join(f"{r}:{len(region_selected.get(r, []))}" for r in EVENT_SERVERS)
+        print(
+            f"  Scanned event lists across {len(EVENT_SERVERS)} region(s) ({region_counts}) -> {len(events)} farmable candidate(s).",
+            flush=True,
+        )
     if not events:
         if event_id is None and not dry_run:
             _write_shop_probe(cache_dir, basic, force=force)
@@ -3076,6 +3169,12 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
             continue
         if snapshot:
             snapshots.append(snapshot)
+            ev_meta = snapshot.get("event") or {}
+            print(
+                f"  Snapshotted event {ev_meta.get('id')} ({ev_meta.get('shortName') or ev_meta.get('name')}): "
+                f"{len(snapshot.get('items', []))} shop item(s), {len(snapshot.get('bonusCes', []))} bonus CE(s).",
+                flush=True,
+            )
     if failures and not snapshots:
         raise RuntimeError(f"all {failures} open event shop fetch(es) failed")
     if event_id is None and not dry_run:
@@ -3140,6 +3239,11 @@ def cleanup_cache_dir(cache_dir: str):
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(line_buffering=True)
+
     parser = argparse.ArgumentParser(description="Incremental Atlas Academy Data Sync for FGO Calculator")
     parser.add_argument("--cache-dir", default=os.path.join(BASE_DIR, ".cache", "atlas"), help="Path to cache directory")
     parser.add_argument("--ids", nargs="+", help="Specific collection numbers to process (e.g. 482 481)")
