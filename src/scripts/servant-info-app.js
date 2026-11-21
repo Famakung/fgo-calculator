@@ -723,6 +723,20 @@ export const ServantInfoApp = {
       });
     }
 
+    const slots = (svt && svt.formatted && Array.isArray(svt.formatted.slots) && svt.formatted.slots) || [];
+    slots.forEach((slot) => {
+      if (!slot || slot.type !== "skill" || !slot.variantsByTier || typeof slot.variantsByTier !== "object") return;
+      Object.values(slot.variantsByTier).forEach((variant) => {
+        if (!variant) return;
+        if (variant.icon) urls.add(`${variant.icon}?v=${IMAGE_VERSION}`);
+        if (Array.isArray(variant.forms)) {
+          variant.forms.forEach((form) => {
+            if (form && form.icon) urls.add(`${form.icon}?v=${IMAGE_VERSION}`);
+          });
+        }
+      });
+    });
+
     return [...urls];
   },
 
@@ -1708,9 +1722,20 @@ export const ServantInfoApp = {
 
     const header = DOMFactory.el("div", "f-section-header");
     const titleWrap = DOMFactory.el("span", "f-section-title");
+    const skillIconEl = DOMFactory.el("img", "f-skill-icon", {
+      alt: "",
+      width: "32",
+      height: "32",
+    });
+    skillIconEl.hidden = true;
+    skillIconEl.style.display = "none";
+    skillIconEl.addEventListener("error", () => {
+      skillIconEl.hidden = true;
+      skillIconEl.style.display = "none";
+    });
     const titleText = DOMFactory.el("span", "f-title-text");
     const strengthenWrap = DOMFactory.el("span", "f-strengthen-icons");
-    titleWrap.append(titleText, strengthenWrap);
+    titleWrap.append(skillIconEl, titleText, strengthenWrap);
 
     const cooldownText = DOMFactory.el("span", "f-cooldown-text");
     cooldownText.hidden = true;
@@ -1731,7 +1756,16 @@ export const ServantInfoApp = {
     const effectsContainer = DOMFactory.el("div", "f-effects-container");
     card.appendChild(effectsContainer);
 
-    card._refs = { formBar, titleText, strengthenWrap, cooldownText, npOptionsBar, npMetaEl, effectsContainer };
+    card._refs = {
+      formBar,
+      skillIconEl,
+      titleText,
+      strengthenWrap,
+      cooldownText,
+      npOptionsBar,
+      npMetaEl,
+      effectsContainer,
+    };
 
     this._updateCardStrengthenUI(card, slot, currentFormIdx, modalState);
     const activeVariant = getVariantByTier(slot, slot.activeTier);
@@ -1823,7 +1857,7 @@ export const ServantInfoApp = {
 
   _renderSkillContent(card, variant, selectedForm, selectedOption, modalState) {
     if (!variant) return;
-    const { formBar, titleText, cooldownText, effectsContainer } = card._refs;
+    const { formBar, skillIconEl, titleText, cooldownText, effectsContainer } = card._refs;
     const slot = card._slot;
     const servantForms = modalState.servantForms;
     const hasServantForms = this._slotHasServantForms(slot, modalState) && servantForms && servantForms.length > 1;
@@ -1842,6 +1876,20 @@ export const ServantInfoApp = {
       cooldownText.hidden = !cdText;
       cooldownText.style.display = cdText ? "" : "none";
       cooldownText.textContent = cdText || "";
+      if (skillIconEl) {
+        const iconPath = slot.type === "skill" ? (activeForm && activeForm.icon) || variant.icon || null : null;
+        if (iconPath) {
+          const iconSrc = `${iconPath}?v=${IMAGE_VERSION}`;
+          if (skillIconEl.getAttribute("src") !== iconSrc) {
+            skillIconEl.setAttribute("src", iconSrc);
+          }
+          skillIconEl.hidden = false;
+          skillIconEl.style.display = "";
+        } else {
+          skillIconEl.hidden = true;
+          skillIconEl.style.display = "none";
+        }
+      }
     };
 
     if (hasServantForms) {
@@ -1899,10 +1947,7 @@ export const ServantInfoApp = {
       formBar.replaceChildren();
       formBar.removeAttribute("data-servant-form");
       formBar.removeAttribute("data-ascension-form");
-      titleText.textContent = variant.cleanTitle;
-      cooldownText.hidden = !variant.cooldown;
-      cooldownText.style.display = variant.cooldown ? "" : "none";
-      cooldownText.textContent = variant.cooldown || "";
+      applyTitleAndCooldown(null);
     }
 
     const optInfo = parseSkillOptions(activeEffects);

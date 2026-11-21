@@ -19,11 +19,20 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from servant_info_converter.export_servant_info import (  # noqa: E402
     extract_saint_graphs,
+    extract_skill_icons,
     build_servant_info_payload,
     build_skill_by_id,
     build_svt_by_id,
     export_all_servant_info,
 )
+from servant_info_converter.context import FetchContext  # noqa: E402
+from servant_info_converter.effect_map import TRAIT_ID_LABELS  # noqa: E402
+from servant_info_converter.np_formatter import format_np_structured  # noqa: E402
+from servant_info_converter.skill_formatter import (  # noqa: E402
+    format_passives_structured,
+    format_skills_structured,
+)
+from servant_info_converter.utils import group_and_label_items  # noqa: E402
 import sync_atlas_data  # noqa: E402
 
 
@@ -792,6 +801,7 @@ class ServantInfoConverterTests(unittest.TestCase):
             ):
                 args.skip_saint_graphs = True
                 args.skip_faces = True
+                args.skip_skill_icons = True
                 sync_atlas_data.sync_servant_info(args)
 
             expected = out_dir / "100100.json"
@@ -1072,6 +1082,188 @@ class ServantInfoConverterTests(unittest.TestCase):
                 with Image.open(dest) as img:
                     self.assertEqual(img.format, "WEBP")
                     self.assertEqual(img.size, sync_atlas_data.FACE_ICON_SIZE)
+
+    def test_single_skill_clean_title_includes_name(self):
+        svt = _make_standard_servant()
+        payload = build_servant_info_payload(svt)
+        skills = payload["formatted"]["skills"]
+        self.assertEqual(skills[0]["variantsByTier"][0]["cleanTitle"], "Skill 1 (Charisma B)")
+        self.assertEqual(skills[0]["variantsByTier"][1]["cleanTitle"], "Skill 1 (Charisma of Dragon A)")
+        self.assertEqual(skills[1]["variantsByTier"][0]["cleanTitle"], "Skill 2 (Mana Burst A)")
+
+    def test_multi_rank_up_tier_order_skills_and_nps(self):
+        skills = [
+            {"id": 136550, "num": 1, "name": "Galvanism A", "strengthStatus": 2, "priority": 1, "coolDown": [7], "functions": []},
+            {"id": 685551, "num": 1, "name": "Tesla Coil A+", "strengthStatus": 1, "priority": 2, "coolDown": [7], "functions": []},
+            {"id": 685552, "num": 1, "name": "Tesla Coil A++", "strengthStatus": 99, "priority": 3, "coolDown": [7], "functions": []},
+        ]
+        slot = format_skills_structured(skills, 201100)[0]
+        self.assertEqual(slot["tiers"], [0, 1, 2])
+        self.assertEqual(slot["variantsByTier"][0]["cleanTitle"], "Skill 1 (Galvanism A)")
+        self.assertEqual(slot["variantsByTier"][1]["cleanTitle"], "Skill 1 (Tesla Coil A+)")
+        self.assertEqual(slot["variantsByTier"][2]["cleanTitle"], "Skill 1 (Tesla Coil A++)")
+
+        nps = [
+            {"id": 700701, "num": 1, "name": "Kazikli Bey", "rank": "C", "type": "Single Target", "card": "arts", "strengthStatus": 2, "priority": 101, "functions": []},
+            {"id": 700702, "num": 1, "name": "Kazikli Bey+", "rank": "C+", "type": "Single Target", "card": "arts", "strengthStatus": 1, "priority": 102, "functions": []},
+            {"id": 700703, "num": 1, "name": "Kazikli Bey++", "rank": "B", "type": "Single Target", "card": "arts", "strengthStatus": 99, "priority": 103, "functions": []},
+        ]
+        np_slot = format_np_structured(nps, 700700)[0]
+        self.assertEqual(np_slot["tiers"], [0, 1, 2])
+        self.assertEqual(np_slot["variantsByTier"][0]["name"], "Kazikli Bey")
+        self.assertEqual(np_slot["variantsByTier"][1]["name"], "Kazikli Bey+")
+        self.assertEqual(np_slot["variantsByTier"][2]["name"], "Kazikli Bey++")
+
+        # Fallback ordering without priority when strengthStatus=99 is present
+        no_prio = [
+            {"id": 10, "num": 1, "name": "Base", "strengthStatus": 2},
+            {"id": 11, "num": 1, "name": "Rank1", "strengthStatus": 1},
+            {"id": 12, "num": 1, "name": "Rank2", "strengthStatus": 99},
+        ]
+        grouped = group_and_label_items(no_prio, 1, "Skill")
+        self.assertEqual([it["name"] for it, _ in grouped], ["Base", "Rank1", "Rank2"])
+
+    def test_add_individuality_9999_does_not_fallback_to_robin_counter(self):
+        self.assertNotIn(9999, TRAIT_ID_LABELS)
+        inner_magic_bullet = {
+            "id": 970499,
+            "functions": [
+                {
+                    "funcId": 21660,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5586, "name": "Magic Bullets", "type": "addIndividuality", "vals": [{"id": 3004}, {"id": 2885}]}],
+                    "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 9999}],
+                },
+                {
+                    "funcId": 21660,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5586, "name": "Magic Bullets", "type": "addIndividuality", "vals": [{"id": 3004}, {"id": 2885}]}],
+                    "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 9999}],
+                },
+            ],
+        }
+        inner_empty_name = {
+            "id": 970739,
+            "functions": [
+                {
+                    "funcId": 22893,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5918, "name": "", "type": "addIndividuality", "vals": [{"id": 2999, "name": "unknown"}]}],
+                    "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 9999}],
+                }
+            ],
+        }
+        passives = [
+            {
+                "id": 2353650,
+                "name": "Deploy Magic Bullet EX",
+                "functions": [
+                    {
+                        "funcId": 21661,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "buffs": [{"id": 5594, "name": "Triggers Each Turn", "type": "selfturnendFunction", "vals": [{"id": 3004}]}],
+                        "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 970499}],
+                    }
+                ],
+            },
+            {
+                "id": 2537551,
+                "name": "Territory Creation",
+                "functions": [
+                    {
+                        "funcId": 22894,
+                        "funcType": "addStateShort",
+                        "funcTargetType": "self",
+                        "buffs": [{"id": 5916, "name": "", "type": "commandattackBeforeFunction", "vals": []}],
+                        "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 970739}],
+                    }
+                ],
+            },
+        ]
+        skill_by_id = {970499: inner_magic_bullet, 970739: inner_empty_name}
+        ctx = FetchContext(fetch_inner_skill=lambda sid: skill_by_id.get(int(sid)))
+        res = format_passives_structured(passives, ctx=ctx)
+        effects_text = "\n".join(res[0]["variantsByTier"][0]["effects"])
+        self.assertIn("Magic Bullets", effects_text)
+        self.assertNotIn("Robin Counter", effects_text)
+
+    def test_skill_icons_extraction_formatting_and_sync(self):
+        std = _make_standard_servant()
+        std["skills"][0]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00300.png"
+        std["skills"][1]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00301.png"
+        std["skills"][2]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00306.png"
+
+        payload = build_servant_info_payload(std, svt_by_id={100100: std}, skill_by_id={})
+        self._assert_clean_schema(payload)
+        skills = {s["slotKey"]: s for s in payload["formatted"]["skills"]}
+        self.assertEqual(skills["skill_1"]["variantsByTier"][0]["icon"], "skill_icons/skill_00300.webp")
+        self.assertEqual(skills["skill_1"]["variantsByTier"][1]["icon"], "skill_icons/skill_00301.webp")
+        self.assertEqual(skills["skill_2"]["variantsByTier"][0]["icon"], "skill_icons/skill_00306.webp")
+        self.assertNotIn("icon", skills["skill_3"]["variantsByTier"][0])
+
+        main_svt, trans_svt = _make_transform_pair()
+        main_svt["skills"][0]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00400.png"
+        trans_svt["skills"][0]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00601.png"
+        svt_by_id = build_svt_by_id([main_svt, trans_svt])
+        t_payload = build_servant_info_payload(main_svt, svt_by_id=svt_by_id, skill_by_id={})
+        self._assert_clean_schema(t_payload)
+        t_var = t_payload["formatted"]["skills"][0]["variantsByTier"][0]
+        self.assertEqual(t_var["icon"], "skill_icons/skill_00400.webp")
+        self.assertEqual(t_var["forms"][0]["icon"], "skill_icons/skill_00400.webp")
+        self.assertEqual(t_var["forms"][1]["icon"], "skill_icons/skill_00601.webp")
+
+        mash = _make_mash()
+        mash["skills"][0]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00402.png"
+        mash["skills"][1]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00404.png"
+        m_payload = build_servant_info_payload(mash, svt_by_id={800100: mash}, skill_by_id={})
+        self._assert_clean_schema(m_payload)
+        m_skills = {s["slotKey"]: s for s in m_payload["formatted"]["skills"]}
+        self.assertEqual(m_skills["skill_1"]["variantsByTier"][0]["icon"], "skill_icons/skill_00402.webp")
+        self.assertEqual(m_skills["skill_1"]["variantsByTier"][0]["forms"][0]["icon"], "skill_icons/skill_00402.webp")
+        self.assertEqual(m_skills["skill_2"]["variantsByTier"][0]["icon"], "skill_icons/skill_00404.webp")
+
+        urls = extract_skill_icons(main_svt, svt_by_id)
+        self.assertEqual(
+            urls,
+            {
+                "skill_00400.webp": "https://static.atlasacademy.io/JP/SkillIcons/skill_00400.png",
+                "skill_00601.webp": "https://static.atlasacademy.io/JP/SkillIcons/skill_00601.png",
+            },
+        )
+
+        buf = io.BytesIO()
+        Image.new("RGBA", (128, 128), (40, 80, 120, 255)).save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            icons_dir = Path(tmpdir) / "skill_icons"
+            existing = icons_dir / "skill_00400.webp"
+            existing.parent.mkdir(parents=True, exist_ok=True)
+            existing.write_bytes(b"already-here")
+            fetched = []
+
+            def fake_fetch_url(url, **kwargs):
+                fetched.append(url)
+                return png_bytes, None
+
+            with (
+                patch.object(sync_atlas_data, "PUBLIC_SKILL_ICONS_DIR", str(icons_dir)),
+                patch.object(sync_atlas_data, "fetch_url", side_effect=fake_fetch_url),
+            ):
+                saved = sync_atlas_data.sync_skill_icons(urls)
+
+            self.assertEqual(saved, 1)
+            self.assertEqual(existing.read_bytes(), b"already-here")
+            self.assertEqual(fetched, ["https://static.atlasacademy.io/JP/SkillIcons/skill_00601.png"])
+            dest = icons_dir / "skill_00601.webp"
+            self.assertTrue(dest.exists())
+            with Image.open(dest) as img:
+                self.assertEqual(img.format, "WEBP")
+                self.assertEqual(img.size, (128, 128))
 
 
 if __name__ == "__main__":

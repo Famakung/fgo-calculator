@@ -287,6 +287,31 @@ def extract_saint_graphs(
     return entries, url_by_filename
 
 
+def extract_skill_icons(
+    svt: dict,
+    svt_by_id: Optional[Dict[int, dict]] = None,
+) -> Dict[str, str]:
+    """Return {webp filename: source url} for active skills on svt and its transform partner."""
+    url_by_filename: Dict[str, str] = {}
+    skills = list(svt.get("skills") or [])
+    partner_id = find_transform_svt_id(svt)
+    if svt_by_id and partner_id:
+        partner = svt_by_id.get(partner_id)
+        if partner:
+            skills.extend(partner.get("skills") or [])
+    for sk in skills:
+        if not isinstance(sk, dict):
+            continue
+        url = sk.get("icon")
+        if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+            continue
+        base = os.path.basename(urlparse(url).path)
+        stem = os.path.splitext(base)[0]
+        if stem:
+            url_by_filename[f"{stem}.webp"] = url
+    return url_by_filename
+
+
 def build_servant_info_payload(
     data: dict,
     svt_by_id: Optional[Dict[int, dict]] = None,
@@ -417,6 +442,7 @@ def export_all_servant_info(
     errors: List[str] = []
     saint_graph_urls: Dict[str, str] = {}
     face_urls: Dict[str, str] = {}
+    skill_icon_urls: Dict[str, str] = {}
 
     for svt in nice_servants:
         if not is_playable_servant(svt):
@@ -437,6 +463,7 @@ def export_all_servant_info(
             )
             saint_graph_urls.update(sg_urls)
             face_urls.update(svt_face_urls)
+            skill_icon_urls.update(extract_skill_icons(svt, svt_by_id))
             if not dry_run:
                 dest = out_path / f"{svt_id_str}.json"
                 serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -452,6 +479,7 @@ def export_all_servant_info(
         "errors": errors,
         "saint_graph_urls": saint_graph_urls,
         "face_urls": face_urls,
+        "skill_icon_urls": skill_icon_urls,
         "output_dir": str(out_path),
     }
 

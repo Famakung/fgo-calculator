@@ -1,4 +1,6 @@
+import os
 import re
+from urllib.parse import urlparse
 
 from .effect_map import TARGET_LABELS, TRAIT_ID_LABELS, BTN_SELECT_IMAGE_MAP
 from .utils import (
@@ -306,6 +308,18 @@ def _get_tier_from_title(title: str) -> int:
     return 0
 
 
+def _skill_icon_path(sk) -> str:
+    raw = sk.get("icon") if isinstance(sk, dict) else sk
+    if not isinstance(raw, str) or not raw.strip():
+        return ""
+    raw = raw.strip()
+    if raw.startswith("skill_icons/") and raw.endswith(".webp") and "://" not in raw:
+        return raw
+    base = os.path.basename(urlparse(raw).path)
+    stem = os.path.splitext(base)[0]
+    return f"skill_icons/{stem}.webp" if stem else ""
+
+
 def _fmt_mash_skills_structured(skills, svt_id, ctx=None) -> list:
     forms = ["All Ascensions", "Spiritron Dress: Ortinax", "Spiritron Dress: Paladin"]
     slots = []
@@ -374,6 +388,7 @@ def _fmt_mash_skills_structured(skills, svt_id, ctx=None) -> list:
                 if inner_sk_id and ctx and ctx.fetch_inner_skill
                 else None
             )
+            icon_path = _skill_icon_path(base_sk)
             if inner_sk:
                 opt1_lines = []
                 _fmt_skill_functions_to_lines(opt1_lines, base_sk, ctx=ctx)
@@ -381,25 +396,31 @@ def _fmt_mash_skills_structured(skills, svt_id, ctx=None) -> list:
                 opt2_lines = []
                 _fmt_skill_functions_to_lines(opt2_lines, inner_sk, ctx=ctx)
                 effects_lines.extend([f"[When loaded with the Holy Sword] {l}" for l in opt2_lines])
-                forms_list.append({
+                form_entry = {
                     "formIndex": f_idx,
                     "label": f,
                     "name": base_name,
                     "cooldown": cd_str,
                     "effects": effects_lines,
-                })
+                }
+                if icon_path:
+                    form_entry["icon"] = icon_path
+                forms_list.append(form_entry)
             else:
                 fx_lines = []
                 _fmt_skill_functions_to_lines(fx_lines, base_sk, ctx=ctx)
-                forms_list.append({
+                form_entry = {
                     "formIndex": f_idx,
                     "label": f,
                     "name": base_name,
                     "cooldown": cd_str,
                     "effects": fx_lines,
-                })
+                }
+                if icon_path:
+                    form_entry["icon"] = icon_path
+                forms_list.append(form_entry)
 
-        slot_obj["variantsByTier"][0] = {
+        var0 = {
             "tier": 0,
             "type": "skill",
             "rawTitle": f"Skill {slot}",
@@ -408,6 +429,9 @@ def _fmt_mash_skills_structured(skills, svt_id, ctx=None) -> list:
             "effects": [],
             "forms": forms_list,
         }
+        if forms_list and forms_list[0].get("icon"):
+            var0["icon"] = forms_list[0]["icon"]
+        slot_obj["variantsByTier"][0] = var0
         slot_obj["tiers"].append(0)
 
         has_tier1 = any(len(form_tiers[f]) > 1 for f in forms)
@@ -422,14 +446,18 @@ def _fmt_mash_skills_structured(skills, svt_id, ctx=None) -> list:
                     cd_str = f"Cooldown {f'{cd[0]}-{cd[-1]}' if cd[0] != cd[-1] else str(cd[0])} turns"
                     fx_lines = []
                     _fmt_skill_functions_to_lines(fx_lines, st_sk, ctx=ctx)
-                    tier1_forms.append({
+                    form_entry = {
                         "formIndex": f_idx,
                         "label": f,
                         "name": st_name,
                         "cooldown": cd_str,
                         "effects": fx_lines,
-                    })
-            slot_obj["variantsByTier"][1] = {
+                    }
+                    icon_path = _skill_icon_path(st_sk)
+                    if icon_path:
+                        form_entry["icon"] = icon_path
+                    tier1_forms.append(form_entry)
+            var1 = {
                 "tier": 1,
                 "type": "skill",
                 "rawTitle": f"Skill {slot} [Strengthen]",
@@ -438,6 +466,9 @@ def _fmt_mash_skills_structured(skills, svt_id, ctx=None) -> list:
                 "effects": [],
                 "forms": tier1_forms,
             }
+            if tier1_forms and tier1_forms[0].get("icon"):
+                var1["icon"] = tier1_forms[0]["icon"]
+            slot_obj["variantsByTier"][1] = var1
             slot_obj["tiers"].append(1)
 
         has_tier2 = any(len(form_tiers[f]) > 2 for f in forms)
@@ -452,14 +483,18 @@ def _fmt_mash_skills_structured(skills, svt_id, ctx=None) -> list:
                     cd_str = f"Cooldown {f'{cd[0]}-{cd[-1]}' if cd[0] != cd[-1] else str(cd[0])} turns"
                     fx_lines = []
                     _fmt_skill_functions_to_lines(fx_lines, st_sk, ctx=ctx)
-                    tier2_forms.append({
+                    form_entry = {
                         "formIndex": f_idx,
                         "label": f,
                         "name": st_name,
                         "cooldown": cd_str,
                         "effects": fx_lines,
-                    })
-            slot_obj["variantsByTier"][2] = {
+                    }
+                    icon_path = _skill_icon_path(st_sk)
+                    if icon_path:
+                        form_entry["icon"] = icon_path
+                    tier2_forms.append(form_entry)
+            var2 = {
                 "tier": 2,
                 "type": "skill",
                 "rawTitle": f"Skill {slot} [2nd Strengthen]",
@@ -468,6 +503,9 @@ def _fmt_mash_skills_structured(skills, svt_id, ctx=None) -> list:
                 "effects": [],
                 "forms": tier2_forms,
             }
+            if tier2_forms and tier2_forms[0].get("icon"):
+                var2["icon"] = tier2_forms[0]["icon"]
+            slot_obj["variantsByTier"][2] = var2
             slot_obj["tiers"].append(2)
 
         slot_obj["maxTier"] = max(slot_obj["tiers"])
@@ -572,22 +610,27 @@ def format_skills_structured(
             fx1 = []
             _fmt_skill_functions_to_lines(fx1, trans_sk, ctx=ctx)
 
-            forms = [
-                {
-                    "formIndex": 0,
-                    "label": f"If {main_name}",
-                    "name": sk0.get("name", ""),
-                    "cooldown": cd_str0,
-                    "effects": fx0,
-                },
-                {
-                    "formIndex": 1,
-                    "label": f"If {trans_name}",
-                    "name": trans_sk.get("name", ""),
-                    "cooldown": cd_str1,
-                    "effects": fx1,
-                },
-            ]
+            icon0 = _skill_icon_path(sk0)
+            icon1 = _skill_icon_path(trans_sk)
+            form0 = {
+                "formIndex": 0,
+                "label": f"If {main_name}",
+                "name": sk0.get("name", ""),
+                "cooldown": cd_str0,
+                "effects": fx0,
+            }
+            if icon0:
+                form0["icon"] = icon0
+            form1 = {
+                "formIndex": 1,
+                "label": f"If {trans_name}",
+                "name": trans_sk.get("name", ""),
+                "cooldown": cd_str1,
+                "effects": fx1,
+            }
+            if icon1:
+                form1["icon"] = icon1
+            forms = [form0, form1]
 
             variant = {
                 "tier": tier,
@@ -598,6 +641,8 @@ def format_skills_structured(
                 "effects": [],
                 "forms": forms,
             }
+            if icon0 or icon1:
+                variant["icon"] = icon0 or icon1
             slot_obj["variantsByTier"][tier] = variant
             if tier not in slot_obj["tiers"]:
                 slot_obj["tiers"].append(tier)
@@ -624,13 +669,17 @@ def format_skills_structured(
                 cd_str = f"Cooldown {f'{cd[0]}-{cd[-1]}' if cd[0] != cd[-1] else str(cd[0])} turns"
                 fx = []
                 _fmt_skill_functions_to_lines(fx, sk, ctx=ctx)
-                forms.append({
+                form_entry = {
                     "formIndex": idx,
                     "label": asc_str.replace("[", "").replace("]", "").strip(),
                     "name": sk.get("name", ""),
                     "cooldown": cd_str,
                     "effects": fx,
-                })
+                }
+                icon_path = _skill_icon_path(sk)
+                if icon_path:
+                    form_entry["icon"] = icon_path
+                forms.append(form_entry)
 
             variant = {
                 "tier": tier,
@@ -641,6 +690,8 @@ def format_skills_structured(
                 "effects": [],
                 "forms": forms,
             }
+            if forms and forms[0].get("icon"):
+                variant["icon"] = forms[0]["icon"]
             slot_obj["variantsByTier"][tier] = variant
             if tier not in slot_obj["tiers"]:
                 slot_obj["tiers"].append(tier)
@@ -653,16 +704,21 @@ def format_skills_structured(
             cd_str = f"Cooldown {f'{cd[0]}-{cd[-1]}' if cd[0] != cd[-1] else str(cd[0])} turns"
             fx = []
             _fmt_skill_functions_to_lines(fx, sk, ctx=ctx)
+            sk_name = (sk.get("name") or "").strip()
+            clean_title = f"Skill {num} ({sk_name})" if sk_name else f"Skill {num}"
 
             variant = {
                 "tier": tier,
                 "type": "skill",
                 "rawTitle": label,
-                "cleanTitle": f"Skill {num}",
+                "cleanTitle": clean_title,
                 "cooldown": cd_str,
                 "effects": fx,
                 "forms": [],
             }
+            icon_path = _skill_icon_path(sk)
+            if icon_path:
+                variant["icon"] = icon_path
             slot_obj["variantsByTier"][tier] = variant
             if tier not in slot_obj["tiers"]:
                 slot_obj["tiers"].append(tier)

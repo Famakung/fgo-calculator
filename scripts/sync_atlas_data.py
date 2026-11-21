@@ -50,6 +50,7 @@ DEFAULT_SHOP_PROBE_FILE = os.path.join(BASE_DIR, ".ci-baselines", "shop_probe.js
 PUBLIC_SERVANTS_DIR = os.path.join(BASE_DIR, "public", "servants")
 PUBLIC_SERVANT_INFO_DIR = os.path.join(BASE_DIR, "public", "servant_info")
 PUBLIC_SAINT_GRAPHS_DIR = os.path.join(BASE_DIR, "public", "saint_graphs")
+PUBLIC_SKILL_ICONS_DIR = os.path.join(BASE_DIR, "public", "skill_icons")
 PUBLIC_EVENT_SHOP_DIR = os.path.join(BASE_DIR, "public", "event_shop")
 
 API_BASE = "https://api.atlasacademy.io"
@@ -1283,6 +1284,67 @@ def sync_servant_faces(face_urls: Dict[str, str], force: bool = False, dry_run: 
     return ok
 
 
+def sync_skill_icons(url_by_filename: Dict[str, str], force: bool = False, dry_run: bool = False) -> int:
+    """Download active skill icon PNGs concurrently and store as lossless WebP under public/skill_icons/."""
+    todo = {
+        fn: url
+        for fn, url in (url_by_filename or {}).items()
+        if force or not _nonempty_file(os.path.join(PUBLIC_SKILL_ICONS_DIR, fn))
+    }
+    if not todo:
+        print(f"Skill icons ({len(url_by_filename or {})} files) are already up-to-date.", flush=True)
+        return 0
+    if dry_run:
+        print(f"[dry-run] Would download {len(todo)} skill icon(s).")
+        return 0
+    os.makedirs(PUBLIC_SKILL_ICONS_DIR, exist_ok=True)
+    total = len(todo)
+    print(f"Downloading {total} skill icon(s)...", flush=True)
+
+    def _one(item):
+        fn, url = item
+        try:
+            raw, _ = fetch_url(url, timeout=15, retries=2)
+            if not raw:
+                raise ValueError("empty response")
+            dest = os.path.join(PUBLIC_SKILL_ICONS_DIR, fn)
+            tmp = dest + ".tmp"
+            with Image.open(io.BytesIO(raw)) as img:
+                img.load()
+                if img.mode not in ("RGB", "RGBA"):
+                    img = img.convert("RGBA")
+                img.save(tmp, "WEBP", lossless=True, quality=90, method=6)
+            os.replace(tmp, dest)
+            return True
+        except Exception as exc:
+            print(f"Warning: skill icon {fn} failed ({url}): {exc}", file=sys.stderr, flush=True)
+            return False
+
+    t0 = time.monotonic()
+    last_log = t0
+    done = 0
+    ok = 0
+    with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as pool:
+        futures = [pool.submit(_one, item) for item in todo.items()]
+        for fut in as_completed(futures):
+            done += 1
+            if fut.result():
+                ok += 1
+            now = time.monotonic()
+            if done == total or done % 25 == 0 or (now - last_log) >= 5.0:
+                elapsed = max(now - t0, 0.001)
+                rate = done / elapsed
+                eta = (total - done) / rate if rate > 0 else 0.0
+                pct = (done * 100.0) / total
+                print(
+                    f"  Skill icons: {done}/{total} ({pct:.1f}%) | ok={ok} | {rate:.2f} img/s | elapsed {elapsed:.0f}s | ETA {eta:.0f}s",
+                    flush=True,
+                )
+                last_log = now
+    print(f"Skill icons: {ok}/{total} saved to {PUBLIC_SKILL_ICONS_DIR}.", flush=True)
+    return ok
+
+
 def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
     """Export per-servant formatted JSON files into public/servant_info/<id>.json."""
     try:
@@ -1423,23 +1485,29 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
         ):
             skip_sg = getattr(args, "skip_saint_graphs", False)
             skip_faces = getattr(args, "skip_faces", False)
-            if skip_sg and skip_faces:
+            skip_skill_icons = getattr(args, "skip_skill_icons", False)
+            if skip_sg and skip_faces and skip_skill_icons:
                 print(f"Servant info JSONs ({len(expected_ids)} files) are already up-to-date.")
                 return
             try:
-                from servant_info_converter.export_servant_info import extract_saint_graphs
+                from servant_info_converter.export_servant_info import extract_saint_graphs, extract_skill_icons
             except ImportError:
-                from scripts.servant_info_converter.export_servant_info import extract_saint_graphs
+                from scripts.servant_info_converter.export_servant_info import extract_saint_graphs, extract_skill_icons
             sg_urls: Dict[str, str] = {}
             face_urls: Dict[str, str] = {}
+            skill_icon_urls: Dict[str, str] = {}
             for s in nice_servants:
                 if s.get("type") in ("normal", "heroine") and s.get("collectionNo", 0) > 0:
                     _, s_sg, s_faces, _ = extract_saint_graphs(s, svt_by_id, include_faces=True)
                     sg_urls.update(s_sg)
                     face_urls.update(s_faces)
+                    skill_icon_urls.update(extract_skill_icons(s, svt_by_id))
             sg_ok = skip_sg or all(_nonempty_file(os.path.join(PUBLIC_SAINT_GRAPHS_DIR, fn)) for fn in sg_urls)
             faces_ok = skip_faces or all(_nonempty_file(os.path.join(PUBLIC_SERVANTS_DIR, rel)) for rel in face_urls)
-            if sg_ok and faces_ok:
+            skill_icons_ok = skip_skill_icons or all(
+                _nonempty_file(os.path.join(PUBLIC_SKILL_ICONS_DIR, fn)) for fn in skill_icon_urls
+            )
+            if sg_ok and faces_ok and skill_icons_ok:
                 print(f"Servant info JSONs ({len(expected_ids)} files) are already up-to-date.")
                 return
 
@@ -1465,6 +1533,8 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
         sync_saint_graphs(res.get("saint_graph_urls", {}), force=args.force, dry_run=args.dry_run)
     if not getattr(args, "skip_faces", False):
         sync_servant_faces(res.get("face_urls", {}), force=args.force, dry_run=args.dry_run)
+    if not getattr(args, "skip_skill_icons", False):
+        sync_skill_icons(res.get("skill_icon_urls", {}), force=args.force, dry_run=args.dry_run)
 
 
 def sync_bond_growth(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), force: bool = False, dry_run: bool = False):
@@ -3191,6 +3261,7 @@ def main():
     parser.add_argument("--servant-info-only", action="store_true", help="Export only public/servant_info/*.json from bulk servant/skill data")
     parser.add_argument("--skip-saint-graphs", action="store_true", help="Skip Saint Graph WebP downloads")
     parser.add_argument("--skip-faces", action="store_true", help="Skip servant modal face icon WebP downloads")
+    parser.add_argument("--skip-skill-icons", action="store_true", help="Skip active skill icon WebP downloads")
     parser.add_argument("--skip-ces", action="store_true", help="Skip Craft Essence synchronization")
     parser.add_argument("--skip-traits", action="store_true", help="Skip trait synchronization")
     parser.add_argument("--skip-event-shop", action="store_true", help="Skip event shop synchronization")
