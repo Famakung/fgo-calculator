@@ -2,7 +2,12 @@ import os
 import re
 from urllib.parse import urlparse
 
-from .effect_map import TARGET_LABELS, TRAIT_ID_LABELS, BTN_SELECT_IMAGE_MAP
+from .effect_map import (
+    TARGET_LABELS,
+    TRAIT_ID_LABELS,
+    BTN_SELECT_IMAGE_MAP,
+    SELECT_OPTION_LABELS,
+)
 from .utils import (
     fmt_condition,
     group_and_label_items,
@@ -225,9 +230,7 @@ def _fmt_skill_functions_to_lines(lines, sk, ctx=None):
         lines.append(f"[Usable only when your NP Gauge is {val_str} or lower]")
 
     if sk.get("id") in _MEAL_SKILL_CHAIN:
-        for idx, (time_label, skill_id) in enumerate(_MEAL_SKILL_CHAIN[sk.get("id")]):
-            if idx > 0:
-                lines.append("")
+        for _idx, (time_label, skill_id) in enumerate(_MEAL_SKILL_CHAIN[sk.get("id")]):
             lines.append(f"[{time_label}]")
             cur_sk = (
                 sk
@@ -270,7 +273,11 @@ def _fmt_skill_functions_to_lines(lines, sk, ctx=None):
         btn_list = select_add_info[0].get("btn", []) if select_add_info else []
         btn_labels = []
         for idx, b in enumerate(btn_list):
-            lbl = b.get("name") or BTN_SELECT_IMAGE_MAP.get(b.get("image", "")) or f"Option {idx + 1}"
+            raw_lbl = b.get("name") or BTN_SELECT_IMAGE_MAP.get(b.get("image", "")) or f"Option {idx + 1}"
+            lbl = SELECT_OPTION_LABELS.get(raw_lbl, raw_lbl)
+            m_star = re.match(r"^(\d+)個消費する$", lbl)
+            if m_star:
+                lbl = f"Expend {m_star.group(1)} Critical Stars"
             btn_labels.append(lbl)
 
         if btn_labels and len(btn_labels) >= 2:

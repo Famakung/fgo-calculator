@@ -29,6 +29,8 @@ DAMAGE_FUNC_TYPES = {
     "damageNpIndividual",
     "damageNpIndividualSum",
     "damageNpPierce",
+    "damageNpRare",
+    "damageNpBattlePointPhase",
     "damageNpStateIndividualFix",
     "damageNpAndOrCheckIndividuality",
     "damageNpHpratioLow",
@@ -190,7 +192,9 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                         if trait_id
                         else ""
                     )
-            elif func_type in ("damageNpHpratioLow", "damageNpHpratioHigh"):
+            elif func_type == "damageNpRare":
+                trait = "Low Rarity"
+            elif func_type in ("damageNpHpratioLow", "damageNpHpratioHigh", "damageNpBattlePointPhase"):
                 trait = ""
             else:
                 trait_id = sv0.get("Target")

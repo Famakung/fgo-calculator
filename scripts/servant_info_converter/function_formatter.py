@@ -9,6 +9,7 @@ from .effect_map import (
     TARGET_LABELS,
     TRAIT_ID_LABELS,
     HP_REDUCE_LABELS,
+    JP_BUFF_NAME_MAP,
 )
 from .context import FetchContext
 from .utils import (
@@ -169,11 +170,13 @@ def _is_engine_cleanup_hook(fn, inner_skill):
     for ifn in inner_fns:
         if ifn.get("funcType") != "subState":
             return False
+        if ifn.get("funcTargetType") in ("enemy", "enemyOne", "enemyAll"):
+            return False
         traits = ifn.get("traitVals", [])
         if not traits:
             return False
         for t in traits:
-            if t.get("id", 0) < 2000:
+            if t.get("id", 0) < 2000 or t.get("id", 0) in (3004, 3005):
                 return False
     return True
 
@@ -289,6 +292,8 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
 
         trait_labels = []
         for t in traits:
+            if t["id"] == 4008:
+                continue
             label = TRAIT_ID_LABELS.get(t["id"], fmt_trait_name(t))
             if label == "NP" and "NP" in action:
                 continue
@@ -389,6 +394,10 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
             elif inner_func_type == "addBattlePoint":
                 val = inner_sv0.get("BattlePointValue") or inner_sv0.get("Value", 0)
                 inner_parts.append(f"Increases Fullness gauge by {val}{inner_cond_str}{target_str}")
+            elif inner_func_type in ("gainNpFromTargets", "gainHpFromTargets"):
+                delegated = _fmt_function_core(inner_fn, ctx=ctx)
+                if delegated:
+                    inner_parts.append(delegated)
             elif inner_func_type in FUNC_TYPE_NO_BUFF:
                 entry = FUNC_TYPE_NO_BUFF[inner_func_type]
                 template, divisor, is_pct = entry.template, entry.divisor, entry.is_pct
@@ -473,6 +482,17 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
             inner_parts.append(f"{inner_rate_prefix}Inflict {ailment}{inner_cond_str} {inner_target}")
             continue
 
+        if inner_buff_type == "delayFunction":
+            delayed = fmt_delay_fn(inner_fn, ctx=ctx)
+            if not delayed:
+                if "即死" in inner_buffs[0].get("detail", "") or inner_buff_id == 5441:
+                    delayed = f'After {inner_turn if inner_turn > 0 else 1} turn "Apply Death {inner_target} [Demerit]"{inner_cond_str} {inner_target}'
+                else:
+                    bname = JP_BUFF_NAME_MAP.get(inner_buffs[0].get("name", ""), inner_buffs[0].get("name", "Delayed Effect"))
+                    delayed = f"Apply [{bname}]{inner_cond_str} {inner_target}"
+            inner_parts.append(delayed)
+            continue
+
         if inner_buff_type in BUFF_TYPE_MAP:
             entry = BUFF_TYPE_MAP[inner_buff_type]
         else:
@@ -487,6 +507,14 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
             else:
                 inner_parts.append(f"{inner_rate_prefix}{inner_buffs[0].get('name', inner_buff_type)} {inner_target}")
             continue
+        if "{traits}" in template:
+            ck_hp = [
+                HP_REDUCE_LABELS[t["id"]]
+                for t in inner_buffs[0].get("ckSelfIndv", [])
+                if t.get("id") in HP_REDUCE_LABELS
+            ]
+            if ck_hp:
+                template = template.replace("{traits}", " / ".join(ck_hp))
         card_prefix = get_card_prefix(inner_buffs[0])
         template = apply_card_prefix(inner_buff_type, template, card_prefix)
 
@@ -498,7 +526,11 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
         else:
             val_str = fmt_val_range(inner_val0, inner_val9, divisor, is_pct)
             if "{traits}" in template:
-                tvals = inner_buffs[0].get("tvals", []) or inner_buffs[0].get("ckOpIndv", [])
+                tvals = (
+                    inner_buffs[0].get("tvals", [])
+                    or inner_buffs[0].get("ckOpIndv", [])
+                    or inner_buffs[0].get("ckSelfIndv", [])
+                )
                 traits_str = " / ".join(fmt_trait_name(t) for t in tvals) if tvals else "Target"
                 rendered = template.format(val=val_str, traits=traits_str)
             else:
@@ -560,7 +592,8 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
         if trait_vals:
             trait_name = TRAIT_ID_LABELS.get(trait_vals[0]["id"], fmt_trait_name(trait_vals[0]))
         elif buff.get("name") and buff.get("name", "").lower() not in ("triggers each turn", "毎ターン発動"):
-            trait_name = buff.get("name")
+            raw_bname = buff.get("name")
+            trait_name = JP_BUFF_NAME_MAP.get(raw_bname, raw_bname)
 
         target_type = fn.get("funcTargetType", "")
         outer_target = TARGET_LABELS.get(target_type, f"for {target_type}")
@@ -701,6 +734,12 @@ def _resolve_core_context(fn, sv_start=None, sv_end=None, ctx=None) -> _CoreCtx 
             return None
 
     target = TARGET_LABELS.get(target_type, target_type)
+    if target_type == "noTarget":
+        field_target = sv0.get("FieldBuffApplyTarget")
+        if field_target == 1:
+            target = "for all allies on the field"
+        elif field_target == 2:
+            target = "for all enemies on the field"
     if fn.get("funcId") in (23523, 23465) or any(
         "背後の味方" in b.get("detail", "") for b in buffs
     ):
@@ -870,11 +909,13 @@ def _handle_skill_rank_up(core, buff):
     target = core.target
     if core.ctx and getattr(core.ctx, "svt_data", None):
         rankup_map = core.ctx.svt_data.get("script", {}).get("SkillRankUp", {})
-        for base_sk_id, target_ids in rankup_map.items():
-            if target_ids:
-                inner_id = target_ids[0]
-                inner_sk = (core.ctx.fetch_inner_skill(inner_id) if core.ctx.fetch_inner_skill else None) or {}
-                sk_name = inner_sk.get("name", "Unknown Skill")
+        non_empty = [(k, v) for k, v in rankup_map.items() if v]
+        if len(non_empty) == 1:
+            base_sk_id, target_ids = non_empty[0]
+            inner_id = target_ids[0]
+            inner_sk = (core.ctx.fetch_inner_skill(inner_id) if core.ctx.fetch_inner_skill else None) or {}
+            sk_name = inner_sk.get("name")
+            if sk_name:
                 slot = None
                 for sk in core.ctx.svt_data.get("skills", []):
                     if str(sk.get("id")) == str(base_sk_id):
@@ -882,7 +923,7 @@ def _handle_skill_rank_up(core, buff):
                         break
                 slot_str = f"Skill {slot}" if slot else "Skill"
                 return f"Change {slot_str} to [{sk_name}]{cond_str} {target}"
-    return f"Rank Up Skill{cond_str} {target}"
+    return f"Apply [Skill Rank Up]{cond_str} {target}"
 
 
 def _handle_td_type_change(core, buff):
@@ -898,7 +939,7 @@ def _handle_td_type_change(core, buff):
                 if np_item.get("card") in ("buster", "2") and "Rayproof" in np_item.get("name", ""):
                     target_np_name = np_item.get("name")
                     break
-        return f"Apply [聖剣装填] (Holy Sword Loaded) & Change Noble Phantasm to [{target_np_name}]{cond_str} {target}"
+        return f"Apply [Holy Sword Loaded] & Change Noble Phantasm to [{target_np_name}]{cond_str} {target}"
 
     indv_val = buff.get("script", {}).get("INDIVIDUALITIE")
     svt_id = indv_val.get("id") if isinstance(indv_val, dict) else indv_val
@@ -1107,6 +1148,89 @@ def _handle_buff_convert(core, buff):
     )
 
 
+def _handle_dead_function(core, buff):
+    """Handle deadFunction buff triggers."""
+    bid = buff.get("id")
+    # Enemy-only charge/crit-rate fallback counterparts
+    if bid in (1726, 5756, 6023):
+        return None
+    cond_str = core.cond_str
+    target = core.target
+    dead_map = {
+        3016: 'Apply a state that "Restore HP by 1000-3000 for all allies" when defeated',
+        5746: 'Apply a state that "Gain Critical Stars by 30" when defeated',
+        4295: 'Apply a state that "Increase NP Gauge by 20-30% & Increase Critical Strength by 30-50% (3 turns) & Gain Critical Stars each turn by 5-15 (3 turns) of the back-most single ally, excluding yourself" when defeated',
+        951: 'Apply a state that "Apply Invincible (2-3 times, 3 turns) for all allies & Restore HP by 1000-2000 for all allies" when defeated',
+        1686: 'Apply a state that "Gain Critical Stars by 10-20" when defeated',
+        4213: 'Inflict Taisui\'s Calamity <Apply a state that "Decrease DEF by 20% (3 turns) & Inflict Curse by 1000 (3 turns) & Inflict Disastrous Curse by 100% (3 turns) for all enemies" when defeated>',
+        6022: 'Apply a state that "Increase NP Gauge by 10% for all allies" when defeated',
+    }
+    if bid in dead_map:
+        return f"{dead_map[bid]}{cond_str} {target}"
+    return f"Apply [Activate on Defeat]{cond_str} {target}"
+
+
+def _handle_functioned_function(core, buff):
+    """Handle functionedFunction buff triggers (Indra, Summer Huyan Zhuo)."""
+    bid = buff.get("id")
+    if bid == 5879:
+        return None
+    cond_str = core.cond_str
+    target = core.target
+    if bid == 5874:
+        inner_id = core.sv0.get("Value")
+        np_pct = "5%" if inner_id == 970722 else "10%"
+        return f'Apply a state that "Increase NP Gauge by {np_pct} for yourself" when receiving HP recovery or Max HP Up{cond_str} {target}'
+    if bid == 5908:
+        return f'Apply a state that "Increase Quick Card effectiveness by 10% (3 turns, Max 10 stacks) for yourself" when receiving HP recovery or Max HP Up{cond_str} {target}'
+    return f"Apply a state triggered when receiving an effect{cond_str} {target}"
+
+
+def _handle_multi_guts_before(core, buff):
+    """Handle multiGutsBeforeFunction buff (Lord Logres Knighthood Conferment A)."""
+    return f'Apply a state that "Increase Guts HP recovery amount by 20% (1 time) & Increase ATK by 20% (3 turns) for the triggered ally" before Guts is activated on any ally excluding yourself{core.cond_str} {core.target}'
+
+
+def _handle_td_post_after(core, buff):
+    """Handle treasureDevicePostAfterFunction buff (Solomon Seal of Solomon E)."""
+    if buff.get("id") == 5982:
+        return None
+    return f'Apply a state that "Increase NP Gauge by 20-30% based on NP consumed for yourself" when a [Caster] ally excluding yourself uses NP{core.cond_str} {core.target}'
+
+
+def _handle_battle_point_trigger(core, buff):
+    """Handle Space Ereshkigal Master Affection (Infinity Indicator EX) passive triggers."""
+    btype = buff.get("type")
+    bid = buff.get("id")
+    cond_str = core.cond_str
+    target = core.target
+    if btype == "fieldIndividualityChangedFunction":
+        return f'Apply a state that "Increases Master Affection gauge by 10 for yourself" when entering a [Near Water] field{cond_str} {target}'
+    if btype == "confirmCommandFunction":
+        if bid == 5653:
+            return f'Apply a state that "Increases Master Affection gauge by 6 for yourself" when forming a Brave Chain{cond_str} {target}'
+        return f'Apply a state that "Increases Master Affection gauge by 3 for yourself" when selecting a Command Card{cond_str} {target}'
+    if btype == "skillBeforeFunction":
+        if buff.get("script", {}).get("useFirstTimeInTurn"):
+            return f'Apply a state that "Increases Master Affection gauge by 2 for yourself" when using a skill first in the turn{cond_str} {target}'
+        return f'Apply a state that "Increases Master Affection gauge by 3 for yourself" when using a skill{cond_str} {target}'
+    if btype == "skillTargetedBeforeFunction":
+        if buff.get("script", {}).get("fromCommandSpell"):
+            return f'Apply a state that "Increases Master Affection gauge by 10 for yourself" when targeted by a Command Spell{cond_str} {target}'
+        return f'Apply a state that "Increases Master Affection gauge by 5 for yourself" when targeted by a Master Skill{cond_str} {target}'
+    return None
+
+
+def _handle_counter_function(core, buff):
+    """Handle counterFunction buff (Manannán mac Lir (Bazett) Fragarach)."""
+    return f'Apply [Fragarach Counter] <Counterattack with "Deal significant Quick damage by 600-1000% <effect increases with Level> & Decrease Quick Card resistance by 10% (3 turns) to a single enemy & Gain Critical Stars by 10" when targeted by an enemy\'s normal action>{core.cond_str} {core.target}'
+
+
+def _handle_reflection_function(core, buff):
+    """Handle reflectionFunction buff (Aŋra Mainiiu Verg Avesta)."""
+    return f"Apply [Reflect Damage] <Deal damage to all enemies at enemy turn end equal to 2-3x the damage taken during the turn>{core.cond_str} {core.target}"
+
+
 def _resolve_traits_from_config(core, buff, config, template, divisor, is_pct):
     """Resolve trait-based template modifications from config."""
     traits_raw = []
@@ -1132,16 +1256,17 @@ def _resolve_traits_from_config(core, buff, config, template, divisor, is_pct):
         valid_vals = [
             v for v in buff.get("vals", []) if v.get("id") not in (3004, 3005)
         ]
-        if valid_vals:
-            traits_raw = valid_vals
-        elif tid and tid != 9999 and tid in TRAIT_ID_LABELS:
+        if tid and tid != 9999 and tid in TRAIT_ID_LABELS:
             traits_raw = [{"id": tid}]
+        elif valid_vals:
+            traits_raw = valid_vals
         elif buff.get("name"):
-            traits_raw = [{"name": buff["name"]}]
+            raw_bname = buff["name"]
+            traits_raw = [{"name": JP_BUFF_NAME_MAP.get(raw_bname, raw_bname)}]
         elif tid and tid != 9999:
             traits_raw = [{"id": tid}]
     elif source == "vals_field":
-        field_indiv = core.sv0.get("FieldIndividuality")
+        field_indiv = core.sv0.get("FieldIndividuality") or core.sv0.get("TargetList")
         if field_indiv:
             traits_raw = [{"id": tid} for tid in field_indiv]
         else:
@@ -1179,9 +1304,12 @@ def _resolve_traits_from_config(core, buff, config, template, divisor, is_pct):
                     else template + f" while {status_label} is applied"
                 )
             raw_names = []
+            trait_id_set = {t.get("id", 0) for t in traits_raw}
             for t in traits_raw:
                 tid = t.get("id", 0)
                 if tid in INDIVIDUALITIE_IGNORE:
+                    continue
+                if tid in (2018, 2040) and (trait_id_set & {1002, 1119, 2000}):
                     continue
                 name = (
                     HP_REDUCE_LABELS[tid]
@@ -1189,7 +1317,7 @@ def _resolve_traits_from_config(core, buff, config, template, divisor, is_pct):
                     else (
                         TRAIT_ID_LABELS.get(tid, fmt_trait_name(t))
                         if tid != 0
-                        else t.get("name", "Unknown")
+                        else JP_BUFF_NAME_MAP.get(t.get("name", "Unknown"), t.get("name", "Unknown"))
                     )
                 )
                 if name not in raw_names:
@@ -1406,6 +1534,20 @@ def _handle_buff_type(core):
             return _handle_overwrite_svt_card_type(core, buff)
         if config.get("special_handler") == "buffConvert":
             return _handle_buff_convert(core, buff)
+        if config.get("special_handler") == "deadFunction":
+            return _handle_dead_function(core, buff)
+        if config.get("special_handler") == "functionedFunction":
+            return _handle_functioned_function(core, buff)
+        if config.get("special_handler") == "multiGutsBeforeFunction":
+            return _handle_multi_guts_before(core, buff)
+        if config.get("special_handler") == "treasureDevicePostAfterFunction":
+            return _handle_td_post_after(core, buff)
+        if config.get("special_handler") == "battlePointTrigger":
+            return _handle_battle_point_trigger(core, buff)
+        if config.get("special_handler") == "counterFunction":
+            return _handle_counter_function(core, buff)
+        if config.get("special_handler") == "reflectionFunction":
+            return _handle_reflection_function(core, buff)
         template, divisor, is_pct = _resolve_traits_from_config(
             core, buff, config, template, divisor, is_pct
         )
@@ -1472,7 +1614,7 @@ def _handle_transform_servant(core):
 
 
 def _handle_gain_np_individual_sum(core):
-    """Handle the gainNpIndividualSum func type."""
+    """Handle the gainNpIndividualSum and gainNpTargetSum func types."""
     v0, v9 = core.sv0.get("Value", 0) / 100, core.sv9.get("Value", 0) / 100
     val_str = f"{v0:g}-{v9:g}%" if v0 != v9 else f"{v0:g}%"
     val2 = core.sv0.get("Value2", 0)
@@ -1482,6 +1624,8 @@ def _handle_gain_np_individual_sum(core):
         trait_check_target = "allies"
     elif val2 == 3:
         trait_check_target = "allies and enemies"
+    elif val2 == 4:
+        trait_check_target = "allies and enemies excluding yourself"
     else:
         check_target_id = core.sv0.get("GainNpTargetPassiveIndividuality", 0)
         trait_check_target = "allies and enemies" if check_target_id == 1 else "enemies"
@@ -1495,6 +1639,86 @@ def _handle_gain_np_individual_sum(core):
         for t in core.fn.get("traitVals", [])
     ]
     return f"Increase NP Gauge by {val_str} {core.target} according to the number of {trait_check_target} in [{' and '.join(trait_labels)}] state"
+
+
+def _handle_gain_np_buff_individual_sum(core):
+    """Handle the gainNpBuffIndividualSum func type."""
+    v0, v9 = core.sv0.get("Value", 0) / 100, core.sv9.get("Value", 0) / 100
+    val_str = f"{v0:g}-{v9:g}%" if v0 != v9 else f"{v0:g}%"
+    traits = core.fn.get("traitVals", [])
+    trait_ids = [t.get("id") for t in traits]
+    if 2836 in trait_ids:
+        return f"Increase NP Gauge by {val_str} {core.target} depending on number of enemies"
+    trait_labels = [
+        f"{TRAIT_ID_LABELS.get(t['id'], fmt_trait_name(t))}"
+        for t in traits
+    ]
+    return f"Increase NP Gauge by {val_str} per [{' and '.join(trait_labels)}] state {core.target}"
+
+
+def _handle_gain_hp_from_targets(core):
+    """Handle the gainHpFromTargets func type."""
+    sv0, sv9 = core.sv0, core.sv9
+    df = sv0.get("DependFunc") or sv9.get("DependFunc") or {}
+    df_vals0 = sv0.get("DependFuncVals") or {}
+    df_vals9 = sv9.get("DependFuncVals") or {}
+
+    df_target_type = df.get("funcTargetType", "")
+    df_target = TARGET_LABELS.get(df_target_type, df_target_type)
+    val0 = df_vals0.get("Value", 0)
+    val9 = df_vals9.get("Value", 0)
+    val_str = fmt_val_range(val0, val9, 1, False)
+    drain_part = f"Decrease HP by {val_str} {df_target}" if df_target else ""
+
+    hp_v0 = df_vals0.get("Value2") if "Value2" in df_vals0 else (core.val0 if core.val0 is not None else val0)
+    hp_v9 = df_vals9.get("Value2") if "Value2" in df_vals9 else (core.val9 if core.val9 is not None else val9)
+    hp_val_str = fmt_val_range(hp_v0, hp_v9, 1, False)
+    gain_part = f"Restore HP by {hp_val_str}{core.cond_str} corresponding to the amount decreased {core.target}"
+    if drain_part:
+        return f"{drain_part} and {gain_part}"
+    return gain_part
+
+
+def _handle_extend_buffturn(core):
+    """Handle the extendBuffturn func type."""
+    val_str = fmt_val_range(core.val0, core.val9, 1, False)
+    target_list = core.sv0.get("TargetList") or []
+    traits = [TRAIT_ID_LABELS.get(t, fmt_trait_name(t)) for t in target_list]
+    removable_str = "removable " if core.sv0.get("IgnoreIndivUnreleaseable") else ""
+    trait_part = f"[{', '.join(traits)}] " if traits else ""
+    return f"Extend duration of {removable_str}{trait_part}effects by {val_str} turns {core.target}"
+
+
+def _handle_move_state(core):
+    """Handle the moveState func type."""
+    df = core.sv0.get("DependFunc") or core.sv9.get("DependFunc") or {}
+    df_target_type = df.get("funcTargetType", "")
+    from_target_map = {
+        "ptOther": "from all allies excluding yourself",
+        "fieldOther": "from all allies and enemies excluding yourself",
+        "enemyAll": "from all enemies",
+        "enemy": "from one enemy",
+        "enemyOne": "from one enemy",
+        "ptAll": "from all allies",
+        "ptOne": "from a single ally",
+    }
+    from_str = from_target_map.get(
+        df_target_type, f"from {TARGET_LABELS.get(df_target_type, df_target_type)}"
+    )
+    raw_traits = df.get("traitVals") or []
+    traits = [TRAIT_ID_LABELS.get(t["id"], fmt_trait_name(t)) for t in raw_traits]
+    trait_str = " and ".join(f"[{t}]" for t in traits) if traits else "states"
+    is_ailment = any(t.get("id") in (3011, 3015, 3026, 3005) for t in raw_traits)
+    demerit_str = " [Demerit]" if is_ailment or is_demerit(core.fn) else ""
+    return f"Absorb {trait_str} {from_str} {core.target}{demerit_str}"
+
+
+def _handle_extend_user_equip_skill(core):
+    """Handle the extendUserEquipSkill func type (Kingprotea Alter NP)."""
+    val_str = fmt_val_range(core.val0, core.val9, 1, False)
+    max_num = core.sv0.get("UserEquipSkillMaxTargetNum")
+    max_str = f" (Max {max_num} available skills)" if max_num else ""
+    return f"Increase Master Skill cooldown by {val_str} turns{max_str} {core.target} [Demerit]"
 
 
 def _handle_gain_np_from_targets(core):
@@ -1535,8 +1759,8 @@ def _handle_gain_np_from_targets(core):
     else:
         drain_part = ""
 
-    np_v0 = df_vals0.get("Value2") if "Value2" in df_vals0 else core.val0
-    np_v9 = df_vals9.get("Value2") if "Value2" in df_vals9 else core.val9
+    np_v0 = df_vals0.get("Value2") if "Value2" in df_vals0 else (core.val0 if core.val0 is not None else df_vals0.get("Value"))
+    np_v9 = df_vals9.get("Value2") if "Value2" in df_vals9 else (core.val9 if core.val9 is not None else df_vals9.get("Value"))
     np_val_str = fmt_val_range(np_v0, np_v9, 100, True)
     gain_part = f"Increase NP Gauge by {np_val_str}{core.cond_str} corresponding to the amount decreased {core.target}"
 
@@ -1621,10 +1845,20 @@ def _fmt_function_core(fn, sv_start=None, sv_end=None, ctx=None) -> str | None:
         result = _handle_transform_servant(core)
         if result is not None:
             return result
-    if core.func_type == "gainNpIndividualSum":
+    if core.func_type in ("gainNpIndividualSum", "gainNpTargetSum"):
         return _handle_gain_np_individual_sum(core)
+    if core.func_type == "gainNpBuffIndividualSum":
+        return _handle_gain_np_buff_individual_sum(core)
     if core.func_type == "gainNpFromTargets":
         return _handle_gain_np_from_targets(core)
+    if core.func_type == "gainHpFromTargets":
+        return _handle_gain_hp_from_targets(core)
+    if core.func_type == "extendBuffturn":
+        return _handle_extend_buffturn(core)
+    if core.func_type == "moveState":
+        return _handle_move_state(core)
+    if core.func_type == "extendUserEquipSkill":
+        return _handle_extend_user_equip_skill(core)
     if core.func_type == "gainNpCriticalstarSum":
         return _handle_gain_np_criticalstar_sum(core)
     if core.func_type in FUNC_TYPE_NO_BUFF:

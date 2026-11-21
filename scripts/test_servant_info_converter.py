@@ -1265,6 +1265,276 @@ class ServantInfoConverterTests(unittest.TestCase):
                 self.assertEqual(img.format, "WEBP")
                 self.assertEqual(img.size, (128, 128))
 
+    def test_uncovered_effect_texts_categories_a_through_l(self):
+        from servant_info_converter.function_formatter import fmt_function
+        from servant_info_converter.np_formatter import fmt_np_function
+        from servant_info_converter.skill_formatter import format_skills_structured
+
+        ctx = FetchContext(
+            fetch_inner_skill=lambda sid: {
+                967346: {
+                    "id": 967346,
+                    "functions": [
+                        {
+                            "funcType": "gainNpFromTargets",
+                            "funcTargetType": "self",
+                            "svals": [
+                                {
+                                    "Rate": 1000,
+                                    "DependFunc": {"funcType": "lossNp", "funcTargetType": "enemy"},
+                                    "DependFuncVals": {"Rate": 1000, "Value": 1000},
+                                }
+                            ],
+                        }
+                    ],
+                },
+                969850: {
+                    "id": 969850,
+                    "functions": [
+                        {
+                            "funcType": "addStateShort",
+                            "funcTargetType": "ptAll",
+                            "buffs": [{"id": 5112, "type": "upFuncHpReduce", "ckSelfIndv": [{"id": 3015}]}],
+                            "svals": [{"Rate": 1000, "Turn": 5, "Value": 1000}],
+                        }
+                    ],
+                },
+                966580: {
+                    "id": 966580,
+                    "functions": [
+                        {
+                            "funcType": "subState",
+                            "funcTargetType": "enemy",
+                            "svals": [{"Rate": 1000, "Value": 1}],
+                            "functvals": [{"id": 3004, "name": "Offensive Buff"}],
+                        }
+                    ],
+                },
+            }.get(int(sid))
+        )
+
+        # Category A & J: newly mapped funcTypes & gainNpFromTargets Value fallback
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "gainNpTargetSum",
+                    "funcTargetType": "self",
+                    "traitVals": [{"id": 5000}],
+                    "svals": [{"Value": i * 1000} for i in range(1, 11)],
+                }
+            ),
+            "Increase NP Gauge by 10-100% for yourself depending on number of enemies",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "gainNpBuffIndividualSum",
+                    "funcTargetType": "self",
+                    "traitVals": [{"id": 10047}],
+                    "svals": [{"Value": 1000}],
+                }
+            ),
+            "Increase NP Gauge by 10% per [Thirst for death] state for yourself",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "gainHpFromTargets",
+                    "funcTargetType": "self",
+                    "svals": [
+                        {
+                            "DependFunc": {"funcType": "lossHpSafe", "funcTargetType": "enemyAll"},
+                            "DependFuncVals": {"Value": i * 100, "Value2": i * 100},
+                        }
+                        for i in range(1, 11)
+                    ],
+                }
+            ),
+            "Decrease HP by 100-1000 for all enemies and Restore HP by 100-1000 corresponding to the amount decreased for yourself",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "extendBuffturn",
+                    "funcTargetType": "ptOne",
+                    "svals": [{"Value": 1, "TargetList": [4001]}],
+                }
+            ),
+            "Extend duration of [Arts] effects by 1 turns for a single ally",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "moveState",
+                    "funcTargetType": "self",
+                    "svals": [
+                        {
+                            "DependFunc": {
+                                "funcTargetType": "enemyOne",
+                                "traitVals": [{"id": 3026}],
+                            }
+                        }
+                    ],
+                }
+            ),
+            "Absorb [Curse] from one enemy for yourself [Demerit]",
+        )
+        self.assertEqual(
+            fmt_function({"funcType": "extendUserEquipSkill", "funcTargetType": "self", "svals": [{"Value": 1}]}),
+            "Increase Master Skill cooldown by 1 turns for yourself [Demerit]",
+        )
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcType": "damageNpRare",
+                    "funcTargetType": "enemyAll",
+                    "svals": [{"Value": i * 1000, "Correction": 1500} for i in range(1, 6)],
+                    "svals2": [{"Value": i * 1000, "Correction": 2000} for i in range(1, 6)],
+                }
+            ),
+            "Deal heavy Special Attack [Low Rarity] by 150-200% damage <Special Attack damage increases with Overcharge> by 100-500% <effect increases with Level> to all enemies",
+        )
+
+        # Category B, C, E, F, G, H, I, J: buffTypes, trigger functions, traits, targets, Rank Up Skill, Spreading Fire
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5379, "name": "呪い滲出", "type": "commandattackAfterFunction"}],
+                    "svals": [{"Turn": 3, "Value": 967346}],
+                },
+                ctx=ctx,
+            ),
+            'Apply a state that "Decrease NP Gauge by 10% for one enemy and Increase NP Gauge by 10% corresponding to the amount decreased for yourself" when Normal attacking after damage (3 turns) for yourself',
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "addStateShort",
+                    "funcTargetType": "ptAll",
+                    "buffs": [{"id": 5112, "type": "upFuncHpReduce", "ckSelfIndv": [{"id": 3015}]}],
+                    "svals": [{"Turn": 5, "Value": i * 100} for i in range(1, 11)],
+                },
+                ctx=ctx,
+            ),
+            "Inflict Spreading Fire by 10-100% (5 turns) for all allies",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 6250, "type": "skillRankUp"}],
+                    "svals": [{"Turn": 3, "Value": 1}],
+                }
+            ),
+            "Apply [Skill Rank Up] (3 turns) for yourself",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "addStateShort",
+                    "funcTargetType": "noTarget",
+                    "buffs": [{"id": 6887, "type": "downDefence"}],
+                    "svals": [{"Turn": 3, "Value": 200, "FieldBuffApplyTarget": 2}],
+                }
+            ),
+            "Decrease DEF by 20% (3 turns) for all enemies on the field",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "addState",
+                    "funcTargetType": "ptOne",
+                    "buffs": [{"id": 3437, "type": "addIndividuality", "vals": [{"id": 10058}]}],
+                    "svals": [{"Turn": 3, "Value": 2355}],
+                }
+            ),
+            "Apply [Illya] (3 turns) for a single ally",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [
+                        {"id": 6666, "type": "upHate", "ckOpIndv": [{"id": 100}, {"id": 101}]},
+                    ],
+                    "svals": [{"Turn": 3, "Value": 3000}],
+                }
+            ),
+            "Apply Target Focus against [Saber and Lancer] (3 turns) for yourself",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "addState",
+                    "funcTargetType": "ptAll",
+                    "buffs": [{"id": 9999, "type": "upCriticaldamage"}],
+                    "svals": [{"Turn": 3, "Value": 200}],
+                    "functvals": [{"id": 3}],
+                }
+            ),
+            "Increase Critical Strength by 20% (3 turns) for all [Genderless] allies",
+        )
+        # Silent drop regression check: Dantès/Ushiwakamaru enemy offensive/defensive buff removal on attack is preserved
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5066, "type": "commandattackBeforeFunction"}],
+                    "svals": [{"Turn": 3, "Value": 966580}],
+                },
+                ctx=ctx,
+            ),
+            'Apply a state that "Remove Debuffs for one enemy" when Normal attacking before damage (3 turns) for yourself',
+        )
+
+        # Category K: SelectAddInfo JP option labels translated to English matching frontend OPTION_TRANSLATIONS
+        select_skill = [
+            {
+                "id": 1001,
+                "num": 1,
+                "name": "Choice Skill",
+                "coolDown": [7] * 10,
+                "extraPassive": [],
+                "script": {
+                    "SelectAddInfo": [
+                        {
+                            "title": "選択",
+                            "btn": [
+                                {"name": "消費しない", "conds": []},
+                                {"name": "10個消費する", "conds": []},
+                            ],
+                        }
+                    ]
+                },
+                "functions": [
+                    {
+                        "funcType": "gainNp",
+                        "funcTargetType": "ptOne",
+                        "svals": [{"Value": 3000, "ActSelectIndex": 0}],
+                    },
+                    {
+                        "funcType": "gainNp",
+                        "funcTargetType": "ptAll",
+                        "svals": [{"Value": 2000, "ActSelectIndex": 1}],
+                    },
+                ],
+            }
+        ]
+        formatted_select = format_skills_structured(select_skill, svt_id=100100)
+        self.assertEqual(
+            formatted_select[0]["variantsByTier"][0]["effects"],
+            [
+                "Select 2 Options ([Do not expend] / [Expend 10 Critical Stars])",
+                "[Do not expend] Increase NP Gauge by 30% for a single ally",
+                "[Expend 10 Critical Stars] Increase NP Gauge by 20% for all allies",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
