@@ -436,7 +436,18 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
 
         if inner_buff_type == "addIndividuality":
             trait_id = inner_sv0.get("Value")
-            label = TRAIT_ID_LABELS.get(trait_id) or inner_buffs[0].get("name") or fmt_trait_name(trait_id)
+            valid_vals = [
+                v for v in inner_buffs[0].get("vals", [])
+                if v.get("id") not in (3004, 3005, 3009)
+            ]
+            label = (
+                (TRAIT_ID_LABELS.get(trait_id) if trait_id and trait_id != 9999 else None)
+                or inner_buffs[0].get("name")
+                or (fmt_trait_name(valid_vals[0]) if valid_vals else None)
+                or (fmt_trait_name(trait_id) if trait_id and trait_id != 9999 else None)
+            )
+            if not label:
+                continue
             inner_parts.append(f"Apply [{label}]{inner_cond_str} {inner_target}")
             continue
 
@@ -1123,11 +1134,11 @@ def _resolve_traits_from_config(core, buff, config, template, divisor, is_pct):
         ]
         if valid_vals:
             traits_raw = valid_vals
-        elif tid and tid in TRAIT_ID_LABELS:
+        elif tid and tid != 9999 and tid in TRAIT_ID_LABELS:
             traits_raw = [{"id": tid}]
         elif buff.get("name"):
             traits_raw = [{"name": buff["name"]}]
-        elif tid:
+        elif tid and tid != 9999:
             traits_raw = [{"id": tid}]
     elif source == "vals_field":
         field_indiv = core.sv0.get("FieldIndividuality")

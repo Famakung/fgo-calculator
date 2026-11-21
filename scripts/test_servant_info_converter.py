@@ -24,6 +24,14 @@ from servant_info_converter.export_servant_info import (  # noqa: E402
     build_svt_by_id,
     export_all_servant_info,
 )
+from servant_info_converter.context import FetchContext  # noqa: E402
+from servant_info_converter.effect_map import TRAIT_ID_LABELS  # noqa: E402
+from servant_info_converter.np_formatter import format_np_structured  # noqa: E402
+from servant_info_converter.skill_formatter import (  # noqa: E402
+    format_passives_structured,
+    format_skills_structured,
+)
+from servant_info_converter.utils import group_and_label_items  # noqa: E402
 import sync_atlas_data  # noqa: E402
 
 
@@ -1072,6 +1080,114 @@ class ServantInfoConverterTests(unittest.TestCase):
                 with Image.open(dest) as img:
                     self.assertEqual(img.format, "WEBP")
                     self.assertEqual(img.size, sync_atlas_data.FACE_ICON_SIZE)
+
+    def test_single_skill_clean_title_includes_name(self):
+        svt = _make_standard_servant()
+        payload = build_servant_info_payload(svt)
+        skills = payload["formatted"]["skills"]
+        self.assertEqual(skills[0]["variantsByTier"][0]["cleanTitle"], "Skill 1 (Charisma B)")
+        self.assertEqual(skills[0]["variantsByTier"][1]["cleanTitle"], "Skill 1 (Charisma of Dragon A)")
+        self.assertEqual(skills[1]["variantsByTier"][0]["cleanTitle"], "Skill 2 (Mana Burst A)")
+
+    def test_multi_rank_up_tier_order_skills_and_nps(self):
+        skills = [
+            {"id": 136550, "num": 1, "name": "Galvanism A", "strengthStatus": 2, "priority": 1, "coolDown": [7], "functions": []},
+            {"id": 685551, "num": 1, "name": "Tesla Coil A+", "strengthStatus": 1, "priority": 2, "coolDown": [7], "functions": []},
+            {"id": 685552, "num": 1, "name": "Tesla Coil A++", "strengthStatus": 99, "priority": 3, "coolDown": [7], "functions": []},
+        ]
+        slot = format_skills_structured(skills, 201100)[0]
+        self.assertEqual(slot["tiers"], [0, 1, 2])
+        self.assertEqual(slot["variantsByTier"][0]["cleanTitle"], "Skill 1 (Galvanism A)")
+        self.assertEqual(slot["variantsByTier"][1]["cleanTitle"], "Skill 1 (Tesla Coil A+)")
+        self.assertEqual(slot["variantsByTier"][2]["cleanTitle"], "Skill 1 (Tesla Coil A++)")
+
+        nps = [
+            {"id": 700701, "num": 1, "name": "Kazikli Bey", "rank": "C", "type": "Single Target", "card": "arts", "strengthStatus": 2, "priority": 101, "functions": []},
+            {"id": 700702, "num": 1, "name": "Kazikli Bey+", "rank": "C+", "type": "Single Target", "card": "arts", "strengthStatus": 1, "priority": 102, "functions": []},
+            {"id": 700703, "num": 1, "name": "Kazikli Bey++", "rank": "B", "type": "Single Target", "card": "arts", "strengthStatus": 99, "priority": 103, "functions": []},
+        ]
+        np_slot = format_np_structured(nps, 700700)[0]
+        self.assertEqual(np_slot["tiers"], [0, 1, 2])
+        self.assertEqual(np_slot["variantsByTier"][0]["name"], "Kazikli Bey")
+        self.assertEqual(np_slot["variantsByTier"][1]["name"], "Kazikli Bey+")
+        self.assertEqual(np_slot["variantsByTier"][2]["name"], "Kazikli Bey++")
+
+        # Fallback ordering without priority when strengthStatus=99 is present
+        no_prio = [
+            {"id": 10, "num": 1, "name": "Base", "strengthStatus": 2},
+            {"id": 11, "num": 1, "name": "Rank1", "strengthStatus": 1},
+            {"id": 12, "num": 1, "name": "Rank2", "strengthStatus": 99},
+        ]
+        grouped = group_and_label_items(no_prio, 1, "Skill")
+        self.assertEqual([it["name"] for it, _ in grouped], ["Base", "Rank1", "Rank2"])
+
+    def test_add_individuality_9999_does_not_fallback_to_robin_counter(self):
+        self.assertNotIn(9999, TRAIT_ID_LABELS)
+        inner_magic_bullet = {
+            "id": 970499,
+            "functions": [
+                {
+                    "funcId": 21660,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5586, "name": "Magic Bullets", "type": "addIndividuality", "vals": [{"id": 3004}, {"id": 2885}]}],
+                    "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 9999}],
+                },
+                {
+                    "funcId": 21660,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5586, "name": "Magic Bullets", "type": "addIndividuality", "vals": [{"id": 3004}, {"id": 2885}]}],
+                    "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 9999}],
+                },
+            ],
+        }
+        inner_empty_name = {
+            "id": 970739,
+            "functions": [
+                {
+                    "funcId": 22893,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5918, "name": "", "type": "addIndividuality", "vals": [{"id": 2999, "name": "unknown"}]}],
+                    "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 9999}],
+                }
+            ],
+        }
+        passives = [
+            {
+                "id": 2353650,
+                "name": "Deploy Magic Bullet EX",
+                "functions": [
+                    {
+                        "funcId": 21661,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "buffs": [{"id": 5594, "name": "Triggers Each Turn", "type": "selfturnendFunction", "vals": [{"id": 3004}]}],
+                        "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 970499}],
+                    }
+                ],
+            },
+            {
+                "id": 2537551,
+                "name": "Territory Creation",
+                "functions": [
+                    {
+                        "funcId": 22894,
+                        "funcType": "addStateShort",
+                        "funcTargetType": "self",
+                        "buffs": [{"id": 5916, "name": "", "type": "commandattackBeforeFunction", "vals": []}],
+                        "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 970739}],
+                    }
+                ],
+            },
+        ]
+        skill_by_id = {970499: inner_magic_bullet, 970739: inner_empty_name}
+        ctx = FetchContext(fetch_inner_skill=lambda sid: skill_by_id.get(int(sid)))
+        res = format_passives_structured(passives, ctx=ctx)
+        effects_text = "\n".join(res[0]["variantsByTier"][0]["effects"])
+        self.assertIn("Magic Bullets", effects_text)
+        self.assertNotIn("Robin Counter", effects_text)
 
 
 if __name__ == "__main__":

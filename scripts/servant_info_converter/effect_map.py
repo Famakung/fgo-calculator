@@ -527,7 +527,6 @@ TRAIT_ID_LABELS = {
     3103: "Not Protected",
     3121: "Under the Moonlight",
     3122: "Under the Sunlight",
-    9999: "Robin Counter",
     # Card types
     4001: "Arts",
     4002: "Buster",

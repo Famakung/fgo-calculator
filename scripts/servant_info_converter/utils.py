@@ -580,7 +580,16 @@ def group_and_label_items(items, svt_id, item_prefix, svt_key=None, include_num=
             ss = item.get("strengthStatus", 0)
             by_ss.setdefault(ss, []).append(item)
 
-        sorted_ss = sorted(by_ss.keys())
+        def _ss_sort_key(ss):
+            items_in_ss = by_ss[ss]
+            prios = [it["priority"] for it in items_in_ss if it.get("priority") is not None]
+            if prios:
+                return (0, min(prios), 1 if ss == 99 else 0, -ss)
+            if 99 in by_ss:
+                return (1, 1 if ss == 99 else 0, -ss if ss > 0 else -1000, 0)
+            return (1, 0, ss, 0)
+
+        sorted_ss = sorted(by_ss.keys(), key=_ss_sort_key)
         for i, ss in enumerate(sorted_ss):
             sub_group = by_ss[ss]
             prefix = f"{item_prefix} {num}" if include_num else item_prefix

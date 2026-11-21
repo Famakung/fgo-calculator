@@ -653,12 +653,14 @@ def format_skills_structured(
             cd_str = f"Cooldown {f'{cd[0]}-{cd[-1]}' if cd[0] != cd[-1] else str(cd[0])} turns"
             fx = []
             _fmt_skill_functions_to_lines(fx, sk, ctx=ctx)
+            sk_name = (sk.get("name") or "").strip()
+            clean_title = f"Skill {num} ({sk_name})" if sk_name else f"Skill {num}"
 
             variant = {
                 "tier": tier,
                 "type": "skill",
                 "rawTitle": label,
-                "cleanTitle": f"Skill {num}",
+                "cleanTitle": clean_title,
                 "cooldown": cd_str,
                 "effects": fx,
                 "forms": [],
