@@ -167,7 +167,17 @@ def main():
     cache_key = cache_step["with"]["key"]
     sync_run = next(s for s in steps if s.get("name") == "Sync latest game data from Atlas Academy")["run"]
     assert "src/scripts/data/" in cache_path, "data dir not in cache path"
-    assert "public/event_shop/" in cache_path, "event shop icons not in cache path"
+    for static_img_dir in ("public/servants/", "public/craft_essences/", "public/event_shop/"):
+        assert static_img_dir not in cache_path, f"{static_img_dir} must not share the script-hashed cache"
+    img_cache_step = next(s for s in steps if s.get("name") == "Restore Static Image Cache")
+    img_cache_path = img_cache_step["with"]["path"]
+    img_cache_key = img_cache_step["with"]["key"]
+    for static_img_dir in ("public/servants/", "public/craft_essences/", "public/event_shop/"):
+        assert static_img_dir in img_cache_path, f"{static_img_dir} missing from static image cache"
+    assert img_cache_step.get("if") == "steps.do_work.outputs.DO_WORK == 'true'", "static image cache restore must skip on idle runs"
+    assert "data_version.txt" in img_cache_key, "static image cache key must hash .ci-baselines/data_version.txt"
+    assert "sync_atlas_data.py" not in img_cache_key, "static image cache key must not hash sync_atlas_data.py"
+    assert "fetch_bordered_ces.py" not in img_cache_key, "static image cache key must not hash fetch_bordered_ces.py"
     assert "rm -f" not in sync_run, "sync still wipes generated data"
     assert cache_step.get("if") == "steps.do_work.outputs.DO_WORK == 'true'", "asset cache restore must skip on idle runs"
     assert "sync_atlas_data.py" in cache_key, "cache key must hash sync_atlas_data.py"
