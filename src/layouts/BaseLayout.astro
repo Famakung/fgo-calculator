@@ -29,10 +29,11 @@ const raidEventIds = prunedEvents
   .map((e) => e.event.id);
 
 // One source for the asset cache-buster: the preload script below takes it from define:vars, so a bump here reaches the preloads and the runtime src together.
+const buildId = String(Date.now());
 const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop optimizer, Bond Point calculator, and Bond Gain CE for Fate/Grand Order farming.' } = Astro.props;
 ---
 <!doctype html>
-<html lang="en">
+<html lang="en" data-build-id={buildId}>
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
@@ -149,13 +150,16 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
     <script is:inline>if('serviceWorker'in navigator){navigator.serviceWorker.getRegistrations().then(function(r){for(var i=0;i<r.length;i++){r[i].unregister()}})}if('caches'in window){caches.keys().then(function(k){for(var i=0;i<k.length;i++){caches.delete(k[i])}})}</script>
     <script is:inline>
     (function () {
+      try { sessionStorage.removeItem("fgo_build_etag"); } catch (e) {}
       if (/^(localhost|127\.)/.test(location.hostname)) return;
-      var KEY = "fgo_build_etag";
+      var currentBuild = Number(document.documentElement.getAttribute("data-build-id")) || 0;
+      if (!currentBuild) return;
       var url = location.pathname + location.search;
-      function store(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} }
-      function read(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
-      function showBanner() {
-        if (!document.body) { setTimeout(showBanner, 100); return; }
+      var lastEtag = null;
+      var dismissedBuild = 0;
+      var inFlight = false;
+      function showBanner(targetBuild) {
+        if (!document.body) { setTimeout(function () { showBanner(targetBuild); }, 100); return; }
         if (document.getElementById("fgo-newver")) return;
         var bar = document.createElement("div");
         bar.id = "fgo-newver";
@@ -172,23 +176,32 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
         x.textContent = "×";
         x.setAttribute("aria-label", "Dismiss");
         x.style.cssText = "border:none;background:transparent;color:#fff;font-size:1.3rem;line-height:1;cursor:pointer;padding:0 4px;";
-        x.onclick = function () { bar.remove(); };
+        x.onclick = function () { dismissedBuild = targetBuild; bar.remove(); };
         bar.appendChild(msg);
         bar.appendChild(btn);
         bar.appendChild(x);
         document.body.appendChild(bar);
       }
       function check() {
-        var seen = read(KEY);
-        fetch(url, { cache: "no-store", headers: seen ? { "If-None-Match": seen } : {} })
+        if (inFlight) return;
+        inFlight = true;
+        fetch(url, { cache: "no-store", headers: lastEtag ? { "If-None-Match": lastEtag } : {} })
           .then(function (r) {
-            if (r.status === 304) return;
+            if (r.status === 304 || !r.ok) return null;
             var etag = r.headers.get("ETag");
-            if (!etag) return;
-            store(KEY, etag);
-            if (seen && etag !== seen) showBanner();
+            if (etag) lastEtag = etag;
+            return r.text();
           })
-          .catch(function () {});
+          .then(function (html) {
+            if (!html) return;
+            var m = html.match(/<html\b[^>]*\bdata-build-id=["']?(\d+)["']?/i);
+            var remoteBuild = m ? Number(m[1]) : 0;
+            if (remoteBuild > currentBuild && remoteBuild !== dismissedBuild) {
+              showBanner(remoteBuild);
+            }
+          })
+          .catch(function () {})
+          .finally(function () { inFlight = false; });
       }
       check();
       setInterval(check, 30000);
