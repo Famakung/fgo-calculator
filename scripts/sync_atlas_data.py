@@ -225,6 +225,37 @@ def _save_etag(cache_dir: str, filename: str, etag: Optional[str]):
 _json_mem_cache: Dict[Tuple[str, str], dict] = {}
 _json_mem_lock = threading.Lock()
 _json_unchanged_keys: Set[Tuple[str, str]] = set()
+ENDED_EVENT_CACHE_GRACE_SECONDS = 7 * 24 * 60 * 60
+
+
+def _is_settled_ended_event(event: Optional[dict], now: Optional[int] = None) -> bool:
+    """True once an event's JP window closed more than 7 days ago (post-end quests/drops settled)."""
+    if not isinstance(event, dict):
+        return False
+    ended = event.get("finishedAt") or event.get("endedAt") or 0
+    if not ended:
+        return False
+    moment = int(time.time()) if now is None else now
+    return (ended + ENDED_EVENT_CACHE_GRACE_SECONDS) < moment
+
+
+def _read_settled_cache(
+    cache_dir: str, filename: str, force: bool = False, trust_cache: bool = False
+) -> Optional[dict]:
+    """Return on-disk cached JSON without an HTTP check when trust_cache is True and not forced."""
+    if not trust_cache or force:
+        return None
+    mem_key = (os.path.abspath(cache_dir), filename)
+    with _json_mem_lock:
+        if mem_key in _json_mem_cache:
+            return _json_mem_cache[mem_key]
+    cached = _load_cached(os.path.join(cache_dir, filename))
+    if cached is None:
+        return None
+    with _json_mem_lock:
+        _json_unchanged_keys.add(mem_key)
+        _json_mem_cache[mem_key] = cached
+    return cached
 
 
 def get_cached_json(cache_dir: str, filename: str, url: str, force: bool = False) -> dict:
@@ -2111,7 +2142,13 @@ def _shop_window_open(event: dict, moment: int) -> bool:
     )
 
 
-def _select_farm_events(cache_dir: str, basic_events: List[dict], now: Optional[int] = None, force: bool = False) -> List[dict]:
+def _select_farm_events(
+    cache_dir: str,
+    basic_events: List[dict],
+    now: Optional[int] = None,
+    force: bool = False,
+    jp_by_id: Optional[Dict[int, dict]] = None,
+) -> List[dict]:
     """Amendment L1 selection: every ACTIVE farm event plus the LATEST 1 past farm event.
 
     A farm-event fetch that raises skips only that event on the active pass — its open siblings
@@ -2122,14 +2159,15 @@ def _select_farm_events(cache_dir: str, basic_events: List[dict], now: Optional[
     passing = []
     for event in select_events(basic_events, now=moment):
         try:
-            if _farm_event_passes(cache_dir, event, force=force):
+            jp_event = (jp_by_id or {}).get(event.get("id"))
+            if _farm_event_passes(cache_dir, event, force=force, jp_event=jp_event, now=moment):
                 passing.append(event)
         except Exception as e:
             print(f"  [WARN] Event {event.get('id')} farm test fetch failed, skipped: {e}", file=sys.stderr)
     live_ids = {event.get("id") for event in passing}
     past = None
     try:
-        past = _latest_past_farm_event(cache_dir, basic_events, moment, live_ids, force=force)
+        past = _latest_past_farm_event(cache_dir, basic_events, moment, live_ids, force=force, jp_by_id=jp_by_id)
     except Exception as e:
         if not passing:
             raise
@@ -2140,7 +2178,12 @@ def _select_farm_events(cache_dir: str, basic_events: List[dict], now: Optional[
 
 
 def _latest_past_farm_event(
-    cache_dir: str, basic_events: List[dict], now: int, live_ids: Set[int], force: bool = False
+    cache_dir: str,
+    basic_events: List[dict],
+    now: int,
+    live_ids: Set[int],
+    force: bool = False,
+    jp_by_id: Optional[Dict[int, dict]] = None,
 ) -> Optional[dict]:
     """Amendment L1: the newest ENDED eventQuest that passes the farm-event test, scanned
     newest-startedAt-first and capped at FARM_FALLBACK_SCAN_CAP. Atlas keeps historical drop
@@ -2162,7 +2205,8 @@ def _latest_past_farm_event(
     t0 = time.monotonic()
     last_log = t0
     for idx, event in enumerate(candidates, 1):
-        passed = _farm_event_passes(cache_dir, event, force=force)
+        jp_event = (jp_by_id or {}).get(event.get("id"))
+        passed = _farm_event_passes(cache_dir, event, force=force, jp_event=jp_event, now=now)
         now_mono = time.monotonic()
         if passed:
             print(
@@ -2176,19 +2220,26 @@ def _latest_past_farm_event(
     return None
 
 
-def _farm_event_passes(cache_dir: str, event: dict, force: bool = False) -> bool:
+def _farm_event_passes(
+    cache_dir: str,
+    event: dict,
+    force: bool = False,
+    jp_event: Optional[dict] = None,
+    now: Optional[int] = None,
+) -> bool:
     """Amendment J farm-event test: the event's shop has rows, and at least one repeatable quest
     (afterClear repeatLast|repeat, free or raid) in its wars reports community drops for at least
     one of the shop's own currencies on REPEAT runs — the same quests the snapshot ships (Amendment
     L's challenge exclusion included). A campaign exchange shop (no war) and a memorial battle
     (quests without submissions) both fail it. Reads the same event/war/quest files the snapshot's
     farm collection reads, once per run; a fetch that cannot be read raises, never a silent prune."""
-    detail = _event_detail(cache_dir, event, force=force)
+    settled = _is_settled_ended_event(jp_event or event, now=now)
+    detail = _event_detail(cache_dir, event, force=force, trust_cache=settled)
     currency_ids = _shop_currency_ids(_shop_entries(detail))
     if not currency_ids:
         return False
     war_ids = (detail or {}).get("warIds") or event.get("warIds") or []
-    quests = _collect_farm_quests(cache_dir, war_ids, force=force, strict=True)
+    quests = _collect_farm_quests(cache_dir, war_ids, force=force, strict=True, trust_cache=settled)
     return any(_farm_quest_entry(quest, currency_ids) for quest in quests)
 
 
@@ -2290,12 +2341,17 @@ def _is_http_404(err: Exception) -> bool:
     return "HTTP Error 404" in str(err)
 
 
-def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, strict: bool = False) -> List[Tuple[dict, dict]]:
+def _war_repeatable_quests(
+    cache_dir: str, war_id: int, force: bool = False, strict: bool = False, trust_cache: bool = False
+) -> List[Tuple[dict, dict]]:
     """(spot, quest) pairs of one war the game reopens after a clear; a war that cannot be read has
     none. Strict is the farm-event test's call: there an unreadable war raises, because a swallowed
     read looks exactly like an event with no repeatable quests and would silently prune a good shop."""
     try:
-        war = get_cached_json(cache_dir, f"nice_war_{war_id}.json", f"{API_BASE}/nice/JP/war/{war_id}?lang=en", force=force)
+        filename = f"nice_war_{war_id}.json"
+        war = _read_settled_cache(cache_dir, filename, force=force, trust_cache=trust_cache)
+        if war is None:
+            war = get_cached_json(cache_dir, filename, f"{API_BASE}/nice/JP/war/{war_id}?lang=en", force=force)
     except Exception as e:
         if strict and not _is_http_404(e):
             raise
@@ -2311,15 +2367,21 @@ def _war_repeatable_quests(cache_dir: str, war_id: int, force: bool = False, str
     ]
 
 
-def _quest_phase_detail(cache_dir: str, quest: dict, force: bool = False, strict: bool = False) -> Optional[dict]:
+def _quest_phase_detail(
+    cache_dir: str, quest: dict, force: bool = False, strict: bool = False, trust_cache: bool = False
+) -> Optional[dict]:
     """Drops are published per released phase, so the highest phase is the quest players farm today.
     The war payload lists the phases a quest has, and the detail carries the community submissions.
     Strict (the farm-event test) lets the read failure through for the same reason as the war read."""
     quest_id = quest.get("id")
     phase = max(quest.get("phases") or [0])
     try:
+        filename = f"nice_quest_{quest_id}_{phase}.json"
+        cached = _read_settled_cache(cache_dir, filename, force=force, trust_cache=trust_cache)
+        if cached is not None:
+            return cached
         return get_cached_json(
-            cache_dir, f"nice_quest_{quest_id}_{phase}.json", f"{API_BASE}/nice/JP/quest/{quest_id}/{phase}?lang=en", force=force
+            cache_dir, filename, f"{API_BASE}/nice/JP/quest/{quest_id}/{phase}?lang=en", force=force
         )
     except Exception as e:
         if strict and not _is_http_404(e):
@@ -2348,7 +2410,9 @@ def _farm_quest(quest: dict, detail: dict, spot: Optional[dict] = None) -> dict:
     }
 
 
-def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False, strict: bool = False) -> List[dict]:
+def _collect_farm_quests(
+    cache_dir: str, war_ids: List[int], force: bool = False, strict: bool = False, trust_cache: bool = False
+) -> List[dict]:
     """Every farmable quest of the event, with drops — read once per distinct war-id set per run
     (Amendment J): the farm-event test walks the wars first and the snapshot's farm collection
     gets the same list from the memo instead of a second download of every war and quest.
@@ -2360,10 +2424,13 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
         war_pairs: List[Tuple[dict, dict]] = []
         if len(key) <= 1:
             for war_id in key:
-                war_pairs.extend(_war_repeatable_quests(cache_dir, war_id, force=force, strict=strict))
+                war_pairs.extend(_war_repeatable_quests(cache_dir, war_id, force=force, strict=strict, trust_cache=trust_cache))
         else:
             with ThreadPoolExecutor(max_workers=min(DEFAULT_WORKERS, len(key))) as executor:
-                war_futs = [executor.submit(_war_repeatable_quests, cache_dir, war_id, force, strict) for war_id in key]
+                war_futs = [
+                    executor.submit(_war_repeatable_quests, cache_dir, war_id, force, strict, trust_cache)
+                    for war_id in key
+                ]
                 for fut in war_futs:
                     war_pairs.extend(fut.result())
 
@@ -2375,7 +2442,7 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
             done_q = 0
             with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as executor:
                 detail_futs = [
-                    executor.submit(_quest_phase_detail, cache_dir, quest, force, strict)
+                    executor.submit(_quest_phase_detail, cache_dir, quest, force, strict, trust_cache)
                     for _, quest in war_pairs
                 ]
                 for (spot, quest), fut in zip(war_pairs, detail_futs):
@@ -2624,7 +2691,11 @@ def _equip_detail(equip_id: int, cache_dir: str, force: bool = False) -> dict:
     """Per-id equip detail (cached): faces for the icon, name for the chain. An event CE is not in
     the NA export, so this is where its readable name comes from."""
     try:
-        return get_cached_json(cache_dir, f"nice_equip_{equip_id}.json", f"{API_BASE}/nice/JP/equip/{equip_id}?lang=en", force=force)
+        filename = f"nice_equip_{equip_id}.json"
+        cached = _read_settled_cache(cache_dir, filename, force=force, trust_cache=True)
+        if cached is not None:
+            return cached
+        return get_cached_json(cache_dir, filename, f"{API_BASE}/nice/JP/equip/{equip_id}?lang=en", force=force)
     except Exception as e:
         print(f"  [WARN] Equip {equip_id} detail fetch failed: {e}", file=sys.stderr)
         return {}
@@ -2854,14 +2925,18 @@ def _map_shop_entries(cache_dir: str, entries: List[dict], item_map: Dict[int, d
     return currencies, items
 
 
-def _event_detail(cache_dir: str, event: dict, force: bool = False) -> dict:
+def _event_detail(cache_dir: str, event: dict, force: bool = False, trust_cache: bool = False) -> dict:
     """One event's nice detail, fetched once per run (Amendment J): the farm-event test reads the
     shop rows and war ids first, and the snapshot step reuses the same result."""
     event_id = event["id"]
     if event_id not in _event_detail_results:
         try:
-            _event_detail_results[event_id] = get_cached_json(
-                cache_dir, f"nice_event_{event_id}.json", f"{API_BASE}/nice/JP/event/{event_id}?lang=en", force=force
+            filename = f"nice_event_{event_id}.json"
+            cached = _read_settled_cache(cache_dir, filename, force=force, trust_cache=trust_cache)
+            _event_detail_results[event_id] = (
+                cached
+                if cached is not None
+                else get_cached_json(cache_dir, filename, f"{API_BASE}/nice/JP/event/{event_id}?lang=en", force=force)
             )
         except Exception as e:
             if _is_http_404(e):
@@ -3130,16 +3205,27 @@ def _collect_event_shops(cache_dir: str, event_id: Optional[int] = None, force: 
         jp_by_id = {e.get("id"): e for e in basic if isinstance(e, dict) and e.get("id")} if isinstance(basic, list) else {}
         seen_ids = {e.get("id") for e in jp_events if e.get("id")}
         events = list(jp_events)
-        for region in EVENT_SERVERS[1:]:
+        other_regions = EVENT_SERVERS[1:]
+        with ThreadPoolExecutor(max_workers=max(1, len(other_regions))) as executor:
+            region_futs = {
+                region: executor.submit(
+                    get_cached_json,
+                    cache_dir,
+                    f"{region.lower()}_basic_event.json",
+                    f"{API_BASE}/export/{region}/basic_event.json",
+                    force,
+                )
+                for region in other_regions
+            }
+        for region in other_regions:
             try:
-                region_url = f"{API_BASE}/export/{region}/basic_event.json"
-                basic_region = get_cached_json(cache_dir, f"{region.lower()}_basic_event.json", region_url, force=force)
+                basic_region = region_futs[region].result()
                 region_jp_events = (
                     [e for e in basic_region if isinstance(e, dict) and e.get("id") in jp_by_id]
                     if isinstance(basic_region, list)
                     else []
                 )
-                region_events = _select_farm_events(cache_dir, region_jp_events, force=force)
+                region_events = _select_farm_events(cache_dir, region_jp_events, force=force, jp_by_id=jp_by_id)
             except Exception as e:
                 print(f"  [WARN] {region} event list fetch failed, skipped: {e}", file=sys.stderr)
                 region_events = []
