@@ -95,6 +95,7 @@ jobs:
       # Keyed on sync scripts + version baseline so format/logic edits rebuild cleanly
       # while new game versions incrementally restore prior outputs and re-save under the new key.
       - name: Restore Atlas Data & Asset Cache
+        id: atlas_cache
         if: steps.do_work.outputs.DO_WORK == 'true'
         uses: actions/cache@v6
         with:
@@ -119,6 +120,7 @@ jobs:
       # Dedicated static image cache: keyed only on game data version so Python edits never re-download icons.
       # actions/cache hashes `path:` into its internal version, so give future asset dirs their own cache step instead of editing this list.
       - name: Restore Static Image Cache
+        id: static_img_cache
         if: steps.do_work.outputs.DO_WORK == 'true'
         uses: actions/cache@v6
         with:
@@ -133,6 +135,7 @@ jobs:
 
       # Dedicated Saint Graph cache: keyed only on game data version so Python edits never re-download images.
       - name: Restore Saint Graph Cache
+        id: saint_graph_cache
         if: steps.do_work.outputs.DO_WORK == 'true'
         uses: actions/cache@v6
         with:
@@ -159,6 +162,13 @@ jobs:
         if: steps.do_work.outputs.DO_WORK == 'true'
         run: |
           mkdir -p .ci-baselines
+          if [ "${{ steps.data_version.outputs.CHECK }}" = "UNCHANGED" ] \
+             && [ "${{ steps.atlas_cache.outputs.cache-hit }}" = "true" ] \
+             && [ "${{ steps.static_img_cache.outputs.cache-hit }}" = "true" ] \
+             && [ "${{ steps.saint_graph_cache.outputs.cache-hit }}" = "true" ]; then
+            echo "Atlas data unchanged and all data/image caches hit — skipping sync_atlas_data.py."
+            exit 0
+          fi
           FORCE_FLAG="${{ github.event.inputs.force_sync == 'true' && '--force' || '' }}"
           python3 -u scripts/sync_atlas_data.py $FORCE_FLAG
 
