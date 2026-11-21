@@ -192,6 +192,17 @@ def main():
     assert "fetch_bordered_ces.py" not in img_cache_key, "static image cache key must not hash fetch_bordered_ces.py"
     assert "fgo-static-images-v2-${{ runner.os }}-" in img_restore_keys, "static image restore-keys must include v2 prefix"
     assert "fgo-static-images-v1-" not in img_restore_keys, "v1 restore-key cannot match v2 path-version hash"
+    sg_cache_step = next(s for s in steps if s.get("name") == "Restore Saint Graph Cache")
+    assert cache_step.get("id") == "atlas_cache", "Restore Atlas Data & Asset Cache must set id: atlas_cache"
+    assert img_cache_step.get("id") == "static_img_cache", "Restore Static Image Cache must set id: static_img_cache"
+    assert sg_cache_step.get("id") == "saint_graph_cache", "Restore Saint Graph Cache must set id: saint_graph_cache"
+    for guard in (
+        "steps.data_version.outputs.CHECK",
+        "steps.atlas_cache.outputs.cache-hit",
+        "steps.static_img_cache.outputs.cache-hit",
+        "steps.saint_graph_cache.outputs.cache-hit",
+    ):
+        assert guard in sync_run, f"sync skip guard missing {guard}"
     assert "rm -f" not in sync_run, "sync still wipes generated data"
     assert cache_step.get("if") == "steps.do_work.outputs.DO_WORK == 'true'", "asset cache restore must skip on idle runs"
     assert "sync_atlas_data.py" in cache_key, "cache key must hash sync_atlas_data.py"
