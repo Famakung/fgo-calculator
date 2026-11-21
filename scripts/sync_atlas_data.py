@@ -21,7 +21,6 @@ Fetches data from Atlas Academy API:
 """
 
 import argparse
-import gzip
 import hashlib
 import io
 import json
@@ -31,11 +30,14 @@ import shutil
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Set, Tuple, Union
 from PIL import Image
+
+try:
+    from atlas_http import DEFAULT_WORKERS, PoliteRateLimiter, fetch_url, rate_limiter, request_semaphore
+except ImportError:
+    from scripts.atlas_http import DEFAULT_WORKERS, PoliteRateLimiter, fetch_url, rate_limiter, request_semaphore
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "src", "scripts", "data")
@@ -192,72 +194,6 @@ def normalize_trait_id(tid: int) -> Optional[str]:
         return str(tid)
 
     return None
-
-
-class PoliteRateLimiter:
-    """Enforces minimum interval between consecutive network requests to prevent rate-limiting."""
-
-    def __init__(self, delay_seconds: float = 0.1):
-        self.delay = delay_seconds
-        self.last_request_time = 0.0
-        self._lock = threading.Lock()
-
-    def wait(self):
-        if self.delay <= 0:
-            return
-        with self._lock:
-            now = time.time()
-            target = max(now, self.last_request_time + self.delay)
-            self.last_request_time = target
-        sleep_for = target - time.time()
-        if sleep_for > 0:
-            time.sleep(sleep_for)
-
-
-# Global rate limiter instance (defaults to 0.1s inter-request delay)
-rate_limiter = PoliteRateLimiter(delay_seconds=0.1)
-
-
-def fetch_url(url: str, timeout: int = 15, retries: int = 4, if_none_match: Optional[str] = None) -> Tuple[Optional[bytes], Optional[str]]:
-    """Fetch URL with polite rate-limiting, retries, gzip decompression, and HTTP 429 backoff.
-
-    Returns (data, etag). On 304 (resource unchanged since if_none_match) returns (None, None).
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)",
-        "Accept-Encoding": "gzip",
-    }
-    if if_none_match:
-        headers["If-None-Match"] = if_none_match
-    req = urllib.request.Request(url, headers=headers)
-    last_err = None
-
-    for attempt in range(retries):
-        rate_limiter.wait()
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = resp.read()
-                if resp.headers.get("Content-Encoding") == "gzip":
-                    data = gzip.decompress(data)
-                return data, resp.headers.get("ETag")
-        except urllib.error.HTTPError as e:
-            if e.code == 304:
-                return None, None
-            last_err = e
-            if e.code == 429:
-                retry_after = e.headers.get("Retry-After")
-                backoff = float(retry_after) + 1.0 if retry_after and retry_after.isdigit() else (5.0 * (attempt + 1))
-                print(f"  [RATE-LIMIT] HTTP 429 encountered for {url}. Waiting {backoff:.1f}s before retry...", file=sys.stderr)
-                time.sleep(backoff)
-                continue
-            if 400 <= e.code < 500:
-                break
-            time.sleep(1.0 * (attempt + 1))
-        except Exception as e:
-            last_err = e
-            time.sleep(1.0 * (attempt + 1))
-
-    raise RuntimeError(f"Failed to fetch {url} after {retries} retries: {last_err}")
 
 
 def _load_cached(cache_path: str) -> Optional[dict]:
@@ -1163,7 +1099,7 @@ def sync_servants(args):
         last_log = t0
         done = 0
         ok = 0
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as executor:
             futures = [
                 executor.submit(
                     download_face_icon,
@@ -1244,7 +1180,7 @@ def sync_saint_graphs(url_by_filename: Dict[str, str], force: bool = False, dry_
     last_log = t0
     done = 0
     ok = 0
-    with ThreadPoolExecutor(max_workers=min(6, os.cpu_count() or 4)) as pool:
+    with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as pool:
         futures = [pool.submit(_one, item) for item in todo.items()]
         for fut in as_completed(futures):
             done += 1
@@ -1326,7 +1262,7 @@ def sync_servant_faces(face_urls: Dict[str, str], force: bool = False, dry_run: 
     last_log = t0
     done = 0
     ok = 0
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as pool:
         futures = [pool.submit(_one, item) for item in todo.items()]
         for fut in as_completed(futures):
             done += 1
@@ -1442,7 +1378,7 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
         last_log = t0
         done_skills = 0
         ok_skills = 0
-        with ThreadPoolExecutor(max_workers=min(6, os.cpu_count() or 4)) as pool:
+        with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as pool:
             for sid, sk_data in pool.map(_fetch_one_skill, to_fetch):
                 done_skills += 1
                 if sk_data is not None:
@@ -1836,7 +1772,7 @@ def extract_special_traits_from_ce_skills(cache_dir: str, equips: List[dict], fo
     t0 = time.monotonic()
     last_log = t0
     done_ces = 0
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as executor:
         futs = {executor.submit(_fetch_na_ce, eid): eid for eid in unique_ids}
         for fut in as_completed(futs):
             eid = futs[fut]
@@ -2356,7 +2292,7 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
             for war_id in key:
                 war_pairs.extend(_war_repeatable_quests(cache_dir, war_id, force=force, strict=strict))
         else:
-            with ThreadPoolExecutor(max_workers=min(8, len(key))) as executor:
+            with ThreadPoolExecutor(max_workers=min(DEFAULT_WORKERS, len(key))) as executor:
                 war_futs = [executor.submit(_war_repeatable_quests, cache_dir, war_id, force, strict) for war_id in key]
                 for fut in war_futs:
                     war_pairs.extend(fut.result())
@@ -2367,7 +2303,7 @@ def _collect_farm_quests(cache_dir: str, war_ids: List[int], force: bool = False
             t0 = time.monotonic()
             last_log = t0
             done_q = 0
-            with ThreadPoolExecutor(max_workers=8) as executor:
+            with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as executor:
                 detail_futs = [
                     executor.submit(_quest_phase_detail, cache_dir, quest, force, strict)
                     for _, quest in war_pairs
@@ -2834,7 +2770,7 @@ def _map_shop_entries(cache_dir: str, entries: List[dict], item_map: Dict[int, d
     if not kept_entries:
         return currencies, items
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as executor:
         item_futs = [
             executor.submit(_shop_item, entry, item_map, cache_dir, force, dry_run, names)
             for entry in kept_entries
@@ -2950,7 +2886,7 @@ def _collect_bonus_ces(
         pending_icons.append((eid, _equip_face_asset_path(equip)))
 
     if pending_icons:
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=DEFAULT_WORKERS) as executor:
             icon_futs = [
                 executor.submit(_event_icon_file, "equip", eid, asset_path, force, dry_run)
                 for eid, asset_path in pending_icons
@@ -3247,7 +3183,7 @@ def main():
     parser = argparse.ArgumentParser(description="Incremental Atlas Academy Data Sync for FGO Calculator")
     parser.add_argument("--cache-dir", default=os.path.join(BASE_DIR, ".cache", "atlas"), help="Path to cache directory")
     parser.add_argument("--ids", nargs="+", help="Specific collection numbers to process (e.g. 482 481)")
-    parser.add_argument("--delay", type=float, default=0.1, help="Polite delay between requests in seconds (default: 0.1s)")
+    parser.add_argument("--delay", type=float, default=0.0, help="Polite delay between requests in seconds (default: 0.0s)")
     parser.add_argument("--clean-cache", action="store_true", help="Remove cache directory on finish to keep local files clean")
     parser.add_argument("--force", action="store_true", help="Force re-fetching and overwriting assets")
     parser.add_argument("--dry-run", action="store_true", help="Perform dry run without writing files")
