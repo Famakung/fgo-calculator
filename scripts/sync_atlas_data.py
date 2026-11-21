@@ -1180,12 +1180,16 @@ def sync_servants(args):
             update_servants_js(new_entries, dry_run=args.dry_run)
 
 
+def _nonempty_file(path: str) -> bool:
+    return os.path.exists(path) and os.path.getsize(path) > 0
+
+
 def sync_saint_graphs(url_by_filename: Dict[str, str], force: bool = False, dry_run: bool = False) -> int:
-    """Download Atlas CharaGraph PNGs and store them losslessly-ish as WebP (q92, method 6, no resize)."""
+    """Download Atlas CharaGraph PNGs and store them as bit-exact lossless WebP (q90, method 6, no resize)."""
     todo = {
         fn: url
         for fn, url in url_by_filename.items()
-        if force or not os.path.exists(os.path.join(PUBLIC_SAINT_GRAPHS_DIR, fn))
+        if force or not _nonempty_file(os.path.join(PUBLIC_SAINT_GRAPHS_DIR, fn))
     }
     if not todo:
         return 0
@@ -1208,7 +1212,7 @@ def sync_saint_graphs(url_by_filename: Dict[str, str], force: bool = False, dry_
                 img.load()
                 if img.mode not in ("RGB", "RGBA"):
                     img = img.convert("RGBA")
-                img.save(tmp, "WEBP", lossless=True, quality=100, method=6)
+                img.save(tmp, "WEBP", lossless=True, quality=90, method=6)
             os.replace(tmp, dest)
             return True
         except Exception as exc:
@@ -1237,6 +1241,87 @@ def sync_saint_graphs(url_by_filename: Dict[str, str], force: bool = False, dry_
                 )
                 last_log = now
     print(f"Saint Graphs: {ok}/{total} saved to {PUBLIC_SAINT_GRAPHS_DIR}.", flush=True)
+    return ok
+
+
+def sync_servant_faces(face_urls: Dict[str, str], force: bool = False, dry_run: bool = False) -> int:
+    """Download bordered face PNGs concurrently and store as 142x155 WebP (q90, method 6) under public/servants/."""
+    todo = {
+        rel: url
+        for rel, url in (face_urls or {}).items()
+        if force or not _nonempty_file(os.path.join(PUBLIC_SERVANTS_DIR, rel))
+    }
+    if not todo:
+        return 0
+    if dry_run:
+        print(f"[dry-run] Would download {len(todo)} servant face icon(s).")
+        return 0
+    total = len(todo)
+    print(f"Downloading {total} servant face icon(s)...", flush=True)
+
+    def _one(item):
+        rel, url = item
+        urls = [url]
+        if isinstance(url, str) and url.endswith("_bordered.png"):
+            urls.append(url[: -len("_bordered.png")] + ".png")
+        raw = None
+        last_exc = None
+        for cand_url in urls:
+            try:
+                raw, _ = fetch_url(cand_url, timeout=15, retries=2)
+                if raw:
+                    break
+                raise ValueError("empty response")
+            except Exception as exc:
+                last_exc = exc
+                raw = None
+        if not raw:
+            print(f"Warning: servant face {rel} failed ({url}): {last_exc}", file=sys.stderr, flush=True)
+            return False
+        dest = os.path.join(PUBLIC_SERVANTS_DIR, rel)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        tmp = dest + ".tmp"
+        try:
+            with Image.open(io.BytesIO(raw)) as img:
+                img.load()
+                if img.mode != "RGBA":
+                    img = img.convert("RGBA")
+                if img.size != FACE_ICON_SIZE:
+                    img = img.resize(FACE_ICON_SIZE, Image.Resampling.LANCZOS)
+                img.save(tmp, "WEBP", quality=90, method=6)
+            os.replace(tmp, dest)
+            return True
+        except Exception as exc:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            print(f"Warning: servant face {rel} save failed: {exc}", file=sys.stderr, flush=True)
+            return False
+
+    t0 = time.monotonic()
+    last_log = t0
+    done = 0
+    ok = 0
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(_one, item) for item in todo.items()]
+        for fut in as_completed(futures):
+            done += 1
+            if fut.result():
+                ok += 1
+            now = time.monotonic()
+            if done == total or done % 50 == 0 or (now - last_log) >= 5.0:
+                elapsed = max(now - t0, 0.001)
+                rate = done / elapsed
+                eta = (total - done) / rate if rate > 0 else 0.0
+                pct = (done * 100.0) / total
+                print(
+                    f"  Servant faces: {done}/{total} ({pct:.1f}%) | ok={ok} | {rate:.2f} img/s | elapsed {elapsed:.0f}s | ETA {eta:.0f}s",
+                    flush=True,
+                )
+                last_log = now
+    print(f"Servant faces: {ok}/{total} saved to {PUBLIC_SERVANTS_DIR}.", flush=True)
     return ok
 
 
@@ -1360,7 +1445,9 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
             os.path.exists(os.path.join(PUBLIC_SERVANT_INFO_DIR, f"{sid}.json"))
             for sid in expected_ids
         ):
-            if getattr(args, "skip_saint_graphs", False):
+            skip_sg = getattr(args, "skip_saint_graphs", False)
+            skip_faces = getattr(args, "skip_faces", False)
+            if skip_sg and skip_faces:
                 print(f"Servant info JSONs ({len(expected_ids)} files) are already up-to-date.")
                 return
             try:
@@ -1368,10 +1455,15 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
             except ImportError:
                 from scripts.servant_info_converter.export_servant_info import extract_saint_graphs
             sg_urls: Dict[str, str] = {}
+            face_urls: Dict[str, str] = {}
             for s in nice_servants:
                 if s.get("type") in ("normal", "heroine") and s.get("collectionNo", 0) > 0:
-                    sg_urls.update(extract_saint_graphs(s, svt_by_id)[1])
-            if all(os.path.exists(os.path.join(PUBLIC_SAINT_GRAPHS_DIR, fn)) for fn in sg_urls):
+                    _, s_sg, s_faces, _ = extract_saint_graphs(s, svt_by_id, include_faces=True)
+                    sg_urls.update(s_sg)
+                    face_urls.update(s_faces)
+            sg_ok = skip_sg or all(_nonempty_file(os.path.join(PUBLIC_SAINT_GRAPHS_DIR, fn)) for fn in sg_urls)
+            faces_ok = skip_faces or all(_nonempty_file(os.path.join(PUBLIC_SERVANTS_DIR, rel)) for rel in face_urls)
+            if sg_ok and faces_ok:
                 print(f"Servant info JSONs ({len(expected_ids)} files) are already up-to-date.")
                 return
 
@@ -1389,6 +1481,8 @@ def sync_servant_info(args, nice_servants: Optional[List[dict]] = None):
             print(f"  [WARN] {err}", file=sys.stderr)
     if not getattr(args, "skip_saint_graphs", False):
         sync_saint_graphs(res.get("saint_graph_urls", {}), force=args.force, dry_run=args.dry_run)
+    if not getattr(args, "skip_faces", False):
+        sync_servant_faces(res.get("face_urls", {}), force=args.force, dry_run=args.dry_run)
 
 
 def sync_bond_growth(cache_dir: str = os.path.join(BASE_DIR, ".cache", "atlas"), force: bool = False, dry_run: bool = False):
@@ -3056,6 +3150,7 @@ def main():
     parser.add_argument("--skip-servants", action="store_true", help="Skip servant synchronization")
     parser.add_argument("--servant-info-only", action="store_true", help="Export only public/servant_info/*.json from bulk servant/skill data")
     parser.add_argument("--skip-saint-graphs", action="store_true", help="Skip Saint Graph WebP downloads")
+    parser.add_argument("--skip-faces", action="store_true", help="Skip servant modal face icon WebP downloads")
     parser.add_argument("--skip-ces", action="store_true", help="Skip Craft Essence synchronization")
     parser.add_argument("--skip-traits", action="store_true", help="Skip trait synchronization")
     parser.add_argument("--skip-event-shop", action="store_true", help="Skip event shop synchronization")

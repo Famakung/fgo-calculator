@@ -195,6 +195,8 @@ def format_profile_structured(
         trans_name = TRAIT_ID_LABELS.get(
             transform_data["id"], transform_data.get("name", "Form 2")
         )
+        if main_name == trans_name:
+            main_name, trans_name = "Form 1", "Form 2"
         forms = [
             _extract_profile_form(data, main_name, global_idx=0),
             _extract_profile_form(transform_data, trans_name, global_idx=1),
@@ -350,20 +352,26 @@ def build_formatted_servant(
         trans_name = TRAIT_ID_LABELS.get(
             transform_svt_id, transform_data.get("name", "Form 2")
         )
+        same_name = main_name == trans_name
+        main_label = "Form 1" if same_name else main_name
+        trans_label = "Form 2" if same_name else trans_name
         form_config = {
             "0": {
                 "index": 0,
-                "label": main_name,
+                "label": main_label,
                 "name": main_name,
-                "key": main_name.lower(),
+                "key": main_label.lower(),
             },
             "1": {
                 "index": 1,
-                "label": trans_name,
+                "label": trans_label,
                 "name": trans_name,
-                "key": trans_name.lower(),
+                "key": trans_label.lower(),
             },
         }
+        if same_name:
+            form_config["0"]["changeName"] = False
+            form_config["1"]["changeName"] = False
         overrides = FORM_IDENTITY_OVERRIDES.get(data["id"], {})
         for f_key, override in overrides.items():
             if f_key in form_config:

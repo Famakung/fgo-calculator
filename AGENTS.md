@@ -2,7 +2,7 @@
 
 Read this first, then the docs listed under **Before you write code**. Every file path in this repo is relative to the project root; there is no `d:/` path here.
 
-FGO Calculator: Astro static site (Astro 7 + Vite 8/Rolldown), deployed to GitHub Pages, vanilla JS ES modules, no framework, no TypeScript at runtime. Three tools: Event Shop Calculator, Bond Calculator, Bond Gain CE. Live at https://famakung.github.io/fgo-calculator/, repo `Famakung/fgo-calculator`.
+FGO Calculator: Astro static site (Astro 7 + Vite 8/Rolldown), deployed to GitHub Pages, vanilla JS ES modules, no framework, no TypeScript at runtime. Four tools (tab order left to right): Servant Info, Bond Gain CE (default), Bond Calculator, Event Shop Calculator. Live at https://famakung.github.io/fgo-calculator/, repo `Famakung/fgo-calculator`.
 
 ## Before you write code
 
@@ -25,7 +25,7 @@ On demand, do **not** load them by default (they are big):
 - **All visual CSS is the single inline `<style>` in `src/layouts/BaseLayout.astro`** — that block is the only stylesheet the site has. There is no `src/styles/` directory: `global.css` and `critical.css` sat there unread by any build step and were deleted, after the duplicate had already drifted (a rule kept only there never shipped).
 - **JS style**: ES modules, 2-space indent, semicolons, **double quotes** (Prettier `printWidth: 120`, `trailingComma: "all"`). Files kebab-case.
 - **Trait IDs are 4-digit zero-padded strings** (`"0100"`, `"0002"`), sorted ascending in arrays.
-- **Generated data is gitignored**: `src/scripts/data/*.js`, `public/servants/`, `public/craft_essences/`, `public/event_shop/`. Fresh clone → `npm run data:sync` before anything builds (`predev`/`prebuild` call `scripts/ensure_data.js`).
+- **Generated data is gitignored**: `src/scripts/data/*.js`, `public/servants/`, `public/servant_info/`, `public/saint_graphs/`, `public/craft_essences/`, `public/event_shop/`. Fresh clone → `npm run data:sync` before anything builds (`predev`/`prebuild` call `scripts/ensure_data.js`).
 
 ## Build & verify
 
@@ -54,9 +54,11 @@ Unit tests (`npm run test`) run only in the `develop` clone: `tests/` is tracked
 | `src/pages/index.astro` | page structure, sub-tab markup, imports JS |
 | `src/scripts/main.js` | entry, `DOMContentLoaded` → lazy `import()` per tab |
 | `src/scripts/domain.js` | Domain layer: validators, calculators, trait matcher, `ServantComboCalculator` |
+| `src/scripts/servant-info-app.js`, `src/scripts/servant-info-lazy.js` | Servant Info tab controller and lazy entry point |
 | `src/scripts/bond-app.js`, `ce-filter-app.js`, `ce-servant-select.js`, `event-shop.js`, `event-planner.js` | Application controllers per tab |
 | `src/scripts/data.js` + `src/scripts/data/*.js` | data access and generated datasets |
 | `scripts/` | data sync (`sync_atlas_data.py`), build/render gates, tests |
+| `scripts/servant_info_converter/` | static Servant Info converter (`public/servant_info/*.json`) |
 | `.github/workflows/` | Pages deploy, fixed-slot ETag-gated data schedule (4 polls/day at JP/NA maintenance ends) |
 
 `develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never plain-merge `develop` into `main`** (`git pull origin develop` is the same merge) — these docs (`.claude/**`, `AGENTS.md`, `GEMINI.md`), the browser gate `scripts/verify_render.js` and puppeteer QA test scripts `scripts/test_*.js` (CI never runs them), the unit tests `tests/` (CI never runs them either) and that script itself are deliberately `develop`-only and must not become public; every other file under `scripts/` stays public because CI or `npm run build` needs it; ship code to `main` with `scripts/merge_code_only.sh [source] "<commit_message>"` (or `scripts/merge_code_only.sh "<commit_message>"` defaulting source to `develop`) where `<commit_message>` is mandatory and must describe what was updated (e.g. `feat(scope): ...`, `fix(scope): ...`), forbidding generic "Merge branch 'develop'" (merges the code, drops those paths — itself included — from the merge commit, keeps `main`'s `.gitignore`, pushes nothing) or by cherry-picking the code commits.

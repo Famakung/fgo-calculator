@@ -23,7 +23,7 @@
     "index.astro_astro_type_script_index_0_lang": 33,
     "main-entry": 3769,
     "selectors-chunk": 83506,
-    "servant-info-lazy": 35259,
+    "servant-info-lazy": 42730,
     "tab-navigator-chunk": 2675
   },
   "chunkMinBytes": {
@@ -36,7 +36,7 @@
     "index.astro_astro_type_script_index_0_lang": 8,
     "main-entry": 942,
     "selectors-chunk": 20876,
-    "servant-info-lazy": 8814,
+    "servant-info-lazy": 10682,
     "tab-navigator-chunk": 668
   },
   "rawTextSha": "b25d9ec4a7ec0232f5e6aa62a8270a647185bc8c52127de5bd5fa8206ee3d38e",

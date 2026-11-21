@@ -14,6 +14,8 @@ src/
     index.astro              — Main page: tab panels, UI structure, <script type="module"> imports main.js
   scripts/
     main.js                  — Entry: DOMContentLoaded → lazy tab init (dynamic import())
+    servant-info-lazy.js      — Lazy entry: ServantInfoApp.init (loaded on Servant Info tab switch)
+    servant-info-app.js       — ServantInfoApp (lazy, Servant Info grid, search/filter/sort, #servantInfoModal detail & Saint Graph viewer)
     bond-lazy.js              — Lazy entry: BondApp + selectors (loaded on Bond tab switch)
     event-lazy.js             — Lazy entry: Event Shop App.init (loaded on Event tab switch)
     ce-filter-app.js          — CEFilterApp (lazy, Worker; persists CE picks + match mode through CEFilterStore)
@@ -47,13 +49,19 @@ src/
       bond_growth.js           — BOND_TABLES + BOND_TABLE_BY_SVT (per-step bond point costs)
       event_shop.js            — EVENT_SHOP_DATA (current event shop, generated)
 
-# Static assets (tracked, served as-is)
+# Build & data scripts (tracked)
+scripts/
+  servant_info_converter/    — Atlas lore → static servant_info JSON converter (export_servant_info.py, servant_formatter.py, skill_formatter.py, np_formatter.py, function_formatter.py, effect_map.py, utils.py, context.py, mapper.py)
+
+# Static assets (tracked, served as-is; generated dirs gitignored)
 public/
   manifest.json               — PWA manifest (start_url: ".", standalone)
   robots.txt                   — Allow all
-  .nojekyll                   — Prevent Jekyll processing on GitHub Pages
+  .nojekyll                    — Prevent Jekyll processing on GitHub Pages
   favicon.svg                  — SVG favicon
-  servants/                    — {atlasId}/{stage}.webp portraits
+  servants/                    — {atlasId}/{stage}.webp, c_{costume}.webp, transform partner bordered face icons (142×155)
+  servant_info/                — {atlasId}.json static per-servant payloads (gitignored)
+  saint_graphs/                — {file}.webp lossless 512×724 CharaGraph portraits (gitignored)
   craft_essences/              — {atlasId}.webp (bordered 142×155, unified for all display sizes)
   event_shop/                  — {kind}_{id}.webp event shop icons (item/equip/costume, bordered-first)
   icons/                       — bond_icon, fp_icon, materials/, classes/, pwa/
@@ -63,6 +71,8 @@ dist/                         — Static site output for GitHub Pages
   index.html                   — Single HTML page with inlined critical CSS
   _astro/                      — Hashed JS/CSS chunks (Vite output)
   servants/                   — Servant portraits (copied from public/)
+  servant_info/               — Static per-servant JSON payloads (copied from public/)
+  saint_graphs/               — Lossless Saint Graph WebPs (copied from public/)
   craft_essences/              — CE images (copied from public/)
   event_shop/                  — Event shop icons (copied from public/)
   icons/                       — UI icons (copied from public/)
@@ -78,9 +88,9 @@ dist/                         — Static site output for GitHub Pages
 2. Inline `<script>` in `<head>` — Trusted Types policy (passthrough)
 3. Inline `<script>` in `<head>` — Service-worker/cache cleanup
 4. Inline `<script>` in `<head>` — Build-etag poller (`fgo_build_etag`, "new version available" banner)
-5. Inline `<script>` in `<head>` — Tab init (reads localStorage, sets `data-tab`, `data-subtab`, `data-bond-quest`, `data-bond-custom`, and `data-event-combo` for zero-CLS pre-paint display, preloads LCP images; Bond Gain CE preload list = **first row only** — first servants ordered by collectionNo matching `CEFilterApp._getCols()` — high-priority image preloads outrank tab's own chunks, 39-link list pushed LCP 1684 ms to 2944 ms under 1.6 Mbps / CPU 4x. `plain` skips list when saved `cePicks` or Servant Select sub-tab renders a different first page)
+5. Inline `<script>` in `<head>` — Tab init (reads localStorage, sets `data-tab`, `data-subtab`, `data-bond-quest`, `data-bond-custom`, and `data-event-combo` for zero-CLS pre-paint display, preloads LCP images; `servantinfo` and plain `cefilter` preload list = **first row only** — first servants ordered by collectionNo matching `CEFilterApp._getCols()` — high-priority image preloads outrank tab's own chunks, 39-link list pushed LCP 1684 ms to 2944 ms under 1.6 Mbps / CPU 4x. `plain` skips list when saved `cePicks` or Servant Select sub-tab renders a different first page)
 6. `<script type="module">` — Astro entry chunk (imports main-entry + shared chunks eager)
-7. Lazy chunks via dynamic `import()` on tab switch (bond-lazy, event-lazy)
+7. Lazy chunks via dynamic `import()` on tab switch (`servant-info-lazy`, `bond-lazy`, `event-lazy`)
 8. Web Worker (`ce-match-worker.js`) spawned by CEFilterApp for first trait match compute
 
 ## CSS
@@ -94,12 +104,12 @@ dist/                         — Static site output for GitHub Pages
 - `ce-filter-chunk`: Bond Gain CE logic
 - `tab-navigator-chunk`: tab switch
 - `selectors-chunk`: modal/picker components
-- Lazy: `bond-lazy` (Bond tab), `event-lazy` (Event tab: tier calculator + EventPlanner + EventShopModal + EVENT_SHOP_DATA + Select Event wiring + farm hydration) — via `import()` on first visit
+- Lazy: `servant-info-lazy` (4th tab `Servant Info`, leftmost tab left of `Bond Gain CE`, = `servant-info-lazy.js` + `servant-info-app.js`), `bond-lazy` (Bond tab), `event-lazy` (Event tab: tier calculator + EventPlanner + EventShopModal + EVENT_SHOP_DATA + Select Event wiring + farm hydration) — via `import()` on first visit
 - Worker: `ce-match-worker` — own chunk for Web Worker
 
 ## Architecture (3 layers)
 - **Layer 1 — Domain** (`domain.js`): Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, Teapot, Quest, ServantFilters, ServantSort, EventShop, cascadeYields, spendSurplusUpChain. Pure logic, no DOM
-- **Layer 2 — Application** (`state.js`, `*-app.js`, `ce-servant-select.js`): StateManager, Persistence, App, BondApp, CEFilterApp, ServantSelect, CEFilterStore; state + orchestration; circular deps via callback injection in `main.js`
+- **Layer 2 — Application** (`state.js`, `*-app.js`, `ce-servant-select.js`): StateManager, Persistence, App, ServantInfoApp, BondApp, CEFilterApp, ServantSelect, CEFilterStore; state + orchestration; circular deps via callback injection in `main.js`
 - **Layer 3 — Presentation** (`presentation.js`, `selectors.js`, `filter-sections.js`, `tab-navigator.js`): DOMFactory, CollapsibleFactory, FilterSections, FilterModalController, ComboCardRenderer, selectors, DOM only; selectors get callbacks at `open()`/`init()`
 
 `CEServantOverlap` — Layer 3 modal in `selectors.js`; `_getCEMatches` callback; 50ms debounce.

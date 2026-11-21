@@ -71,15 +71,25 @@
 - New servant field → handle in `ServantData.load()` `src/scripts/data.js`
 - Images: `public/servants/{atlasId}/{stage}.webp`, `public/craft_essences/{atlasId}.webp`
 
+## Servant Info, Saint Graphs & Faces
+- **`public/servant_info/<id>.json`**: Static per-servant payloads generated in-memory by `sync_atlas_data.py` + `scripts/servant_info_converter/export_servant_info.py` (`export_all_servant_info`, `build_servant_info_payload`), gitignored and required by `scripts/ensure_data.js` / validated by `scripts/validate_data.js`.
+  - Zero `https://` external URLs and no `/raw` `convertedText` (`_FORBIDDEN_KEYS = {"convertedText", "charaGraphs", "faceUrl", "borderedFaceUrl"}` stripped by `_sanitize_no_forbidden()`).
+  - Enriched `saintGraphs[]`: `1st Ascension` / `2nd Ascension` / `3rd Ascension` / `Final Ascension` + costume labels (`shortName` / `name` / `Costume <k>`), `form`, `ascensionStage` (resolved from skill/NP `releaseConditions` or costume label keywords), `name` / `originalName` via 0-indexed `_ASC_LIMIT_KEYS` (`{"1": ("0",), "2": ("1", "2"), "3": ("3",), "4": ("4",)}`), and site-relative `face` paths (`<id>/000.webp`–`003.webp`, `<id>/c_<costume_key>.webp`).
+  - `_NO_SAINT_GRAPH_FORM_IDS` transform partners (`600710`, `1002100`, `2501500` — CharaGraphs 404 on Atlas CDN) skip partner CharaGraphs and populate `formConfig["1"].faces` (`{"1": "<partnerId>/000.webp", ...}`) for modal hero face swapping.
+  - Inner trigger skills (`Apply a state` / nested skill refs absent from servant-embedded skills) are fetched per ID from `/nice/JP/skill/{id}?lang=en` and cached in `.cache/atlas/inner_skills.json`.
+- **`public/saint_graphs/*.webp`**: Bit-exact lossless WebP (`lossless=True, quality=90, method=6`), native `512×724` (no resize), synced incrementally append-only by `sync_saint_graphs()` with `_nonempty_file()` guard (repairs missing or 0-byte files; `--skip-saint-graphs` skips). Dedicated `fgo-saint-graphs-v1` `actions/cache@v6` cache in `.github/workflows/deploy.yml` keyed on `data_version.txt` only so Python script edits never re-download images.
+- **`public/servants/<id>/`**: Stage (`000`–`003.webp`), costume (`c_<costume_key>.webp`), and transform partner bordered face icons (`142×155` WebP, `quality=90, method=6`, `_bordered.png` first with plain `.png` fallback) synced incrementally by `sync_servant_faces()` with `_nonempty_file()` guard (`--skip-faces` skips).
+
 ## Zero-Commit Architecture
-- Game images (`public/servants/`, `public/craft_essences/`, `public/event_shop/`) + generated data (`src/scripts/data/*.js`) follow **Zero-Commit Architecture**:
+- Game images (`public/servants/`, `public/saint_graphs/`, `public/craft_essences/`, `public/event_shop/`), static servant info (`public/servant_info/`), and generated data (`src/scripts/data/*.js`) follow **Zero-Commit Architecture**:
   - Ignored in `.gitignore`, dir structure kept via `.gitkeep`.
-  - In CI (`.github/workflows/deploy.yml`): restored in seconds via `actions/cache@v4`.
+  - In CI (`.github/workflows/deploy.yml`): restored in seconds via `actions/cache@v6` (`fgo-atlas-cache-*` and `fgo-saint-graphs-v1-*`).
   - Local dev: `scripts/ensure_data.js` (`predev` / `prebuild` npm hooks) auto-generates missing data files on fresh clone.
   - Git repo stays 100% pure source code, zero asset bloat, zero data diff noise.
 
 ## Image Paths
-- Servants: `public/servants/{atlasId}/{stage}.webp` (142×155 WebP, bordered in-game card frame, e.g. `public/servants/100100/000.webp`)
+- Servants: `public/servants/{atlasId}/{stage}.webp`, `public/servants/{atlasId}/c_{costume_key}.webp` (142×155 WebP, bordered in-game card frame, e.g. `public/servants/100100/000.webp`)
+- Saint Graphs: `public/saint_graphs/{file}.webp` (512×724 bit-exact lossless WebP, `lossless=True, quality=90, method=6`)
 - CEs: `public/craft_essences/{atlasId}.webp` (142×155 bordered WebP, same for all display sizes, e.g. `public/craft_essences/9400970.webp`)
 - Icons: `public/icons/*.webp`, `public/icons/{category}/*.webp`
 - Event shop: `public/event_shop/{kind}_{id}.webp` — kind `item` (shop items + currencies), `equip` (CE faces 142×155), `costume` (servant face 142×155); item icons native size capped 160px; lossless WebP

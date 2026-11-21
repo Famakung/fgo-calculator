@@ -1,10 +1,16 @@
 # FGO Calculator
 
-A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calculator** for optimizing event item farming, **Bond Calculator** for planning bond point farming, and **Bond Gain CE** for looking up eligible servants by CE traits.
+A web-based calculator for Fate/Grand Order with four tools: **Servant Info** for browsing servants, skills, Noble Phantasms, profiles, and Saint Graphs, **Bond Gain CE** for looking up eligible servants by CE traits, **Bond Calculator** for planning bond point farming, and **Event Shop Calculator** for optimizing event item farming.
 
 **Live at:** https://famakung.github.io/fgo-calculator/
 
 ## Features
+
+### Servant Info
+- Servant browser with search by ID or name, sort (ID, Rarity, Class), trait filter modal, and responsive paginated grid
+- Detail modal backed by static offline-synced per-servant JSON (`public/servant_info/<id>.json`) for profile, active skills, Noble Phantasm, and class/append passives
+- Lossless WebP Saint Graph viewer (`public/saint_graphs/`) with stage, costume, and form navigation
+- Stage/costume/form-synced bordered face icons (`public/servants/`) across the modal header, Saint Graph viewer, and profile/skill/NP forms
 
 ### Event Shop Calculator
 - **Select Event** card (same pattern as Bond's Select Quest): every active event shop is auto-fetched from Atlas Academy at data-sync time; switch between concurrent events, latest pre-selected, no blank option
@@ -68,6 +74,12 @@ A web-based calculator for Fate/Grand Order with three tools: **Event Shop Calcu
 
 ## Usage
 
+### Servant Info
+1. Open the Servant Info tab to browse the servant roster
+2. Search by ID or name, sort by ID/Rarity/Class, or open **Filter** to narrow by traits
+3. Click any servant card to open its detail modal (profile, skills, Noble Phantasm, passives, and Saint Graph viewer)
+4. Step through ascension stages, costumes, or forms — the modal's bordered face icon stays synced with the active selection
+
 ### Event Shop
 1. Open the Event Shop tab — pick an event in **Select Event** (latest is pre-selected)
 2. Click a currency's Required display to open its config modal
@@ -119,6 +131,8 @@ fgo-calculator/
 │   │   └── index.astro        # Main page: tab panels, UI structure, imports all JS modules
 │   └── scripts/
 │       ├── main.js            # Entry: DOMContentLoaded → lazy tab init (dynamic import())
+│       ├── servant-info-lazy.js # Lazy entry: ServantInfoApp (on Servant Info tab switch)
+│       ├── servant-info-app.js # ServantInfoApp (servant browser, detail modal, Saint Graph viewer)
 │       ├── bond-lazy.js       # Lazy entry: BondApp + selectors (on Bond tab switch)
 │       ├── event-lazy.js      # Lazy entry: EventShop init (on Event tab switch)
 │       ├── ce-filter-app.js   # CEFilterApp (Worker; CE picks + match mode persist via CEFilterStore)
@@ -157,12 +171,15 @@ fgo-calculator/
 │   ├── .nojekyll               # Prevent Jekyll processing on GitHub Pages
 │   ├── favicon.svg             # SVG favicon
 │   ├── servants/               # Servant portraits ({atlasId}/{stage}.webp) [build-cached]
+│   ├── servant_info/           # Per-servant static JSON ({id}.json) [build-cached]
+│   ├── saint_graphs/           # Lossless WebP Saint Graphs [build-cached]
 │   ├── craft_essences/         # CE images: {atlasId}.webp (unified 142×155 bordered WebP) [build-cached]
 │   ├── event_shop/             # Event shop icons: {kind}_{id}.webp (bordered-first) [build-cached]
 │   └── icons/                  # UI icons (classes, materials, PWA)
 │
 ├── scripts/                    # Build-time sync and validation engine
 │   ├── sync_atlas_data.py      # Incremental Atlas Academy sync (traits, face icons, multi-ascension, bond tables)
+│   ├── servant_info_converter/ # Offline exporter generating public/servant_info/<id>.json
 │   ├── validate_data.js        # Data integrity, schema, and image existence validator
 │   └── fetch_bordered_ces.py   # Craft Essence icon fetcher & WebP converter
 │
@@ -177,7 +194,7 @@ The application follows a 3-layer architecture using ES modules bundled by Astro
 | Layer | Modules | Purpose |
 |-------|---------|---------|
 | **Domain** | Schema, Validator, Calculator, BondLevelCalculator, TraitMatcher, ServantComboCalculator, SlotCEs, ServantFilters, ServantSort, EventShop | Pure business logic, no DOM |
-| **Application** | StateManager, Persistence, App, BondApp, CEFilterApp, ServantSelect, CEFilterStore, EventPlanner | State management and coordination |
+| **Application** | StateManager, Persistence, App, ServantInfoApp, BondApp, CEFilterApp, ServantSelect, CEFilterStore, EventPlanner | State management and coordination |
 | **Presentation** | DOMFactory, CollapsibleFactory, FilterSections, FilterModalController, ComboCardRenderer, UIBuilder, ViewManager, EventHandler, TabNavigator, ServantSelector, CESelector, AscensionSelector, CESubSelector, ServantDrag, CEFilterPicker, CEServantOverlap, EventShopModal | DOM manipulation, modals, events |
 
 ## Build & Data Commands
@@ -194,7 +211,7 @@ npm run data:validate # Validate data schema, traits format, and image existence
 
 Astro produces optimized chunks via Vite:
 - Eager: `main-entry`, `data-chunk`, `ce-filter-chunk`, `tab-navigator-chunk`, `selectors-chunk`
-- Lazy: `bond-lazy` (Bond tab), `event-lazy` (Event tab)
+- Lazy: `servant-info-lazy` (Servant Info tab), `bond-lazy` (Bond tab), `event-lazy` (Event tab)
 - Worker: `ce-match-worker` (TraitMatcher, offloaded from main thread)
 
 ## Technical Details

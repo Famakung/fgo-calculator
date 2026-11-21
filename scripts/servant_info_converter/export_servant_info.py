@@ -71,37 +71,219 @@ def _sg_file(url: str) -> str:
     return os.path.splitext(base)[0] + ".webp"
 
 
-def extract_saint_graphs(svt: dict, svt_by_id: Optional[Dict[int, dict]] = None) -> Tuple[List[dict], Dict[str, str]]:
-    """Return (saintGraphs entries, {webp filename: source url}), deduped by filename."""
+def _bordered_face_url(url: str) -> str:
+    if isinstance(url, str) and url.endswith(".png") and not url.endswith("_bordered.png"):
+        return url[:-4] + "_bordered.png"
+    return url
+
+
+_MASH_ID = 800100
+_MASH_SKIP_KEYS = {"800151", "800200"}  # duplicate Ortinax costume / NPC art
+_ASC_FACE = {"1": "000.webp", "2": "001.webp", "3": "002.webp", "4": "003.webp"}
+_ASC_LIMIT_KEYS = {"1": ("0",), "2": ("1", "2"), "3": ("3",), "4": ("4",)}
+_ASC_KEYWORDS = (
+    (("First Ascension", "1st Ascension", "第一再臨"), "1"),
+    (("Second Ascension", "2nd Ascension", "第二再臨"), "2"),
+    (("Third Ascension", "3rd Ascension", "第三再臨"), "3"),
+)
+
+
+def _costume_id(k, info: dict) -> int:
+    cid = info.get("id")
+    return cid if isinstance(cid, int) else int(k) % 100
+
+
+def _mash_form(cid: int) -> int:
+    if cid in (12, 13, 18):
+        return 1
+    if cid in (17, 19, 20):
+        return 2
+    return 0
+
+
+def _stage_from_label(info: dict) -> Optional[str]:
+    text = f"{info.get('shortName', '')} {info.get('name', '')}"
+    for words, stage in _ASC_KEYWORDS:
+        if any(w in text for w in words):
+            return stage
+    return None
+
+
+def _item_conds(item: dict) -> Tuple[List[dict], List[dict]]:
+    direct = item.get("releaseConditions") or []
+    all_c = list(direct)
+    for sv in item.get("skillSvts") or []:
+        all_c.extend(sv.get("releaseConditions") or [])
+    return direct, all_c
+
+
+def _stage_from_skills(svt: dict, cid: int) -> Optional[str]:
+    """Resolve costume -> ascension stage from skill/NP releaseConditions."""
+    for group in ("skills", "noblePhantasms"):
+        items = svt.get(group) or []
+        for it in items:
+            direct_conds, all_conds = _item_conds(it)
+            if not any(c.get("condType") == "equipWithTargetCostume" and c.get("condNum") == cid for c in all_conds):
+                continue
+            for c in all_conds:
+                cn = c.get("condNum")
+                if c.get("condType") in ("svtLimit", "equipWithTargetCostume") and cn != cid and isinstance(cn, int) and 1 <= cn <= 4:
+                    return str(cn)
+            num = it.get("num")
+            if num is not None:
+                for sib in items:
+                    if sib is it or sib.get("num") != num:
+                        continue
+                    _, sib_conds = _item_conds(sib)
+                    for c in sib_conds:
+                        cn = c.get("condNum")
+                        if c.get("condType") == "svtLimit" and isinstance(cn, int) and 1 <= cn <= 4:
+                            return str(cn)
+            if any(c.get("condType") == "equipWithTargetCostume" and c.get("condNum") == cid for c in direct_conds):
+                lim = it.get("condLimitCount")
+                if isinstance(lim, int) and 1 <= lim <= 4:
+                    return str(lim)
+    return None
+
+
+def _overwrite_name(svt: dict, field: str, kind: str, k) -> Optional[str]:
+    maps = (svt.get("ascensionAdd") or {}).get(field) or {}
+    if kind == "costume":
+        m = maps.get("costume") or {}
+        return m.get(str(k))
+    m = maps.get("ascension") or {}
+    for lk in _ASC_LIMIT_KEYS.get(str(k), (str(k),)):
+        if lk in m:
+            return m[lk]
+    return None
+
+
+_ASC_LABELS = {
+    "1": "1st Ascension",
+    "2": "2nd Ascension",
+    "3": "3rd Ascension",
+    "4": "Final Ascension",
+}
+
+
+def _asc_label(k) -> str:
+    return _ASC_LABELS.get(str(k), f"Stage {k}")
+
+
+def extract_saint_graphs(
+    svt: dict,
+    svt_by_id: Optional[Dict[int, dict]] = None,
+    *,
+    include_faces: bool = False,
+):
+    """Return (saintGraphs entries, {webp filename: source url}), or 4-tuple with face maps when include_faces=True."""
     entries: List[dict] = []
     url_by_filename: Dict[str, str] = {}
+    face_urls: Dict[str, str] = {}
+    partner_faces: Dict[str, str] = {}
+    svt_id = svt.get("id")
+    is_mash = svt_id == _MASH_ID
 
-    def add(key, label, url, kind):
+    def add(key, label, url, kind, extra=None):
         if not isinstance(url, str) or not url:
             return
         fname = _sg_file(url)
         if fname in url_by_filename:
             return
         url_by_filename[fname] = url
-        entries.append({"key": str(key), "label": label, "file": fname, "kind": kind})
+        entry = {"key": str(key), "label": label, "file": fname, "kind": kind}
+        entry.update(extra or {})
+        entries.append(entry)
 
-    graph = (svt.get("extraAssets") or {}).get("charaGraph") or {}
+    def names(extra, kind, k):
+        name = _overwrite_name(svt, "overWriteServantName", kind, k)
+        if name and name != svt.get("name"):
+            extra["name"] = name
+            orig = _overwrite_name(svt, "originalOverWriteServantName", kind, k)
+            if orig and orig != svt.get("originalName"):
+                extra["originalName"] = orig
+
+    extra_assets = svt.get("extraAssets") or {}
+    faces = extra_assets.get("faces") or {}
+    asc_faces = faces.get("ascension") or {}
+    cos_faces = faces.get("costume") or {}
+
+    graph = extra_assets.get("charaGraph") or {}
     asc = graph.get("ascension") or {}
     for k in _sg_sorted_keys(asc):
-        add(k, f"Stage {k}", asc[k], "ascension")
+        extra = {"form": 0, "ascensionStage": str(k)}
+        names(extra, "ascension", k)
+        face_url = asc_faces.get(str(k))
+        if isinstance(face_url, str) and face_url and str(k) in _ASC_FACE:
+            rel = f"{svt_id}/{_ASC_FACE[str(k)]}"
+            face_urls[rel] = _bordered_face_url(face_url)
+            extra["face"] = rel
+        add(k, _asc_label(k), asc[k], "ascension", extra)
     costumes = (svt.get("profile") or {}).get("costume") or {}
     cos = graph.get("costume") or {}
-    for k in _sg_sorted_keys(cos):
+    cos_keys = [k for k in _sg_sorted_keys(cos) if not (is_mash and str(k) in _MASH_SKIP_KEYS)]
+    for k in cos_keys:
         info = costumes.get(str(k)) or {}
-        add(k, info.get("shortName") or info.get("name") or f"Costume {k}", cos[k], "costume")
+        cid = _costume_id(k, info)
+        extra = {"form": _mash_form(cid) if is_mash else 0}
+        stage = _stage_from_skills(svt, cid) or _stage_from_label(info)
+        if stage:
+            extra["ascensionStage"] = stage
+        face_url = cos_faces.get(str(k))
+        if isinstance(face_url, str) and face_url:
+            rel = f"{svt_id}/c_{k}.webp"
+            face_urls[rel] = _bordered_face_url(face_url)
+            extra["face"] = rel
+        names(extra, "costume", cid)
+        add(k, info.get("shortName") or info.get("name") or f"Costume {k}", cos[k], "costume", extra)
 
     partner_id = find_transform_svt_id(svt)
-    if svt_by_id and partner_id and partner_id not in _NO_SAINT_GRAPH_FORM_IDS and svt.get("id") not in _NO_SAINT_GRAPH_FORM_IDS:
+    if svt_by_id and partner_id and svt_id not in _NO_SAINT_GRAPH_FORM_IDS:
         partner = svt_by_id.get(partner_id)
         if partner:
-            passets = ((partner.get("extraAssets") or {}).get("charaGraph") or {}).get("ascension") or {}
-            for k in _sg_sorted_keys(passets):
-                add(k, f"{partner.get('name', 'Form')} Stage {k}", passets[k], "form")
+            partner_assets = partner.get("extraAssets") or {}
+            partner_faces_assets = partner_assets.get("faces") or {}
+            partner_asc_faces = partner_faces_assets.get("ascension") or {}
+            if partner_id not in _NO_SAINT_GRAPH_FORM_IDS:
+                partner_name = partner.get("name")
+                partner_orig = partner.get("originalName", "")
+                partner_graph = partner_assets.get("charaGraph") or {}
+                passets = partner_graph.get("ascension") or {}
+                for k in _sg_sorted_keys(passets):
+                    extra = {"form": 1, "name": partner_name, "originalName": partner_orig}
+                    face_url = partner_asc_faces.get(str(k))
+                    if isinstance(face_url, str) and face_url and str(k) in _ASC_FACE:
+                        rel = f"{partner_id}/{_ASC_FACE[str(k)]}"
+                        face_urls[rel] = _bordered_face_url(face_url)
+                        extra["face"] = rel
+                    add(k, _asc_label(k), passets[k], "form", extra)
+                partner_costumes_cg = partner_graph.get("costume") or {}
+                partner_costumes_meta = (partner.get("profile") or {}).get("costume") or {}
+                partner_costume_faces = partner_faces_assets.get("costume") or {}
+                for k in _sg_sorted_keys(partner_costumes_cg):
+                    info = partner_costumes_meta.get(str(k)) or {}
+                    extra = {"form": 1}
+                    if partner_name:
+                        extra["name"] = partner_name
+                    if partner_orig:
+                        extra["originalName"] = partner_orig
+                    face_url = partner_costume_faces.get(str(k))
+                    if isinstance(face_url, str) and face_url:
+                        rel = f"{partner_id}/c_{k}.webp"
+                        face_urls[rel] = _bordered_face_url(face_url)
+                        extra["face"] = rel
+                    label = info.get("shortName") or info.get("name") or f"Costume {k}"
+                    add(k, label, partner_costumes_cg[k], "costume", extra)
+            else:
+                for k in _sg_sorted_keys(partner_asc_faces):
+                    face_url = partner_asc_faces.get(str(k))
+                    if isinstance(face_url, str) and face_url and str(k) in _ASC_FACE:
+                        rel = f"{partner_id}/{_ASC_FACE[str(k)]}"
+                        face_urls[rel] = _bordered_face_url(face_url)
+                        partner_faces[str(k)] = rel
+
+    if include_faces:
+        return entries, url_by_filename, face_urls, partner_faces
     return entries, url_by_filename
 
 
@@ -129,6 +311,16 @@ def build_servant_info_payload(
     if formatted_data.get("profile"):
         formatted_data["profile"]["name"] = name
 
+    saint_graphs, _, _, partner_faces = extract_saint_graphs(
+        data, svt_by_id, include_faces=True
+    )
+    if (
+        partner_faces
+        and isinstance(formatted_data.get("formConfig"), dict)
+        and "1" in formatted_data["formConfig"]
+    ):
+        formatted_data["formConfig"]["1"]["faces"] = partner_faces
+
     payload = {
         "id": svt_id,
         "collectionNo": cno,
@@ -142,7 +334,7 @@ def build_servant_info_payload(
         "atkBase": data.get("atkBase"),
         "atkMax": data.get("atkMax"),
         "formatted": formatted_data,
-        "saintGraphs": extract_saint_graphs(data, svt_by_id)[0],
+        "saintGraphs": saint_graphs,
     }
     return _sanitize_no_forbidden(payload)
 
@@ -224,6 +416,7 @@ def export_all_servant_info(
     exported_ids: List[str] = []
     errors: List[str] = []
     saint_graph_urls: Dict[str, str] = {}
+    face_urls: Dict[str, str] = {}
 
     for svt in nice_servants:
         if not is_playable_servant(svt):
@@ -239,7 +432,11 @@ def export_all_servant_info(
                 skill_by_id=skill_by_id,
                 name_overrides=name_overrides,
             )
-            saint_graph_urls.update(extract_saint_graphs(svt, svt_by_id)[1])
+            _, sg_urls, svt_face_urls, _ = extract_saint_graphs(
+                svt, svt_by_id, include_faces=True
+            )
+            saint_graph_urls.update(sg_urls)
+            face_urls.update(svt_face_urls)
             if not dry_run:
                 dest = out_path / f"{svt_id_str}.json"
                 serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -254,6 +451,7 @@ def export_all_servant_info(
         "ids": exported_ids,
         "errors": errors,
         "saint_graph_urls": saint_graph_urls,
+        "face_urls": face_urls,
         "output_dir": str(out_path),
     }
 
