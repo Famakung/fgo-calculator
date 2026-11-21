@@ -10,7 +10,6 @@ eliminating hardcoded ID mappings.
 """
 
 import argparse
-import gzip
 import io
 import json
 import os
@@ -18,10 +17,13 @@ import re
 import shutil
 import sys
 import time
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
+
+try:
+    from atlas_http import DEFAULT_WORKERS, fetch_url
+except ImportError:
+    from scripts.atlas_http import DEFAULT_WORKERS, fetch_url
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CE_DIR = os.path.join(BASE_DIR, "public", "craft_essences")
@@ -112,18 +114,8 @@ def load_ce_face_map(
 
         if data is None:
             print("Fetching latest Craft Essence catalog from Atlas Academy...")
-            req = urllib.request.Request(
-                EXPORT_URL,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)",
-                    "Accept-Encoding": "gzip",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                raw_bytes = resp.read()
-                if resp.headers.get("Content-Encoding") == "gzip":
-                    raw_bytes = gzip.decompress(raw_bytes)
-                data = json.loads(raw_bytes.decode("utf-8"))
+            raw_bytes, _ = fetch_url(EXPORT_URL, timeout=30, retries=3)
+            data = json.loads(raw_bytes.decode("utf-8"))
 
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False)
@@ -176,31 +168,21 @@ def download_and_convert(item):
     last_err = None
 
     for url in urls_to_try:
-        for attempt in range(3):
-            try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; FGOCalculatorDataSync/1.0)"})
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    img_data = resp.read()
+        try:
+            img_data, _ = fetch_url(url, timeout=15, retries=3)
+            img = Image.open(io.BytesIO(img_data)).convert("RGBA")
+            os.makedirs(CE_DIR, exist_ok=True)
+            img.save(dest_file, "WEBP", lossless=True, method=6)
 
-                img = Image.open(io.BytesIO(img_data)).convert("RGBA")
-                os.makedirs(CE_DIR, exist_ok=True)
-                img.save(dest_file, "WEBP", lossless=True, method=6)
-
-                return (ce_id, True, f"{img.size[0]}x{img.size[1]}", url)
-            except urllib.error.HTTPError as e:
-                last_err = e
-                if 400 <= e.code < 500 and e.code != 429:
-                    break
-                time.sleep(0.5 * (attempt + 1))
-            except Exception as e:
-                last_err = e
-                time.sleep(0.5 * (attempt + 1))
+            return (ce_id, True, f"{img.size[0]}x{img.size[1]}", url)
+        except Exception as e:
+            last_err = e
 
     return (ce_id, False, str(last_err), bordered_url)
 
 
 def sync_ces(
-    items_map=None, ids=None, workers=8, force=False, dry_run=False, cache_dir=DEFAULT_CACHE_DIR, equip_data=None
+    items_map=None, ids=None, workers=DEFAULT_WORKERS, force=False, dry_run=False, cache_dir=DEFAULT_CACHE_DIR, equip_data=None
 ):
     """Sync CE icons from Atlas Academy, skipping existing files if force=False."""
     target_ids = None
@@ -247,7 +229,7 @@ def sync_ces(
 def main():
     parser = argparse.ArgumentParser(description="Fetch and convert CE icons to bordered WebP dynamically")
     parser.add_argument("--ids", nargs="+", help="Specific CE IDs to process (e.g. 0330 0910)")
-    parser.add_argument("--workers", type=int, default=8, help="Parallel worker threads")
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Parallel worker threads")
     parser.add_argument("--force", action="store_true", help="Force re-download and overwrite existing files")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without modifying files")
     parser.add_argument("--cache-dir", default=DEFAULT_CACHE_DIR, help="Atlas API cache directory")
