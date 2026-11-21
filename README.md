@@ -8,7 +8,7 @@ A web-based calculator for Fate/Grand Order with four tools: **Servant Info** fo
 
 ### Servant Info
 - Servant browser with search by ID or name, sort (ID, Rarity, Class), trait filter modal, and responsive paginated grid
-- Detail modal backed by static offline-synced per-servant JSON (`public/servant_info/<id>.json`) for profile, active skills, Noble Phantasm, and class/append passives
+- Detail modal backed by static offline-synced per-servant JSON (`public/servant_info/<id>.json`) for profile, active skills (with `32×32px` lossless WebP skill icons in `public/skill_icons/`), Noble Phantasm, and class/append passives
 - Lossless WebP Saint Graph viewer (`public/saint_graphs/`) with stage, costume, and form navigation
 - Stage/costume/form-synced bordered face icons (`public/servants/`) across the modal header, Saint Graph viewer, and profile/skill/NP forms
 
@@ -173,6 +173,7 @@ fgo-calculator/
 │   ├── servants/               # Servant portraits ({atlasId}/{stage}.webp) [build-cached]
 │   ├── servant_info/           # Per-servant static JSON ({id}.json) [build-cached]
 │   ├── saint_graphs/           # Lossless WebP Saint Graphs [build-cached]
+│   ├── skill_icons/            # Active skill icons (skill_{id}.webp, lossless WebP) [build-cached]
 │   ├── craft_essences/         # CE images: {atlasId}.webp (unified 142×155 bordered WebP) [build-cached]
 │   ├── event_shop/             # Event shop icons: {kind}_{id}.webp (bordered-first) [build-cached]
 │   └── icons/                  # UI icons (classes, materials, PWA)
@@ -226,7 +227,7 @@ Astro produces optimized chunks via Vite:
 - Debounced input handlers (100ms)
 - Multi-ascension servant support with per-ascension traits, ascension stage face icons, and spiriton dress images
 - Automated build-time data sync pipeline (`scripts/sync_atlas_data.py`) with polite rate limiting (`0.1s`), automatic multi-ascension detection, full-auto Craft Essence data detection & series grouping, dynamic bordered icon synchronization, and bond point tables converted from Atlas' running totals into per-level-step costs (471 playable servants deduped into 76 shared tables)
-- Zero-commit binary assets architecture: servant, CE, and event shop images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v6`), and synced at build time
+- Zero-commit binary assets architecture: servant, Saint Graph, skill icon, CE, and event shop images are gitignored, cached ephemerally via GitHub Actions (`actions/cache@v6`), and synced at build time
 - PWA manifest with standalone display mode
 - Performance optimized: Web Worker for CE trait matching, double-rAF yield, lazy tab initialization, `content-visibility: auto`, critical CSS inlined, zero web-font network overhead, CLS prevention with pre-paint `<html>` attributes (`data-tab`, `data-subtab`, `data-bond-quest`, `data-bond-custom`, `data-event-combo`), Event Shop pre-rendered farm-card skeleton, `min-width`, and `tabular-nums`
 

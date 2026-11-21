@@ -19,6 +19,7 @@ Pins ten scenarios of the build job (DO_WORK/DEPLOY gates):
 """
 
 import os
+import unittest
 
 import yaml
 
@@ -168,7 +169,7 @@ def main():
     sync_run = next(s for s in steps if s.get("name") == "Sync latest game data from Atlas Academy")["run"]
     assert "src/scripts/data/" in cache_path, "data dir not in cache path"
     assert ".cache/atlas/" not in cache_path, ".cache/atlas/ must not share the script-hashed cache"
-    for static_img_dir in ("public/servants/", "public/craft_essences/", "public/event_shop/"):
+    for static_img_dir in ("public/servants/", "public/craft_essences/", "public/skill_icons/", "public/event_shop/"):
         assert static_img_dir not in cache_path, f"{static_img_dir} must not share the script-hashed cache"
     raw_cache_step = next(s for s in steps if s.get("name") == "Restore Atlas Raw API Cache")
     raw_cache_path = raw_cache_step["with"]["path"]
@@ -181,12 +182,16 @@ def main():
     img_cache_step = next(s for s in steps if s.get("name") == "Restore Static Image Cache")
     img_cache_path = img_cache_step["with"]["path"]
     img_cache_key = img_cache_step["with"]["key"]
-    for static_img_dir in ("public/servants/", "public/craft_essences/", "public/event_shop/"):
+    img_restore_keys = img_cache_step["with"].get("restore-keys") or ""
+    for static_img_dir in ("public/servants/", "public/craft_essences/", "public/skill_icons/", "public/event_shop/"):
         assert static_img_dir in img_cache_path, f"{static_img_dir} missing from static image cache"
     assert img_cache_step.get("if") == "steps.do_work.outputs.DO_WORK == 'true'", "static image cache restore must skip on idle runs"
+    assert img_cache_key.startswith("fgo-static-images-v2-"), "static image cache key must use v2 prefix"
     assert "data_version.txt" in img_cache_key, "static image cache key must hash .ci-baselines/data_version.txt"
     assert "sync_atlas_data.py" not in img_cache_key, "static image cache key must not hash sync_atlas_data.py"
     assert "fetch_bordered_ces.py" not in img_cache_key, "static image cache key must not hash fetch_bordered_ces.py"
+    assert "fgo-static-images-v2-${{ runner.os }}-" in img_restore_keys, "static image restore-keys must include v2 prefix"
+    assert "fgo-static-images-v1-${{ runner.os }}-" in img_restore_keys, "static image restore-keys must include v1 fallback"
     assert "rm -f" not in sync_run, "sync still wipes generated data"
     assert cache_step.get("if") == "steps.do_work.outputs.DO_WORK == 'true'", "asset cache restore must skip on idle runs"
     assert "sync_atlas_data.py" in cache_key, "cache key must hash sync_atlas_data.py"
@@ -248,6 +253,11 @@ def main():
     n += 1
 
     print(f"{n} tests passed")
+
+
+class DeployWorkflowTests(unittest.TestCase):
+    def test_deploy_workflow(self):
+        main()
 
 
 if __name__ == "__main__":

@@ -62,6 +62,7 @@ public/
   servants/                    — {atlasId}/{stage}.webp, c_{costume}.webp, transform partner bordered face icons (142×155)
   servant_info/                — {atlasId}.json static per-servant payloads (gitignored)
   saint_graphs/                — {file}.webp lossless 512×724 CharaGraph portraits (gitignored)
+  skill_icons/                 — skill_{id}.webp lossless active skill icons (gitignored)
   craft_essences/              — {atlasId}.webp (bordered 142×155, unified for all display sizes)
   event_shop/                  — {kind}_{id}.webp event shop icons (item/equip/costume, bordered-first)
   icons/                       — bond_icon, fp_icon, materials/, classes/, pwa/
@@ -73,6 +74,7 @@ dist/                         — Static site output for GitHub Pages
   servants/                   — Servant portraits (copied from public/)
   servant_info/               — Static per-servant JSON payloads (copied from public/)
   saint_graphs/               — Lossless Saint Graph WebPs (copied from public/)
+  skill_icons/                — Active skill icons (copied from public/)
   craft_essences/              — CE images (copied from public/)
   event_shop/                  — Event shop icons (copied from public/)
   icons/                       — UI icons (copied from public/)

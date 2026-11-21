@@ -124,9 +124,11 @@ jobs:
           path: |
             public/servants/
             public/craft_essences/
+            public/skill_icons/
             public/event_shop/
-          key: fgo-static-images-v1-${{ runner.os }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
+          key: fgo-static-images-v2-${{ runner.os }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
           restore-keys: |
+            fgo-static-images-v2-${{ runner.os }}-
             fgo-static-images-v1-${{ runner.os }}-
 
       # Dedicated Saint Graph cache: keyed only on game data version so Python edits never re-download images.

@@ -79,17 +79,19 @@
   - Inner trigger skills (`Apply a state` / nested skill refs absent from servant-embedded skills) are fetched per ID from `/nice/JP/skill/{id}?lang=en` and cached in `.cache/atlas/inner_skills.json`.
 - **`public/saint_graphs/*.webp`**: Bit-exact lossless WebP (`lossless=True, quality=90, method=6`), native `512×724` (no resize), synced incrementally append-only by `sync_saint_graphs()` with `_nonempty_file()` guard (repairs missing or 0-byte files; `--skip-saint-graphs` skips). Dedicated `fgo-saint-graphs-v1` `actions/cache@v6` cache in `.github/workflows/deploy.yml` keyed on `data_version.txt` only so Python script edits never re-download images.
 - **`public/servants/<id>/`**: Stage (`000`–`003.webp`), costume (`c_<costume_key>.webp`), and transform partner bordered face icons (`142×155` WebP, `quality=90, method=6`, `_bordered.png` first with plain `.png` fallback) synced incrementally by `sync_servant_faces()` with `_nonempty_file()` guard (`--skip-faces` skips).
+- **`public/skill_icons/*.webp`**: Active skill icons (`skill_XXXXX.webp`, lossless WebP `lossless=True, quality=90, method=6`), referenced on active skill tier variants (`slot.variantsByTier[tier].icon`) and form entries (`slot.variantsByTier[tier].forms[i].icon`) as site-relative `"skill_icons/skill_XXXXX.webp"`, synced incrementally by `sync_skill_icons()` with `_nonempty_file()` guard (`--skip-skill-icons` skips), required by `scripts/ensure_data.js`, and validated by `scripts/validate_data.js`.
 
 ## Zero-Commit Architecture
-- Game images (`public/servants/`, `public/saint_graphs/`, `public/craft_essences/`, `public/event_shop/`), static servant info (`public/servant_info/`), and generated data (`src/scripts/data/*.js`) follow **Zero-Commit Architecture**:
+- Game images (`public/servants/`, `public/saint_graphs/`, `public/skill_icons/`, `public/craft_essences/`, `public/event_shop/`), static servant info (`public/servant_info/`), and generated data (`src/scripts/data/*.js`) follow **Zero-Commit Architecture**:
   - Ignored in `.gitignore`, dir structure kept via `.gitkeep`.
-  - In CI (`.github/workflows/deploy.yml`): restored in seconds via `actions/cache@v6` (`fgo-atlas-cache-*` and `fgo-saint-graphs-v1-*`).
+  - In CI (`.github/workflows/deploy.yml`): restored in seconds via `actions/cache@v6` (`fgo-atlas-cache-*`, `fgo-static-images-v2-*` with `v1` fallback, and `fgo-saint-graphs-v1-*`).
   - Local dev: `scripts/ensure_data.js` (`predev` / `prebuild` npm hooks) auto-generates missing data files on fresh clone.
   - Git repo stays 100% pure source code, zero asset bloat, zero data diff noise.
 
 ## Image Paths
 - Servants: `public/servants/{atlasId}/{stage}.webp`, `public/servants/{atlasId}/c_{costume_key}.webp` (142×155 WebP, bordered in-game card frame, e.g. `public/servants/100100/000.webp`)
 - Saint Graphs: `public/saint_graphs/{file}.webp` (512×724 bit-exact lossless WebP, `lossless=True, quality=90, method=6`)
+- Skill Icons: `public/skill_icons/{file}.webp` (lossless WebP, `lossless=True, quality=90, method=6`, rendered at 32×32px in Servant Info skill headers)
 - CEs: `public/craft_essences/{atlasId}.webp` (142×155 bordered WebP, same for all display sizes, e.g. `public/craft_essences/9400970.webp`)
 - Icons: `public/icons/*.webp`, `public/icons/{category}/*.webp`
 - Event shop: `public/event_shop/{kind}_{id}.webp` — kind `item` (shop items + currencies), `equip` (CE faces 142×155), `costume` (servant face 142×155); item icons native size capped 160px; lossless WebP

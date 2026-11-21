@@ -185,6 +185,33 @@ if (servantKeys.length > 0 && !fs.existsSync(servantInfoDir)) {
       const fmt = info.formatted;
       if (!fmt || !fmt.profile || !Array.isArray(fmt.profile.forms) || !Array.isArray(fmt.slots) || !Array.isArray(fmt.passives)) {
         errors.push(`Servant ${id}: servant_info.formatted missing required profile/slots/passives arrays`);
+      } else {
+        for (const slot of fmt.slots) {
+          if (!slot || slot.type !== "skill" || !slot.variantsByTier || typeof slot.variantsByTier !== "object") {
+            continue;
+          }
+          for (const [tierKey, variant] of Object.entries(slot.variantsByTier)) {
+            if (!variant || typeof variant !== "object") continue;
+            const checkSkillIcon = (iconVal, label) => {
+              if (typeof iconVal !== "string" || !/^skill_icons\/[A-Za-z0-9_.-]+\.webp$/.test(iconVal)) {
+                errors.push(`Servant ${id}: ${label} has invalid skill icon path ${JSON.stringify(iconVal)}`);
+                return;
+              }
+              const iconDiskPath = path.join(ROOT_DIR, "public", iconVal);
+              if (!fs.existsSync(iconDiskPath)) {
+                errors.push(`Servant ${id}: ${label} skill icon missing at public/${iconVal}`);
+              }
+            };
+            checkSkillIcon(variant.icon, `${slot.slotKey} tier ${tierKey}`);
+            if (Array.isArray(variant.forms)) {
+              variant.forms.forEach((f, fIdx) => {
+                if (f && typeof f === "object") {
+                  checkSkillIcon(f.icon, `${slot.slotKey} tier ${tierKey} form ${fIdx}`);
+                }
+              });
+            }
+          }
+        }
       }
     } catch (e) {
       errors.push(`Servant ${id}: Invalid JSON in public/servant_info/${id}.json (${e.message})`);

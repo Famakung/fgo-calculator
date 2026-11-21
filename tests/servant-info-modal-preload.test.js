@@ -132,7 +132,7 @@ globalThis.document = {
   activeElement: null,
 };
 
-test("_collectModalImageUrls: collects and deduplicates Saint Graphs, base/alt portraits, stage faces, and formConfig faces", async () => {
+test("_collectModalImageUrls: collects and deduplicates Saint Graphs, base/alt portraits, stage faces, formConfig faces, and skill icons", async () => {
   const { IMAGE_VERSION } = await import("../src/scripts/constants.js");
   const { ServantInfoApp } = await import("../src/scripts/servant-info-app.js");
 
@@ -165,6 +165,31 @@ test("_collectModalImageUrls: collects and deduplicates Saint Graphs, base/alt p
           },
         },
       },
+      slots: [
+        {
+          slotKey: "skill_1",
+          type: "skill",
+          variantsByTier: {
+            0: {
+              tier: 0,
+              icon: "skill_icons/skill_00300.webp",
+              forms: [{ icon: "skill_icons/skill_00300.webp" }, { icon: "skill_icons/skill_00601.webp" }],
+            },
+            1: {
+              tier: 1,
+              icon: "skill_icons/skill_00400.webp",
+              forms: [],
+            },
+          },
+        },
+        {
+          slotKey: "np_1",
+          type: "np",
+          variantsByTier: {
+            0: { tier: 0, icon: "skill_icons/should_ignore_np.webp" },
+          },
+        },
+      ],
     },
   };
 
@@ -180,6 +205,9 @@ test("_collectModalImageUrls: collects and deduplicates Saint Graphs, base/alt p
     `servants/505700/c_505730.webp?v=${IMAGE_VERSION}`,
     `servants/600710/000.webp?v=${IMAGE_VERSION}`,
     `servants/600710/001.webp?v=${IMAGE_VERSION}`,
+    `skill_icons/skill_00300.webp?v=${IMAGE_VERSION}`,
+    `skill_icons/skill_00601.webp?v=${IMAGE_VERSION}`,
+    `skill_icons/skill_00400.webp?v=${IMAGE_VERSION}`,
   ];
 
   assert.deepEqual(urls, expected);
@@ -315,4 +343,117 @@ test("_openDetailModal: stays in loading state until JSON and all images finish 
   } finally {
     globalThis.fetch = origFetch;
   }
+});
+
+test("_buildSlotCard & _renderSkillContent: renders 32px skill icon before Skill X, updates on strengthen tier and form switch, and hides when absent", async () => {
+  const { IMAGE_VERSION } = await import("../src/scripts/constants.js");
+  const { ServantInfoApp } = await import("../src/scripts/servant-info-app.js");
+
+  const modalState = {
+    svt: { formatted: {} },
+    activeFormIndex: 0,
+    servantForms: null,
+    slotCards: [],
+  };
+
+  const skillSlot = {
+    slotKey: "skill_1",
+    type: "skill",
+    slotNum: 1,
+    tiers: [0, 1],
+    maxTier: 1,
+    activeTier: 1,
+    activeTierByForm: {},
+    variantsByTier: {
+      0: {
+        tier: 0,
+        type: "skill",
+        cleanTitle: "Skill 1 (Charisma B)",
+        cooldown: "Cooldown 7-5 turns",
+        icon: "skill_icons/skill_00300.webp",
+        effects: ["Increase ATK"],
+        forms: [],
+      },
+      1: {
+        tier: 1,
+        type: "skill",
+        cleanTitle: "Skill 1 (Knight of Utopia EX)",
+        cooldown: "Cooldown 7-5 turns",
+        icon: "skill_icons/skill_00301.webp",
+        effects: ["Increase ATK + NP"],
+        forms: [
+          {
+            label: "1st&2nd Ascension",
+            name: "Form A Skill",
+            cooldown: "Cooldown 7-5 turns",
+            icon: "skill_icons/skill_00301.webp",
+            effects: ["Effect A"],
+          },
+          {
+            label: "3rd Ascension",
+            name: "Form B Skill",
+            cooldown: "Cooldown 6-4 turns",
+            icon: "skill_icons/skill_00302.webp",
+            effects: ["Effect B"],
+          },
+        ],
+      },
+    },
+  };
+
+  const card = ServantInfoApp._buildSlotCard(skillSlot, modalState);
+  const { skillIconEl, titleText, strengthenWrap } = card._refs;
+  assert.ok(skillIconEl, "skillIconEl must be created in slot card refs");
+  assert.equal(skillIconEl.tagName, "IMG");
+  assert.equal(skillIconEl.classList.contains("f-skill-icon"), true);
+  assert.equal(skillIconEl.getAttribute("width"), "32");
+  assert.equal(skillIconEl.getAttribute("height"), "32");
+
+  // Verify skillIconEl is placed immediately before titleText inside .f-section-title
+  const header = card.children.find((c) => c.classList && c.classList.contains("f-section-header"));
+  assert.ok(header);
+  const titleWrap = header.children[0];
+  assert.equal(titleWrap.children[0], skillIconEl, "skillIconEl must be the first child before titleText");
+  assert.equal(titleWrap.children[1], titleText, "titleText must immediately follow skillIconEl");
+  assert.equal(titleWrap.children[2], strengthenWrap);
+
+  // Initial render uses maxTier (1) and form 0
+  assert.equal(skillIconEl.hidden, false);
+  assert.equal(skillIconEl.style.display, "");
+  assert.equal(skillIconEl.getAttribute("src"), `skill_icons/skill_00301.webp?v=${IMAGE_VERSION}`);
+  assert.equal(titleText.textContent, "Skill 1 (Form A Skill)");
+
+  // Switch skill form to form 1 -> icon updates to skill_00302.webp
+  ServantInfoApp._renderSkillContent(card, skillSlot.variantsByTier[1], "1", "0", modalState);
+  assert.equal(skillIconEl.hidden, false);
+  assert.equal(skillIconEl.getAttribute("src"), `skill_icons/skill_00302.webp?v=${IMAGE_VERSION}`);
+  assert.equal(titleText.textContent, "Skill 1 (Form B Skill)");
+
+  // Switch to tier 0 (base) -> icon updates to skill_00300.webp
+  ServantInfoApp._renderSkillContent(card, skillSlot.variantsByTier[0], "0", "0", modalState);
+  assert.equal(skillIconEl.hidden, false);
+  assert.equal(skillIconEl.getAttribute("src"), `skill_icons/skill_00300.webp?v=${IMAGE_VERSION}`);
+  assert.equal(titleText.textContent, "Skill 1 (Charisma B)");
+
+  // Passive or skill without icon hides skillIconEl gracefully
+  const passiveSlot = {
+    slotKey: "passive_1",
+    type: "passive",
+    tiers: [0],
+    maxTier: 0,
+    activeTier: 0,
+    activeTierByForm: {},
+    variantsByTier: {
+      0: {
+        tier: 0,
+        type: "passive",
+        cleanTitle: "Passives",
+        effects: ["Magic Resistance A"],
+        forms: [],
+      },
+    },
+  };
+  const passiveCard = ServantInfoApp._buildSlotCard(passiveSlot, modalState);
+  assert.equal(passiveCard._refs.skillIconEl.hidden, true);
+  assert.equal(passiveCard._refs.skillIconEl.style.display, "none");
 });

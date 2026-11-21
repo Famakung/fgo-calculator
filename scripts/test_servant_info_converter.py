@@ -19,6 +19,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from servant_info_converter.export_servant_info import (  # noqa: E402
     extract_saint_graphs,
+    extract_skill_icons,
     build_servant_info_payload,
     build_skill_by_id,
     build_svt_by_id,
@@ -800,6 +801,7 @@ class ServantInfoConverterTests(unittest.TestCase):
             ):
                 args.skip_saint_graphs = True
                 args.skip_faces = True
+                args.skip_skill_icons = True
                 sync_atlas_data.sync_servant_info(args)
 
             expected = out_dir / "100100.json"
@@ -1188,6 +1190,80 @@ class ServantInfoConverterTests(unittest.TestCase):
         effects_text = "\n".join(res[0]["variantsByTier"][0]["effects"])
         self.assertIn("Magic Bullets", effects_text)
         self.assertNotIn("Robin Counter", effects_text)
+
+    def test_skill_icons_extraction_formatting_and_sync(self):
+        std = _make_standard_servant()
+        std["skills"][0]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00300.png"
+        std["skills"][1]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00301.png"
+        std["skills"][2]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00306.png"
+
+        payload = build_servant_info_payload(std, svt_by_id={100100: std}, skill_by_id={})
+        self._assert_clean_schema(payload)
+        skills = {s["slotKey"]: s for s in payload["formatted"]["skills"]}
+        self.assertEqual(skills["skill_1"]["variantsByTier"][0]["icon"], "skill_icons/skill_00300.webp")
+        self.assertEqual(skills["skill_1"]["variantsByTier"][1]["icon"], "skill_icons/skill_00301.webp")
+        self.assertEqual(skills["skill_2"]["variantsByTier"][0]["icon"], "skill_icons/skill_00306.webp")
+        self.assertNotIn("icon", skills["skill_3"]["variantsByTier"][0])
+
+        main_svt, trans_svt = _make_transform_pair()
+        main_svt["skills"][0]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00400.png"
+        trans_svt["skills"][0]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00601.png"
+        svt_by_id = build_svt_by_id([main_svt, trans_svt])
+        t_payload = build_servant_info_payload(main_svt, svt_by_id=svt_by_id, skill_by_id={})
+        self._assert_clean_schema(t_payload)
+        t_var = t_payload["formatted"]["skills"][0]["variantsByTier"][0]
+        self.assertEqual(t_var["icon"], "skill_icons/skill_00400.webp")
+        self.assertEqual(t_var["forms"][0]["icon"], "skill_icons/skill_00400.webp")
+        self.assertEqual(t_var["forms"][1]["icon"], "skill_icons/skill_00601.webp")
+
+        mash = _make_mash()
+        mash["skills"][0]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00402.png"
+        mash["skills"][1]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00404.png"
+        m_payload = build_servant_info_payload(mash, svt_by_id={800100: mash}, skill_by_id={})
+        self._assert_clean_schema(m_payload)
+        m_skills = {s["slotKey"]: s for s in m_payload["formatted"]["skills"]}
+        self.assertEqual(m_skills["skill_1"]["variantsByTier"][0]["icon"], "skill_icons/skill_00402.webp")
+        self.assertEqual(m_skills["skill_1"]["variantsByTier"][0]["forms"][0]["icon"], "skill_icons/skill_00402.webp")
+        self.assertEqual(m_skills["skill_2"]["variantsByTier"][0]["icon"], "skill_icons/skill_00404.webp")
+
+        urls = extract_skill_icons(main_svt, svt_by_id)
+        self.assertEqual(
+            urls,
+            {
+                "skill_00400.webp": "https://static.atlasacademy.io/JP/SkillIcons/skill_00400.png",
+                "skill_00601.webp": "https://static.atlasacademy.io/JP/SkillIcons/skill_00601.png",
+            },
+        )
+
+        buf = io.BytesIO()
+        Image.new("RGBA", (128, 128), (40, 80, 120, 255)).save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            icons_dir = Path(tmpdir) / "skill_icons"
+            existing = icons_dir / "skill_00400.webp"
+            existing.parent.mkdir(parents=True, exist_ok=True)
+            existing.write_bytes(b"already-here")
+            fetched = []
+
+            def fake_fetch_url(url, **kwargs):
+                fetched.append(url)
+                return png_bytes, None
+
+            with (
+                patch.object(sync_atlas_data, "PUBLIC_SKILL_ICONS_DIR", str(icons_dir)),
+                patch.object(sync_atlas_data, "fetch_url", side_effect=fake_fetch_url),
+            ):
+                saved = sync_atlas_data.sync_skill_icons(urls)
+
+            self.assertEqual(saved, 1)
+            self.assertEqual(existing.read_bytes(), b"already-here")
+            self.assertEqual(fetched, ["https://static.atlasacademy.io/JP/SkillIcons/skill_00601.png"])
+            dest = icons_dir / "skill_00601.webp"
+            self.assertTrue(dest.exists())
+            with Image.open(dest) as img:
+                self.assertEqual(img.format, "WEBP")
+                self.assertEqual(img.size, (128, 128))
 
 
 if __name__ == "__main__":

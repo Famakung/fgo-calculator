@@ -93,10 +93,13 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
 .f-section-box { background: var(--bg); border: 2px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .f-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
 .f-section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.f-skill-icon { display: block; width: 32px; height: 32px; border-radius: 6px; object-fit: contain; flex-shrink: 0; }
+.f-skill-icon[hidden] { display: none; }
+.f-title-text { display: inline-flex; align-items: center; line-height: 1.25; }
 .f-strengthen-icons { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.f-strengthen-btn { padding: 2px 8px; border: 2px solid var(--border); border-radius: var(--radius-sm); background: var(--card); color: var(--text-secondary); font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease; user-select: none; }
+.f-strengthen-btn { display: inline-flex; align-items: center; justify-content: center; padding: 2px 8px; border: 2px solid var(--border); border-radius: var(--radius-sm); background: var(--card); color: var(--text-secondary); font-size: 0.72rem; font-weight: 600; line-height: 1.2; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease; user-select: none; }
 .f-strengthen-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.f-cooldown-text { font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; }
+.f-cooldown-text { display: inline-flex; align-items: center; font-family: ui-monospace, monospace; font-size: 0.75rem; line-height: 1.2; color: var(--text-secondary); white-space: nowrap; }
 .f-form-selector-bar, .f-option-selector-bar, .f-np-options-bar { display: flex; align-items: center; gap: 6px; padding-bottom: 6px; border-bottom: 2px solid var(--border); flex-wrap: wrap; }
 .f-option-btn-group { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .f-option-btn { background: var(--card); border: 2px solid var(--border); border-radius: var(--radius-sm); padding: 4px 10px; font-size: 0.76rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease; user-select: none; }

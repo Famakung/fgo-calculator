@@ -25,7 +25,7 @@ On demand, do **not** load them by default (they are big):
 - **All visual CSS is the single inline `<style>` in `src/layouts/BaseLayout.astro`** — that block is the only stylesheet the site has. There is no `src/styles/` directory: `global.css` and `critical.css` sat there unread by any build step and were deleted, after the duplicate had already drifted (a rule kept only there never shipped).
 - **JS style**: ES modules, 2-space indent, semicolons, **double quotes** (Prettier `printWidth: 120`, `trailingComma: "all"`). Files kebab-case.
 - **Trait IDs are 4-digit zero-padded strings** (`"0100"`, `"0002"`), sorted ascending in arrays.
-- **Generated data is gitignored**: `src/scripts/data/*.js`, `public/servants/`, `public/servant_info/`, `public/saint_graphs/`, `public/craft_essences/`, `public/event_shop/`. Fresh clone → `npm run data:sync` before anything builds (`predev`/`prebuild` call `scripts/ensure_data.js`).
+- **Generated data is gitignored**: `src/scripts/data/*.js`, `public/servants/`, `public/servant_info/`, `public/saint_graphs/`, `public/skill_icons/`, `public/craft_essences/`, `public/event_shop/`. Fresh clone → `npm run data:sync` before anything builds (`predev`/`prebuild` call `scripts/ensure_data.js`).
 
 ## Build & verify
 
