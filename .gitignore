@@ -11,6 +11,7 @@ dist/
 .ci-baselines/
 public/servants/
 public/servant_info/
+public/saint_graphs/
 public/craft_essences/
 public/event_shop/*
 !public/event_shop/.gitkeep

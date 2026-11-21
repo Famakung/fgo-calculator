@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit and integration tests for scripts/servant_info_converter and sync_servant_info."""
 
+import io
 import json
 import os
 import sys
@@ -9,6 +10,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = REPO_ROOT / "scripts"
@@ -16,6 +18,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from servant_info_converter.export_servant_info import (  # noqa: E402
+    extract_saint_graphs,
     build_servant_info_payload,
     build_skill_by_id,
     build_svt_by_id,
@@ -778,14 +781,17 @@ class ServantInfoConverterTests(unittest.TestCase):
 
             sample_inner = _make_sample_skills()[0]
 
-            def fake_fetch_url(url):
+            def fake_fetch_url(url, **kwargs):
                 return json.dumps(sample_inner).encode("utf-8"), None
 
             with (
                 patch.object(sync_atlas_data, "PUBLIC_SERVANT_INFO_DIR", str(out_dir)),
+                patch.object(sync_atlas_data, "PUBLIC_SAINT_GRAPHS_DIR", str(Path(tmpdir) / "public" / "saint_graphs")),
                 patch.object(sync_atlas_data, "get_cached_json", side_effect=fake_get_cached_json),
                 patch.object(sync_atlas_data, "fetch_url", side_effect=fake_fetch_url),
             ):
+                args.skip_saint_graphs = True
+                args.skip_faces = True
                 sync_atlas_data.sync_servant_info(args)
 
             expected = out_dir / "100100.json"
@@ -793,6 +799,279 @@ class ServantInfoConverterTests(unittest.TestCase):
             self.assertTrue((cache_dir / "inner_skills.json").exists())
             data = json.loads(expected.read_text(encoding="utf-8"))
             self._assert_clean_schema(data)
+
+    def test_extract_saint_graphs(self):
+        u = "https://static.atlasacademy.io/JP/CharaGraph/100100/100100%s@%s.png"
+        svt = {
+            "id": 100100,
+            "relateId": {"transform": [100200]},
+            "extraAssets": {"charaGraph": {
+                "ascension": {"2": u % ("a", "2"), "1": u % ("a", "1"), "10": u % ("a", "1")},
+                "costume": {"11": u % ("b", "11")},
+            }},
+            "profile": {"costume": {"11": {"shortName": "Summer"}}},
+        }
+        partner = {"id": 100200, "name": "Alt", "extraAssets": {"charaGraph": {"ascension": {"1": u % ("c", "1")}}}}
+        entries, urls = extract_saint_graphs(svt, {100100: svt, 100200: partner})
+        self.assertEqual(
+            [(e["key"], e["label"], e["file"], e["kind"]) for e in entries],
+            [
+                ("1", "1st Ascension", "100100a@1.webp", "ascension"),
+                ("2", "2nd Ascension", "100100a@2.webp", "ascension"),
+                ("11", "Summer", "100100b@11.webp", "costume"),
+                ("1", "1st Ascension", "100100c@1.webp", "form"),
+            ],
+        )
+        self.assertEqual(len(urls), 4)
+        self.assertNotIn("https://", json.dumps(entries))
+        svt2 = dict(svt, id=600710, relateId={"transform": [100200]})
+        self.assertNotIn("form", [e["kind"] for e in extract_saint_graphs(svt2, {100200: partner})[0]])
+        svt3 = dict(svt, relateId={"transform": [600710]})
+        p710 = dict(partner, id=600710)
+        self.assertNotIn("form", [e["kind"] for e in extract_saint_graphs(svt3, {600710: p710})[0]])
+
+    def test_saint_graph_special_metadata(self):
+        u = "https://static.atlasacademy.io/JP/CharaGraph/%s/%sa.png"
+        mash_costumes = {"800140": (12, "Ortinax"), "800151": (18, "Ortinax"), "800190": (17, "Paladin"), "800200": (19, "Paladin")}
+        mash = {
+            "id": 800100,
+            "name": "Mash",
+            "extraAssets": {"charaGraph": {"ascension": {"1": u % (800100, 800100)}, "costume": {k: u % (k, k) for k in mash_costumes}}},
+            "profile": {"costume": {k: {"id": i, "shortName": n} for k, (i, n) in mash_costumes.items()}},
+        }
+        entries, _ = extract_saint_graphs(mash)
+        self.assertEqual([e["key"] for e in entries], ["1", "800140", "800190"])
+        self.assertEqual([e["form"] for e in entries], [0, 1, 2])
+
+        mel = {
+            "id": 304800,
+            "name": "Melusine",
+            "originalName": "M",
+            "ascensionAdd": {"overWriteServantName": {"ascension": {"0": "Tam Lin"}, "costume": {"11": "Tam Lin"}}},
+            "extraAssets": {"charaGraph": {"ascension": {"1": u % (304800, "a"), "4": u % (304800, "d")}, "costume": {k: u % (k, k) for k in ("304830", "304840", "304850")}}},
+            "profile": {"costume": {
+                "304830": {"id": 11, "shortName": "X (First Ascension)"},
+                "304840": {"id": 12, "shortName": "X (Second Ascension)"},
+                "304850": {"id": 13, "shortName": "Red Hot"},
+            }},
+            "skills": [
+                {"num": 3, "releaseConditions": [{"condType": "svtLimit", "condNum": 3}]},
+                {"num": 3, "releaseConditions": [{"condType": "equipWithTargetCostume", "condNum": 13}]},
+            ],
+        }
+        entries, _ = extract_saint_graphs(mel)
+        self.assertEqual([e["label"] for e in entries[:2]], ["1st Ascension", "Final Ascension"])
+        self.assertEqual([e.get("ascensionStage") for e in entries], ["1", "4", "1", "2", "3"])
+        self.assertEqual(entries[0]["name"], "Tam Lin")
+        self.assertEqual(entries[2]["name"], "Tam Lin")
+        self.assertNotIn("name", entries[3])
+
+        hassan = {
+            "id": 605300,
+            "name": "Hassan-i Sabbah",
+            "originalName": "ハサン",
+            "ascensionAdd": {"overWriteServantName": {"ascension": {"1": "Azrael", "2": "Azrael", "3": "Sidra Azrael", "4": "Azrael the Pale"}}},
+            "extraAssets": {"charaGraph": {"ascension": {str(i): u % (605300, i) for i in range(1, 5)}}},
+        }
+        h_entries, _ = extract_saint_graphs(hassan)
+        self.assertEqual([e["label"] for e in h_entries], ["1st Ascension", "2nd Ascension", "3rd Ascension", "Final Ascension"])
+        self.assertEqual([e.get("name") for e in h_entries], [None, "Azrael", "Sidra Azrael", "Azrael the Pale"])
+
+        nobu = {
+            "id": 1100700,
+            "name": "Demon King Nobunaga",
+            "ascensionAdd": {"overWriteServantName": {"ascension": {"0": "Oda Nobunaga", "1": "Oda Kippoushi", "2": "Oda Kippoushi"}}},
+            "extraAssets": {"charaGraph": {"ascension": {str(i): u % (1100700, i) for i in range(1, 5)}}},
+        }
+        n_entries, _ = extract_saint_graphs(nobu)
+        self.assertEqual([e.get("name") for e in n_entries], ["Oda Nobunaga", "Oda Kippoushi", None, None])
+
+        ody = {
+            "id": 403800,
+            "name": "Odysseus",
+            "extraAssets": {"charaGraph": {"ascension": {"1": u % (403800, 1)}, "costume": {k: u % (k, k) for k in ("403830", "403840", "403850")}}},
+            "profile": {"costume": {
+                "403830": {"id": 11, "shortName": "Aegis (Second Ascension)"},
+                "403840": {"id": 12, "shortName": "Aegis (Third Ascension)"},
+                "403850": {"id": 13, "shortName": "Sabazios"},
+            }},
+        }
+        o_entries, _ = extract_saint_graphs(ody)
+        self.assertEqual([e.get("ascensionStage") for e in o_entries], ["1", "2", "3", None])
+
+        ody["extraAssets"]["faces"] = {
+            "ascension": {"1": "https://static.atlasacademy.io/JP/Faces/f_4038000.png"},
+            "costume": {
+                "403830": "https://static.atlasacademy.io/JP/Faces/f_4038300.png",
+                "403840": "https://static.atlasacademy.io/JP/Faces/f_4038400.png",
+            },
+        }
+        c_entries, _ = extract_saint_graphs(ody)
+        self.assertEqual([e.get("face") for e in c_entries], ["403800/000.webp", "403800/c_403830.webp", "403800/c_403840.webp", None])
+
+        partner = {
+            "id": 505700,
+            "name": "Francesca Prelati",
+            "originalName": "フランチェスカ・プレラーティ",
+            "extraAssets": {
+                "charaGraph": {
+                    "ascension": {"1": u % (505700, 505700)},
+                    "costume": {"505730": u % (505730, 505730)},
+                },
+                "faces": {
+                    "ascension": {"1": "https://static.atlasacademy.io/JP/Faces/f_5057000.png"},
+                    "costume": {"505730": "https://static.atlasacademy.io/JP/Faces/f_5057300.png"},
+                },
+            },
+            "profile": {"costume": {"505730": {"id": 11, "name": "簡易霊衣：ストレンジドレス", "shortName": "ストレンジドレス"}}},
+        }
+        main = {
+            "id": 505600,
+            "relateId": {"transform": [505700]},
+            "extraAssets": {
+                "charaGraph": {"ascension": {"1": u % (505600, 505600)}},
+                "faces": {"ascension": {"1": "https://static.atlasacademy.io/JP/Faces/f_5056000.png"}},
+            },
+        }
+        entries, url_by_filename, face_urls, _ = extract_saint_graphs(main, {505700: partner}, include_faces=True)
+        self.assertEqual(entries[0]["form"], 0)
+        self.assertEqual(entries[0]["face"], "505600/000.webp")
+        self.assertEqual(entries[1]["form"], 1)
+        self.assertEqual(entries[1]["kind"], "form")
+        self.assertEqual(entries[1]["label"], "1st Ascension")
+        self.assertEqual(entries[1]["name"], "Francesca Prelati")
+        self.assertEqual(entries[1]["originalName"], "フランチェスカ・プレラーティ")
+        self.assertEqual(entries[1]["face"], "505700/000.webp")
+        self.assertEqual(entries[2]["key"], "505730")
+        self.assertEqual(entries[2]["label"], "ストレンジドレス")
+        self.assertEqual(entries[2]["file"], "505730a.webp")
+        self.assertEqual(entries[2]["kind"], "costume")
+        self.assertEqual(entries[2]["form"], 1)
+        self.assertEqual(entries[2]["name"], "Francesca Prelati")
+        self.assertEqual(entries[2]["originalName"], "フランチェスカ・プレラーティ")
+        self.assertEqual(entries[2]["face"], "505700/c_505730.webp")
+        self.assertEqual(url_by_filename["505730a.webp"], u % (505730, 505730))
+        self.assertEqual(face_urls["505700/c_505730.webp"], "https://static.atlasacademy.io/JP/Faces/f_5057300_bordered.png")
+        self.assertNotIn("https://", json.dumps(entries))
+
+    def test_flora_same_name_transform_form_config(self):
+        main_svt, trans_svt = _make_transform_pair()
+        flora = dict(main_svt, id=1002000, collectionNo=464, name="Flora", originalName="フローラ", relateId={"transform": [1002100]})
+        flora2 = dict(trans_svt, id=1002100, collectionNo=0, name="Flora", originalName="フローラ")
+        payload = build_servant_info_payload(flora, svt_by_id=build_svt_by_id([flora, flora2]), skill_by_id={})
+        self._assert_clean_schema(payload)
+        fc = payload["formatted"]["formConfig"]
+        self.assertEqual(fc["0"]["label"], "Form 1")
+        self.assertEqual(fc["1"]["label"], "Form 2")
+        self.assertFalse(fc["0"]["changeName"])
+        self.assertFalse(fc["1"]["changeName"])
+        self.assertEqual([f["label"] for f in payload["formatted"]["profile"]["forms"]], ["Form 1", "Form 2"])
+
+    def test_face_urls_and_hyde_form_config_faces(self):
+        main_svt, trans_svt = _make_transform_pair()
+        f_base = "https://static.atlasacademy.io/JP/Faces/f_%s.png"
+        sg_base = "https://static.atlasacademy.io/JP/CharaGraph/%s/%sa@%s.png"
+        jekyll = dict(
+            main_svt,
+            id=600700,
+            collectionNo=81,
+            name="Henry Jekyll & Hyde",
+            originalName="ヘンリー・ジキル＆ハイド",
+            relateId={"transform": [600710]},
+            extraAssets={
+                "charaGraph": {
+                    "ascension": {str(i): sg_base % (600700, 600700, i) for i in range(1, 5)},
+                    "costume": {"600730": sg_base % (600700, 600730, 1)},
+                },
+                "faces": {
+                    "ascension": {str(i): f_base % f"600700{i - 1}" for i in range(1, 5)},
+                    "costume": {"600730": f_base % "6007300"},
+                },
+            },
+        )
+        hyde = dict(
+            trans_svt,
+            id=600710,
+            collectionNo=0,
+            name="Henry Jekyll & Hyde",
+            originalName="ヘンリー・ジキル＆ハイド",
+            extraAssets={
+                "charaGraph": {"ascension": {str(i): sg_base % (600710, 600710, i) for i in range(1, 5)}},
+                "faces": {"ascension": {str(i): f_base % f"600710{i - 1}" for i in range(1, 5)}},
+            },
+        )
+        svt_by_id = build_svt_by_id([jekyll, hyde])
+        entries, _, face_urls, partner_faces = extract_saint_graphs(jekyll, svt_by_id, include_faces=True)
+
+        self.assertEqual(
+            [e.get("face") for e in entries],
+            ["600700/000.webp", "600700/001.webp", "600700/002.webp", "600700/003.webp", "600700/c_600730.webp"],
+        )
+        self.assertEqual(
+            partner_faces,
+            {
+                "1": "600710/000.webp",
+                "2": "600710/001.webp",
+                "3": "600710/002.webp",
+                "4": "600710/003.webp",
+            },
+        )
+        self.assertEqual(face_urls["600700/000.webp"], "https://static.atlasacademy.io/JP/Faces/f_6007000_bordered.png")
+        self.assertEqual(face_urls["600700/003.webp"], "https://static.atlasacademy.io/JP/Faces/f_6007003_bordered.png")
+        self.assertEqual(face_urls["600700/c_600730.webp"], "https://static.atlasacademy.io/JP/Faces/f_6007300_bordered.png")
+        self.assertEqual(face_urls["600710/002.webp"], "https://static.atlasacademy.io/JP/Faces/f_6007102_bordered.png")
+
+        payload = build_servant_info_payload(jekyll, svt_by_id=svt_by_id, skill_by_id={})
+        self._assert_clean_schema(payload)
+        self.assertEqual(payload["formatted"]["formConfig"]["1"]["faces"], partner_faces)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res = export_all_servant_info([jekyll, hyde], output_dir=tmpdir)
+            self.assertEqual(res["exported"], 1)
+            self.assertEqual(set(res["face_urls"].keys()), set(face_urls.keys()))
+
+    def test_sync_servant_faces_incremental_fallback_and_resize(self):
+        buf = io.BytesIO()
+        Image.new("RGBA", (200, 200), (10, 20, 30, 255)).save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            servants_dir = Path(tmpdir) / "servants"
+            existing = servants_dir / "100100" / "000.webp"
+            existing.parent.mkdir(parents=True, exist_ok=True)
+            existing.write_bytes(b"already-here")
+
+            fetched = []
+
+            def fake_fetch_url(url, **kwargs):
+                fetched.append(url)
+                if url.endswith("f_1001001_bordered.png"):
+                    raise RuntimeError("404 Not Found")
+                return png_bytes, None
+
+            face_urls = {
+                "100100/000.webp": "https://static.atlasacademy.io/JP/Faces/f_1001000_bordered.png",
+                "100100/001.webp": "https://static.atlasacademy.io/JP/Faces/f_1001001_bordered.png",
+                "100100/c_100130.webp": "https://static.atlasacademy.io/JP/Faces/f_1001300_bordered.png",
+            }
+            with (
+                patch.object(sync_atlas_data, "PUBLIC_SERVANTS_DIR", str(servants_dir)),
+                patch.object(sync_atlas_data, "fetch_url", side_effect=fake_fetch_url),
+            ):
+                saved = sync_atlas_data.sync_servant_faces(face_urls)
+
+            self.assertEqual(saved, 2)
+            self.assertEqual(existing.read_bytes(), b"already-here")
+            self.assertNotIn("https://static.atlasacademy.io/JP/Faces/f_1001000_bordered.png", fetched)
+            self.assertIn("https://static.atlasacademy.io/JP/Faces/f_1001001.png", fetched)
+
+            for rel in ("100100/001.webp", "100100/c_100130.webp"):
+                dest = servants_dir / rel
+                self.assertTrue(dest.exists())
+                self.assertFalse((servants_dir / (rel + ".tmp")).exists())
+                with Image.open(dest) as img:
+                    self.assertEqual(img.format, "WEBP")
+                    self.assertEqual(img.size, sync_atlas_data.FACE_ICON_SIZE)
 
 
 if __name__ == "__main__":

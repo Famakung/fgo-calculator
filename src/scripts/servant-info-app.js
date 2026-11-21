@@ -26,9 +26,27 @@ const OPTION_TRANSLATIONS = {
   "When loaded with the Holy Sword": "When loaded with the Holy Sword",
   聖剣装填時: "When loaded with the Holy Sword",
   ストレンジドレス: "Strange Dress",
-  "簡易霊衣：ストレンジドレス": "Simple Spiritron Dress: Strange Dress",
+  "簡易霊衣：ストレンジドレス": "Spiritron Dress: Strange Dress",
   "常夏の水着Ver.03": "Swimsuit of Everlasting Summer Ver. 03",
   "簡易霊衣：常夏の水着Ver.03": "Simple Spiritron Dress: Swimsuit of Everlasting Summer Ver. 03",
+  "レッドフード＆ビッグバッドウルフ": "Red Hood & Big Bad Wolf",
+  "アトランティス・スタイル": "Atlantis Style",
+  地球大統領: "Earth President",
+  "ブラッディ・バニー": "Bloody Bunny",
+  夏の銀騎士: "Silver Knight of Summer",
+  ヴァンプ武者: "Vampire Warrior",
+  白の虎徹: "White Kotetsu",
+  夏の奇兵隊: "Summer Kiheitai",
+  "西の王、突如の目覚め！": "The Western King's Sudden Awakening!",
+  "ディノス・ウィッチ": "Deinos Witch",
+  "笠・オフ・Re/Q": "Hat Off Re/Q",
+  "リラクシング・ダンテ": "Relaxing Dante",
+  シーサー着ぐるみパーカー: "Shisa Onesie Hoodie",
+  切り裂きゾンビナース: "Zombie Nurse the Ripper",
+  "ビビッド・サマー": "Vivid Summer",
+  笠無し彦斎: "Hatless Gensai",
+  "ボンバー☆ギャル": "Bomber☆Gal",
+  "メイク無し（第一再臨）": "No Makeup (First Ascension)",
 };
 
 function formatNumber(val) {
@@ -233,7 +251,7 @@ function appendHighlightedEffect(container, text) {
 function getTargetStageForAscensionForm(formLabel) {
   if (!formLabel) return "1";
   const lbl = formLabel.toLowerCase();
-  if (/\b3rd\b/i.test(lbl)) return "3";
+  if (/\b3rd\b/i.test(lbl) && !/\b1st\s*&\s*3rd\b/i.test(lbl)) return "3";
   if (/\b4th\b|\bfinal\b/i.test(lbl)) return "4";
   if (/\b2nd\b/i.test(lbl) && !/\b1st&2nd\b/i.test(lbl) && !/\b1st\s*&\s*2nd\b/i.test(lbl)) return "2";
   return "1";
@@ -431,10 +449,24 @@ export const ServantInfoApp = {
       if (e.target === modal) this._closeDetailModal();
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape" || !modal.classList.contains("open")) return;
+      if (!modal.classList.contains("open")) return;
       const filterModal = document.getElementById("servantInfoFilterModal");
       if (filterModal && filterModal.classList.contains("open")) return;
-      this._closeDetailModal();
+      if (e.key === "Escape") {
+        this._closeDetailModal();
+        return;
+      }
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        const tag = e.target && e.target.tagName;
+        if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || (e.target && e.target.isContentEditable)) {
+          return;
+        }
+        const sgCtrl = this._modalState && this._modalState.sgController;
+        if (sgCtrl && typeof sgCtrl.step === "function") {
+          e.preventDefault();
+          sgCtrl.step(e.key === "ArrowRight" ? 1 : -1);
+        }
+      }
     });
   },
 
@@ -755,6 +787,9 @@ export const ServantInfoApp = {
       heroRefs: null,
       isSyncingForms: false,
       isSyncingAscension: false,
+      isSyncingSg: false,
+      sgController: null,
+      lastSgIdxByForm: {},
     };
     this._modalState = modalState;
 
@@ -774,9 +809,13 @@ export const ServantInfoApp = {
 
     const frag = document.createDocumentFragment();
     const heroEl = this._buildHero(svt, baseServant, modalState);
+    if (modalState.heroRefs) modalState.heroRefs.titleEl = titleEl || null;
     frag.appendChild(heroEl);
 
     const cardsWrap = DOMFactory.el("div", "servant-info-cards");
+    if (Array.isArray(svt.saintGraphs) && svt.saintGraphs.length > 0) {
+      cardsWrap.appendChild(this._buildSaintGraphCard(svt.saintGraphs, svt.name || baseServant.name || "", modalState));
+    }
     const profileCard = this._buildProfileCard(svt, formsToUse, isAscensionProfile, isServantFormProfile, modalState);
     modalState.profileCard = profileCard;
     cardsWrap.appendChild(profileCard);
@@ -797,27 +836,293 @@ export const ServantInfoApp = {
     bodyEl.replaceChildren(frag);
   },
 
+  _buildSaintGraphCard(entries, name, modalState) {
+    const card = DOMFactory.el("div", "f-section-box");
+    const isMash = Boolean(
+      modalState &&
+      modalState.svt &&
+      (Number(modalState.svt.id) === 800100 || Number(modalState.svt.collectionNo) === 1),
+    );
+    const distinctForms = [...new Set(entries.map((e) => e.form).filter((f) => f !== undefined))].sort((a, b) => a - b);
+    const hasIsolatedFormTabs = Boolean(modalState) && !isMash && distinctForms.length > 1;
+
+    let activeFormIdx = hasIsolatedFormTabs
+      ? distinctForms.includes(modalState.activeFormIndex)
+        ? modalState.activeFormIndex
+        : distinctForms[0]
+      : null;
+    let activeEntries = hasIsolatedFormTabs ? entries.filter((e) => e.form === activeFormIdx) : entries;
+    let idx = 0;
+
+    let formBtnGroup = null;
+    const updateSgFormButtons = () => {
+      if (!formBtnGroup) return;
+      formBtnGroup.querySelectorAll(".f-option-btn").forEach((b) => {
+        const isActive = parseInt(b.dataset.globalIdx, 10) === activeFormIdx;
+        b.classList.toggle("active", isActive);
+        b.setAttribute("aria-pressed", String(isActive));
+      });
+    };
+
+    if (hasIsolatedFormTabs) {
+      const formBar = DOMFactory.el("div", "f-form-selector-bar", { "data-servant-form": "true" });
+      formBtnGroup = DOMFactory.el("div", "f-option-btn-group");
+      const formConfig = modalState.svt.formatted?.formConfig || modalState.svt.formConfig;
+      distinctForms.forEach((f) => {
+        const sf = modalState.servantForms && modalState.servantForms.find((item) => item.index === f);
+        const fc = formConfig && formConfig[String(f)];
+        const rawLabel = (sf && sf.label) || (fc && (fc.label || fc.name)) || `Form ${f}`;
+        const isActive = f === activeFormIdx;
+        const btn = DOMFactory.el("button", ["f-option-btn", ...(isActive ? ["active"] : [])], {
+          type: "button",
+          "aria-pressed": String(isActive),
+          "data-global-idx": String(f),
+        });
+        btn.textContent = translateOptionLabel(rawLabel);
+        btn.addEventListener("click", () => {
+          if (f === activeFormIdx) return;
+          this._syncAllCardsToForm(modalState, f, true);
+        });
+        formBtnGroup.appendChild(btn);
+      });
+      formBar.appendChild(formBtnGroup);
+      card.appendChild(formBar);
+    }
+
+    const header = DOMFactory.el("div", "f-section-header");
+    const title = DOMFactory.el("span", "f-section-title");
+    title.textContent = "Saint Graph";
+    header.appendChild(title);
+    card.appendChild(header);
+
+    const viewer = DOMFactory.el("div", "f-sg-viewer");
+    const wrap = DOMFactory.el("div", "f-sg-stage-wrap");
+    const img = DOMFactory.el("img", "f-sg-img", { width: "512", height: "724", decoding: "async" });
+    const caption = DOMFactory.el("div", "f-sg-caption", { "aria-live": "polite" });
+    const errorEl = DOMFactory.el("div", "f-sg-error");
+    errorEl.hidden = true;
+
+    img.addEventListener("load", () => {
+      img.classList.remove("f-sg-img--loading");
+    });
+    img.addEventListener("error", () => {
+      img.classList.remove("f-sg-img--loading");
+      img.hidden = true;
+      errorEl.textContent = "Saint Graph image not available locally.";
+      errorEl.hidden = false;
+    });
+
+    let prev = null;
+    let next = null;
+
+    const update = (syncOut = true) => {
+      const currentTotal = activeEntries.length;
+      if (currentTotal === 0) return;
+      idx = Math.max(0, Math.min(currentTotal - 1, idx));
+      const entry = activeEntries[idx];
+      const fallbackLabel =
+        ["1st Ascension", "2nd Ascension", "3rd Ascension", "Final Ascension"][idx] || `Stage ${idx + 1}`;
+      const label = translateOptionLabel(entry.label || fallbackLabel);
+      const nextSrc = `saint_graphs/${entry.file}?v=${IMAGE_VERSION}`;
+      caption.textContent = label;
+      errorEl.hidden = true;
+      img.hidden = false;
+      img.setAttribute("alt", `${name} — ${label}`);
+      if (img.getAttribute("src") !== nextSrc) {
+        img.classList.add("f-sg-img--loading");
+        img.setAttribute("src", nextSrc);
+        if (img.complete && img.naturalWidth > 0) {
+          img.classList.remove("f-sg-img--loading");
+        }
+      }
+      if (modalState) {
+        const activeFormHasSg = entries.some((e) => e.form === modalState.activeFormIndex);
+        const activeFormOverride =
+          modalState.activeFormIndex > 0 && !activeFormHasSg ? modalState.activeFormIndex : null;
+        this._applyStageIdentity(modalState, entry, activeFormOverride);
+        if (entry.form !== undefined) modalState.lastSgIdxByForm[entry.form] = idx;
+        if (syncOut && !modalState.isSyncingSg) {
+          modalState.isSyncingSg = true;
+          try {
+            if (entry.form !== undefined && entry.form !== modalState.activeFormIndex && activeFormHasSg) {
+              this._syncAllCardsToForm(modalState, entry.form, false);
+            }
+            if (entry.ascensionStage) {
+              this._setServantAscensionStage(modalState, entry.ascensionStage, false);
+            }
+          } finally {
+            modalState.isSyncingSg = false;
+          }
+        }
+      }
+      const activeEl = document.activeElement;
+      if (prev) {
+        const atStart = idx <= 0;
+        prev.classList.toggle("f-sg-nav-btn--hidden", atStart);
+        prev.disabled = atStart;
+        prev.setAttribute("aria-hidden", atStart ? "true" : "false");
+        prev.tabIndex = atStart ? -1 : 0;
+        if (atStart && activeEl === prev) {
+          if (next && !next.disabled) {
+            next.focus();
+          } else {
+            const closeBtn = document.getElementById("servantInfoModalClose");
+            if (closeBtn) closeBtn.focus();
+          }
+        }
+      }
+      if (next) {
+        const atEnd = idx >= currentTotal - 1;
+        next.classList.toggle("f-sg-nav-btn--hidden", atEnd);
+        next.disabled = atEnd;
+        next.setAttribute("aria-hidden", atEnd ? "true" : "false");
+        next.tabIndex = atEnd ? -1 : 0;
+        if (atEnd && activeEl === next) {
+          if (prev && !prev.disabled) {
+            prev.focus();
+          } else {
+            const closeBtn = document.getElementById("servantInfoModalClose");
+            if (closeBtn) closeBtn.focus();
+          }
+        }
+      }
+    };
+
+    const step = (delta) => {
+      const nextIdx = Math.max(0, Math.min(activeEntries.length - 1, idx + delta));
+      if (nextIdx === idx) return;
+      idx = nextIdx;
+      update();
+    };
+
+    if (modalState) {
+      const goTo = (target) => {
+        if (target >= 0 && target !== idx) idx = target;
+        update(false);
+      };
+      modalState.sgController = {
+        step,
+        stepToForm: (formIdx) => {
+          if (hasIsolatedFormTabs) {
+            if (distinctForms.includes(formIdx)) {
+              activeFormIdx = formIdx;
+              activeEntries = entries.filter((e) => e.form === activeFormIdx);
+              const remembered = modalState.lastSgIdxByForm[activeFormIdx];
+              idx = remembered !== undefined ? Math.max(0, Math.min(activeEntries.length - 1, remembered)) : 0;
+              updateSgFormButtons();
+              update(false);
+            } else {
+              updateSgFormButtons();
+              this._applyStageIdentity(modalState, activeEntries[idx], formIdx);
+            }
+            return;
+          }
+          const remembered = modalState.lastSgIdxByForm[formIdx];
+          const target = remembered !== undefined ? remembered : entries.findIndex((e) => e.form === formIdx);
+          if (target >= 0) {
+            goTo(target);
+          } else {
+            this._applyStageIdentity(modalState, entries[idx], formIdx);
+          }
+        },
+        stepToAscension: (stageStr) =>
+          goTo(activeEntries.findIndex((e) => e.kind === "ascension" && e.ascensionStage === String(stageStr))),
+        getCurrentEntry: () => activeEntries[idx],
+      };
+    }
+
+    if (entries.length > 1) {
+      prev = DOMFactory.el("button", ["f-option-btn", "f-sg-nav-btn"], {
+        type: "button",
+        "aria-label": "Previous stage",
+      });
+      prev.textContent = "‹";
+      prev.addEventListener("click", () => step(-1));
+      next = DOMFactory.el("button", ["f-option-btn", "f-sg-nav-btn"], {
+        type: "button",
+        "aria-label": "Next stage",
+      });
+      next.textContent = "›";
+      next.addEventListener("click", () => step(1));
+      wrap.append(prev, img, next);
+    } else {
+      wrap.appendChild(img);
+    }
+
+    viewer.append(wrap, caption, errorEl);
+    card.appendChild(viewer);
+    update(false);
+    return card;
+  },
+
+  _applyStageIdentity(modalState, entry, activeFormOverride = null) {
+    const refs = modalState.heroRefs;
+    if (!refs) return;
+    const formIdx =
+      activeFormOverride !== null && activeFormOverride !== undefined
+        ? activeFormOverride
+        : entry && entry.form !== undefined
+          ? entry.form
+          : modalState.activeFormIndex;
+    const formConfig = modalState.svt.formatted?.formConfig || modalState.svt.formConfig;
+    const formRule = formConfig && formConfig[String(formIdx)];
+    const allowFormName = Boolean(formRule && formRule.changeName === true);
+    const displayName = (entry && entry.name) || (allowFormName && formRule.name) || refs.baseName;
+    const jpName = (entry && entry.originalName) || (allowFormName && formRule.originalName) || refs.baseOriginalName;
+    refs.nameEl.textContent = displayName;
+    refs.jpEl.textContent = jpName;
+    refs.jpEl.hidden = !jpName || jpName === displayName;
+    if (refs.titleEl) {
+      refs.titleEl.textContent = `${formatServantNo(modalState.svt.collectionNo, modalState.svt.id)} ${displayName}`;
+    }
+    const portrait = refs.portraitEl;
+    if (!portrait) return;
+    let targetFace;
+    if (formRule && formRule.faces) {
+      const stageKey = String((entry && (entry.ascensionStage || entry.key)) || "1");
+      targetFace = formRule.faces[stageKey] || formRule.faces["1"] || null;
+    } else {
+      targetFace = (entry && entry.face) || null;
+    }
+    const targetImgSrc = targetFace ? `servants/${targetFace}?v=${IMAGE_VERSION}` : refs.baseImgSrc;
+    if (portrait.getAttribute("src") !== targetImgSrc) {
+      if (refs.portraitFallbackEl) {
+        refs.portraitFallbackEl.hidden = true;
+        refs.portraitFallbackEl.style.display = "none";
+      }
+      portrait.hidden = false;
+      portrait.style.display = "";
+      portrait.dataset.fallbackTried = "";
+      portrait.setAttribute("src", targetImgSrc);
+    }
+    portrait.setAttribute("alt", displayName);
+    portrait.setAttribute("data-stage-face", targetFace ? "1" : "0");
+  },
+
   _buildHero(svt, baseServant, modalState) {
     const hero = DOMFactory.el("div", "servant-info-hero");
     const imgSrc = (baseServant && baseServant.image) || `servants/${svt.id}/000.webp?v=${IMAGE_VERSION}`;
 
-    let portraitEl;
-    if (baseServant && baseServant.altImage) {
-      portraitEl = DOMFactory.createSwapImg({
-        src: imgSrc,
-        altSrc: baseServant.altImage,
-        className: "servant-info-portrait",
-        attrs: { alt: svt.name || "" },
-        fallbackId: svt.id,
-      });
-    } else {
-      portraitEl = DOMFactory.el("img", "servant-info-portrait", {
-        src: imgSrc,
-        alt: svt.name || "",
-      });
-      DOMFactory.addAscensionFallback(portraitEl, svt.id);
-    }
-    hero.appendChild(portraitEl);
+    const portraitEl = DOMFactory.el("img", "servant-info-portrait", {
+      src: imgSrc,
+      alt: svt.name || "",
+    });
+    const portraitFallbackEl = DOMFactory.el("div", "servant-slot-portrait-fallback");
+    portraitFallbackEl.textContent = String(svt.id);
+    portraitFallbackEl.hidden = true;
+    portraitFallbackEl.style.display = "none";
+    portraitEl.addEventListener("error", () => {
+      if (portraitEl.dataset.fallbackTried !== "1" && portraitEl.getAttribute("src") !== imgSrc) {
+        portraitEl.dataset.fallbackTried = "1";
+        portraitEl.setAttribute("src", imgSrc);
+        return;
+      }
+      portraitEl.hidden = true;
+      portraitEl.style.display = "none";
+      portraitFallbackEl.hidden = false;
+      portraitFallbackEl.style.display = "";
+    });
+    hero.append(portraitEl, portraitFallbackEl);
 
     const meta = DOMFactory.el("div", "servant-info-meta");
     const badges = DOMFactory.el("div", "servant-info-badges");
@@ -827,18 +1132,24 @@ export const ServantInfoApp = {
     badges.appendChild(noBadge);
 
     const classBadge = DOMFactory.el("span", "badge-class");
+    const classIconEl = DOMFactory.el("img", null, {
+      alt: "",
+      width: "16",
+      height: "16",
+    });
+    classIconEl.style.marginRight = "4px";
+    classIconEl.addEventListener("error", () => {
+      classIconEl.hidden = true;
+      classIconEl.style.display = "none";
+    });
     const iconKey = resolveClassIconKey(svt.className);
     if (iconKey) {
-      const iconImg = DOMFactory.el("img", null, {
-        src: `icons/classes/${iconKey}.webp`,
-        alt: "",
-        width: "16",
-        height: "16",
-      });
-      iconImg.style.marginRight = "4px";
-      iconImg.onerror = () => iconImg.remove();
-      classBadge.appendChild(iconImg);
+      classIconEl.setAttribute("src", `icons/classes/${iconKey}.webp`);
+    } else {
+      classIconEl.hidden = true;
+      classIconEl.style.display = "none";
     }
+    classBadge.appendChild(classIconEl);
     const classText = DOMFactory.el("span");
     classText.textContent = svt.className || "-";
     classBadge.appendChild(classText);
@@ -864,22 +1175,64 @@ export const ServantInfoApp = {
     nameEl.textContent = svt.name || (baseServant && baseServant.name) || "";
     meta.appendChild(nameEl);
 
+    const jpEl = DOMFactory.el("div", "servant-info-jp");
     if (svt.originalName && svt.originalName !== svt.name) {
-      const jpEl = DOMFactory.el("div", "servant-info-jp");
       jpEl.textContent = svt.originalName;
-      meta.appendChild(jpEl);
+    } else {
+      jpEl.hidden = true;
     }
+    meta.appendChild(jpEl);
 
     hero.appendChild(meta);
     if (modalState) {
-      modalState.heroRefs = { classText, rarityBadge, classBadge };
+      modalState.heroRefs = {
+        classText,
+        classIconEl,
+        rarityBadge,
+        classBadge,
+        nameEl,
+        jpEl,
+        portraitEl,
+        portraitFallbackEl,
+        baseName: svt.name || (baseServant && baseServant.name) || "",
+        baseOriginalName: svt.originalName || "",
+        baseImgSrc: imgSrc,
+        titleEl: null,
+      };
     }
     return hero;
   },
 
+  _parseProfileBlocksByStage(blocks, fallbackValue) {
+    const byStage = { 1: fallbackValue, 2: fallbackValue, 3: fallbackValue };
+    if (!Array.isArray(blocks) || blocks.length === 0) return byStage;
+    let currentStages = null;
+    for (const rawItem of blocks) {
+      const item = String(rawItem || "").trim();
+      if (!item) continue;
+      const tagMatch = item.match(/^\[(.+)\]$/);
+      if (tagMatch) {
+        const hdr = tagMatch[1].toLowerCase();
+        const stages = [];
+        if (/\b1st\b/.test(hdr)) stages.push("1");
+        if (/\b2nd\b/.test(hdr)) stages.push("2");
+        if (/\b3rd\b/.test(hdr)) stages.push("3");
+        currentStages = stages.length > 0 ? stages : null;
+        continue;
+      }
+      const val = item.replace(/^(?:Alignment|Sub-Attribute|Gender)\s*:\s*/i, "").trim();
+      if (!val) continue;
+      const targets = currentStages || ["1", "2", "3"];
+      targets.forEach((s) => {
+        byStage[s] = val;
+      });
+    }
+    return byStage;
+  },
+
   _normalizeProfileForms(svt, profile) {
     if (profile && Array.isArray(profile.forms) && profile.forms.length > 0) {
-      return profile.forms.map((f, i) => ({
+      const normalized = profile.forms.map((f, i) => ({
         index: i,
         globalFormIndex: f.globalFormIndex !== undefined ? f.globalFormIndex : i,
         label: f.label || "",
@@ -895,6 +1248,55 @@ export const ServantInfoApp = {
         cardDeck: f.cardDeck || "",
         hits: Array.isArray(f.hits) ? f.hits : [],
       }));
+      const hasBracketedBlock =
+        normalized.length === 1 &&
+        [profile.attributeBlocks, profile.alignmentBlocks, profile.genderBlocks].some(
+          (arr) => Array.isArray(arr) && arr.some((line) => /^\[.+\]$/.test(String(line || "").trim())),
+        );
+      if (hasBracketedBlock) {
+        const base = normalized[0];
+        const alignByStage = this._parseProfileBlocksByStage(profile.alignmentBlocks, base.alignment);
+        const attrByStage = this._parseProfileBlocksByStage(profile.attributeBlocks, base.subAttr);
+        const genderByStage = this._parseProfileBlocksByStage(profile.genderBlocks, base.gender);
+        const stageTuple = (s) => `${alignByStage[s]}\0${attrByStage[s]}\0${genderByStage[s]}`;
+        const t1 = stageTuple("1");
+        const t2 = stageTuple("2");
+        const t3 = stageTuple("3");
+        const groups =
+          t1 === t2 && t2 === t3
+            ? null
+            : t1 === t2
+              ? [
+                  { label: "1st&2nd Ascension", stage: "1" },
+                  { label: "3rd Ascension", stage: "3" },
+                ]
+              : t1 === t3
+                ? [
+                    { label: "1st&3rd Ascension", stage: "1" },
+                    { label: "2nd Ascension", stage: "2" },
+                  ]
+                : t2 === t3
+                  ? [
+                      { label: "1st Ascension", stage: "1" },
+                      { label: "2nd&3rd Ascension", stage: "2" },
+                    ]
+                  : [
+                      { label: "1st Ascension", stage: "1" },
+                      { label: "2nd Ascension", stage: "2" },
+                      { label: "3rd Ascension", stage: "3" },
+                    ];
+        if (groups) {
+          return groups.map((g, i) => ({
+            ...base,
+            index: i,
+            label: g.label,
+            alignment: alignByStage[g.stage],
+            subAttr: attrByStage[g.stage],
+            gender: genderByStage[g.stage],
+          }));
+        }
+      }
+      return normalized;
     }
     return [
       {
@@ -977,6 +1379,7 @@ export const ServantInfoApp = {
       formsToUse.forEach((f, i) => {
         const btn = DOMFactory.el("button", ["f-option-btn", ...(i === 0 ? ["active"] : [])], {
           type: "button",
+          "aria-pressed": String(i === 0),
           "data-form-idx": String(i),
           "data-global-idx": String(f.globalFormIndex !== undefined ? f.globalFormIndex : i),
           "data-form-label": f.label || "",
@@ -1081,6 +1484,19 @@ export const ServantInfoApp = {
           modalState.heroRefs.classText.textContent = f.className;
           modalState.heroRefs.classBadge.hidden = false;
           modalState.heroRefs.classBadge.style.display = "";
+          const iconEl = modalState.heroRefs.classIconEl;
+          if (iconEl) {
+            const iconKey = resolveClassIconKey(f.className);
+            if (iconKey) {
+              const iconSrc = `icons/classes/${iconKey}.webp`;
+              if (iconEl.getAttribute("src") !== iconSrc) iconEl.setAttribute("src", iconSrc);
+              iconEl.hidden = false;
+              iconEl.style.display = "";
+            } else {
+              iconEl.hidden = true;
+              iconEl.style.display = "none";
+            }
+          }
         }
       }
       alignVal.textContent = f.alignment || "Unknown";
@@ -1095,7 +1511,9 @@ export const ServantInfoApp = {
     card._applyFormIdx = (idx) => {
       if (!formBtnGroup || !formsToUse[idx]) return;
       formBtnGroup.querySelectorAll(".f-option-btn").forEach((b) => {
-        b.classList.toggle("active", parseInt(b.dataset.formIdx, 10) === idx);
+        const isActive = parseInt(b.dataset.formIdx, 10) === idx;
+        b.classList.toggle("active", isActive);
+        b.setAttribute("aria-pressed", String(isActive));
       });
       applyFormProfile(formsToUse[idx]);
     };
@@ -1114,7 +1532,7 @@ export const ServantInfoApp = {
         if (isServantFormProfile && !modalState.isSyncingForms) {
           const clickedForm = formsToUse[idx];
           const targetGlobalIdx = clickedForm.globalFormIndex !== undefined ? clickedForm.globalFormIndex : idx;
-          this._setServantForm(modalState, targetGlobalIdx);
+          this._syncAllCardsToForm(modalState, targetGlobalIdx);
         } else if (isAscensionProfile && !modalState.isSyncingAscension) {
           this._setServantAscensionStage(modalState, getTargetStageForAscensionForm(formsToUse[idx].label));
         }
@@ -1126,10 +1544,15 @@ export const ServantInfoApp = {
 
   _slotHasServantForms(slot, modalState) {
     if (!slot || !slot.variantsByTier) return false;
+    const variants = Object.values(slot.variantsByTier);
+    if (!variants.some((v) => Array.isArray(v.forms) && v.forms.length > 1)) return false;
     const formConfig = modalState.svt.formatted?.formConfig || modalState.svt.formConfig;
     if (formConfig && Object.keys(formConfig).length > 1) return true;
-    return Object.values(slot.variantsByTier).some(
-      (v) => v.forms && v.forms.some((f) => /^If\s+|Spiritron Dress|All Ascensions/i.test(f.label || "")),
+    return variants.some(
+      (v) =>
+        Array.isArray(v.forms) &&
+        v.forms.length > 1 &&
+        v.forms.some((f) => /^If\s+|Spiritron Dress|All Ascensions/i.test(f.label || "")),
     );
   },
 
@@ -1265,14 +1688,18 @@ export const ServantInfoApp = {
       btn.textContent = tier === 0 ? "Base" : validTiers.length === 2 ? "Rank Up" : `Rank Up ${tier}`;
       btn.addEventListener("click", () => {
         if (slot.activeTier === tier) return;
+        const hasServantForms =
+          this._slotHasServantForms(slot, modalState) && modalState.servantForms && modalState.servantForms.length > 1;
         const curFormIdx = modalState.activeFormIndex || 0;
         slot.activeTier = tier;
         slot.activeTierByForm[curFormIdx] = tier;
         const variant = getVariantByTier(slot, tier);
         if (slot.type === "np") {
-          this._renderNpContent(card, variant, String(curFormIdx), modalState);
+          const selectedNpForm = hasServantForms ? String(curFormIdx) : card.dataset.activeNpForm || "0";
+          this._renderNpContent(card, variant, selectedNpForm, modalState);
         } else {
-          this._renderSkillContent(card, variant, String(curFormIdx), card.dataset.activeOption || "0", modalState);
+          const selectedSkillForm = hasServantForms ? String(curFormIdx) : card.dataset.activeSkillForm || "0";
+          this._renderSkillContent(card, variant, selectedSkillForm, card.dataset.activeOption || "0", modalState);
         }
         this._updateCardStrengthenUI(card, slot, curFormIdx, modalState);
       });
@@ -1286,6 +1713,7 @@ export const ServantInfoApp = {
     buttons.forEach(({ label, formIdx, formLabel, active }) => {
       const btn = DOMFactory.el("button", ["f-option-btn", ...(active ? ["active"] : [])], {
         type: "button",
+        "aria-pressed": String(Boolean(active)),
         "data-form-idx": String(formIdx),
         "data-form-label": formLabel || "",
       });
@@ -1356,7 +1784,7 @@ export const ServantInfoApp = {
           active: sf.index === currentFormIdx,
         })),
         (newIdx) => {
-          if (newIdx !== modalState.activeFormIndex) this._setServantForm(modalState, newIdx);
+          if (newIdx !== modalState.activeFormIndex) this._syncAllCardsToForm(modalState, newIdx);
         },
       );
     } else if (variant.forms && variant.forms.length > 1) {
@@ -1416,6 +1844,7 @@ export const ServantInfoApp = {
     optInfo.options.forEach((opt, idx) => {
       const btn = DOMFactory.el("button", ["f-option-btn", ...(idx === activeOptIdx ? ["active"] : [])], {
         type: "button",
+        "aria-pressed": String(idx === activeOptIdx),
       });
       btn.textContent = opt.label;
       btn.addEventListener("click", () => {
@@ -1460,6 +1889,7 @@ export const ServantInfoApp = {
     activeForm.options.forEach((opt, i) => {
       const btn = DOMFactory.el("button", ["f-option-btn", ...(i === optIdx ? ["active"] : [])], {
         type: "button",
+        "aria-pressed": String(i === optIdx),
       });
       btn.textContent = getFormDisplayLabel(opt);
       btn.addEventListener("click", () => {
@@ -1525,7 +1955,7 @@ export const ServantInfoApp = {
           active: sf.index === currentFormIdx,
         })),
         (newIdx) => {
-          if (newIdx !== modalState.activeFormIndex) this._setServantForm(modalState, newIdx);
+          if (newIdx !== modalState.activeFormIndex) this._syncAllCardsToForm(modalState, newIdx);
         },
       );
 
@@ -1602,6 +2032,7 @@ export const ServantInfoApp = {
       variant.forms.forEach((f, i) => {
         const btn = DOMFactory.el("button", ["f-option-btn", ...(i === idx ? ["active"] : [])], {
           type: "button",
+          "aria-pressed": String(i === idx),
           "data-form-idx": String(i),
           "data-form-label": f.label || "",
         });
@@ -1630,10 +2061,13 @@ export const ServantInfoApp = {
     );
   },
 
-  _setServantForm(modalState, formIdx) {
+  _syncAllCardsToForm(modalState, formIdx, syncSg = true) {
     if (modalState.isSyncingForms) return;
     const nextIdx = Math.max(0, parseInt(formIdx, 10) || 0);
     modalState.activeFormIndex = nextIdx;
+    if (syncSg && modalState.sgController && !modalState.isSyncingSg) {
+      modalState.sgController.stepToForm(nextIdx);
+    }
     modalState.isSyncingForms = true;
 
     try {
@@ -1689,8 +2123,11 @@ export const ServantInfoApp = {
     }
   },
 
-  _setServantAscensionStage(modalState, stageStr) {
+  _setServantAscensionStage(modalState, stageStr, syncSg = true) {
     if (modalState.isSyncingAscension) return;
+    if (syncSg && modalState.sgController && !modalState.isSyncingSg) {
+      modalState.sgController.stepToAscension(stageStr);
+    }
     modalState.isSyncingAscension = true;
     try {
       const modalBody = document.getElementById("servantInfoModalBody");
