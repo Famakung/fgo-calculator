@@ -890,6 +890,7 @@ JP_BUFF_NAME_MAP = {
     "納刀体勢": "Sheathed Stance",
     "特性付与〔新選組〕": "Shinsengumi",
     "特性付与〔イリヤ〕": "Illya",
+    "湖水の夢": "Lake Water Dream",
 }
 
 # Costume / Spiritron Dress ID -> English display name

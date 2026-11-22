@@ -523,12 +523,15 @@ def fmt_val_range(v0, v9, divisor, is_pct):
     return f"{pv0}-{pv9}{suffix}"
 
 
-def fmt_condition(turn, count):
+def fmt_condition(turn, count, turn_end=None):
     parts = []
     if count > 0:
         parts.append(f"{count} time{'s' if count > 1 else ''}")
     if turn > 0:
-        parts.append(f"{turn} turn{'s' if turn > 1 else ''}")
+        if turn_end is not None and turn_end > 0 and turn_end != turn:
+            parts.append(f"{turn}-{turn_end} turns")
+        else:
+            parts.append(f"{turn} turn{'s' if turn > 1 else ''}")
     return f"({', '.join(parts)})" if parts else ""
 
 
