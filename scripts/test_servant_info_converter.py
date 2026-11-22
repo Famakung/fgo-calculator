@@ -2549,6 +2549,140 @@ class ServantInfoConverterTests(unittest.TestCase):
             "<nullify Resistance, unable to remove> [Demerit]",
         )
 
+    def test_trigger_inner_skill_filters_enemy_side_effects(self):
+        inner_skills = {
+            970480: {
+                "id": 970480,
+                "functions": [
+                    {
+                        "funcId": 467,
+                        "funcType": "gainNp",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "player",
+                        "svals": [{"Rate": 1000, "Value": 3000}],
+                    },
+                    {
+                        "funcId": 470,
+                        "funcType": "hastenNpturn",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "enemy",
+                        "svals": [{"Rate": 1000, "Value": 1}],
+                    },
+                ],
+            },
+            970962: {
+                "id": 970962,
+                "functions": [
+                    {
+                        "funcId": 727,
+                        "funcType": "gainStar",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "player",
+                        "svals": [{"Rate": 1000, "Value": 5}],
+                    },
+                    {
+                        "funcId": 214,
+                        "funcType": "addStateShort",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "enemy",
+                        "buffs": [{"id": 159, "type": "upCriticalrate", "name": "Critical Rate Up"}],
+                        "svals": [{"Rate": 1000, "Turn": 2, "Count": -1, "Value": 100}],
+                    },
+                ],
+            },
+            966456: {
+                "id": 966456,
+                "functions": [
+                    {
+                        "funcId": 995,
+                        "funcType": "lossNp",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "player",
+                        "svals": [{"Rate": 1000, "Value": 2000}],
+                    },
+                    {
+                        "funcId": 996,
+                        "funcType": "delayNpturn",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "enemy",
+                        "svals": [{"Rate": 1000, "Value": 1}],
+                    },
+                ],
+            },
+            970545: {
+                "id": 970545,
+                "functions": [
+                    {
+                        "funcId": 473,
+                        "funcType": "delayNpturn",
+                        "funcTargetType": "enemy",
+                        "funcTargetTeam": "enemy",
+                        "svals": [{"Rate": 1000, "Value": 1}],
+                    }
+                ],
+            },
+        }
+        ctx = FetchContext(fetch_inner_skill=lambda sid: inner_skills.get(sid))
+
+        cagliostro_s2_fn = {
+            "funcId": 21385,
+            "funcType": "addState",
+            "funcTargetType": "self",
+            "funcTargetTeam": "player",
+            "buffs": [{"id": 5525, "type": "gutsFunction", "name": "Triggers When Guts Activates"}],
+            "svals": [{"Rate": 1000, "Turn": 5, "Count": 1, "Value": 970480}],
+        }
+        self.assertEqual(
+            fmt_function(cagliostro_s2_fn, ctx=ctx),
+            'Apply a state that "Increase NP Gauge by 30% for yourself" when Guts is activated (1 time, 5 turns) for yourself',
+        )
+
+        tamamo_cat_s1_fn = {
+            "funcId": 23635,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "player",
+            "buffs": [{"id": 159, "type": "attackAfterFunction", "name": "Triggers When Attacking"}],
+            "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 970962}],
+        }
+        self.assertEqual(
+            fmt_function(tamamo_cat_s1_fn, ctx=ctx),
+            'Apply a state that "Gain Critical Stars by 5" when attacking after damage (3 turns) for yourself',
+        )
+
+        oberon_s2_fn = {
+            "funcId": 21634,
+            "funcType": "addState",
+            "funcTargetType": "ptOne",
+            "funcTargetTeam": "player",
+            "buffs": [{"id": 3709, "type": "selfturnendFunction", "name": "Morning Lark"}],
+            "svals": [{"Rate": 1000, "Turn": -1, "Count": 1, "Value": 966456}],
+        }
+        self.assertEqual(
+            fmt_function(oberon_s2_fn, ctx=ctx),
+            'Inflict Morning Lark <Apply a state that "Decrease NP Gauge by 20% for yourself [Demerit]" at turn end> (1 time) for a single ally',
+        )
+
+        ciel_s2_fn = {
+            "funcId": 21924,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "player",
+            "buffs": [
+                {
+                    "id": 5740,
+                    "type": "attackAfterFunction",
+                    "name": "Triggers When Attacking",
+                    "ckSelfIndv": [{"id": 4001, "name": "cardArts"}],
+                }
+            ],
+            "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 970545}],
+        }
+        self.assertEqual(
+            fmt_function(ciel_s2_fn, ctx=ctx),
+            'Apply a state that "Decrease Charge for one enemy" when Arts attacking after damage (3 turns) for yourself',
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -360,18 +360,18 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
     )
 
     for raw_inner_fn in (inner_skill or {}).get("functions", []):
+        raw_inner_team = raw_inner_fn.get("funcTargetTeam")
+        inner_func_type = raw_inner_fn.get("funcType", "")
+        inner_target_type = raw_inner_fn.get("funcTargetType", "")
+        if inner_func_type in ("displayBuffstring", "hastenNpturn"):
+            continue
+        if inner_func_type == "delayNpturn" and inner_target_type in ("self", "ptOne", "ptAll"):
+            continue
+        if raw_inner_team == "enemy" and inner_func_type != "delayNpturn":
+            continue
         inner_fn = dict(raw_inner_fn)
         # Pass target team context to inner functions without mutating cached skill
         inner_fn["funcTargetTeam"] = fn.get("funcTargetTeam")
-        inner_func_type = inner_fn.get("funcType", "")
-        if inner_func_type in ("displayBuffstring",):
-            continue
-        if (
-            inner_func_type == "hastenNpturn"
-            and inner_fn.get("funcTargetType") == "self"
-            and inner_fn.get("funcTargetTeam") == "enemy"
-        ):
-            continue
 
         inner_svals = inner_fn.get("svals", [])
         inner_sv0 = inner_svals[0] if inner_svals else {}
