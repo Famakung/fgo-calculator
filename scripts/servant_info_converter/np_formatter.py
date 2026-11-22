@@ -284,14 +284,37 @@ def _extract_single_np_data(np_data, ctx=None) -> dict:
                     trait_id, f"{trait_id}:Unknown"
                 )
             break
-    for fn, count in fold_chained_functions(functions):
-        res = fmt_np_function(
-            fn, np_individuality_trait=np_individuality_trait, ctx=ctx
+    def _append_np_fx(target_fns):
+        for fn, count in fold_chained_functions(target_fns):
+            res = fmt_np_function(
+                fn, np_individuality_trait=np_individuality_trait, ctx=ctx
+            )
+            if res:
+                if count > 1:
+                    res = append_chained_roll_tag(res, count)
+                fx_lines.append(res)
+
+    if any((fn.get("svals") or [{}])[0].get("ActSet") is not None for fn in functions):
+        _append_np_fx(
+            [fn for fn in functions if (fn.get("svals") or [{}])[0].get("ActSet") is None]
         )
-        if res:
-            if count > 1:
-                res = append_chained_roll_tag(res, count)
-            fx_lines.append(res)
+        seen_act_sets = []
+        for fn in functions:
+            aset = (fn.get("svals") or [{}])[0].get("ActSet")
+            if aset is not None and aset not in seen_act_sets:
+                seen_act_sets.append(aset)
+        for aset in seen_act_sets:
+            set_fns = [
+                fn
+                for fn in functions
+                if (fn.get("svals") or [{}])[0].get("ActSet") == aset
+            ]
+            weight = (set_fns[0].get("svals") or [{}])[0].get("ActSetWeight")
+            label = f"[{weight}% Chance]" if weight is not None else f"[Set {aset}]"
+            fx_lines.append(label)
+            _append_np_fx(set_fns)
+    else:
+        _append_np_fx(functions)
 
     return {
         "name": np_data.get("name", ""),

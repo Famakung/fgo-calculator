@@ -27,7 +27,10 @@ from servant_info_converter.export_servant_info import (  # noqa: E402
 )
 from servant_info_converter.context import FetchContext  # noqa: E402
 from servant_info_converter.effect_map import TRAIT_ID_LABELS  # noqa: E402
-from servant_info_converter.np_formatter import format_np_structured  # noqa: E402
+from servant_info_converter.np_formatter import (  # noqa: E402
+    _extract_single_np_data,
+    format_np_structured,
+)
 from servant_info_converter.skill_formatter import (  # noqa: E402
     format_passives_structured,
     format_skills_structured,
@@ -1721,6 +1724,74 @@ class ServantInfoConverterTests(unittest.TestCase):
         self.assertEqual(by_key["4"].get("npName"), "Ascended NP")
         self.assertEqual(by_key["990030"].get("npName"), "Costume NP")
         self.assertEqual(by_key["990030"].get("skillNames"), {"skill_2": "Costume Skill 2"})
+
+    def test_np_act_set_weight_labels(self):
+        np_data = {
+            "id": 901200,
+            "num": 1,
+            "name": "Dinosaur Summer Goodbye",
+            "card": "buster",
+            "type": "buster",
+            "effectFlags": ["attackEnemyOne"],
+            "npDistribution": [33, 33, 34],
+            "npGain": {"buster": [67, 67, 67, 67, 67]},
+            "script": {},
+            "functions": [
+                {
+                    "funcId": 1,
+                    "funcType": "damageNp",
+                    "funcTargetType": "enemy",
+                    "funcTargetTeam": "enemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [],
+                    "svals": [{"Rate": 1000, "Value": 600}],
+                    "svals2": [{"Rate": 1000, "Value": 800}],
+                    "svals3": [{"Rate": 1000, "Value": 900}],
+                    "svals4": [{"Rate": 1000, "Value": 950}],
+                    "svals5": [{"Rate": 1000, "Value": 1000}],
+                },
+                {
+                    "funcId": 2,
+                    "funcType": "gainStar",
+                    "funcTargetType": "player",
+                    "funcTargetTeam": "player",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [],
+                    "svals": [{"Rate": 1000, "Value": 30, "ActSet": 1, "ActSetWeight": 33}],
+                },
+                {
+                    "funcId": 3,
+                    "funcType": "gainNp",
+                    "funcTargetType": "ptAll",
+                    "funcTargetTeam": "player",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [],
+                    "svals": [{"Rate": 1000, "Value": 2000, "ActSet": 2, "ActSetWeight": 33}],
+                },
+                {
+                    "funcId": 4,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "ptAll",
+                    "funcTargetTeam": "player",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [{"id": 101, "type": "upAtk", "name": "ATK Up"}],
+                    "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 200, "ActSet": 3, "ActSetWeight": 33}],
+                },
+            ],
+        }
+        info = _extract_single_np_data(np_data)
+        fx = info["effects"]
+        self.assertEqual(fx.count("[33% Chance]"), 3)
+        first_chance_idx = fx.index("[33% Chance]")
+        self.assertGreater(first_chance_idx, 0)
+        self.assertIn("Deal significant damage", fx[0])
+        self.assertEqual(fx[first_chance_idx + 1], "Gain Critical Stars by 30")
+        second_chance_idx = fx.index("[33% Chance]", first_chance_idx + 1)
+        self.assertIn("NP Gauge", fx[second_chance_idx + 1])
 
 
 if __name__ == "__main__":
