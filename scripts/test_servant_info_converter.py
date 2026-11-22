@@ -27,6 +27,7 @@ from servant_info_converter.export_servant_info import (  # noqa: E402
 )
 from servant_info_converter.context import FetchContext  # noqa: E402
 from servant_info_converter.effect_map import TRAIT_ID_LABELS  # noqa: E402
+from servant_info_converter.function_formatter import fmt_function  # noqa: E402
 from servant_info_converter.np_formatter import (  # noqa: E402
     _extract_single_np_data,
     format_np_structured,
@@ -1792,6 +1793,653 @@ class ServantInfoConverterTests(unittest.TestCase):
         self.assertEqual(fx[first_chance_idx + 1], "Gain Critical Stars by 30")
         second_chance_idx = fx.index("[33% Chance]", first_chance_idx + 1)
         self.assertIn("NP Gauge", fx[second_chance_idx + 1])
+
+    def test_append_skills_slot_and_formatting(self):
+        svt = _make_standard_servant()
+        svt["appendPassive"] = [
+            {
+                "num": 100,
+                "priority": 1,
+                "skill": {
+                    "id": 3001000,
+                    "name": "Extra Attack Boost",
+                    "functions": [
+                        {
+                            "funcId": 30003,
+                            "funcType": "addStateShort",
+                            "funcTargetType": "self",
+                            "funcTargetTeam": "playerAndEnemy",
+                            "functvals": [],
+                            "funcquestTvals": [],
+                            "buffs": [{"id": 101, "type": "upCommandall", "name": "Extra Up", "ckSelfIndv": [{"id": 4004, "name": "cardExtra"}]}],
+                            "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 300}, {"Rate": 1000, "Turn": -1, "Count": -1, "Value": 500}],
+                        }
+                    ],
+                },
+            },
+            {
+                "num": 104,
+                "priority": 1,
+                "skill": {
+                    "id": 3034000,
+                    "name": "Skill Reload",
+                    "functions": [
+                        {
+                            "funcId": 30170,
+                            "funcType": "addState",
+                            "funcTargetType": "self",
+                            "funcTargetTeam": "playerAndEnemy",
+                            "functvals": [],
+                            "funcquestTvals": [],
+                            "buffs": [{"id": 30059, "type": "shortenSkillAfterUseSkill", "name": "Reduce Cooldown after Skill Use"}],
+                            "svals": [
+                                {"Rate": 1000, "Turn": -1, "Count": 1, "Value": 1, "ShortenMaxCountEachSkill": [1, 1, 1]},
+                                {"Rate": 1000, "Turn": -1, "Count": 3, "Value": 1, "ShortenMaxCountEachSkill": [1, 1, 1]},
+                            ],
+                        }
+                    ],
+                },
+            },
+        ]
+        payload = build_servant_info_payload(svt, svt_by_id={svt["id"]: svt}, skill_by_id={})
+        self._assert_clean_schema(payload)
+        fmt = payload["formatted"]
+        self.assertIn("appendSkills", fmt)
+        self.assertEqual(len(fmt["appendSkills"]), 1)
+        ap_slot = fmt["appendSkills"][0]
+        self.assertEqual(ap_slot["slotKey"], "append_1")
+        self.assertEqual(ap_slot["type"], "append")
+        self.assertEqual(fmt["slots"][-1]["slotKey"], "append_1")
+        self.assertEqual(fmt["slots"][-2]["slotKey"], "passive_1")
+        effects = ap_slot["variantsByTier"][0]["effects"]
+        self.assertEqual(effects[0], "Increase Extra Card effectiveness by 30-50% for yourself")
+        self.assertEqual(effects[1], "Reduce used skill's cooldown by 1 after Skill Use (1-3 times, max 1 time per skill) for yourself")
+
+    def test_hide_miss_and_internal_dummy_exclusions(self):
+        inner_death = {
+            "id": 970911,
+            "functions": [
+                {
+                    "funcId": 23451,
+                    "funcType": "forceInstantDeath",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "script": {"funcIndividuality": [{"id": 3139, "name": "unknown"}]},
+                    "buffs": [],
+                    "svals": [{"Rate": 5000, "HideMiss": 1, "HideNoEffect": 1}],
+                }
+            ],
+        }
+        delay_fn = {
+            "funcId": 23446,
+            "funcType": "addStateShort",
+            "funcTargetType": "ptOne",
+                    "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 6081, "type": "delayFunction", "name": "Delayed Effect", "vals": [{"id": 3005}]}],
+            "svals": [{"Rate": 5000, "Turn": 3, "Count": -1, "Value": 970911}],
+        }
+        ctx = FetchContext(fetch_inner_skill=lambda sid: inner_death if sid == 970911 else None)
+        res = fmt_function(delay_fn, ctx=ctx)
+        self.assertEqual(res, 'After 3 turns "Apply Death <Ignore Guts> for yourself [Demerit]" (3 turns) for a single ally')
+
+        # Servant 353 Lady Avalon Skill 3: downNpturnval enemy-targeting debuff
+        down_np_turn_val_fn = {
+            "funcId": 9131,
+            "funcType": "addState",
+            "funcTargetType": "enemyAll",
+            "funcTargetTeam": "enemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 4539, "type": "downNpturnval", "name": "Charge Down Each Turn"}],
+            "svals": [{"Rate": 1000, "Turn": -1, "Count": 1, "Value": 1}],
+        }
+        self.assertEqual(
+            fmt_function(down_np_turn_val_fn),
+            "Apply a state where Charge is decreased by 1 each turn (1 time) for all enemies",
+        )
+
+        # Internal dummy hooks remain suppressed
+        dummy_indv = {
+            "funcId": 20887,
+            "funcType": "addState",
+            "funcTargetType": "enemyAll",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 9999, "type": "addIndividuality", "name": ""}],
+            "svals": [{"Rate": 5000, "Turn": 1, "Count": -1, "Value": 9999, "HideMiss": 1, "HideNoEffect": 1, "ShowState": -1}],
+        }
+        self.assertIsNone(fmt_function(dummy_indv))
+        dummy_up_dmg = {
+            "funcId": 1259,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 100, "type": "upDamage", "name": "Strength Up"}],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 0, "HideMiss": 1, "HideNoEffect": 1, "ShowState": -1}],
+        }
+        self.assertIsNone(fmt_function(dummy_up_dmg))
+        dummy_sub = {
+            "funcId": 20888,
+            "funcType": "subState",
+            "funcTargetType": "enemyAll",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "traitVals": [{"id": 2860, "name": "happyHalloweenCounter"}],
+            "buffs": [],
+            "svals": [{"Rate": 5000, "HideMiss": 1, "HideNoEffect": 1}],
+        }
+        self.assertIsNone(fmt_function(dummy_sub))
+
+        # Genuine HideMiss effects render (e.g. Nobukatsu buff + Yamato Takeru deadFunction)
+        nobukatsu_fn = {
+            "funcId": 5880,
+            "funcType": "addStateShort",
+            "funcTargetType": "ptAll",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [{"id": 2721, "name": "nobunaga"}],
+            "funcquestTvals": [],
+            "buffs": [{"id": 142, "type": "upCriticaldamage", "name": "Critical Strength Up"}],
+            "svals": [
+                {"Rate": 1000, "Turn": 3, "Count": -1, "Value": 300, "HideMiss": 1, "HideNoEffect": 1},
+                {"Rate": 1000, "Turn": 3, "Count": -1, "Value": 800, "HideMiss": 1, "HideNoEffect": 1},
+            ],
+        }
+        self.assertEqual(
+            fmt_function(nobukatsu_fn),
+            "Increase Critical Strength by 30-80% (3 turns) for all [Nobunaga] allies",
+        )
+        dead_fn = {
+            "funcId": 21302,
+            "funcType": "addState",
+            "funcTargetType": "ptFull",
+            "funcTargetTeam": "player",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 5513, "type": "deadFunction", "name": ""}],
+            "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 970452, "HideMiss": 1, "HideNoEffect": 1, "ShowState": -1}],
+        }
+        self.assertEqual(
+            fmt_function(dead_fn),
+            'Apply a state that "Increase NP Gauge for yourself" when an ally is defeated for all allies',
+        )
+
+    def test_delay_fn_follows_additional_skill_id(self):
+        inner_skills = {
+            970409: {"id": 970409, "script": {"additionalSkillId": [970412]}, "functions": [{"funcId": 0, "funcType": "none", "funcTargetType": "self"}]},
+            970412: {
+                "id": 970412,
+                "functions": [
+                    {
+                        "funcId": 7011,
+                        "funcType": "moveToLastSubmember",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [],
+                        "svals": [{"Rate": 1000}],
+                    }
+                ],
+            },
+        }
+        fn = {
+            "funcId": 21112,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 5447, "type": "delayFunction", "name": "Preparing Replacement"}],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": 1, "Value": 970409}],
+        }
+        ctx = FetchContext(fetch_inner_skill=lambda sid: inner_skills.get(sid))
+        res = fmt_function(fn, ctx=ctx)
+        self.assertEqual(
+            res,
+            'After 1 turn "Retreat to the sub-member slot <cannot retreat if there is only 1 allied Servant on the field>" (1 time, 1 turn) for yourself',
+        )
+
+    def test_consecutive_same_func_id_not_collapsed_and_passive_stacking(self):
+        skills = [
+            {
+                "id": 25550,
+                "num": 2,
+                "name": "Morph A",
+                "strengthStatus": 0,
+                "coolDown": [7, 5],
+                "script": {},
+                "functions": [
+                    {
+                        "funcId": 176,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [{"id": 120, "type": "upDefence", "name": "DEF Up"}],
+                        "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 300}, {"Rate": 1000, "Turn": 1, "Count": -1, "Value": 300}],
+                    },
+                    {
+                        "funcId": 176,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [{"id": 120, "type": "upDefence", "name": "DEF Up"}],
+                        "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 100}, {"Rate": 1000, "Turn": 3, "Count": -1, "Value": 300}],
+                    },
+                ],
+            }
+        ]
+        slots = format_skills_structured(skills, 500300)
+        fx = slots[0]["variantsByTier"][0]["effects"]
+        self.assertEqual(
+            fx,
+            ["Increase DEF by 30% (1 turn) for yourself", "Increase DEF by 10-30% (3 turns) for yourself"],
+        )
+
+        passives = [
+            {
+                "id": 34550,
+                "name": "Magic Resistance A",
+                "functions": [
+                    {
+                        "funcId": 388,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [{"id": 160, "type": "upTolerance", "name": "Debuff Resist Up"}],
+                        "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 200}],
+                    }
+                ],
+            },
+            {
+                "id": 30350,
+                "name": "Core of the Goddess C",
+                "functions": [
+                    {
+                        "funcId": 389,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [{"id": 160, "type": "upTolerance", "name": "Debuff Resist Up"}],
+                        "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 200}],
+                    }
+                ],
+            },
+        ]
+        p_slots = format_passives_structured({"id": 103900, "classPassive": passives})
+        self.assertEqual(
+            p_slots[0]["variantsByTier"][0]["effects"],
+            ["Increase Debuff Resist by 20% for yourself", "Increase Debuff Resist by 20% for yourself"],
+        )
+
+    def test_skill_conditions_gates_userate_substate_and_prefixes(self):
+        # QSH S3 Invincible condition
+        qsh_fn = {
+            "funcId": 23301,
+            "funcType": "addState",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 120, "type": "upDefence", "name": "DEF Up", "script": {"INDIVIDUALITIE": {"id": 3022, "name": "buffInvincible"}}}],
+            "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 1000}],
+        }
+        self.assertEqual(fmt_function(qsh_fn), "Increase DEF by 100% (3 turns) if [Invincible] for yourself")
+
+        # Nemo/Noah ParamAddOpIndividualityAndCheck + INDIVIDUALITIE_OR
+        nemo_crit = {
+            "funcId": 201,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 142, "type": "upCriticaldamage", "name": "Crit Up"}],
+            "svals": [
+                {
+                    "Rate": 1000,
+                    "Turn": 3,
+                    "Count": -1,
+                    "Value": 500,
+                    "ParamAddValue": 250,
+                    "ParamAddIndividualityTargetType": 32,
+                    "ParamAddOpIndividualityAndCheck": [[2005, 2632, 2821, -10000]],
+                }
+            ],
+        }
+        self.assertEqual(
+            fmt_function(nemo_crit),
+            "Increase Critical Strength by 50% <increases by 25% based on the number of [Animal] states> (3 turns) for yourself",
+        )
+
+        # skill.script gates
+        gated_skills = [
+            {"id": 1, "num": 1, "name": "HP High", "coolDown": [5, 5], "script": {"HP_VAL_HIGHER": [500, 500]}, "functions": []},
+            {"id": 2, "num": 2, "name": "HP Low", "coolDown": [5, 5], "script": {"HP_PER_LOWER": [500, 500]}, "functions": []},
+            {"id": 3, "num": 3, "name": "Init CD", "coolDown": [8, 8], "script": {"battleStartRemainingTurn": [5, 5]}, "functions": []},
+        ]
+        g_slots = format_skills_structured(gated_skills, 103100)
+        self.assertEqual(g_slots[0]["variantsByTier"][0]["effects"], ["[Usable only when HP is 500 or higher]"])
+        self.assertEqual(g_slots[1]["variantsByTier"][0]["effects"], ["[Usable only when HP is 50% or lower]"])
+        self.assertEqual(g_slots[2]["variantsByTier"][0]["effects"], ["[Initial Cooldown: 5 turns]"])
+
+        # UseRate, subState Value2, multi-trait get_card_prefix, passive guts prefix
+        fionn_fn = {
+            "funcId": 686,
+            "funcType": "addState",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 10, "type": "avoidance", "name": "Evade"}],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "UseRate": 600}, {"Rate": 1000, "Turn": 1, "Count": -1, "UseRate": 1000}],
+        }
+        self.assertEqual(fmt_function(fionn_fn), "60-100% Chance to Apply Evade (1 turn) for yourself")
+
+        jason_fn = {
+            "funcId": 3855,
+            "funcType": "subState",
+            "funcTargetType": "ptOne",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "traitVals": [{"id": 3005, "name": "buffNegativeEffect"}],
+            "buffs": [],
+            "svals": [{"Rate": 1000, "Value": 0, "Value2": 1}],
+        }
+        self.assertEqual(fmt_function(jason_fn), "Remove 1 Debuff for a single ally")
+
+        muramasa_fn = {
+            "funcId": 6511,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{
+                "id": 142,
+                "type": "upCriticaldamage",
+                "name": "Crit Up",
+                "ckOpIndv": [{"id": 3021}, {"id": 3022}, {"id": 3018}],
+            }],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 500}, {"Rate": 1000, "Turn": 1, "Count": -1, "Value": 1000}],
+        }
+        self.assertEqual(
+            fmt_function(muramasa_fn),
+            "Increase Critical Strength against [Evade or Invincible] enemies by 50-100% (1 turn) for yourself",
+        )
+
+        alice_passive = [
+            {
+                "id": 2342350,
+                "name": "Yumina C",
+                "functions": [
+                    {
+                        "funcId": 21418,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [{"id": 200, "type": "guts", "name": "Guts", "ckOpIndv": [{"id": 3096}, {"id": 3097}]}],
+                        "svals": [{"Rate": 1000, "Turn": -1, "Count": 5, "Value": 1000}],
+                    }
+                ],
+            }
+        ]
+        alice_slots = format_passives_structured({"id": 505500, "classPassive": alice_passive})
+        self.assertEqual(
+            alice_slots[0]["variantsByTier"][0]["effects"],
+            ["Apply Guts [On Instant Death] by 1000 (5 times) for yourself"],
+        )
+
+    def test_np_oc_scaling_correction_solo_crit_eresh_medb_chengong(self):
+        # 1. Rate OC, gainStar OC, Value2 trigger OC, damageNp OC-bonus, Level-scaling Correction, solo downCriticalrate, Ereshkigal, Medb, Chen Gong, Kingprotea Alter
+        inner_miyu = {
+            962350: {
+                "id": 962350,
+                "functions": [
+                    {
+                        "funcId": 476,
+                        "funcType": "gainStar",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "player",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [],
+                        "svals": [{"Rate": 1000, "Value": 5}, {"Rate": 1000, "Value": 25}],
+                    }
+                ],
+            }
+        }
+        np_data = {
+            "id": 999901,
+            "num": 1,
+            "name": "Test NP",
+            "card": "arts",
+            "type": "arts",
+            "effectFlags": ["attackEnemyAll"],
+            "npDistribution": [50, 50],
+            "npGain": {"arts": [50]},
+            "script": {},
+            "functions": [
+                {
+                    "funcId": 348,
+                    "funcType": "addState",
+                    "funcTargetType": "enemyAll",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [{"id": 348, "type": "donotAct", "name": "Charm", "vals": [{"id": 3012, "name": "Charm"}]}],
+                    "svals": [{"Rate": 100, "Turn": 1, "Count": -1}],
+                    "svals5": [{"Rate": 500, "Turn": 1, "Count": -1}],
+                },
+                {
+                    "funcId": 477,
+                    "funcType": "gainStar",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "player",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [],
+                    "svals": [{"Rate": 1000, "Value": 5}],
+                    "svals5": [{"Rate": 1000, "Value": 25}],
+                },
+                {
+                    "funcId": 3275,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "player",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [{"id": 999, "type": "selfturnendFunction", "name": "Protection of Sakatsuki"}],
+                    "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 962350, "Value2": 1}],
+                    "svals5": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 962350, "Value2": 5}],
+                },
+                {
+                    "funcId": 13,
+                    "funcType": "damageNp",
+                    "funcTargetType": "enemyAll",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [],
+                    "svals": [{"Rate": 1000, "Value": 0}],
+                    "svals2": [{"Rate": 1000, "Value": 1000}],
+                    "svals5": [{"Rate": 1000, "Value": 4000}],
+                },
+                {
+                    "funcId": 16,
+                    "funcType": "damageNpIndividual",
+                    "funcTargetType": "enemy",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [],
+                    "svals": [{"Rate": 1000, "Value": 9000, "Target": 1, "Correction": 1500}, {"Rate": 1000, "Value": 9000, "Target": 1, "Correction": 2500}],
+                    "svals5": [{"Rate": 1000, "Value": 9000, "Target": 1, "Correction": 1500}, {"Rate": 1000, "Value": 9000, "Target": 1, "Correction": 2500}],
+                },
+                {
+                    "funcId": 228,
+                    "funcType": "addState",
+                    "funcTargetType": "enemyAll",
+                    "funcTargetTeam": "enemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [{"id": 228, "type": "downCriticalrate", "name": "Crit Rate Down"}],
+                    "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 100}],
+                    "svals5": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 500}],
+                },
+                {
+                    "funcId": 21839,
+                    "funcType": "displayBuffstring",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [],
+                    "svals": [{"Rate": 1000, "CheckOverChargeStageRange": ["1<="]}],
+                    "svals5": [{"Rate": 5000, "CheckOverChargeStageRange": ["1<="]}],
+                },
+                {
+                    "funcId": 1588,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [{"id": 1588, "type": "pierceDefence", "name": "Ignore DEF"}],
+                    "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "HideMiss": 1, "HideNoEffect": 1, "CheckBattlePointPhaseRange": [{"battlePointId": 3300200, "range": ["7<="]}]}],
+                },
+                {
+                    "funcId": 2571,
+                    "funcType": "lossHp",
+                    "funcTargetType": "enemy",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [],
+                    "svals": [{"Rate": 1000, "Value": 0}],
+                },
+                {
+                    "funcId": 2562,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "enemy",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [{"id": 148, "type": "downDefence", "name": "DEF Down"}],
+                    "svals": [{"Rate": 600, "Turn": 3, "Count": -1, "Value": 100}],
+                    "svals5": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 100}],
+                },
+                {
+                    "funcId": 2562,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "enemy",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [{"id": 148, "type": "downDefence", "name": "DEF Down"}],
+                    "svals": [{"Rate": 600, "Turn": 3, "Count": -1, "Value": 100}],
+                    "svals5": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 100}],
+                },
+                {
+                    "funcId": 3851,
+                    "funcType": "forceInstantDeath",
+                    "funcTargetType": "ptSelfAnotherFirst",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [],
+                    "svals": [{"Rate": 1000}],
+                },
+                {
+                    "funcId": 23468,
+                    "funcType": "addStateShortUserEquipSkillAvailable",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "functvals": [],
+                    "funcquestTvals": [],
+                    "buffs": [{"id": 138, "type": "upNpdamage", "name": "NP Strength Up"}],
+                    "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 200, "ParamAddMaxCount": 3}],
+                },
+            ],
+        }
+        ctx = FetchContext(fetch_inner_skill=lambda sid: inner_miyu.get(sid))
+        fx = _extract_single_np_data(np_data, ctx=ctx)["effects"]
+        self.assertIn("10-50% Chance to Inflict Charm (1 turn) to all enemies <effect increases with Overcharge>", fx)
+        self.assertIn("Gain Critical Stars by 5-25 <effect increases with Overcharge>", fx)
+        self.assertIn('Inflict Protection of Sakatsuki <Apply a state that "Gain Critical Stars by 5-25" at turn end> (3 turns) for yourself <effect increases with Overcharge>', fx)
+        self.assertIn("Deal additional heavy damage by 100-400% (at OC2-5) <effect increases with Overcharge> to all enemies", fx)
+        self.assertIn("Deal significant Special Attack [Male] by 150-250% damage <Special Attack damage increases with Level> by 900% <effect increases with Level> to a single enemy", fx)
+        self.assertIn("Decrease Critical Rate by 10-50% (3 turns) for all enemies <effect increases with Overcharge>", fx)
+        self.assertIn("Increase Master Affection Gauge <effect increases with Overcharge> for yourself", fx)
+        self.assertIn("When Master Affection Level is 7 or higher, Apply Ignore DEF (1 turn) for yourself", fx)
+        self.assertFalse(any("Reduce HP by 0" in line for line in fx))
+        self.assertIn("60-100% Chance to Decrease DEF by 10% (3 turns) for one enemy <effect increases with Overcharge> (x2)", fx)
+        self.assertIn("Apply Death for the front-most single ally, excluding yourself [Demerit]", fx)
+        self.assertIn("Increase NP Strength by 20% per Master Skill drained (Max 3) (1 turn) for yourself", fx)
+
+    def test_sub_individuality_and_npattack_prev_buff(self):
+        sub_indv_fn = {
+            "funcId": 9620,
+            "funcType": "addState",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 5489, "type": "subIndividuality", "name": ""}],
+            "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 301, "HideMiss": 1, "HideNoEffect": 1, "ShowState": -1}],
+        }
+        self.assertEqual(fmt_function(sub_indv_fn), "Remove [Chaotic] trait for yourself")
+
+        hokusai_inner = {
+            961313: {
+                "id": 961313,
+                "functions": [
+                    {
+                        "funcId": 194,
+                        "funcType": "addStateShort",
+                        "funcTargetType": "enemy",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [{"id": 148, "type": "downDefence", "name": "DEF Down"}],
+                        "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 100}, {"Rate": 1000, "Turn": 3, "Count": -1, "Value": 200}],
+                    }
+                ],
+            }
+        }
+        np_prev_fn = {
+            "funcId": 2096,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 894, "type": "npattackPrevBuff", "name": 'Pseudonym "Iseidako"', "ckSelfIndv": [{"id": 4001, "name": "cardArts"}]}],
+            "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 4, "SkillID": 961313, "HideMiss": 1, "HideNoEffect": 1}],
+        }
+        ctx = FetchContext(fetch_inner_skill=lambda sid: hokusai_inner.get(sid))
+        self.assertEqual(
+            fmt_function(np_prev_fn, ctx=ctx),
+            'Apply a state that "Decrease DEF by 10-20% (3 turns) for one enemy" when Arts attacking with NP before damage (3 turns) for yourself',
+        )
 
 
 if __name__ == "__main__":

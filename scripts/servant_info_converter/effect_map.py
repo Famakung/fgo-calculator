@@ -116,6 +116,9 @@ BUFF_TYPE_MAP = {
     ),
     # NP
     "regainNp": BuffTypeEntry("Increase NP Gauge each turn by {val}", 100, True),
+    "downNpturnval": BuffTypeEntry(
+        "Apply a state where Charge is decreased by {val} each turn", 1, False
+    ),
     "upChagetd": BuffTypeEntry(
         "Increase NP Charge by {val} levels when using NP", 1, False
     ),
@@ -375,8 +378,14 @@ BUFF_TYPE_MAP = {
     "overwriteBattleclass": BuffTypeEntry(
         "Change Class to match one enemy's Class", 0, False
     ),
+    "shortenSkillAfterUseSkill": BuffTypeEntry(
+        None, 0, False, {"special_handler": "shortenSkillAfterUseSkill"}
+    ),
     "addIndividuality": BuffTypeEntry(
         "Apply {traits}", 0, False, {"trait_source": "sv0_value"}
+    ),
+    "subIndividuality": BuffTypeEntry(
+        "Remove {traits} trait", 0, False, {"trait_source": "sv0_value"}
     ),
     "fieldIndividuality": BuffTypeEntry(
         "Change field to {traits}", 0, False, {"trait_source": "sv0_value"}
@@ -521,14 +530,26 @@ CLASS_TRAIT_IDS = {
     109,
     110,
     111,
+    113,
+    114,
     115,
+    116,
     117,
+    118,
+    119,
     120,
+    121,
+    122,
+    123,
     124,
+    125,
+    126,
     129,
     132,
     133,
     135,
+    136,
+    137,
 }
 
 # Add new IDs here when encountering unknown trait conditions
@@ -550,14 +571,26 @@ TRAIT_ID_LABELS = {
     109: "Alter Ego",
     110: "Avenger",
     111: "Demon God Pillar",
+    113: "Beast",
+    114: "Beast",
     115: "Moon Cancer",
+    116: "Beast",
     117: "Foreigner",
+    118: "Beast",
+    119: "Beast",
     120: "Pretender",
+    121: "Beast",
+    122: "Beast",
+    123: "Beast",
     124: "Beast",
+    125: "Beast",
+    126: "Beast",
     129: "Beast",
     132: "Beast",
     133: "Beast",
     135: "Beast",
+    136: "Beast",
+    137: "Beast",
     # Attributes
     200: "Heaven Attribute",
     201: "Earth Attribute",
@@ -633,6 +666,7 @@ TRAIT_ID_LABELS = {
     2664: "NP Damage Resistance [Growth]",
     2666: "Giant",
     2667: "Child Servant",
+    2721: "Nobunaga",
     2729: "Curse",
     2730: "Void Space",
     2731: "Existence Outside the Domain",
@@ -727,6 +761,7 @@ TRAIT_ID_LABELS = {
     3093: "Buster Effectiveness Up",
     3094: "Quick Effectiveness Up",
     3096: "On Instant Death",
+    3097: "On Instant Death",
     3099: "Substitute",
     3102: "Protected",
     3103: "Not Protected",
@@ -750,15 +785,19 @@ TRAIT_ID_LABELS = {
     10028: "Snake Wife NP Used",
     10030: "Evil BB",
     10039: "Past Alteration",
+    10042: "Fullness Gauge",
     10047: "Thirst for death",
     10049: "Jeanne",
+    10050: "Critical",
     10051: "Target Acquisition",
     10052: "Electrolytic Corrosion",
     10058: "Illya",
+    304400: "Yu Mei-ren",
     500800: "Merlin",
     504500: "Altria Caster",
     600700: "Jekyll",
     600710: "Hyde",
+    603500: "Yu Mei-ren",
     704700: "Altria Caster",
     2501200: "Cnoc na Riabh",
     2501400: "Normal Aoko",

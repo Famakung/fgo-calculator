@@ -81,6 +81,13 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
         rate_oc1, rate_oc5 = sv0.get("Rate", 0) // 10, sv_oc5.get("Rate", 0) // 10
         if rate_oc1 != rate_oc5:
             return f"{rate_oc1}-{rate_oc5}% Chance to Inflict Death <effect increases with Overcharge> {target}"
+    if func_type == "gainStar":
+        sv_oc5 = oc_last(fn, svals)
+        val_oc1, val_oc5 = sv0.get("Value", 0), sv_oc5.get("Value", 0)
+        if val_oc1 != val_oc5:
+            res = fmt_function(fn, sv_start=sv0, sv_end=sv_oc5, ctx=ctx)
+            if res:
+                return f"{res} <effect increases with Overcharge>"
     if func_type == "subState" and fn.get("traitVals"):
         trait_labels = []
         is_buff_trait = False
@@ -96,6 +103,13 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
         return f"Remove {', '.join(trait_labels)} {target}"
     if func_type in DAMAGE_FUNC_TYPES:
         val_np1, val_np5 = sv0.get("Value", 0) // 10, sv_np5.get("Value", 0) // 10
+        if val_np1 == 0 and val_np5 == 0:
+            sv_oc2 = (fn.get("svals2") or [{}])[0]
+            sv_oc5 = oc_last(fn, svals)
+            oc_val2 = sv_oc2.get("Value", 0) // 10
+            oc_val5 = sv_oc5.get("Value", 0) // 10
+            if oc_val5 > 0:
+                return f"Deal additional {damage_word} damage by {oc_val2}-{oc_val5}% (at OC2-5) <effect increases with Overcharge> {dmg_target}"
         val_str = f"{val_np1}-{val_np5}" if val_np1 != val_np5 else str(val_np1)
         template = NP_TYPE_MAP.get(func_type)
         if func_type == "damageNpIndividualSum":
@@ -111,13 +125,21 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
             sv_oc5 = oc_last(fn, svals)
             if func_type in ("damageNpHpratioLow", "damageNpHpratioHigh"):
                 corr_val0 = sv0.get("Target", 0)
-                corr_val_oc5 = sv_oc5.get("Target", 0)
+                corr_val_end = sv_oc5.get("Target", 0)
+                corr_is_level = False
             else:
                 corr_val0 = sv0.get("Correction") or sv0.get("Value2", 0)
                 corr_val_oc5 = sv_oc5.get("Correction") or sv_oc5.get("Value2", 0)
+                corr_val_np5 = sv_np5.get("Correction") or sv_np5.get("Value2", 0)
+                if corr_val0 == corr_val_oc5 and corr_val_np5 != corr_val0:
+                    corr_val_end = corr_val_np5
+                    corr_is_level = True
+                else:
+                    corr_val_end = corr_val_oc5
+                    corr_is_level = False
             corr_oc1, corr_oc5 = (
                 corr_val0 // 10,
-                corr_val_oc5 // 10,
+                corr_val_end // 10,
             )
             corr_str = (
                 f"{corr_oc1}-{corr_oc5}" if corr_oc1 != corr_oc5 else str(corr_oc1)
@@ -128,12 +150,14 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                     if corr_oc1 != corr_oc5
                     else ""
                 )
-            else:
+            elif corr_oc1 != corr_oc5:
                 oc_tag = (
-                    " <Special Attack damage increases with Overcharge>"
-                    if corr_oc1 != corr_oc5
-                    else ""
+                    " <Special Attack damage increases with Level>"
+                    if corr_is_level
+                    else " <Special Attack damage increases with Overcharge>"
                 )
+            else:
+                oc_tag = ""
             if func_type == "damageNpAndOrCheckIndividuality":
                 and_list = sv0.get("AndCheckIndividualityList") or []
                 or_list = sv0.get("OrCheckIndividualityList") or []
@@ -212,17 +236,22 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                 max_count=sv0.get("ParamAddMaxCount", 1),
                 oc_tag=oc_tag,
             )
-    if fn.get("buffs") and svals:
-        sv_oc5 = oc_last(fn, svals)
-        val_oc1, val_oc5 = svals[0].get("Value"), sv_oc5.get("Value")
-        if val_oc1 is not None and val_oc5 is not None and val_oc1 != val_oc5:
-            res = fmt_function(fn, sv_start=svals[0], sv_end=sv_oc5, ctx=ctx)
-            if res:
-                return f"{res} <effect increases with Overcharge>"
     if func_type == "forceInstantDeath":
         trait_str = f" [{np_individuality_trait}]" if np_individuality_trait else ""
-        bare_target = target[4:] if target.startswith("for ") else target
-        return f"Apply Death for{trait_str} {bare_target}{' [Demerit]' if is_demerit(fn) else ''}"
+        ignore_guts = (
+            " <Ignore Guts>"
+            if any(
+                t.get("id") == 3139
+                for t in (fn.get("script") or {}).get("funcIndividuality", [])
+            )
+            else ""
+        )
+        bare_target = (
+            target[4:]
+            if target.startswith("for ")
+            else (target[3:] if target.startswith("of ") else target)
+        )
+        return f"Apply Death{ignore_guts} for{trait_str} {bare_target}{' [Demerit]' if is_demerit(fn) else ''}"
     buffs = fn.get("buffs", [])
     if buffs and buffs[0].get("type") == "addIndividuality":
         sv0 = svals[0] if svals else {}
@@ -232,6 +261,19 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
         trait_name = TRAIT_ID_LABELS.get(val, f"{val}:Unknown")
         cond = fmt_condition(sv0.get("Turn", -1), sv0.get("Count", -1))
         return f"Apply [{trait_name}]{' ' + cond if cond else ''} {target}"
+    if svals:
+        sv_oc5 = oc_last(fn, svals)
+        if any(
+            svals[0].get(k) != sv_oc5.get(k)
+            for k in ("Value", "Rate", "UseRate", "Value2")
+        ):
+            res = fmt_function(fn, sv_start=svals[0], sv_end=sv_oc5, ctx=ctx)
+            if res:
+                return (
+                    res
+                    if "<effect increases with Overcharge>" in res
+                    else f"{res} <effect increases with Overcharge>"
+                )
     if fn.get("buffs") and svals:
         sv0, sv9 = svals[0], svals[-1]
         val_lv1, val_lv9 = sv0.get("Value"), sv9.get("Value")
@@ -285,6 +327,7 @@ def _extract_single_np_data(np_data, ctx=None) -> dict:
                 )
             break
     def _append_np_fx(target_fns):
+        rendered = []
         for fn, count in fold_chained_functions(target_fns):
             res = fmt_np_function(
                 fn, np_individuality_trait=np_individuality_trait, ctx=ctx
@@ -292,7 +335,15 @@ def _extract_single_np_data(np_data, ctx=None) -> dict:
             if res:
                 if count > 1:
                     res = append_chained_roll_tag(res, count)
-                fx_lines.append(res)
+                rendered.append(res)
+        i = 0
+        while i < len(rendered):
+            j = i + 1
+            while j < len(rendered) and rendered[j] == rendered[i]:
+                j += 1
+            dup_count = j - i
+            fx_lines.append(f"{rendered[i]} (x{dup_count})" if dup_count > 1 else rendered[i])
+            i = j
 
     if any((fn.get("svals") or [{}])[0].get("ActSet") is not None for fn in functions):
         _append_np_fx(

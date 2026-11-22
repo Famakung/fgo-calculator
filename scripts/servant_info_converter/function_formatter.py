@@ -278,7 +278,7 @@ def _parse_stack_consumption_loop(inner_skill, buff):
 def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
     buff = fn["buffs"][0]
     sv0 = outer_svals[0] if outer_svals else {}
-    inner_skill_id = sv0.get("Value")
+    inner_skill_id = sv0.get("SkillID") or sv0.get("Value")
     if not inner_skill_id:
         return "[trigger: no inner_skill_id in svals[0]]"
 
@@ -294,7 +294,12 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
         for t in traits:
             if t["id"] == 4008:
                 continue
-            label = TRAIT_ID_LABELS.get(t["id"], fmt_trait_name(t))
+            if t.get("negative") and t["id"] == 10050:
+                label = "Non-Critical"
+            else:
+                label = TRAIT_ID_LABELS.get(t["id"], fmt_trait_name(t))
+                if t.get("negative"):
+                    label = f"Non-{label}"
             if label == "NP" and "NP" in action:
                 continue
             if label not in trait_labels:
@@ -386,7 +391,9 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
         if not inner_buffs:
             target_str = f" {inner_target}"
             if inner_func_type == "gainStar":
-                val = inner_sv0.get("Value", 0)
+                val = fmt_val_range(
+                    inner_sv0.get("Value", 0), inner_sv9.get("Value", 0), 1, False
+                )
                 inner_parts.append(f"Gain Critical Stars by {val}")
             elif inner_func_type == "subBattlePoint":
                 val = inner_sv0.get("Target") or inner_sv0.get("BattlePointValue") or inner_sv0.get("Value", 0)
@@ -662,8 +669,13 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
     )
 
     if not inner_parts and inner_skill is None:
-        label = buff.get("name") or "Trigger"
-        return f"Apply a state ({label}) {trigger_phrase}{outer_cond_str} {outer_target}"
+        if inner_skill_id == 970917:
+            inner_parts = ["Reduces the fullness gauge by 1"]
+        elif inner_skill_id == 961313:
+            inner_parts = ["Decrease DEF for one enemy"]
+        else:
+            label = buff.get("name") or "Trigger"
+            return f"Apply a state ({label}) {trigger_phrase}{outer_cond_str} {outer_target}"
 
     return (
         f'Apply a state that {that_verb}{rate_prefix}"{" & ".join(inner_parts)}" '
@@ -687,9 +699,32 @@ def fmt_delay_fn(fn, ctx=None) -> str | None:
     outer_target = TARGET_LABELS.get(target_type, f"for {target_type}")
     inner_parts = []
     for ifn in (inner_skill or {}).get("functions", []):
+        if ifn.get("funcType") == "moveToLastSubmember":
+            inner_parts.append(
+                "Retreat to the sub-member slot <cannot retreat if there is only 1 allied Servant on the field>"
+            )
+            continue
         r = _fmt_function_core(ifn, ctx=ctx)
         if r:
             inner_parts.append(r)
+    for add_id in ((inner_skill or {}).get("script") or {}).get("additionalSkillId", []):
+        add_sk = (
+            ctx.fetch_inner_skill(add_id) if ctx and ctx.fetch_inner_skill else None
+        )
+        if add_sk:
+            for ifn in add_sk.get("functions", []):
+                if ifn.get("funcType") == "moveToLastSubmember":
+                    inner_parts.append(
+                        "Retreat to the sub-member slot <cannot retreat if there is only 1 allied Servant on the field>"
+                    )
+                    continue
+                r = _fmt_function_core(ifn, ctx=ctx)
+                if r:
+                    inner_parts.append(r)
+        elif add_id == 970412 or ((fn.get("buffs") or [{}])[0].get("id") == 5447):
+            inner_parts.append(
+                "Retreat to the sub-member slot <cannot retreat if there is only 1 allied Servant on the field>"
+            )
     if not inner_parts:
         return None
     return f'{delay_str} "{" & ".join(inner_parts)}"{outer_cond_str} {outer_target}'
@@ -700,38 +735,145 @@ def fmt_delay_fn(fn, ctx=None) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+_ANIMAL_TRAIT_IDS = {2005, 2632, 2821}
+
+
+def _is_solo_enemy_down_crit(fn, buff_type, target_type, ctx) -> bool:
+    """Allow enemy-team downCriticalrate only when no downCriticalpoint or lossStar companion exists."""
+    if buff_type != "downCriticalrate" or target_type not in ("enemy", "enemyOne", "enemyAll"):
+        return False
+    fns = getattr(ctx, "functions", None) or []
+    return bool(fns) and not any(
+        (f.get("buffs") and f["buffs"][0].get("type") == "downCriticalpoint")
+        or f.get("funcType") == "lossStar"
+        for f in fns
+    )
+
+
+def _is_internal_hide_miss(func_type, buff_type, sv0) -> bool:
+    """Identify internal engine hooks marked HideMiss=1 that should stay hidden."""
+    if sv0.get("HideMiss") != 1:
+        return False
+    if func_type == "moveState" and sv0.get("HideNoEffect") == 1:
+        return True
+    if sv0.get("ShowState") != -1:
+        return False
+    if buff_type in ("addIndividuality", "skillRankUp", "delayFunction"):
+        return True
+    if buff_type == "avoidState" and sv0.get("Rate", 1000) < 0:
+        return True
+    if buff_type == "upDamage" and (sv0.get("Value") or 0) == 0:
+        return True
+    if buff_type == "attackAfterFunctionMainOnly" and sv0.get("UnSubStateWhileLinkedToOthers") == 1:
+        return True
+    return False
+
+
+def _fmt_buff_script_indv(buff, target, ctx) -> str:
+    """Format buff.script INDIVIDUALITIE / INDIVIDUALITIE_OR conditions into target."""
+    script = buff.get("script", {})
+    buff_type_str = buff.get("type", "")
+    is_td_change = buff_type_str in (
+        "tdTypeChange",
+        "tdTypeChangeArts",
+        "tdTypeChangeBuster",
+        "tdTypeChangeQuick",
+    )
+    if is_td_change:
+        return target
+
+    indv = script.get("INDIVIDUALITIE")
+    if indv and indv.get("id") not in INDIVIDUALITIE_IGNORE:
+        prefix = "not " if indv.get("negative") else ""
+        label = TRAIT_ID_LABELS.get(indv["id"], fmt_trait_name(indv))
+        if indv.get("id") in FIELD_TRAITS:
+            return f"only when {prefix}on a [{label}] field {target}"
+        return f"if {prefix}[{label}] {target}"
+
+    indv_or = [t for t in script.get("INDIVIDUALITIE_OR", []) if t.get("id") not in INDIVIDUALITIE_IGNORE]
+    if not indv_or:
+        return target
+
+    # Resolve internal (>=10000) marker traits back to their addIndividuality definitions in ctx.functions
+    resolved_ids = []
+    has_internal_field_check = False
+    ctx_fns = getattr(ctx, "functions", None) or []
+    for t in indv_or:
+        tid = t.get("id")
+        if tid and tid >= 10000 and ctx_fns:
+            matched = False
+            for f in ctx_fns:
+                fb = f.get("buffs") or []
+                fsv = (f.get("svals") or [{}])[0]
+                if fb and fb[0].get("type") == "addIndividuality" and fsv.get("Value") == tid:
+                    and_list = fb[0].get("script", {}).get("INDIVIDUALITIE_AND", [])
+                    for at in and_list:
+                        if not at.get("negative") and at.get("id") not in resolved_ids:
+                            resolved_ids.append(at.get("id"))
+                            matched = True
+                    if matched:
+                        has_internal_field_check = True
+            if not matched and tid not in resolved_ids:
+                resolved_ids.append(tid)
+        elif tid is not None and tid not in resolved_ids:
+            resolved_ids.append(tid)
+
+    if _ANIMAL_TRAIT_IDS.issubset(set(resolved_ids)):
+        return f"only when [Animal] is on field {target}"
+
+    if all(tid in FIELD_TRAITS for tid in resolved_ids):
+        labels = [f"[{TRAIT_ID_LABELS.get(tid, fmt_trait_name(tid))}]" for tid in resolved_ids]
+        joined = ", ".join(labels[:-1]) + f" or {labels[-1]}" if len(labels) > 2 else " or ".join(labels)
+        return f"only when on a {joined} field {target}"
+
+    labels = [f"[{TRAIT_ID_LABELS.get(tid, fmt_trait_name(tid))}]" for tid in resolved_ids]
+    joined = ", ".join(labels[:-1]) + f" or {labels[-1]}" if len(labels) > 2 else " or ".join(labels)
+    if has_internal_field_check:
+        return f"only when {joined} is on field {target}"
+    return f"if {joined} {target}"
+
+
 def _resolve_core_context(fn, sv_start=None, sv_end=None, ctx=None) -> _CoreCtx | None:
     """Pre-process a function dict into a _CoreCtx, or return None for early exits."""
-    func_type = fn["funcType"]
-    target_type = fn["funcTargetType"]
+    func_type = fn.get("funcType", "")
+    target_type = fn.get("funcTargetType", "")
     buffs = fn.get("buffs", [])
     svals = fn.get("svals", [])
+    buff_type_str = buffs[0].get("type", "") if buffs else ""
 
     _ENEMY_TEAM_ALLOWED = {"delayNpturn"}
     if fn.get("funcTargetTeam") == "enemy" and func_type not in _ENEMY_TEAM_ALLOWED:
-        if target_type != "commandTypeSelfTreasureDevice":
+        is_enemy_down_npturnval = (
+            buff_type_str == "downNpturnval"
+            and target_type in ("enemy", "enemyOne", "enemyAll")
+        )
+        if (
+            target_type != "commandTypeSelfTreasureDevice"
+            and not is_enemy_down_npturnval
+            and not _is_solo_enemy_down_crit(fn, buff_type_str, target_type, ctx)
+        ):
             return None
 
     if func_type == "delayNpturn" and target_type in ("self", "ptOne", "ptAll"):
         return None
 
+    sv0 = sv_start if sv_start is not None else (svals[0] if svals else {})
+    if func_type == "displayBuffstring" and "CheckOverChargeStageRange" not in sv0:
+        return None
     if func_type in (
         "hastenNpturn",
         "moveToLastSubmember",
         "none",
-        "displayBuffstring",
         "fixCommandcard",
     ):
+        return None
+    if func_type == "subState" and sv0.get("HideNoEffect") == 1:
         return None
     if func_type == "lossNp" and target_type == "enemyAll":
         return None
 
-    sv0 = sv_start if sv_start is not None else (svals[0] if svals else {})
-    if sv0.get("HideMiss") == 1:
-        if sv0.get("HideNoEffect") == 1:
-            return None
-        if func_type not in ("subState", "forceInstantDeath"):
-            return None
+    if _is_internal_hide_miss(func_type, buff_type_str, sv0):
+        return None
 
     target = TARGET_LABELS.get(target_type, target_type)
     if target_type == "noTarget":
@@ -777,22 +919,7 @@ def _resolve_core_context(fn, sv_start=None, sv_end=None, ctx=None) -> _CoreCtx 
 
     target = fmt_quest_field_target(fn, target)
     if buffs:
-        indv = buffs[0].get("script", {}).get("INDIVIDUALITIE")
-        buff_type_str = buffs[0].get("type", "")
-        is_td_change = buff_type_str in (
-            "tdTypeChange",
-            "tdTypeChangeArts",
-            "tdTypeChangeBuster",
-            "tdTypeChangeQuick",
-        )
-        if indv and indv.get("id") not in INDIVIDUALITIE_IGNORE and not is_td_change:
-            prefix = "not " if indv.get("negative") else ""
-            label = TRAIT_ID_LABELS.get(indv["id"], fmt_trait_name(indv))
-            if indv.get("id") in FIELD_TRAITS:
-                not_str = "not " if indv.get("negative") else ""
-                target = f"only when {not_str}on a [{label}] field {target}"
-            else:
-                target = f"if {prefix}[{label}] {target}"
+        target = _fmt_buff_script_indv(buffs[0], target, ctx)
 
     sv9 = sv_end if sv_end is not None else (svals[-1] if svals else {})
 
@@ -1167,7 +1294,39 @@ def _handle_dead_function(core, buff):
     }
     if bid in dead_map:
         return f"{dead_map[bid]}{cond_str} {target}"
+    inner_id = core.sv0.get("Value")
+    inner_sk = (
+        core.ctx.fetch_inner_skill(inner_id)
+        if inner_id and core.ctx and core.ctx.fetch_inner_skill
+        else None
+    )
+    if inner_sk:
+        parts = []
+        for ifn in inner_sk.get("functions", []):
+            r = _fmt_function_core(ifn, ctx=core.ctx)
+            if r:
+                parts.append(r)
+        if parts:
+            return f'Apply a state that "{" & ".join(parts)}" when defeated{cond_str} {target}'
+    if bid == 5513 or inner_id == 970452:
+        return f'Apply a state that "Increase NP Gauge for yourself" when an ally is defeated{cond_str} {target}'
     return f"Apply [Activate on Defeat]{cond_str} {target}"
+
+
+def _handle_shorten_skill_after_use(core, buff):
+    """Handle shortenSkillAfterUseSkill buff (Append 5 Skill Reload)."""
+    val_str = fmt_val_range(core.val0, core.val9, 1, False)
+    c0 = core.sv0.get("Count", -1)
+    c9 = core.sv9.get("Count", -1)
+    parts = []
+    if c0 > 0:
+        c_str = f"{c0}-{c9}" if c9 > 0 and c0 != c9 else str(c0)
+        parts.append(f"{c_str} time{'s' if (c9 if c9 > 0 else c0) > 1 else ''}")
+    max_each = core.sv0.get("ShortenMaxCountEachSkill")
+    if max_each and max_each[0] > 0:
+        parts.append(f"max {max_each[0]} time per skill")
+    cond_part = f" ({', '.join(parts)})" if parts else core.cond_str
+    return f"Reduce used skill's cooldown by {val_str} after Skill Use{cond_part} {core.target}"
 
 
 def _handle_functioned_function(core, buff):
@@ -1359,8 +1518,18 @@ def _render_buff_template(
     """Render the final formatted string from a buff template."""
     if template is None:
         template = ""
-    card_prefix = get_card_prefix(buff)
-    template = apply_card_prefix(buff_type_str, template, card_prefix)
+    trait_src = config.get("trait_source") if config else None
+    already_resolved_ck = trait_src in (
+        "ckOpIndv",
+        "ckSelfIndv",
+        "ckOpIndv_negative",
+        "ckSelfIndv_hp_reduce",
+    ) and bool(
+        buff.get("ckOpIndv" if "ckOpIndv" in trait_src else "ckSelfIndv")
+    )
+    if not already_resolved_ck:
+        card_prefix = get_card_prefix(buff)
+        template = apply_card_prefix(buff_type_str, template, card_prefix)
     tag_traits = [
         TRAIT_ID_LABELS[v["id"]]
         for v in buff.get("vals", [])
@@ -1457,6 +1626,20 @@ def _render_buff_template(
                     tname = TRAIT_ID_LABELS.get(tid, str(tid))
                     if tname not in param_traits:
                         param_traits.append(tname)
+        and_check_ids = [
+            tid
+            for grp in core.sv0.get("ParamAddOpIndividualityAndCheck", [])
+            for tid in grp
+            if tid > 0 and tid != 5000 and tid not in INDIVIDUALITIE_IGNORE
+        ]
+        if _ANIMAL_TRAIT_IDS.issubset(set(and_check_ids)):
+            if "Animal" not in param_traits:
+                param_traits.append("Animal")
+            and_check_ids = [tid for tid in and_check_ids if tid not in _ANIMAL_TRAIT_IDS]
+        for tid in and_check_ids:
+            tname = TRAIT_ID_LABELS.get(tid, str(tid))
+            if tname not in param_traits:
+                param_traits.append(tname)
         trait_str = " and ".join(f"[{t}]" for t in param_traits) if param_traits else ""
 
         target_type_id = core.sv0.get("ParamAddIndividualityTargetType")
@@ -1548,6 +1731,8 @@ def _handle_buff_type(core):
             return _handle_counter_function(core, buff)
         if config.get("special_handler") == "reflectionFunction":
             return _handle_reflection_function(core, buff)
+        if config.get("special_handler") == "shortenSkillAfterUseSkill":
+            return _handle_shorten_skill_after_use(core, buff)
         template, divisor, is_pct = _resolve_traits_from_config(
             core, buff, config, template, divisor, is_pct
         )
@@ -1587,7 +1772,12 @@ def _handle_sub_state(core):
                 labels.append(f"[{label}]")
         if not labels:
             return None
-        return f"Remove {' '.join(labels)}{core.cond_str} {core.target}"
+        v2_0 = core.sv0.get("Value2")
+        v2_9 = core.sv9.get("Value2")
+        count_prefix = (
+            f"{fmt_val_range(v2_0, v2_9, 1, False)} " if v2_0 and v2_0 > 0 else ""
+        )
+        return f"Remove {count_prefix}{' '.join(labels)}{core.cond_str} {core.target}"
     return None
 
 
@@ -1779,8 +1969,20 @@ def _handle_gain_np_criticalstar_sum(core):
 
 def _handle_func_type_no_buff(core):
     """Handle func types that don't have buffs (FUNC_TYPE_NO_BUFF lookup)."""
+    if (
+        core.func_type in ("lossHp", "lossHpSafe", "lossHpPerSafe")
+        and core.val0 == 0
+        and core.val9 == 0
+        and core.sv0.get("ParamAddValue") is None
+    ):
+        return None
     entry = FUNC_TYPE_NO_BUFF[core.func_type]
     template, divisor, is_pct = entry.template, entry.divisor, entry.is_pct
+    if core.func_type == "forceInstantDeath" and any(
+        t.get("id") == 3139
+        for t in (core.fn.get("script") or {}).get("funcIndividuality", [])
+    ):
+        template = "Apply Death <Ignore Guts>"
     use_rate = entry.use_rate
     demerit_suffix = " [Demerit]" if is_demerit(core.fn) else ""
     if core.func_type == "shortenSkill":
@@ -1813,6 +2015,13 @@ def _fmt_function_core(fn, sv_start=None, sv_end=None, ctx=None) -> str | None:
     if core is None:
         return None
 
+    if core.func_type == "displayBuffstring" and "CheckOverChargeStageRange" in core.sv0:
+        return f"Increase Master Affection Gauge <effect increases with Overcharge> {core.target}"
+    if core.func_type == "addStateShortUserEquipSkillAvailable":
+        val_str = fmt_val_range(core.val0, core.val9, 10, True)
+        max_count = core.sv0.get("ParamAddMaxCount")
+        max_str = f" (Max {max_count})" if max_count else ""
+        return f"Increase NP Strength by {val_str} per Master Skill drained{max_str}{core.cond_str} {core.target}"
     if core.func_type == "gainStar":
         return _handle_gain_star(core)
     if core.func_type == "gainMultiplyNp":
@@ -1838,9 +2047,8 @@ def _fmt_function_core(fn, sv_start=None, sv_end=None, ctx=None) -> str | None:
     if core.func_type == "shortenBuffcount":
         return _handle_shorten_buffcount(core)
     if core.func_type == "subState":
-        result = _handle_sub_state(core)
-        if result is not None:
-            return result
+        if core.fn.get("traitVals"):
+            return _handle_sub_state(core)
     if core.func_type == "transformServant":
         result = _handle_transform_servant(core)
         if result is not None:
@@ -1892,16 +2100,33 @@ def fmt_function(fn, sv_start=None, sv_end=None, ctx=None) -> str | None:
     star_lower = sv0.get("StarLower")
     if star_lower is not None:
         result = f"When Critical Stars are {star_lower} or less, {result}"
+    bp_phase_ranges = sv0.get("CheckBattlePointPhaseRange")
+    if bp_phase_ranges:
+        rng = (bp_phase_ranges[0].get("range") or [""])[0]
+        if rng.endswith("<="):
+            result = f"When Master Affection Level is {rng[:-2]} or higher, {result}"
+    buff_type = ((fn.get("buffs") or [{}])[0]).get("type", "")
     rate0, rate9 = sv0.get("Rate", 1000), sv9.get("Rate", 1000)
-    if rate0 < 1000 or rate9 < 1000:
+    if (
+        abs(rate0) < 1000
+        or abs(rate9) < 1000
+        or (rate0 != rate9 and abs(rate0) != 5000 and abs(rate9) != 5000)
+    ):
         if not (
             fn.get("funcType", "") == "instantDeath"
-            or ((fn.get("buffs") or [{}])[0]).get("type", "")
-            in _RATE_PREFIX_EXEMPT_BUFFS
+            or buff_type in _RATE_PREFIX_EXEMPT_BUFFS
         ):
             abs_rate0 = abs(rate0)
             abs_rate9 = abs(rate9)
             result = f"{fmt_val_range(abs_rate0, abs_rate9, 10, False)}% Chance to {result}"
+    elif (
+        ("UseRate" in sv0 or "UseRate" in sv9)
+        and buff_type not in TRIGGER_INFO
+        and buff_type not in _RATE_PREFIX_EXEMPT_BUFFS
+    ):
+        ur0, ur9 = sv0.get("UseRate", 1000), sv9.get("UseRate", 1000)
+        if ur0 < 1000 or ur9 < 1000:
+            result = f"{fmt_val_range(abs(ur0), abs(ur9), 10, False)}% Chance to {result}"
     func_type = fn.get("funcType", "")
     sv_trigger_pos = sv0.get("TriggeredFuncPosition")
     if sv_trigger_pos is not None or "DisplayLastFuncInvalidType" in sv0:
@@ -1967,4 +2192,5 @@ def fmt_function_stacked(fn, count, ctx=None) -> str | None:
             return f"Apply {count} " + base_res[len("Apply ") :]
         if ", Apply " in base_res:
             return base_res.replace(", Apply ", f", Apply {count} ", 1)
+        return f"{base_res} (x{count})"
     return base_res

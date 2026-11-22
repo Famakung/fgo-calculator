@@ -18,6 +18,7 @@ TRIGGER_INFO = {
     "continueFunction": ("battle continues", "", False),
     "treasureDeviceAfterFunction": ("using NP", "", False),
     "treasureDeviceBeforeFunction": ("using NP", "", False),
+    "npattackPrevBuff": ("attacking with NP", "before damage", False),
 }
 
 AILMENT_IGNORE = {
@@ -49,7 +50,6 @@ INDIVIDUALITIE_IGNORE = {
     3057,  # buffChangeField
     3079,  # unknown field category
     3024,  # Guts
-    3022,  # Invincible
     3021,  # Evade
     3064,  # Anti-Enforcement DEF
     2920,
@@ -111,14 +111,22 @@ ATTR_LABELS = {
 
 def get_card_prefix(buff):
     traits = buff.get("ckSelfIndv", []) or buff.get("ckOpIndv", [])
+    trait_ids = {indv.get("id") for indv in traits}
+    labels = []
     for indv in traits:
         tid = indv["id"]
         if tid in (3139, 4008):
             continue
+        if tid == 3018 and {3021, 3022}.issubset(trait_ids):
+            continue
         label = TRAIT_ID_LABELS.get(tid, fmt_trait_name(indv))
         if label:
-            return str(label) + " "
-    return ""
+            s_label = str(label)
+            if s_label not in labels:
+                labels.append(s_label)
+    if not labels:
+        return ""
+    return " or ".join(labels) + " "
 
 
 def apply_card_prefix(buff_type, template, card_prefix):
@@ -128,6 +136,7 @@ def apply_card_prefix(buff_type, template, card_prefix):
         "avoidFunctionExecuteSelf",
         "upHate",
         "preventDeathByDamage",
+        "upToleranceSubstate",
     ):
         return template
     clean_prefix = card_prefix.strip()
