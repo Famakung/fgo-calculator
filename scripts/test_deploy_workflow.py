@@ -1,21 +1,18 @@
 """Self-check for the /info gate wiring in .github/workflows/deploy.yml.
 
 Run: python3 scripts/test_deploy_workflow.py
-Pins ten scenarios of the build job (DO_WORK/DEPLOY gates):
-  1. idle schedule (CHECK=UNCHANGED)        -> only the decide step may run after the version check
-  2. schedule, CHECK=CHANGED, data dirty    -> sync through upload all run
-  3. schedule, CHECK=CHANGED, data clean    -> sync + hash check run, build/upload skip
-  4. push (any CHECK)                       -> no step after the check may be blocked
-  5. workflow_dispatch, no force, UNCHANGED -> only the decide step may run
-  6. workflow_dispatch, force_sync (CHECK=CHANGED) -> every step after the check runs
-  7. generated data dir is cached and not wiped; asset-cache key hashes sync_atlas_data.py (structural)
-  8. self-test job runs all suites except on schedule (structural)
-  9. baselines persist across asset-cache hits via a run-scoped
+Pins scenarios of the build job (DO_WORK/DEPLOY gates):
+  1. idle dispatch, no force (CHECK=UNCHANGED)      -> only the decide step may run after the version check
+  2. dispatch, no force, CHECK=CHANGED, data dirty  -> sync through upload all run
+  3. dispatch, no force, CHECK=CHANGED, data clean  -> sync + hash check run, build/upload skip
+  4. push (any CHECK)                               -> no step after the check may be blocked
+  5. workflow_dispatch, force_sync (CHECK=CHANGED)  -> every step after the check runs
+  6. generated data dir is cached and not wiped; asset-cache key hashes sync_atlas_data.py (structural)
+  7. self-test job runs all suites unconditionally (structural)
+  8. baselines persist across asset-cache hits via a run-scoped
      cache/restore + cache/save pair (structural)
-  10. schedule/trigger pin (structural): cron list is exactly the four fixed
-      UTC slots '10 9,11,15,19 * * *', push branches [main], force_sync
-      boolean-default-false intact, and the slot hours map to the JP/NA
-      maintenance-end ICT/JST pairs {16:18, 18:20, 22:0, 2:4}
+  9. trigger pin (structural): triggers are push [main] and workflow_dispatch
+     (no schedule), with force_sync boolean-default-false intact
 """
 
 import os
@@ -61,46 +58,36 @@ def scenario_values(G, C, F, D):
     return W, P
 
 
-def schedule_pin(spec):
-    """Scenario 10: pin the trigger set and cron mapping on a parsed workflow spec.
+def trigger_pin(spec):
+    """Pin the trigger set on a parsed workflow spec (push + workflow_dispatch, no schedule).
 
     Takes the spec as an argument so a mutation harness can feed a doctored copy.
     """
     # PyYAML gotcha: bare `on:` parses as boolean key True, not the string "on".
     on = spec.get("on", spec.get(True))
-    assert on is not None and set(on) == {"schedule", "push", "workflow_dispatch"}, (
+    assert on is not None and "schedule" not in on and set(on) == {"push", "workflow_dispatch"}, (
         f"trigger set drifted: {sorted(map(str, on or {}))}"
     )
-    crons = [entry["cron"] for entry in on["schedule"]]
-    assert crons == ["10 9,11,15,19 * * *"], f"schedule cron drifted: {crons!r}"
     assert on["push"]["branches"] == ["main"], f"push branches drifted: {on['push']['branches']!r}"
     force = on["workflow_dispatch"].get("inputs", {}).get("force_sync")
     assert force is not None, "force_sync input removed"
     assert force.get("type") == "boolean", f"force_sync type drifted: {force!r}"
     assert force.get("default") is False, f"force_sync default drifted: {force!r}"
-    minute, hours = crons[0].split()[:2]
-    assert int(minute) == 10, f"cron minute drifted: {minute!r}"
-    utc_hours = {int(h) for h in hours.split(",")}
-    assert utc_hours == {9, 11, 15, 19}, f"UTC hours drifted: {sorted(utc_hours)}"
-    assert {(h + 7) % 24 for h in utc_hours} == {16, 18, 22, 2}, "UTC->ICT mapping drifted"
-    assert {(h + 9) % 24 for h in utc_hours} == {18, 20, 0, 4}, "UTC->JST mapping drifted"
-    pairs = {((h + 7) % 24, (h + 9) % 24) for h in utc_hours}
-    assert pairs == {(16, 18), (18, 20), (22, 0), (2, 4)}, f"per-slot ICT/JST pairs drifted: {sorted(pairs)}"
 
 
 def main():
     n = 0
 
-    # 1. idle schedule: nothing after the check runs except the marker
-    W, P = scenario_values("schedule", "UNCHANGED", "false", "")
+    # 1. idle dispatch, no force: nothing after the check runs except the marker
+    W, P = scenario_values("workflow_dispatch", "UNCHANGED", "false", "")
     for name, cond in steps_after_check():
         if name == MARKER:
             continue
-        assert not would_run(cond, "schedule", "UNCHANGED", "", W, P), f"step {name!r} would run on an idle schedule run: if={cond!r}"
+        assert not would_run(cond, "workflow_dispatch", "UNCHANGED", "", W, P), f"step {name!r} would run on an idle dispatch run: if={cond!r}"
     n += 1
 
-    # 2. schedule, data changed, data dirty: sync through upload must all run
-    W, P = scenario_values("schedule", "CHANGED", "false", "true")
+    # 2. dispatch, no force, data changed, data dirty: sync through upload must all run
+    W, P = scenario_values("workflow_dispatch", "CHANGED", "false", "true")
     for name in (
         "Sync latest game data from Atlas Academy",
         "Check if generated data changed",
@@ -111,11 +98,11 @@ def main():
         "Upload Pages artifact",
     ):
         cond = next(c for nm, c in steps_after_check() if nm == name)
-        assert would_run(cond, "schedule", "CHANGED", "true", W, P), f"step {name!r} is blocked when data changed and dirty"
+        assert would_run(cond, "workflow_dispatch", "CHANGED", "true", W, P), f"step {name!r} is blocked when data changed and dirty"
     n += 1
 
-    # 3. schedule, data changed, data clean: sync + hash check run, node setup/install/build/upload skip
-    W, P = scenario_values("schedule", "CHANGED", "false", "false")
+    # 3. dispatch, no force, data changed, data clean: sync + hash check run, node setup/install/build/upload skip
+    W, P = scenario_values("workflow_dispatch", "CHANGED", "false", "false")
     for name, cond in steps_after_check():
         if name in (
             "Set up Node.js",
@@ -126,9 +113,9 @@ def main():
             "Verify build outputs",
             "Upload Pages artifact",
         ):
-            assert not would_run(cond, "schedule", "CHANGED", "false", W, P), f"step {name!r} should skip when generated data is clean: if={cond!r}"
+            assert not would_run(cond, "workflow_dispatch", "CHANGED", "false", W, P), f"step {name!r} should skip when generated data is clean: if={cond!r}"
         else:
-            assert would_run(cond, "schedule", "CHANGED", "false", W, P), f"step {name!r} should run when data changed (clean): if={cond!r}"
+            assert would_run(cond, "workflow_dispatch", "CHANGED", "false", W, P), f"step {name!r} should run when data changed (clean): if={cond!r}"
     n += 1
 
     # 4. push, worst case (data clean, CHECK stale): nothing after the check is blocked
@@ -139,15 +126,7 @@ def main():
         assert would_run(cond, "push", "UNCHANGED", "false", W, P), f"step {name!r} is blocked on a push: if={cond!r}"
     n += 1
 
-    # 5. manual dispatch, no force, unchanged: only the decide step may run
-    W, P = scenario_values("workflow_dispatch", "UNCHANGED", "false", "")
-    for name, cond in steps_after_check():
-        if name == MARKER:
-            continue
-        assert not would_run(cond, "workflow_dispatch", "UNCHANGED", "", W, P), f"step {name!r} would run on a no-force dispatch with unchanged data: if={cond!r}"
-    n += 1
-
-    # 6. manual dispatch with force_sync: the check step passes --force, so real
+    # 5. manual dispatch with force_sync: the check step passes --force, so real
     #    CI yields CHECK=CHANGED even when both hashes match — model that; every
     #    step after the check must run
     W, P = scenario_values("workflow_dispatch", "CHANGED", "true", "false")
@@ -215,12 +194,10 @@ def main():
         assert data_file in cat_run, f"{data_file} missing from the data-hash cat"
     n += 1
 
-    # 8. self-test job runs all suites on every code change (push/dispatch)
-    #    but is skipped on the idle schedule, so polls stay near-free
+    # 7. self-test job runs all suites unconditionally
     assert "self-test" in spec["jobs"], "self-test job missing from deploy.yml"
     st = spec["jobs"]["self-test"]
-    st_if = st.get("if") or ""
-    assert "schedule" in st_if, "self-test must be skipped on schedule"
+    assert not st.get("if"), f"self-test should not be gated by if: {st.get('if')!r}"
     st_runs = " ".join(s["run"] for s in st["steps"] if s.get("run"))
     assert "Pillow" in st_runs, "self-test job must install Pillow"
     for script in (
@@ -258,9 +235,8 @@ def main():
     assert names.index("Check if generated data changed") < names.index("Save version baselines"), "save must run after both baseline writers"
     n += 1
 
-    # 10. schedule/trigger pin: the four fixed UTC slots, push [main],
-    #     force_sync intact, and the JP/NA maintenance-end ICT/JST mapping
-    schedule_pin(spec)
+    # 9. trigger pin: push [main] and workflow_dispatch (no schedule), force_sync intact
+    trigger_pin(spec)
     n += 1
 
     print(f"{n} tests passed")

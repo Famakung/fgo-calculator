@@ -60,7 +60,7 @@ Unit tests (`npm run test`) run only in the `develop` clone: `tests/` is tracked
 | `src/scripts/data.js` + `src/scripts/data/*.js` | data access and generated datasets |
 | `scripts/` | data sync (`sync_atlas_data.py`), build/render gates, tests |
 | `scripts/servant_info_converter/` | static Servant Info converter (`public/servant_info/*.json`) |
-| `.github/workflows/` | Pages deploy, fixed-slot ETag-gated data schedule (4 polls/day at JP/NA maintenance ends) |
+| `.github/workflows/` | Pages deploy, manual/external-dispatch ETag-gated data sync |
 
 `develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never plain-merge `develop` into `main`** (`git pull origin develop` is the same merge) — these docs (`.claude/**`, `AGENTS.md`, `GEMINI.md`), the browser gate `scripts/verify_render.js` and puppeteer QA test scripts `scripts/test_*.js` (CI never runs them), the unit tests `tests/` (CI never runs them either) and that script itself are deliberately `develop`-only and must not become public; every other file under `scripts/` stays public because CI or `npm run build` needs it; ship code to `main` with `scripts/merge_code_only.sh [source] "<commit_message>"` (or `scripts/merge_code_only.sh "<commit_message>"` defaulting source to `develop`) where `<commit_message>` is mandatory and must describe what was updated (e.g. `feat(scope): ...`, `fix(scope): ...`), forbidding generic "Merge branch 'develop'" (merges the code, drops those paths — itself included — from the merge commit, keeps `main`'s `.gitignore`, pushes nothing) or by cherry-picking the code commits.
 

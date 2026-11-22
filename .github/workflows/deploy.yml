@@ -3,20 +3,6 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
-  schedule:
-    # Four fixed polls at JP/NA maintenance ends, not */10: GitHub throttled
-    # the 10-min cron to ~4 random fires/day (avg gap 5.8h, measured Nov 2026),
-    # so fixed slots cost the same and land when data actually changes.
-    # UTC -> ICT/JST: 09:10 = 16:10/18:10 (JP end 18:00 JST), 11:10 =
-    # 18:10/20:10 (JP extension; NA end 04:00 PT), 15:10 = 22:10/00:10 (late
-    # extensions), 19:10 = 02:10/04:10 (NA anniversary end 12:00 PT). PT is
-    # PDT Mar-Nov; in PST months NA ends +1h UTC later and the next slot
-    # catches it. :10 dodges top-of-hour load. A ~230-byte /info version
-    # check stops the run when both JP and NA hashes are unchanged; otherwise
-    # the Atlas API is ETag-revalidated (304 = ~0 bytes) and the build is
-    # skipped when no data changed, so idle runs are near-free. Best-effort:
-    # slots may be delayed or dropped under load.
-    - cron: '10 9,11,15,19 * * *'
   workflow_dispatch:
     inputs:
       force_sync:
@@ -61,7 +47,7 @@ jobs:
           key: fgo-version-baseline-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: fgo-version-baseline-
 
-      # ~230-byte GET /info vs cached JP + NA hashes; idle schedule/dispatch runs stop on UNCHANGED.
+      # ~230-byte GET /info vs cached JP + NA hashes; idle dispatch runs stop on UNCHANGED.
       # python3 is preinstalled on the runner; failures yield UNKNOWN and continue.
       - name: Check Atlas data version
         id: data_version
@@ -72,7 +58,6 @@ jobs:
       # Decide once whether to run the SYNC. (The post-sync build/deploy decision
       # is DEPLOY, computed separately in the data-change step.)
       #   - push:            always (a push to main is a real deploy)
-      #   - schedule:        only if the Atlas version changed (idle poll stops)
       #   - workflow_dispatch: only if force_sync is on OR the version changed (CHECK != UNCHANGED)
       # check_data_version.py is called with --force when force_sync is set, so
       # CHECK is CHANGED whenever work is wanted; DO_WORK therefore collapses to
@@ -192,7 +177,7 @@ jobs:
           # Deploy when ANY of:
           #   - push:          a push to main is a real ship, data or not
           #   - force_sync:    an explicit manual "force a real build/deploy"
-          #   - data changed:  a schedule/dispatch run whose sync produced a diff
+          #   - data changed:  a dispatch run whose sync produced a diff
           # This step only runs when DO_WORK is true (else the sync never
           # happened), so the "version changed but data byte-identical" edge
           # still skips. DEPLOY is computed ONCE here — the build/upload steps
@@ -264,7 +249,7 @@ jobs:
 
   deploy:
     needs: build
-    # Skip on clean schedule runs (no build, no artifact) — deploy-pages would fail
+    # Skip on clean dispatch runs (no build, no artifact) — deploy-pages would fail
     if: needs.build.result == 'success' && needs.build.outputs.DEPLOY == 'true'
     runs-on: ubuntu-24.04
     environment:
@@ -276,14 +261,10 @@ jobs:
         uses: actions/deploy-pages@v5
 
   # Runs the self-check suites (data-version gate, workflow gate model, and
-  # servant drift detection) so a broken config or logic lands red. Skipped on
-  # idle schedule polls so they stay near-free; push/dispatch are code
-  # changes, so they always run it. Independent of the build/deploy path — it
-  # gates nothing via `needs` (that would break schedule deploys on a skipped
-  # job); a red here flags the change while the build's validate_data.js still
-  # guards data integrity.
+  # servant drift detection) so a broken config or logic lands red. Independent
+  # of the build/deploy path — it gates nothing via `needs`; a red here flags
+  # the change while the build's validate_data.js still guards data integrity.
   self-test:
-    if: ${{ github.event_name != 'schedule' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
