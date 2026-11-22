@@ -688,17 +688,67 @@ def format_skills_structured(
                     form_entry["icon"] = icon_path
                 forms.append(form_entry)
 
-            variant = {
-                "tier": tier,
-                "type": "skill",
-                "rawTitle": header,
-                "cleanTitle": f"Skill {num}",
-                "cooldown": forms[0]["cooldown"] if forms else "",
-                "effects": [],
-                "forms": forms,
-            }
-            if forms and forms[0].get("icon"):
-                variant["icon"] = forms[0]["icon"]
+            by_sig = {}
+            for form_entry in forms:
+                sig = (
+                    form_entry["label"],
+                    form_entry["cooldown"],
+                    tuple(form_entry["effects"]),
+                )
+                by_sig.setdefault(sig, []).append(form_entry)
+
+            def _pick_skill_form(cands):
+                return max(
+                    cands,
+                    key=lambda f: (
+                        1
+                        if (f.get("name") or "").strip()
+                        and (f.get("name") or "").strip() != "???"
+                        else 0,
+                        f.get("formIndex", 0),
+                    ),
+                )
+
+            deduped_forms = [_pick_skill_form(cands) for cands in by_sig.values()]
+            if len(deduped_forms) > 1:
+                effect_sigs = {
+                    (f["cooldown"], tuple(f["effects"])) for f in deduped_forms
+                }
+                if len(effect_sigs) == 1:
+                    deduped_forms = [_pick_skill_form(deduped_forms)]
+
+            if len(deduped_forms) == 1:
+                f0 = deduped_forms[0]
+                sk_name = (f0.get("name") or "").strip()
+                clean_title = (
+                    f"Skill {num} ({sk_name})" if sk_name else f"Skill {num}"
+                )
+                raw_title = f"{clean_title}{tag}"
+                variant = {
+                    "tier": tier,
+                    "type": "skill",
+                    "rawTitle": raw_title,
+                    "cleanTitle": clean_title,
+                    "cooldown": f0["cooldown"],
+                    "effects": f0["effects"],
+                    "forms": [],
+                }
+                if f0.get("icon"):
+                    variant["icon"] = f0["icon"]
+            else:
+                for new_idx, form_entry in enumerate(deduped_forms):
+                    form_entry["formIndex"] = new_idx
+                variant = {
+                    "tier": tier,
+                    "type": "skill",
+                    "rawTitle": header,
+                    "cleanTitle": f"Skill {num}",
+                    "cooldown": deduped_forms[0]["cooldown"] if deduped_forms else "",
+                    "effects": [],
+                    "forms": deduped_forms,
+                }
+                if deduped_forms and deduped_forms[0].get("icon"):
+                    variant["icon"] = deduped_forms[0]["icon"]
             slot_obj["variantsByTier"][tier] = variant
             if tier not in slot_obj["tiers"]:
                 slot_obj["tiers"].append(tier)

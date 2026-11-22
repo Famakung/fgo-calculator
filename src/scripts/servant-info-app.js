@@ -145,10 +145,48 @@ function getFormDisplayLabel(form) {
   return /^If\s+/i.test(finalLabel) ? finalLabel.replace(/^If\s+/i, "").trim() : finalLabel;
 }
 
+function parseBlockHeaderOptions(rawEffects, headerRegex, formatLabel) {
+  const options = [];
+  const sharedEffects = [];
+  let currentOpt = null;
+
+  rawEffects.forEach((line) => {
+    const m = String(line || "").match(headerRegex);
+    if (m) {
+      const label = formatLabel(m[1]);
+      currentOpt = {
+        idx: options.length,
+        raw: label,
+        label,
+        effects: [...sharedEffects],
+      };
+      options.push(currentOpt);
+    } else if (currentOpt) {
+      currentOpt.effects.push(line);
+    } else {
+      sharedEffects.push(line);
+    }
+  });
+
+  if (options.length < 2) return null;
+  return { hasOptions: true, options };
+}
+
 function parseSkillOptions(rawEffects) {
   if (!rawEffects || !Array.isArray(rawEffects)) {
     return { hasOptions: false, options: [] };
   }
+
+  const cycleResult = parseBlockHeaderOptions(rawEffects, /^\[(\d+(?:st|nd|rd|th)\s+Time)\]$/i, (v) => v);
+  if (cycleResult) {
+    const first = cycleResult.options[0];
+    const last = cycleResult.options[cycleResult.options.length - 1];
+    last.label = `${last.label} -> ${first.label}`;
+    return cycleResult;
+  }
+
+  const weightResult = parseBlockHeaderOptions(rawEffects, /^\[(\d+(?:\.\d+)?)%\s*Chance\]$/i, (v) => `${v}%`);
+  if (weightResult) return weightResult;
 
   let headerOptions = [];
   let hasSelectHeader = false;
@@ -909,6 +947,7 @@ export const ServantInfoApp = {
       isSyncingAscension: false,
       isSyncingSg: false,
       sgController: null,
+      activeSgEntry: null,
       lastSgIdxByForm: {},
     };
     this._modalState = modalState;
@@ -1175,7 +1214,40 @@ export const ServantInfoApp = {
     return card;
   },
 
+  _resolveSingleSlotTitle(slot, variant, sgEntry) {
+    if (!variant) return "";
+    if (slot && slot.type === "np") {
+      return sgEntry && sgEntry.npName ? `Noble Phantasm (${sgEntry.npName})` : variant.cleanTitle;
+    }
+    if (slot && slot.type === "skill") {
+      const override = sgEntry && sgEntry.skillNames && sgEntry.skillNames[slot.slotKey];
+      if (override) {
+        const numMatch = variant.cleanTitle.match(/^Skill\s+(\d+)/i);
+        return numMatch ? `Skill ${numMatch[1]} (${override})` : `${variant.cleanTitle} (${override})`;
+      }
+      return variant.cleanTitle;
+    }
+    return variant.cleanTitle;
+  },
+
+  _applyStageSlotNames(modalState, entry) {
+    if (!modalState || !Array.isArray(modalState.slotCards)) return;
+    modalState.slotCards.forEach((card) => {
+      const slot = card._slot;
+      if (!slot || !card._refs || !card._refs.titleText) return;
+      const activeVariant = getVariantByTier(slot, slot.activeTier);
+      if (!activeVariant) return;
+      if (this._slotHasServantForms(slot, modalState)) return;
+      if (Array.isArray(activeVariant.forms) && activeVariant.forms.length > 1) return;
+      card._refs.titleText.textContent = this._resolveSingleSlotTitle(slot, activeVariant, entry);
+    });
+  },
+
   _applyStageIdentity(modalState, entry, activeFormOverride = null) {
+    if (modalState) {
+      modalState.activeSgEntry = entry || null;
+      this._applyStageSlotNames(modalState, entry);
+    }
     const refs = modalState.heroRefs;
     if (!refs) return;
     const formIdx =
@@ -1835,6 +1907,8 @@ export const ServantInfoApp = {
         slot.activeTierByForm[curFormIdx] = tier;
         const variant = getVariantByTier(slot, tier);
         if (slot.type === "np") {
+          card.dataset.activeNpEffectOption = "0";
+          card.dataset.activeNpEffectSubOption = "0";
           const selectedNpForm = hasServantForms ? String(curFormIdx) : card.dataset.activeNpForm || "0";
           this._renderNpContent(card, variant, selectedNpForm, modalState);
         } else {
@@ -1881,6 +1955,57 @@ export const ServantInfoApp = {
       ul.appendChild(li);
     });
     effectsContainer.replaceChildren(ul);
+  },
+
+  _renderOptionableEffects(effectsContainer, rawEffects, optState, onSelect, emptyFallback = "") {
+    const optInfo = parseSkillOptions(rawEffects);
+    if (!optInfo.hasOptions || optInfo.options.length < 2) {
+      this._renderEffectsList(effectsContainer, rawEffects, emptyFallback);
+      return;
+    }
+
+    const parsedOpt = parseInt(optState?.option, 10);
+    const activeOptIdx = !isNaN(parsedOpt) && parsedOpt >= 0 && parsedOpt < optInfo.options.length ? parsedOpt : 0;
+    const currentOpt = optInfo.options[activeOptIdx] || optInfo.options[0];
+
+    const frag = document.createDocumentFragment();
+    const buildOptionBar = (options, activeIdx, onPick) => {
+      const bar = DOMFactory.el("div", "f-option-selector-bar");
+      const group = DOMFactory.el("div", "f-option-btn-group");
+      options.forEach((opt, idx) => {
+        const btn = DOMFactory.el("button", ["f-option-btn", ...(idx === activeIdx ? ["active"] : [])], {
+          type: "button",
+          "aria-pressed": String(idx === activeIdx),
+        });
+        btn.textContent = opt.label;
+        btn.addEventListener("click", () => {
+          if (idx !== activeIdx) onPick(idx);
+        });
+        group.appendChild(btn);
+      });
+      bar.appendChild(group);
+      return bar;
+    };
+
+    frag.appendChild(buildOptionBar(optInfo.options, activeOptIdx, (idx) => onSelect(idx, 0)));
+
+    let displayEffects = currentOpt ? currentOpt.effects : [];
+    const subOptInfo = parseSkillOptions(displayEffects);
+    if (subOptInfo.hasOptions && subOptInfo.options.length >= 2) {
+      const parsedSub = parseInt(optState?.subOption, 10);
+      const activeSubIdx = !isNaN(parsedSub) && parsedSub >= 0 && parsedSub < subOptInfo.options.length ? parsedSub : 0;
+      frag.appendChild(buildOptionBar(subOptInfo.options, activeSubIdx, (subIdx) => onSelect(activeOptIdx, subIdx)));
+      displayEffects = subOptInfo.options[activeSubIdx]?.effects || [];
+    }
+
+    const ul = DOMFactory.el("ul", "f-bullet-list");
+    displayEffects.forEach((eff) => {
+      const li = DOMFactory.el("li", "f-bullet-item");
+      appendHighlightedEffect(li, eff);
+      ul.appendChild(li);
+    });
+    frag.appendChild(ul);
+    effectsContainer.replaceChildren(frag);
   },
 
   _renderSkillContent(card, variant, selectedForm, selectedOption, modalState) {
@@ -1976,45 +2101,27 @@ export const ServantInfoApp = {
       formBar.removeAttribute("data-servant-form");
       formBar.removeAttribute("data-ascension-form");
       applyTitleAndCooldown(null);
+      titleText.textContent = this._resolveSingleSlotTitle(slot, variant, modalState.activeSgEntry);
     }
 
-    const optInfo = parseSkillOptions(activeEffects);
-    if (!optInfo.hasOptions || optInfo.options.length < 2) {
-      this._renderEffectsList(effectsContainer, activeEffects, slot.type === "passive" ? "No class passives." : "");
-      return;
+    const prevOpt = card.dataset.activeOption;
+    const nextOpt = String(parseInt(selectedOption, 10) || 0);
+    if (prevOpt !== nextOpt) {
+      card.dataset.activeSubOption = "0";
     }
-
-    const parsedOpt = parseInt(selectedOption, 10);
-    const activeOptIdx = !isNaN(parsedOpt) && parsedOpt >= 0 && parsedOpt < optInfo.options.length ? parsedOpt : 0;
-    card.dataset.activeOption = String(activeOptIdx);
-    const currentOpt = optInfo.options[activeOptIdx] || optInfo.options[0];
-
-    const frag = document.createDocumentFragment();
-    const optBar = DOMFactory.el("div", "f-option-selector-bar");
-    const optGroup = DOMFactory.el("div", "f-option-btn-group");
-    optInfo.options.forEach((opt, idx) => {
-      const btn = DOMFactory.el("button", ["f-option-btn", ...(idx === activeOptIdx ? ["active"] : [])], {
-        type: "button",
-        "aria-pressed": String(idx === activeOptIdx),
-      });
-      btn.textContent = opt.label;
-      btn.addEventListener("click", () => {
-        if (String(idx) === card.dataset.activeOption) return;
-        this._renderSkillContent(card, variant, card.dataset.activeSkillForm || "0", String(idx), modalState);
-      });
-      optGroup.appendChild(btn);
-    });
-    optBar.appendChild(optGroup);
-    frag.appendChild(optBar);
-
-    const ul = DOMFactory.el("ul", "f-bullet-list");
-    (currentOpt ? currentOpt.effects : []).forEach((eff) => {
-      const li = DOMFactory.el("li", "f-bullet-item");
-      appendHighlightedEffect(li, eff);
-      ul.appendChild(li);
-    });
-    frag.appendChild(ul);
-    effectsContainer.replaceChildren(frag);
+    const emptyFallback = slot.type === "passive" ? "No class passives." : "";
+    const renderSkillEffects = (optIdx, subIdx) => {
+      card.dataset.activeOption = String(optIdx);
+      card.dataset.activeSubOption = String(subIdx);
+      this._renderOptionableEffects(
+        effectsContainer,
+        activeEffects,
+        { option: optIdx, subOption: subIdx },
+        renderSkillEffects,
+        emptyFallback,
+      );
+    };
+    renderSkillEffects(nextOpt, card.dataset.activeSubOption || "0");
   },
 
   _isNpAscensionOrFormBase(variant) {
@@ -2046,6 +2153,8 @@ export const ServantInfoApp = {
       btn.addEventListener("click", () => {
         if (String(i) === card.dataset.activeNpOption) return;
         card.dataset.activeNpOption = String(i);
+        card.dataset.activeNpEffectOption = "0";
+        card.dataset.activeNpEffectSubOption = "0";
         this._renderNpContent(card, variant, card.dataset.activeNpForm || "0", modalState);
       });
       group.appendChild(btn);
@@ -2082,7 +2191,12 @@ export const ServantInfoApp = {
       npMetaEl.hidden = true;
       npMetaEl.style.display = "none";
     }
-    this._renderEffectsList(effectsContainer, effects);
+    const renderNpEffects = (optIdx, subIdx) => {
+      card.dataset.activeNpEffectOption = String(optIdx);
+      card.dataset.activeNpEffectSubOption = String(subIdx);
+      this._renderOptionableEffects(effectsContainer, effects, { option: optIdx, subOption: subIdx }, renderNpEffects);
+    };
+    renderNpEffects(card.dataset.activeNpEffectOption || "0", card.dataset.activeNpEffectSubOption || "0");
   },
 
   _renderNpContent(card, variant, selectedIndex, modalState) {
@@ -2094,6 +2208,10 @@ export const ServantInfoApp = {
 
     if (hasServantForms) {
       const currentFormIdx = modalState.activeFormIndex || 0;
+      if (String(currentFormIdx) !== card.dataset.activeNpForm) {
+        card.dataset.activeNpEffectOption = "0";
+        card.dataset.activeNpEffectSubOption = "0";
+      }
       card.dataset.activeNpForm = String(currentFormIdx);
       formBar.setAttribute("data-servant-form", "true");
       formBar.removeAttribute("data-ascension-form");
@@ -2132,13 +2250,17 @@ export const ServantInfoApp = {
       npOptionsBar.hidden = true;
       npOptionsBar.style.display = "none";
       npOptionsBar.replaceChildren();
-      titleText.textContent = variant.cleanTitle;
+      titleText.textContent = this._resolveSingleSlotTitle(slot, variant, modalState.activeSgEntry);
       this._renderNpDetails(card, variant.metaLines, variant.effects);
       return;
     }
 
     const idx = Math.min(Math.max(0, parseInt(selectedIndex, 10) || 0), variant.forms.length - 1);
-    if (String(idx) !== card.dataset.activeNpForm) card.dataset.activeNpOption = "0";
+    if (String(idx) !== card.dataset.activeNpForm) {
+      card.dataset.activeNpOption = "0";
+      card.dataset.activeNpEffectOption = "0";
+      card.dataset.activeNpEffectSubOption = "0";
+    }
     card.dataset.activeNpForm = String(idx);
     const activeForm = variant.forms[idx];
 
