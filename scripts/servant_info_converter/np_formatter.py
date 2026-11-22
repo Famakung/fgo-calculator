@@ -505,6 +505,17 @@ def _fmt_mash_noble_phantasms_structured(nps, svt_id, ctx=None) -> list:
     return [slot_obj]
 
 
+def _pick_preferred_np(candidates):
+    """Pick the best representative NP when collapsing duplicate-effect entries."""
+    def _key(item):
+        np_data, _label, _asc, info = item
+        nm = (info.get("name") or "").strip()
+        has_real_name = 1 if (nm and nm != "???") else 0
+        return (has_real_name, np_data.get("priority", 0), np_data.get("id", 0))
+
+    return max(candidates, key=_key)
+
+
 def format_np_structured(
     nps,
     svt_id,
@@ -558,7 +569,33 @@ def format_np_structured(
             label0 = grp[0][1]
             tier = _get_np_tier_from_title(label0)
 
-            if len(grp) > 1:
+            non_empty = [pair for pair in grp if pair[0].get("functions")]
+            if non_empty:
+                grp = non_empty
+
+            extracted = []
+            for np_data, label in grp:
+                asc_match = re.search(r"\[(.* Ascension)\]", label)
+                asc_str = asc_match.group(1) if asc_match else None
+                info = _extract_single_np_data(np_data, ctx=ctx)
+                extracted.append((np_data, label, asc_str, info))
+
+            by_asc_sig = {}
+            for item in extracted:
+                _np_data, _label, asc_str, info = item
+                sig = (asc_str, tuple(info["metaLines"]), tuple(info["effects"]))
+                by_asc_sig.setdefault(sig, []).append(item)
+            deduped = [_pick_preferred_np(cands) for cands in by_asc_sig.values()]
+
+            if len(deduped) > 1:
+                effect_sigs = {
+                    (tuple(info["metaLines"]), tuple(info["effects"]))
+                    for _np_data, _label, _asc, info in deduped
+                }
+                if len(effect_sigs) == 1:
+                    deduped = [_pick_preferred_np(deduped)]
+
+            if len(deduped) > 1:
                 tag = ""
                 if " [Strengthen]" in label0:
                     tag = " [Strengthen]"
@@ -568,20 +605,15 @@ def format_np_structured(
                         tag = f" {m.group(1)}"
                 header = f"Noble Phantasm{tag}"
 
-                grp_nps = [d for d, _ in grp]
+                grp_nps = [d for d, _, _, _ in deduped]
                 variant_labels = _resolve_np_variant_labels(grp_nps)
 
                 forms = []
-                for idx, (np_data, label) in enumerate(grp):
-                    asc_match = re.search(r"\[(.* Ascension)\]", label)
-                    if asc_match:
-                        asc_str = asc_match.group(1)
-                    else:
-                        asc_str = variant_labels[idx]
-                    info = _extract_single_np_data(np_data, ctx=ctx)
+                for idx, (np_data, label, asc_str, info) in enumerate(deduped):
+                    form_label = asc_str if asc_str else variant_labels[idx]
                     forms.append({
                         "formIndex": idx,
-                        "label": asc_str,
+                        "label": form_label,
                         "name": info["name"],
                         "metaLines": info["metaLines"],
                         "effects": info["effects"],
@@ -597,15 +629,15 @@ def format_np_structured(
                     "forms": forms,
                 }
             else:
-                np_data, label = grp[0]
-                info = _extract_single_np_data(np_data, ctx=ctx)
+                np_data, label, asc_str, info = deduped[0]
+                raw_title = re.sub(r"\s+\[[^\]]*Ascension\]$", "", label) if asc_str else label
                 clean_title = (
                     f"Noble Phantasm ({info['name']})" if info["name"] else "Noble Phantasm"
                 )
                 var = {
                     "tier": tier,
                     "type": "np",
-                    "rawTitle": label,
+                    "rawTitle": raw_title,
                     "cleanTitle": clean_title,
                     "name": info["name"],
                     "metaLines": info["metaLines"],

@@ -909,6 +909,7 @@ export const ServantInfoApp = {
       isSyncingAscension: false,
       isSyncingSg: false,
       sgController: null,
+      activeSgEntry: null,
       lastSgIdxByForm: {},
     };
     this._modalState = modalState;
@@ -1175,7 +1176,40 @@ export const ServantInfoApp = {
     return card;
   },
 
+  _resolveSingleSlotTitle(slot, variant, sgEntry) {
+    if (!variant) return "";
+    if (slot && slot.type === "np") {
+      return sgEntry && sgEntry.npName ? `Noble Phantasm (${sgEntry.npName})` : variant.cleanTitle;
+    }
+    if (slot && slot.type === "skill") {
+      const override = sgEntry && sgEntry.skillNames && sgEntry.skillNames[slot.slotKey];
+      if (override) {
+        const numMatch = variant.cleanTitle.match(/^Skill\s+(\d+)/i);
+        return numMatch ? `Skill ${numMatch[1]} (${override})` : `${variant.cleanTitle} (${override})`;
+      }
+      return variant.cleanTitle;
+    }
+    return variant.cleanTitle;
+  },
+
+  _applyStageSlotNames(modalState, entry) {
+    if (!modalState || !Array.isArray(modalState.slotCards)) return;
+    modalState.slotCards.forEach((card) => {
+      const slot = card._slot;
+      if (!slot || !card._refs || !card._refs.titleText) return;
+      const activeVariant = getVariantByTier(slot, slot.activeTier);
+      if (!activeVariant) return;
+      if (this._slotHasServantForms(slot, modalState)) return;
+      if (Array.isArray(activeVariant.forms) && activeVariant.forms.length > 1) return;
+      card._refs.titleText.textContent = this._resolveSingleSlotTitle(slot, activeVariant, entry);
+    });
+  },
+
   _applyStageIdentity(modalState, entry, activeFormOverride = null) {
+    if (modalState) {
+      modalState.activeSgEntry = entry || null;
+      this._applyStageSlotNames(modalState, entry);
+    }
     const refs = modalState.heroRefs;
     if (!refs) return;
     const formIdx =
@@ -1976,6 +2010,7 @@ export const ServantInfoApp = {
       formBar.removeAttribute("data-servant-form");
       formBar.removeAttribute("data-ascension-form");
       applyTitleAndCooldown(null);
+      titleText.textContent = this._resolveSingleSlotTitle(slot, variant, modalState.activeSgEntry);
     }
 
     const optInfo = parseSkillOptions(activeEffects);
@@ -2132,7 +2167,7 @@ export const ServantInfoApp = {
       npOptionsBar.hidden = true;
       npOptionsBar.style.display = "none";
       npOptionsBar.replaceChildren();
-      titleText.textContent = variant.cleanTitle;
+      titleText.textContent = this._resolveSingleSlotTitle(slot, variant, modalState.activeSgEntry);
       this._renderNpDetails(card, variant.metaLines, variant.effects);
       return;
     }

@@ -1535,6 +1535,193 @@ class ServantInfoConverterTests(unittest.TestCase):
             ],
         )
 
+    def test_np_duplicate_effect_collapsing(self):
+        fn_dmg = {
+            "funcType": "damageNp",
+            "funcTargetType": "enemy",
+            "svals": [{"Value": 6000}, {"Value": 10000}],
+        }
+        fn_dmg_2 = {
+            "funcType": "damageNp",
+            "funcTargetType": "enemy",
+            "svals": [{"Value": 7000}, {"Value": 11000}],
+        }
+
+        # 1. True Name Reveal (??? vs revealed name with identical effects) -> single variant, revealed name
+        true_name_nps = [
+            {
+                "id": 202100,
+                "num": 1,
+                "strengthStatus": 0,
+                "priority": 100,
+                "name": "???",
+                "card": "2",
+                "effectFlags": ["attackEnemyOne"],
+                "npDistribution": [100],
+                "npGain": {"buster": [87]},
+                "functions": [fn_dmg],
+                "releaseConditions": [],
+            },
+            {
+                "id": 202101,
+                "num": 1,
+                "strengthStatus": 0,
+                "priority": 101,
+                "name": "On Arorikya Sowaka",
+                "card": "2",
+                "effectFlags": ["attackEnemyOne"],
+                "npDistribution": [100],
+                "npGain": {"buster": [87]},
+                "functions": [fn_dmg],
+                "releaseConditions": [],
+            },
+        ]
+        slot_tn = format_np_structured(true_name_nps, 202100)[0]
+        var_tn = slot_tn["variantsByTier"][0]
+        self.assertEqual(var_tn["forms"], [])
+        self.assertEqual(var_tn["name"], "On Arorikya Sowaka")
+        self.assertEqual(var_tn["cleanTitle"], "Noble Phantasm (On Arorikya Sowaka)")
+
+        # 2. Identical duplicate NP variants (e.g. animation swap with same name and effects) -> single variant
+        same_nps = [
+            dict(true_name_nps[1], id=101701, priority=101, name="Kurikara Divine Blade"),
+            dict(true_name_nps[1], id=101702, priority=102, name="Kurikara Divine Blade"),
+        ]
+        slot_same = format_np_structured(same_nps, 101700)[0]
+        self.assertEqual(slot_same["variantsByTier"][0]["forms"], [])
+
+        # 3. Empty-function ??? placeholder dropped (Miyamoto Iori pattern) -> single variant
+        iori_nps = [
+            dict(true_name_nps[1], id=106001, priority=101, name="Hidden Sword"),
+            {
+                "id": 106099,
+                "num": 1,
+                "strengthStatus": 0,
+                "priority": 199,
+                "name": "???",
+                "card": "2",
+                "effectFlags": [],
+                "npDistribution": [],
+                "npGain": {"buster": [42]},
+                "functions": [],
+                "releaseConditions": [],
+            },
+        ]
+        slot_iori = format_np_structured(iori_nps, 106000)[0]
+        self.assertEqual(slot_iori["variantsByTier"][0]["forms"], [])
+        self.assertEqual(slot_iori["variantsByTier"][0]["name"], "Hidden Sword")
+
+        # 4. Duplicate 3rd Ascension collapsed while keeping distinct 1st&2nd Ascension (Elisabeth pattern)
+        elisabeth_nps = [
+            dict(true_name_nps[1], id=306201, priority=103, name="Bathory", functions=[fn_dmg], releaseConditions=[]),
+            dict(
+                true_name_nps[1],
+                id=306202,
+                priority=102,
+                name="Veilmarsh",
+                functions=[fn_dmg_2],
+                releaseConditions=[{"condType": "equipWithTargetCostume", "condNum": 3}],
+            ),
+            dict(
+                true_name_nps[1],
+                id=306204,
+                priority=104,
+                name="Veilmarsh",
+                functions=[fn_dmg_2],
+                releaseConditions=[{"condType": "equipWithTargetCostume", "condNum": 3}],
+            ),
+        ]
+        slot_eli = format_np_structured(elisabeth_nps, 306200)[0]
+        forms_eli = slot_eli["variantsByTier"][0]["forms"]
+        self.assertEqual(len(forms_eli), 2)
+        self.assertEqual([f["label"] for f in forms_eli], ["1st&2nd Ascension", "3rd Ascension"])
+        self.assertEqual([f["formIndex"] for f in forms_eli], [0, 1])
+
+    def test_skill_duplicate_effect_collapsing(self):
+        fn_atk = {
+            "funcType": "addState",
+            "funcTargetType": "self",
+            "buffs": [{"id": 1, "type": "upAtk"}],
+            "svals": [{"Turn": 3, "Value": 200}, {"Turn": 3, "Value": 300}],
+        }
+        dup_skills = [
+            {
+                "id": 99001,
+                "num": 1,
+                "strengthStatus": 0,
+                "name": "???",
+                "coolDown": [7, 6, 5],
+                "functions": [fn_atk],
+                "skillSvts": [{"svtId": 990000, "releaseConditions": [{"condType": "equipWithTargetCostume", "condNum": 1}]}],
+            },
+            {
+                "id": 99002,
+                "num": 1,
+                "strengthStatus": 0,
+                "name": "Real Skill Name A",
+                "coolDown": [7, 6, 5],
+                "functions": [fn_atk],
+                "skillSvts": [{"svtId": 990000, "releaseConditions": [{"condType": "equipWithTargetCostume", "condNum": 3}]}],
+            },
+        ]
+        slot = format_skills_structured(dup_skills, svt_id=990000)[0]
+        var0 = slot["variantsByTier"][0]
+        self.assertEqual(var0["forms"], [])
+        self.assertEqual(var0["cleanTitle"], "Skill 1 (Real Skill Name A)")
+
+    def test_extract_saint_graphs_np_and_skill_names(self):
+        u = "https://static.atlasacademy.io/JP/CharaGraph/%s/%s.png"
+        svt = {
+            "id": 990000,
+            "name": "Test Servant",
+            "noblePhantasms": [{"id": 990001, "name": "Base NP"}],
+            "skills": [
+                {"id": 9901, "num": 1, "name": "Base Skill 1"},
+                {"id": 9902, "num": 2, "name": "Base Skill 2"},
+            ],
+            "ascensionAdd": {
+                "overWriteTDName": {
+                    "ascension": {"0": "Base NP", "3": "Ascended NP", "4": "Ascended NP"},
+                    "costume": {"11": "Costume NP"},
+                },
+                "overwriteSkillName": {
+                    "ascension": {
+                        "0": [{"id": 9901, "value": "Base Skill 1"}],  # no-op skipped
+                        "3": [{"id": 9901, "value": "Ascended Skill 1"}],
+                    },
+                    "costume": {
+                        "11": [{"id": 9902, "value": "Costume Skill 2"}],
+                    },
+                },
+            },
+            "extraAssets": {
+                "charaGraph": {
+                    "ascension": {
+                        "1": u % ("990000", "a1"),
+                        "3": u % ("990000", "a3"),
+                        "4": u % ("990000", "a4"),
+                    },
+                    "costume": {
+                        "990030": u % ("990030", "c1"),
+                    },
+                }
+            },
+            "profile": {
+                "costume": {
+                    "990030": {"id": 11, "shortName": "Dress"},
+                }
+            },
+        }
+        entries, _ = extract_saint_graphs(svt)
+        by_key = {e["key"]: e for e in entries}
+        self.assertNotIn("npName", by_key["1"])
+        self.assertNotIn("skillNames", by_key["1"])
+        self.assertEqual(by_key["3"].get("npName"), "Ascended NP")
+        self.assertEqual(by_key["3"].get("skillNames"), {"skill_1": "Ascended Skill 1"})
+        self.assertEqual(by_key["4"].get("npName"), "Ascended NP")
+        self.assertEqual(by_key["990030"].get("npName"), "Costume NP")
+        self.assertEqual(by_key["990030"].get("skillNames"), {"skill_2": "Costume Skill 2"})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

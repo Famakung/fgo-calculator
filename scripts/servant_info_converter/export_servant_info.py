@@ -158,6 +158,36 @@ def _overwrite_name(svt: dict, field: str, kind: str, k) -> Optional[str]:
     return None
 
 
+def _overwrite_skill_names(
+    svt: dict,
+    skill_id_to_slot: Dict[int, str],
+    skill_id_to_name: Dict[int, str],
+    kind: str,
+    k,
+) -> Dict[str, str]:
+    maps = (svt.get("ascensionAdd") or {}).get("overwriteSkillName") or {}
+    if kind == "costume":
+        items = (maps.get("costume") or {}).get(str(k)) or []
+    else:
+        asc_map = maps.get("ascension") or {}
+        items = []
+        for lk in _ASC_LIMIT_KEYS.get(str(k), (str(k),)):
+            if lk in asc_map:
+                items = asc_map[lk] or []
+                break
+
+    result: Dict[str, str] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        sid = item.get("id")
+        val = item.get("value")
+        val_clean = val.strip() if isinstance(val, str) else ""
+        if sid in skill_id_to_slot and val_clean and val_clean != skill_id_to_name.get(sid):
+            result[skill_id_to_slot[sid]] = val_clean
+    return result
+
+
 _ASC_LABELS = {
     "1": "1st Ascension",
     "2": "2nd Ascension",
@@ -184,6 +214,22 @@ def extract_saint_graphs(
     svt_id = svt.get("id")
     is_mash = svt_id == _MASH_ID
 
+    base_np_names = {
+        (np.get("name") or "").strip()
+        for np in (svt.get("noblePhantasms") or [])
+        if (np.get("name") or "").strip() and (np.get("name") or "").strip() != "???"
+    }
+    skill_id_to_slot = {
+        sk["id"]: f"skill_{sk['num']}"
+        for sk in (svt.get("skills") or [])
+        if sk.get("id") and sk.get("num")
+    }
+    skill_id_to_name = {
+        sk["id"]: (sk.get("name") or "").strip()
+        for sk in (svt.get("skills") or [])
+        if sk.get("id")
+    }
+
     def add(key, label, url, kind, extra=None):
         if not isinstance(url, str) or not url:
             return
@@ -202,6 +248,13 @@ def extract_saint_graphs(
             orig = _overwrite_name(svt, "originalOverWriteServantName", kind, k)
             if orig and orig != svt.get("originalName"):
                 extra["originalName"] = orig
+        td_name = _overwrite_name(svt, "overWriteTDName", kind, k)
+        td_name_clean = td_name.strip() if isinstance(td_name, str) else ""
+        if td_name_clean and not (len(base_np_names) == 1 and td_name_clean in base_np_names):
+            extra["npName"] = td_name_clean
+        sk_names = _overwrite_skill_names(svt, skill_id_to_slot, skill_id_to_name, kind, k)
+        if sk_names:
+            extra["skillNames"] = sk_names
 
     extra_assets = svt.get("extraAssets") or {}
     faces = extra_assets.get("faces") or {}
