@@ -69,10 +69,17 @@ def trigger_pin(spec):
         f"trigger set drifted: {sorted(map(str, on or {}))}"
     )
     assert on["push"]["branches"] == ["main"], f"push branches drifted: {on['push']['branches']!r}"
-    force = on["workflow_dispatch"].get("inputs", {}).get("force_sync")
+    inputs = on["workflow_dispatch"].get("inputs", {})
+    force = inputs.get("force_sync")
     assert force is not None, "force_sync input removed"
     assert force.get("type") == "boolean", f"force_sync type drifted: {force!r}"
     assert force.get("default") is False, f"force_sync default drifted: {force!r}"
+    run_label = inputs.get("run_label")
+    assert run_label is not None, "run_label input removed"
+    assert run_label.get("type") == "string", f"run_label type drifted: {run_label!r}"
+    assert run_label.get("default") == "", f"run_label default drifted: {run_label!r}"
+    run_name = spec.get("run-name") or ""
+    assert "inputs.run_label" in run_name, f"run-name must reference inputs.run_label: {run_name!r}"
 
 
 def main():
