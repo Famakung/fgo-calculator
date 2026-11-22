@@ -9,6 +9,7 @@ First four bullets = mandatory read (~25 KB together). `fetch-data-guideline.md`
 - **`code-style.md`** — conventions, strict DOM safety (NEVER `innerHTML`; use `createElement()` + `textContent` + `setAttribute()`, or `DocumentFragment` + `replaceChildren()`), naming standards, state management, performance patterns.
 - **`structure.md`** — architecture, 3-layer pattern (Domain, Application, Presentation), module responsibilities, Vite manual chunk splitting, script loading order.
 - **`data-rules.md`** — trait ID conventions (4-digit zero-padded strings), `SERVANT_DATA` + `CE_DATA` schemas, trait match modes, public asset paths (`public/servants/`, `public/craft_essences/`).
+- **`servant-info-rules.md`** — Servant Info converter formatting rules, top-level & inner-skill enemy-side filtering, special states, UI/modal parser contracts, lossless assets, and verification.
 - **`security.md`** — security rules, inline Trusted Types policy enforcement, safe DOM manipulation.
 On demand only (large):
 - **`fetch-data-guideline.md`** — fetch/process game data from Atlas Academy API.

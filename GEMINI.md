@@ -1,6 +1,6 @@
 # GEMINI.md
 
-The project rules for every AI agent live in [AGENTS.md](AGENTS.md) — read it in full before touching code, along with the four mandatory docs it lists under "Before you write code" (`.claude/docs/code-style.md`, `structure.md`, `data-rules.md`, `security.md`). All paths are relative to the project root.
+The project rules for every AI agent live in [AGENTS.md](AGENTS.md) — read it in full before touching code, along with the five mandatory docs it lists under "Before you write code" (`.claude/docs/code-style.md`, `structure.md`, `data-rules.md`, `servant-info-rules.md`, `security.md`). All paths are relative to the project root.
 
 Non-negotiable, even if you read nothing else:
 

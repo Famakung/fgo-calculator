@@ -11,6 +11,7 @@ Mandatory — read the ones that cover your change (25 KB total):
 - [.claude/docs/code-style.md](.claude/docs/code-style.md) — coding conventions, DOM safety, naming, state management, performance patterns
 - [.claude/docs/structure.md](.claude/docs/structure.md) — 3-layer architecture, module responsibilities, Vite chunk splitting, script loading order
 - [.claude/docs/data-rules.md](.claude/docs/data-rules.md) — trait ID conventions, `SERVANT_DATA` / `CE_DATA` schemas, trait match modes, asset paths
+- [.claude/docs/servant-info-rules.md](.claude/docs/servant-info-rules.md) — Servant Info converter formatting rules, enemy-side filtering, special states, asset paths, and verification
 - [.claude/docs/security.md](.claude/docs/security.md) — Trusted Types policy, safe DOM sinks
 
 On demand, do **not** load them by default (they are big):
