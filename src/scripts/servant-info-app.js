@@ -285,33 +285,74 @@ function parseSkillOptions(rawEffects) {
   return { hasOptions: true, options };
 }
 
+const EMPTY_EFFECTS_FALLBACK = {
+  passive: "No class passives.",
+  append: "No append skills.",
+  skill: "No skill effects.",
+  np: "No Noble Phantasm effects.",
+};
+
+const SCALING_NOTE_REGEX =
+  /^<(?:(?:effect|Special Attack damage|strength|STR)\s+increases\s+(?:with|when|by)|times\s+increase\s+with|increases\s+by)\s+[^<>]+>$/;
+
+function findBalancedAngleEnd(str, openIdx) {
+  let depth = 0;
+  for (let i = openIdx; i < str.length; i++) {
+    if (str[i] === "<") depth += 1;
+    else if (str[i] === ">") {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
 function appendHighlightedEffect(container, text) {
   const str = String(text || "");
-  const tokenRegex =
-    /(\[Demerit\]|<(?:(?:effect|Special Attack damage|strength|STR)\s+increases\s+(?:with|when|by)|times\s+increase\s+with|increases\s+by)\s+[^>]+>)/g;
-  let lastIdx = 0;
-  let match;
+  let i = 0;
+  let textStart = 0;
 
-  while ((match = tokenRegex.exec(str)) !== null) {
-    if (match.index > lastIdx) {
-      container.appendChild(document.createTextNode(str.slice(lastIdx, match.index)));
+  const flushText = (end) => {
+    if (end > textStart) {
+      container.appendChild(document.createTextNode(str.slice(textStart, end)));
     }
-    const token = match[0];
-    if (token === "[Demerit]") {
+  };
+
+  while (i < str.length) {
+    if (str.startsWith("[Demerit]", i)) {
+      flushText(i);
       const tag = DOMFactory.el("span", "f-demerit-tag");
       tag.textContent = "Demerit";
       container.appendChild(tag);
-    } else {
-      const note = DOMFactory.el("em", "f-overcharge-note");
-      note.textContent = token;
-      container.appendChild(note);
+      i += "[Demerit]".length;
+      textStart = i;
+      continue;
     }
-    lastIdx = tokenRegex.lastIndex;
+    if (str[i] === "<") {
+      const closeIdx = findBalancedAngleEnd(str, i);
+      if (closeIdx > i + 1) {
+        flushText(i);
+        const token = str.slice(i, closeIdx + 1);
+        if (SCALING_NOTE_REGEX.test(token)) {
+          const note = DOMFactory.el("em", "f-overcharge-note");
+          note.textContent = token;
+          container.appendChild(note);
+        } else {
+          const note = DOMFactory.el("span", "f-effect-note");
+          note.appendChild(document.createTextNode("<"));
+          appendHighlightedEffect(note, str.slice(i + 1, closeIdx));
+          note.appendChild(document.createTextNode(">"));
+          container.appendChild(note);
+        }
+        i = closeIdx + 1;
+        textStart = i;
+        continue;
+      }
+    }
+    i += 1;
   }
 
-  if (lastIdx < str.length) {
-    container.appendChild(document.createTextNode(str.slice(lastIdx)));
-  }
+  flushText(str.length);
 }
 
 function getTargetStageForAscensionForm(formLabel) {
@@ -1227,6 +1268,9 @@ export const ServantInfoApp = {
       }
       return variant.cleanTitle;
     }
+    if (slot && slot.type === "append") {
+      return variant.cleanTitle || "Append Skills";
+    }
     return variant.cleanTitle;
   },
 
@@ -1238,7 +1282,13 @@ export const ServantInfoApp = {
       const activeVariant = getVariantByTier(slot, slot.activeTier);
       if (!activeVariant) return;
       if (this._slotHasServantForms(slot, modalState)) return;
-      if (Array.isArray(activeVariant.forms) && activeVariant.forms.length > 1) return;
+      if (
+        Array.isArray(activeVariant.forms) &&
+        (activeVariant.forms.length > 1 ||
+          (activeVariant.forms.length === 1 && activeVariant.forms[0] && activeVariant.forms[0].name))
+      ) {
+        return;
+      }
       card._refs.titleText.textContent = this._resolveSingleSlotTitle(slot, activeVariant, entry);
     });
   },
@@ -1940,11 +1990,11 @@ export const ServantInfoApp = {
     formBar.replaceChildren(group);
   },
 
-  _renderEffectsList(effectsContainer, effects, emptyFallback = "") {
+  _renderEffectsList(effectsContainer, effects, emptyFallback = "No effects.") {
     const list = effects || [];
-    if (list.length === 0 && emptyFallback) {
+    if (list.length === 0) {
       const empty = DOMFactory.el("div", "f-table-val");
-      empty.textContent = emptyFallback;
+      empty.textContent = emptyFallback || "No effects.";
       effectsContainer.replaceChildren(empty);
       return;
     }
@@ -1957,7 +2007,7 @@ export const ServantInfoApp = {
     effectsContainer.replaceChildren(ul);
   },
 
-  _renderOptionableEffects(effectsContainer, rawEffects, optState, onSelect, emptyFallback = "") {
+  _renderOptionableEffects(effectsContainer, rawEffects, optState, onSelect, emptyFallback = "No effects.") {
     const optInfo = parseSkillOptions(rawEffects);
     if (!optInfo.hasOptions || optInfo.options.length < 2) {
       this._renderEffectsList(effectsContainer, rawEffects, emptyFallback);
@@ -1998,13 +2048,19 @@ export const ServantInfoApp = {
       displayEffects = subOptInfo.options[activeSubIdx]?.effects || [];
     }
 
-    const ul = DOMFactory.el("ul", "f-bullet-list");
-    displayEffects.forEach((eff) => {
-      const li = DOMFactory.el("li", "f-bullet-item");
-      appendHighlightedEffect(li, eff);
-      ul.appendChild(li);
-    });
-    frag.appendChild(ul);
+    if (displayEffects.length === 0) {
+      const empty = DOMFactory.el("div", "f-table-val");
+      empty.textContent = emptyFallback || "No effects.";
+      frag.appendChild(empty);
+    } else {
+      const ul = DOMFactory.el("ul", "f-bullet-list");
+      displayEffects.forEach((eff) => {
+        const li = DOMFactory.el("li", "f-bullet-item");
+        appendHighlightedEffect(li, eff);
+        ul.appendChild(li);
+      });
+      frag.appendChild(ul);
+    }
     effectsContainer.replaceChildren(frag);
   },
 
@@ -2066,34 +2122,48 @@ export const ServantInfoApp = {
           if (newIdx !== modalState.activeFormIndex) this._syncAllCardsToForm(modalState, newIdx);
         },
       );
-    } else if (variant.forms && variant.forms.length > 1) {
+    } else if (variant.forms && variant.forms.length > 0) {
       const fIdx = Math.min(Math.max(0, parseInt(selectedForm, 10) || 0), variant.forms.length - 1);
       card.dataset.activeSkillForm = String(fIdx);
       const activeForm = variant.forms[fIdx];
-      activeEffects = activeForm ? activeForm.effects || [] : variant.effects || [];
+      activeEffects =
+        activeForm && Array.isArray(activeForm.effects) && activeForm.effects.length > 0
+          ? activeForm.effects
+          : variant.effects || [];
       applyTitleAndCooldown(activeForm);
+      if (!(activeForm && activeForm.name)) {
+        titleText.textContent = this._resolveSingleSlotTitle(slot, variant, modalState.activeSgEntry);
+      }
 
-      const isAscensionForm = variant.forms.some((f) => /ascension/i.test(f.label || ""));
-      if (isAscensionForm) formBar.setAttribute("data-ascension-form", "true");
-      else formBar.removeAttribute("data-ascension-form");
-      formBar.removeAttribute("data-servant-form");
+      if (variant.forms.length > 1) {
+        const isAscensionForm = variant.forms.some((f) => /ascension/i.test(f.label || ""));
+        if (isAscensionForm) formBar.setAttribute("data-ascension-form", "true");
+        else formBar.removeAttribute("data-ascension-form");
+        formBar.removeAttribute("data-servant-form");
 
-      this._renderFormSelectorButtons(
-        formBar,
-        variant.forms.map((f, i) => ({
-          label: getFormDisplayLabel(f),
-          formIdx: i,
-          formLabel: f.label || "",
-          active: i === fIdx,
-        })),
-        (newIdx) => {
-          if (String(newIdx) === card.dataset.activeSkillForm) return;
-          this._renderSkillContent(card, variant, String(newIdx), card.dataset.activeOption || "0", modalState);
-          if (isAscensionForm && variant.forms[newIdx]) {
-            this._setServantAscensionStage(modalState, getTargetStageForAscensionForm(variant.forms[newIdx].label));
-          }
-        },
-      );
+        this._renderFormSelectorButtons(
+          formBar,
+          variant.forms.map((f, i) => ({
+            label: getFormDisplayLabel(f),
+            formIdx: i,
+            formLabel: f.label || "",
+            active: i === fIdx,
+          })),
+          (newIdx) => {
+            if (String(newIdx) === card.dataset.activeSkillForm) return;
+            this._renderSkillContent(card, variant, String(newIdx), card.dataset.activeOption || "0", modalState);
+            if (isAscensionForm && variant.forms[newIdx]) {
+              this._setServantAscensionStage(modalState, getTargetStageForAscensionForm(variant.forms[newIdx].label));
+            }
+          },
+        );
+      } else {
+        formBar.hidden = true;
+        formBar.style.display = "none";
+        formBar.replaceChildren();
+        formBar.removeAttribute("data-servant-form");
+        formBar.removeAttribute("data-ascension-form");
+      }
     } else {
       formBar.hidden = true;
       formBar.style.display = "none";
@@ -2109,7 +2179,7 @@ export const ServantInfoApp = {
     if (prevOpt !== nextOpt) {
       card.dataset.activeSubOption = "0";
     }
-    const emptyFallback = slot.type === "passive" ? "No class passives." : "";
+    const emptyFallback = EMPTY_EFFECTS_FALLBACK[slot.type] || "No effects.";
     const renderSkillEffects = (optIdx, subIdx) => {
       card.dataset.activeOption = String(optIdx);
       card.dataset.activeSubOption = String(subIdx);
@@ -2194,7 +2264,13 @@ export const ServantInfoApp = {
     const renderNpEffects = (optIdx, subIdx) => {
       card.dataset.activeNpEffectOption = String(optIdx);
       card.dataset.activeNpEffectSubOption = String(subIdx);
-      this._renderOptionableEffects(effectsContainer, effects, { option: optIdx, subOption: subIdx }, renderNpEffects);
+      this._renderOptionableEffects(
+        effectsContainer,
+        effects,
+        { option: optIdx, subOption: subIdx },
+        renderNpEffects,
+        EMPTY_EFFECTS_FALLBACK.np,
+      );
     };
     renderNpEffects(card.dataset.activeNpEffectOption || "0", card.dataset.activeNpEffectSubOption || "0");
   },
@@ -2301,24 +2377,30 @@ export const ServantInfoApp = {
       formBar.removeAttribute("data-servant-form");
       formBar.removeAttribute("data-ascension-form");
 
-      const group = DOMFactory.el("div", "f-option-btn-group");
-      variant.forms.forEach((f, i) => {
-        const btn = DOMFactory.el("button", ["f-option-btn", ...(i === idx ? ["active"] : [])], {
-          type: "button",
-          "aria-pressed": String(i === idx),
-          "data-form-idx": String(i),
-          "data-form-label": f.label || "",
+      if (variant.forms.length > 1) {
+        const group = DOMFactory.el("div", "f-option-btn-group");
+        variant.forms.forEach((f, i) => {
+          const btn = DOMFactory.el("button", ["f-option-btn", ...(i === idx ? ["active"] : [])], {
+            type: "button",
+            "aria-pressed": String(i === idx),
+            "data-form-idx": String(i),
+            "data-form-label": f.label || "",
+          });
+          btn.textContent = getFormDisplayLabel(f);
+          btn.addEventListener("click", () => {
+            if (String(i) === card.dataset.activeNpForm) return;
+            this._renderNpContent(card, variant, String(i), modalState);
+          });
+          group.appendChild(btn);
         });
-        btn.textContent = getFormDisplayLabel(f);
-        btn.addEventListener("click", () => {
-          if (String(i) === card.dataset.activeNpForm) return;
-          this._renderNpContent(card, variant, String(i), modalState);
-        });
-        group.appendChild(btn);
-      });
-      npOptionsBar.hidden = false;
-      npOptionsBar.style.display = "";
-      npOptionsBar.replaceChildren(group);
+        npOptionsBar.hidden = false;
+        npOptionsBar.style.display = "";
+        npOptionsBar.replaceChildren(group);
+      } else {
+        npOptionsBar.hidden = true;
+        npOptionsBar.style.display = "none";
+        npOptionsBar.replaceChildren();
+      }
     }
 
     if (activeForm && activeForm.name && /^Noble Phantasm(\s+\(|$)/.test(variant.cleanTitle)) {

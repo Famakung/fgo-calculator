@@ -24,6 +24,8 @@ from .skill_formatter import (
     skills_to_markdown,
     format_passives_structured,
     passives_to_markdown,
+    format_append_skills_structured,
+    append_skills_to_markdown,
 )
 from .np_formatter import (
     format_np_structured,
@@ -343,8 +345,9 @@ def build_formatted_servant(
         transform_passives=transform_data.get("classPassive", []) if transform_data else None,
         transform_svt_id=transform_svt_id,
     )
+    append_skills = format_append_skills_structured(data, ctx=ctx)
 
-    slots = [*skills, *noble_phantasms, *passives]
+    slots = [*skills, *noble_phantasms, *passives, *append_skills]
 
     form_config = resolve_costume_forms(data)
     if not form_config and transform_data:
@@ -382,6 +385,7 @@ def build_formatted_servant(
         "skills": skills,
         "noblePhantasms": noble_phantasms,
         "passives": passives,
+        "appendSkills": append_skills,
         "slots": slots,
         "formConfig": form_config,
     }
@@ -393,6 +397,7 @@ def formatted_to_md(formatted: dict) -> str:
     lines.extend(skills_to_markdown(formatted["skills"]))
     lines.extend(np_to_markdown(formatted["noblePhantasms"]))
     lines.extend(passives_to_markdown(formatted["passives"]))
+    lines.extend(append_skills_to_markdown(formatted.get("appendSkills", [])))
     return "\n".join(lines)
 
 

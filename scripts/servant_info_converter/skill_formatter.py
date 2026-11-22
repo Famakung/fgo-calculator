@@ -10,6 +10,7 @@ from .effect_map import (
 )
 from .utils import (
     fmt_condition,
+    get_card_prefix,
     group_and_label_items,
     is_mash,
     detect_costume_form,
@@ -175,15 +176,26 @@ def _fmt_single_skill_functions(lines, sk, ctx=None):
                 i = j
                 continue
 
+            sv_i9 = (fn.get("svals") or [{}])[-1]
             while j < len(functions):
                 fn_j = functions[j]
                 sv_j = (fn_j.get("svals") or [{}])[0]
+                sv_j9 = (fn_j.get("svals") or [{}])[-1]
                 if (
                     fn_j.get("funcId") != func_id
+                    or fn_j.get("funcTargetType") != fn.get("funcTargetType")
                     or hp_i != sv_j.get("TriggeredTargetHpRateRange")
                     or star_h_i != sv_j.get("StarHigher")
                     or star_l_i != sv_j.get("StarLower")
                     or param_i != sv_j.get("ParamAddValue")
+                    or sv_i.get("Turn") != sv_j.get("Turn")
+                    or sv_i.get("Count") != sv_j.get("Count")
+                    or sv_i.get("Value") != sv_j.get("Value")
+                    or sv_i.get("Rate") != sv_j.get("Rate")
+                    or sv_i9.get("Turn") != sv_j9.get("Turn")
+                    or sv_i9.get("Count") != sv_j9.get("Count")
+                    or sv_i9.get("Value") != sv_j9.get("Value")
+                    or sv_i9.get("Rate") != sv_j9.get("Rate")
                 ):
                     break
                 j += 1
@@ -228,6 +240,28 @@ def _fmt_skill_functions_to_lines(lines, sk, ctx=None):
             else f"{np_lower[0]}-{np_lower[-1]}%"
         )
         lines.append(f"[Usable only when your NP Gauge is {val_str} or lower]")
+
+    hp_val_higher = script.get("HP_VAL_HIGHER")
+    if hp_val_higher:
+        val_str = (
+            str(hp_val_higher[0])
+            if hp_val_higher[0] == hp_val_higher[-1]
+            else f"{hp_val_higher[0]}-{hp_val_higher[-1]}"
+        )
+        lines.append(f"[Usable only when HP is {val_str} or higher]")
+
+    hp_per_lower = script.get("HP_PER_LOWER")
+    if hp_per_lower:
+        p0, p9 = hp_per_lower[0] // 10, hp_per_lower[-1] // 10
+        val_str = f"{p0}%" if p0 == p9 else f"{p0}-{p9}%"
+        lines.append(f"[Usable only when HP is {val_str} or lower]")
+
+    init_cd = script.get("battleStartRemainingTurn")
+    if init_cd:
+        t0, t9 = init_cd[0], init_cd[-1]
+        t_str = str(t0) if t0 == t9 else f"{t0}-{t9}"
+        unit = "turn" if t0 == 1 and t9 == 1 else "turns"
+        lines.append(f"[Initial Cooldown: {t_str} {unit}]")
 
     if sk.get("id") in _MEAL_SKILL_CHAIN:
         for _idx, (time_label, skill_id) in enumerate(_MEAL_SKILL_CHAIN[sk.get("id")]):
@@ -843,18 +877,22 @@ def fmt_skills(
 
 def _fmt_passive_skill_list(passives, ctx=None) -> list:
     lines = []
-    seen_lines = set()
     for sk in passives:
         sk_fns = sk.get("functions", [])
+        if ctx is not None:
+            ctx.functions = sk_fns
+        seen_lines = set()
         k = 0
         while k < len(sk_fns):
             fn = sk_fns[k]
             bufs = fn.get("buffs", [])
             if bufs and bufs[0]["type"] == "guts":
                 sv0 = (fn.get("svals") or [{}])[0]
+                card_prefix = get_card_prefix(bufs[0]).strip()
+                prefix_tag = f" [{card_prefix}]" if card_prefix else ""
                 val_str = f" by {sv0.get('Value', '')}" if sv0.get("Value") else ""
                 cond = fmt_condition(sv0.get("Turn", -1), sv0.get("Count", -1))
-                line = f"Apply Guts{val_str}{' ' + cond if cond else ''}"
+                line = f"Apply Guts{prefix_tag}{val_str}{' ' + cond if cond else ''}"
                 if k + 1 < len(sk_fns):
                     nb = sk_fns[k + 1].get("buffs", [])
                     if nb and nb[0]["type"] == "guts" and not nb[0].get("ckOpIndv"):
@@ -980,3 +1018,54 @@ def fmt_passives(
         transform_svt_id=transform_svt_id,
     )
     return passives_to_markdown(structured)
+
+
+def format_append_skills_structured(data, ctx=None) -> list:
+    """Format appendPassive skills into a single append_1 slot matching passive_1 schema."""
+    raw_appends = data.get("appendPassive", []) if isinstance(data, dict) else (data or [])
+    sorted_appends = sorted(
+        raw_appends,
+        key=lambda ap: (ap.get("num", 0), ap.get("priority", 0)),
+    )
+    append_lines = []
+    for ap in sorted_appends:
+        sk = ap.get("skill", ap) if isinstance(ap, dict) else {}
+        sk_fns = sk.get("functions", [])
+        if ctx is not None:
+            ctx.functions = sk_fns
+        fx_parts = []
+        for fn in sk_fns:
+            res = fmt_function(fn, ctx=ctx)
+            if res and res not in fx_parts:
+                fx_parts.append(res)
+        if fx_parts:
+            append_lines.append(" & ".join(fx_parts))
+
+    variant = {
+        "tier": 0,
+        "type": "append",
+        "rawTitle": "Append Skills",
+        "cleanTitle": "Append Skills",
+        "effects": append_lines,
+        "forms": [],
+    }
+    slot_obj = {
+        "slotKey": "append_1",
+        "type": "append",
+        "variantsByTier": {0: variant},
+        "tiers": [0],
+        "maxTier": 0,
+        "activeTier": 0,
+    }
+    return [slot_obj]
+
+
+def append_skills_to_markdown(structured_append: list) -> list:
+    lines = []
+    for slot in structured_append:
+        var = slot["variantsByTier"].get(0) or slot["variantsByTier"].get("0")
+        if var and var.get("effects"):
+            lines.append("")
+            lines.append(var["rawTitle"])
+            lines.extend(var["effects"])
+    return lines
