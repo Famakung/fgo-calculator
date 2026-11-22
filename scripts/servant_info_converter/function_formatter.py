@@ -277,6 +277,13 @@ def _parse_stack_consumption_loop(inner_skill, buff):
 
 def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
     buff = fn["buffs"][0]
+    if buff.get("id") == 3712:
+        return (
+            'Inflict Ending of Dreams <Apply a state that "Removes Buffs & Apply [Eternal Slumber] '
+            '<nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change> '
+            '& Apply Target Focus (3 turns)" at turn end> (1 time) for a single ally '
+            '<nullify Resistance, unable to remove> [Demerit]'
+        )
     sv0 = outer_svals[0] if outer_svals else {}
     inner_skill_id = sv0.get("SkillID") or sv0.get("Value")
     if not inner_skill_id:
@@ -758,7 +765,7 @@ def _is_internal_hide_miss(func_type, buff_type, sv0) -> bool:
         return True
     if sv0.get("ShowState") != -1:
         return False
-    if buff_type in ("addIndividuality", "skillRankUp", "delayFunction"):
+    if buff_type in ("addIndividuality", "skillRankUp", "delayFunction", "donotReplace"):
         return True
     if buff_type == "avoidState" and sv0.get("Rate", 1000) < 0:
         return True
@@ -927,7 +934,7 @@ def _resolve_core_context(fn, sv_start=None, sv_end=None, ctx=None) -> _CoreCtx 
     val9 = sv9.get("Value")
     turn = sv0.get("Turn", -1)
     count = sv0.get("Count", -1)
-    cond = fmt_condition(turn, count)
+    cond = fmt_condition(turn, count, sv9.get("Turn", -1))
     cond_str = f" {cond}" if cond else ""
     on_field_str = " when you are on the field" if sv0.get("OnField") else ""
 
@@ -1688,6 +1695,16 @@ def _handle_buff_type(core):
     if buff_type_str == "addIndividuality":
         if not buff.get("name") and not core.sv0.get("Value") and not [v for v in buff.get("vals", []) if v.get("id") not in (3004, 3005)]:
             return None
+    if buff_type_str == "donotAct" and {3066, 3076}.issubset(
+        {v.get("id") for v in buff.get("vals", [])}
+    ):
+        bname = JP_BUFF_NAME_MAP.get(buff.get("name", ""), buff.get("name", ""))
+        rate_prefix = f"{fmt_val_range(core.sv0.get('Rate', 1000), core.sv9.get('Rate', 1000), 10, False)}% Chance to "
+        return (
+            f"{rate_prefix}Apply [{bname}] "
+            f"<nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change>"
+            f"{core.cond_str} {core.target}"
+        )
     if buff_type_str in BUFF_TYPE_MAP:
         entry = BUFF_TYPE_MAP[buff_type_str]
     elif core.func_type in BUFF_TYPE_MAP:

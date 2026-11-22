@@ -2441,6 +2441,114 @@ class ServantInfoConverterTests(unittest.TestCase):
             'Apply a state that "Decrease DEF by 10-20% (3 turns) for one enemy" when Arts attacking with NP before damage (3 turns) for yourself',
         )
 
+    def test_lord_logres_and_oberon_s3_special_sleep(self):
+        inner_skills = {
+            970829: {
+                "id": 970829,
+                "functions": [
+                    {
+                        "funcId": 23177,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "player",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [
+                            {
+                                "id": 6011,
+                                "type": "donotAct",
+                                "name": "湖水の夢",
+                                "vals": [
+                                    {"id": 3005, "name": "buffNegativeEffect"},
+                                    {"id": 3045, "name": "buffImmobilize"},
+                                    {"id": 3010, "name": "buffMentalEffect"},
+                                    {"id": 3066, "name": "buffSleep"},
+                                    {"id": 3076, "name": "cantBeSacrificed"},
+                                ],
+                            }
+                        ],
+                        "svals": [{"Rate": 5000, "Turn": t, "Count": -1} for t in (6, 6, 6, 6, 6, 4, 4, 4, 4, 2)],
+                    },
+                    {
+                        "funcId": 23178,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "enemy",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [
+                            {
+                                "id": 6012,
+                                "type": "donotAct",
+                                "name": "湖水の夢",
+                                "vals": [
+                                    {"id": 3005, "name": "buffNegativeEffect"},
+                                    {"id": 3066, "name": "buffSleep"},
+                                    {"id": 3076, "name": "cantBeSacrificed"},
+                                ],
+                            }
+                        ],
+                        "svals": [{"Rate": 5000, "Turn": t, "Count": -1} for t in (6, 6, 6, 6, 6, 4, 4, 4, 4, 2)],
+                    },
+                    {
+                        "funcId": 7485,
+                        "funcType": "addState",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "functvals": [],
+                        "funcquestTvals": [],
+                        "buffs": [{"id": 3760, "type": "donotReplace", "name": ""}],
+                        "svals": [
+                            {
+                                "Rate": 5000,
+                                "Turn": t,
+                                "Count": -1,
+                                "HideMiss": 1,
+                                "HideNoEffect": 1,
+                                "ShowState": -1,
+                            }
+                            for t in (6, 6, 6, 6, 6, 4, 4, 4, 4, 2)
+                        ],
+                    },
+                ],
+            }
+        }
+        logres_delay_fn = {
+            "funcId": 23146,
+            "funcType": "addState",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 6005, "type": "delayFunction", "name": "エニス・グイトリン"}],
+            "svals": [{"Rate": 5000, "Turn": 3, "Count": -1, "Value": 970829, "Value2": i} for i in range(1, 11)],
+        }
+        ctx = FetchContext(fetch_inner_skill=lambda sid: inner_skills.get(sid))
+        self.assertEqual(
+            fmt_function(logres_delay_fn, ctx=ctx),
+            'After 3 turns "500% Chance to Apply [Lake Water Dream] '
+            "<nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change> "
+            '(6-2 turns) for yourself" (3 turns) for yourself',
+        )
+
+        oberon_s3_fn = {
+            "funcId": 7367,
+            "funcType": "addState",
+            "funcTargetType": "ptOne",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [{"id": 3712, "type": "selfturnendFunction", "name": "Ending of Dreams"}],
+            "svals": [{"Rate": 5000, "Turn": -1, "Count": 1, "Value": 966458, "Value2": 1}],
+        }
+        self.assertEqual(
+            fmt_function(oberon_s3_fn),
+            'Inflict Ending of Dreams <Apply a state that "Removes Buffs & Apply [Eternal Slumber] '
+            "<nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change> "
+            '& Apply Target Focus (3 turns)" at turn end> (1 time) for a single ally '
+            "<nullify Resistance, unable to remove> [Demerit]",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
