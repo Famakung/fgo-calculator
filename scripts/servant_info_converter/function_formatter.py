@@ -876,7 +876,8 @@ def _resolve_core_context(fn, sv_start=None, sv_end=None, ctx=None) -> _CoreCtx 
         return None
     if func_type == "subState" and sv0.get("HideNoEffect") == 1:
         return None
-    if func_type == "lossNp" and target_type == "enemyAll":
+    # Enemies have no NP gauge, only Charge (delayNpturn), so lossNp never hits them.
+    if func_type == "lossNp" and target_type in ("enemy", "enemyOne", "enemyAll"):
         return None
 
     if _is_internal_hide_miss(func_type, buff_type_str, sv0):
