@@ -1855,6 +1855,25 @@ class ServantInfoConverterTests(unittest.TestCase):
         self.assertEqual(effects[0], "Increase Extra Card effectiveness by 30-50% for yourself")
         self.assertEqual(effects[1], "Reduce used skill's cooldown by 1 after Skill Use (1-3 times, max 1 time per skill) for yourself")
 
+    def test_loss_np_enemy_targets_pruned(self):
+        from servant_info_converter.function_formatter import fmt_function
+
+        def loss_np(target_type, team="playerAndEnemy"):
+            return {
+                "funcId": 995,
+                "funcType": "lossNp",
+                "funcTargetType": target_type,
+                "funcTargetTeam": team,
+                "svals": [{"Rate": 1000, "Value": 2000}],
+            }
+
+        # Enemies have no NP gauge, only Charge: every enemy-side target is pruned.
+        for target_type in ("enemy", "enemyOne", "enemyAll"):
+            self.assertIsNone(fmt_function(loss_np(target_type)), target_type)
+
+        # Player-side NP loss is a real demerit and still renders.
+        self.assertEqual(fmt_function(loss_np("self")), "Decrease NP Gauge by 20% for yourself [Demerit]")
+
     def test_hide_miss_and_internal_dummy_exclusions(self):
         inner_death = {
             "id": 970911,

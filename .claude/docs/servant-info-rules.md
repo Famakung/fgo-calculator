@@ -60,6 +60,7 @@ Authoritative rules for Servant Info conversion (`scripts/servant_info_converter
   - Both `_resolve_core_context` and `fmt_trigger_function` in `function_formatter.py` must inspect `raw_inner_fn.get("funcTargetTeam")` **before** overwriting `inner_fn["funcTargetTeam"]` with the outer function's team.
   - Always skip `displayBuffstring` (except top-level `CheckOverChargeStageRange`) and `hastenNpturn` (Charge Up is enemy-only).
   - Always skip `delayNpturn` targeting `self`, `ptOne`, or `ptAll` (enemy-side counterpart to player `lossNp`). Keep `delayNpturn` targeting `enemy`, `enemyOne`, or `enemyAll` (legitimate enemy Charge Drain, e.g. `#418` C.I.E.L S2 `Decrease Charge for one enemy`).
+  - Always skip `lossNp` targeting `enemy`, `enemyOne`, or `enemyAll`: enemies have no NP gauge, only Charge, so any enemy-side `lossNp` is an internal paired effect. Keep player-side `lossNp` (`self`, `ptOne`, `ptAll`) as the NP-loss demerit.
   - Skip all other `funcTargetTeam == "enemy"` functions (e.g. enemy-only `upCriticalrate` paired with `gainStar`, enemy-only `downCriticalrate` paired with `downCriticalpoint`), except top-level solo enemy `downCriticalrate`, `downNpturnval`, or `commandTypeSelfTreasureDevice`.
 - **Hidden engine hooks**:
   - `_is_internal_hide_miss()` suppresses `HideMiss == 1` + `ShowState == -1` internal buffs: `addIndividuality`, `skillRankUp`, `delayFunction`, `donotReplace`, negative-rate `avoidState`, zero-value `upDamage`, and `attackAfterFunctionMainOnly` with `UnSubStateWhileLinkedToOthers == 1`.
