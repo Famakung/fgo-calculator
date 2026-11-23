@@ -39,6 +39,11 @@ try:
 except ImportError:
     from scripts.atlas_http import DEFAULT_WORKERS, PoliteRateLimiter, fetch_url, rate_limiter, request_semaphore
 
+try:
+    from translations import ASCENSION_NAMES, CE_NAMES, COSTUME_LABELS, SERIES_NAMES, SERVANT_NAMES
+except ImportError:
+    from scripts.translations import ASCENSION_NAMES, CE_NAMES, COSTUME_LABELS, SERIES_NAMES, SERVANT_NAMES
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "src", "scripts", "data")
 SERVANTS_JS = os.path.join(DATA_DIR, "servants.js")
@@ -106,42 +111,17 @@ INTERNAL_TRAIT_OVERRIDES = {
 
 KNOWN_SPECIAL_TRAIT_IDS = {2654, 2780, 2821, 2883, 2801200}
 
-SERIES_NAME_OVERRIDES = {
-    "Twilight Portrait": "Heroic Spirit Encounter",
-    "英霊逢魔": "Heroic Spirit Encounter",
-}
+SERIES_NAME_OVERRIDES = SERIES_NAMES
 
 # Unofficial English translations for JP-only CEs unreleased in NA
-UNOFFICIAL_JP_TRANSLATIONS = {
-    "2583": "Great Library of Memories",
-    "9409210": "Great Library of Memories",
-    "2607": "Sword Saints of Wandering",
-    "9409320": "Sword Saints of Wandering",
-    "2701": "Gun Dealer",
-    "9409490": "Gun Dealer",
-}
+UNOFFICIAL_JP_TRANSLATIONS = CE_NAMES
 
 # Unofficial English translations for JP-only Servants unreleased in NA
-UNOFFICIAL_SERVANT_TRANSLATIONS = {
-    "483": "Tamamo Aria",
-    "406000": "Tamamo Aria",
-}
+UNOFFICIAL_SERVANT_TRANSLATIONS = SERVANT_NAMES
 
 CE_OVERRIDES = {}
 
-KNOWN_COSTUME_LABELS = {
-    "301330": "Piercing Bunny",
-    "102830": "Decapitating Bunny (First Ascension)",
-    "102840": "Decapitating Bunny (Second Ascension)",
-    "102850": "Decapitating Bunny (Third Ascension)",
-    "702830": "Mad Bunny",
-    "204330": "Bloody Bunny",
-    "1101630": "Serious Mode",
-    "4000130": "Earth President",
-    "2301130": "Incognito Glasses",
-    "600730": "Red Hood & Big Bad Wolf",
-    "レッドフード＆ビッグバッドウルフ": "Red Hood & Big Bad Wolf",
-}
+KNOWN_COSTUME_LABELS = COSTUME_LABELS
 
 COSTUME_STAGE_KEYS = ["300", "400", "500"]
 
@@ -452,6 +432,7 @@ def extract_servant_traits(svt_data: dict) -> Tuple[List[str], Dict[str, List[st
     for api_idx, name_val in name_asc.items():
         if not name_val or name_val == svt_data.get("name"):
             continue
+        name_val = ASCENSION_NAMES.get(name_val, name_val)
         if api_idx in ("0",):
             option_names["000"] = name_val
         elif api_idx in ("1", "2"):

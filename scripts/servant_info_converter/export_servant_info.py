@@ -14,6 +14,11 @@ from urllib.parse import urlparse
 from .servant_formatter import build_formatted_servant
 from .utils import find_transform_svt_id
 
+try:
+    from translations import ASCENSION_NAMES, COSTUME_LABELS
+except ImportError:
+    from scripts.translations import ASCENSION_NAMES, COSTUME_LABELS
+
 _FORBIDDEN_KEYS = {"convertedText", "charaGraphs", "faceUrl", "borderedFaceUrl"}
 
 
@@ -244,7 +249,7 @@ def extract_saint_graphs(
     def names(extra, kind, k):
         name = _overwrite_name(svt, "overWriteServantName", kind, k)
         if name and name != svt.get("name"):
-            extra["name"] = name
+            extra["name"] = ASCENSION_NAMES.get(name, name)
             orig = _overwrite_name(svt, "originalOverWriteServantName", kind, k)
             if orig and orig != svt.get("originalName"):
                 extra["originalName"] = orig
@@ -288,7 +293,8 @@ def extract_saint_graphs(
             face_urls[rel] = _bordered_face_url(face_url)
             extra["face"] = rel
         names(extra, "costume", cid)
-        add(k, info.get("shortName") or info.get("name") or f"Costume {k}", cos[k], "costume", extra)
+        cos_label = info.get("shortName") or info.get("name") or f"Costume {k}"
+        add(k, COSTUME_LABELS.get(cos_label, cos_label), cos[k], "costume", extra)
 
     partner_id = find_transform_svt_id(svt)
     if svt_by_id and partner_id and svt_id not in _NO_SAINT_GRAPH_FORM_IDS:
@@ -326,7 +332,7 @@ def extract_saint_graphs(
                         face_urls[rel] = _bordered_face_url(face_url)
                         extra["face"] = rel
                     label = info.get("shortName") or info.get("name") or f"Costume {k}"
-                    add(k, label, partner_costumes_cg[k], "costume", extra)
+                    add(k, COSTUME_LABELS.get(label, label), partner_costumes_cg[k], "costume", extra)
             else:
                 for k in _sg_sorted_keys(partner_asc_faces):
                     face_url = partner_asc_faces.get(str(k))
