@@ -210,13 +210,109 @@ def main():
         rc, out = run_cli(url, vf, check_shop=True, shop_probe_file=probe_file, api_base=api_base)
         assert rc == 0 and "CHECK=UNCHANGED" in out, out
 
-        # 5) 200 OK with changed drops -> CHANGED
+        # 5) 200 OK with changed dropExpected/runs only (same objectId/num) -> UNCHANGED
         Handler.quest_drops = [{"objectId": 94164000, "num": 3, "dropExpected": 2.25, "runs": 150}]
+        rc, out = run_cli(url, vf, check_shop=True, shop_probe_file=probe_file, api_base=api_base)
+        assert rc == 0 and "CHECK=UNCHANGED" in out, out
+
+        # 6) 200 OK with added drop currency -> CHANGED
+        Handler.quest_drops = [
+            {"objectId": 94164000, "num": 3, "dropExpected": 2.25, "runs": 150},
+            {"objectId": 94164001, "num": 3, "dropExpected": 1.0, "runs": 10},
+        ]
         rc, out = run_cli(url, vf, check_shop=True, shop_probe_file=probe_file, api_base=api_base)
         assert rc == 0 and "CHECK=CHANGED" in out, out
 
-        # 6) Quest fetch error -> UNKNOWN
+        # 7) Quest fetch error -> UNKNOWN
         assert m.check_shop_probe(probe_file, api_base="http://127.0.0.1:9", now=500) == "UNKNOWN"
+        n += 1
+
+        # --- compute_data_hash & --data-hash CLI ---
+        data_dir = os.path.join(tmpdir, "data")
+        svt_dir = os.path.join(tmpdir, "servant_info")
+        os.makedirs(data_dir, exist_ok=True)
+        os.makedirs(svt_dir, exist_ok=True)
+        base_js = {
+            "servants.js": "export const SERVANTS = [1];\n",
+            "craft_essences.js": "export const CES = [1];\n",
+            "traits.js": "export const TRAITS = [1];\n",
+            "bond_growth.js": "export const BOND = [1];\n",
+        }
+        for name, content in base_js.items():
+            with open(os.path.join(data_dir, name), "w", encoding="utf-8") as f:
+                f.write(content)
+        with open(os.path.join(svt_dir, "100100.json"), "w", encoding="utf-8") as f:
+            f.write('{"id":100100}\n')
+
+        def write_shop(sample_runs, drop_expected, extra_drop=None, raid_runs=50, raid_expected=1.2, extra_quest=False):
+            q_drops = {"94164000": {"dropExpected": drop_expected, "num": 3}}
+            if extra_drop:
+                q_drops["94164001"] = extra_drop
+            quests = [
+                {"questId": 94164100, "sampleRuns": sample_runs, "drops": q_drops},
+                {"questId": 94164101, "sampleRuns": 0, "drops": {}},
+            ]
+            if extra_quest:
+                quests.append({"questId": 94164102, "sampleRuns": 0, "drops": {}})
+            payload = {
+                "events": [{
+                    "event": {"id": 80639},
+                    "items": [{"id": 80639001}],
+                    "farm": {
+                        "quests": quests,
+                        "raids": [{
+                            "quests": [{
+                                "questId": 94164200,
+                                "sampleRuns": raid_runs,
+                                "drops": {"94164002": {"dropExpected": raid_expected, "num": 3}},
+                            }],
+                        }],
+                    },
+                }],
+            }
+            with open(os.path.join(data_dir, "event_shop.js"), "w", encoding="utf-8") as f:
+                f.write("export const EVENT_SHOP_DATA = " + json.dumps(payload, indent=2) + ";\n")
+
+        write_shop(sample_runs=476, drop_expected=10.9433)
+        h_base, parts_base = m.compute_data_hash(data_dir, svt_dir)
+        assert len(h_base) == 64 and all(len(v) == 12 for v in parts_base.values())
+
+        # Volatile sampleRuns / dropExpected changes in quests and raids keep hash identical
+        write_shop(sample_runs=520, drop_expected=11.0123, raid_runs=88, raid_expected=1.4567)
+        h_jitter, _ = m.compute_data_hash(data_dir, svt_dir)
+        assert h_jitter == h_base, "sampleRuns/dropExpected jitter must not change data hash"
+
+        # CLI --data-hash prints 64-hex hash on stdout
+        import io
+        real_stdout, real_stderr = sys.stdout, sys.stderr
+        cap_out, cap_err = io.StringIO(), io.StringIO()
+        try:
+            sys.stdout, sys.stderr = cap_out, cap_err
+            rc = m.main(["--data-hash", "--data-dir", data_dir, "--servant-info-dir", svt_dir])
+        finally:
+            sys.stdout, sys.stderr = real_stdout, real_stderr
+        assert rc == 0 and cap_out.getvalue().strip() == h_base, cap_out.getvalue()
+        assert "data-hash parts:" in cap_err.getvalue() and "event_shop.js=" in cap_err.getvalue()
+
+        # Real changes alter hash: new drop currency, new quest, each JS file, and servant_info JSON
+        write_shop(sample_runs=520, drop_expected=11.0123, extra_drop={"dropExpected": 2.0, "num": 3})
+        assert m.compute_data_hash(data_dir, svt_dir)[0] != h_base
+
+        write_shop(sample_runs=520, drop_expected=11.0123, extra_quest=True)
+        assert m.compute_data_hash(data_dir, svt_dir)[0] != h_base
+
+        write_shop(sample_runs=476, drop_expected=10.9433)
+        for name, content in base_js.items():
+            p = os.path.join(data_dir, name)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(content + "// changed\n")
+            assert m.compute_data_hash(data_dir, svt_dir)[0] != h_base, f"change in {name} must change hash"
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(content)
+
+        with open(os.path.join(svt_dir, "100100.json"), "w", encoding="utf-8") as f:
+            f.write('{"id":100100,"v":2}\n')
+        assert m.compute_data_hash(data_dir, svt_dir)[0] != h_base
         n += 1
     finally:
         server.shutdown()
