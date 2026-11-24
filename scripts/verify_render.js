@@ -47,8 +47,8 @@ try {
 
   // Lazy chunks are asserted by response status, not by request: a request still
   // fires when the chunk 404s, which is precisely the failure being caught.
-  // event-lazy is also preloaded while idle, so it can be fetched before the tab
-  // is ever clicked — record it from page load instead of waiting on the click.
+  // Record event-lazy from page load so either eager load (when event is the
+  // saved active tab) or lazy load on tab click is captured.
   const eventFetched = new Promise((resolve) => {
     page.on("response", (res) => {
       if (/event-lazy/.test(res.url())) resolve(res.status());
@@ -132,8 +132,8 @@ try {
     );
   }
 
-  // Event tab is lazily imported on first visit and preloaded while idle, so the
-  // chunk has to actually come back: a 404 request would still be a request.
+  // Event tab is lazily imported on first visit (or eagerly when saved as the
+  // active tab), so the chunk has to actually come back: a 404 request would still be a request.
   await page.click(".tab-btn[data-tab=event]");
   const eventStatus = await eventFetched;
   const questRows = await page.evaluate(() => document.querySelectorAll("#questGrid > *").length);

@@ -65,7 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // Lazy-load event shop (~9KB, ~2KB gzipped)
+  // Lazy-load event shop (bundles event_shop.js, ~154KB minified; loaded on tab click or eagerly if active)
   let _eventModule = null;
   const initEvent = async () => {
     try {
@@ -92,10 +92,9 @@ document.addEventListener("DOMContentLoaded", () => {
     initCEFilter();
   }
 
-  // Defer Event Shop to idle (hydrates static HTML only — no image fetches)
+  // Warm CE Filter worker at idle when another tab is active
   const rIC = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
   rIC(() => {
-    if (activeTab !== "event") initEvent();
     if (activeTab !== "cefilter") CEFilterApp.warmWorker();
   });
 
