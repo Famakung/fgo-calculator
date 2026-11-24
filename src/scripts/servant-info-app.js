@@ -328,6 +328,16 @@ function appendHighlightedEffect(container, text) {
       textStart = i;
       continue;
     }
+    if (str.startsWith("[\u25b21]", i) || str.startsWith("[\u25b22]", i)) {
+      flushText(i);
+      const tier = str[i + 2] === "2" ? "2" : "1";
+      const mark = DOMFactory.el("span", ["f-rankup-mark", `f-rankup-mark--${tier}`]);
+      mark.textContent = "\u25b2";
+      container.appendChild(mark);
+      i += 4;
+      textStart = i;
+      continue;
+    }
     if (str[i] === "<") {
       const closeIdx = findBalancedAngleEnd(str, i);
       if (closeIdx > i + 1) {
@@ -353,6 +363,435 @@ function appendHighlightedEffect(container, text) {
   }
 
   flushText(str.length);
+}
+
+const TARGET_PHRASE_REGEX =
+  /\b(?:for|to)\s+(?:yourself|one ally|all allies(?:\s+excluding yourself)?|one enemy|all enemies|a single enemy)\b/gi;
+const VALUE_TOKEN_REGEX =
+  /\bby\s+(\d+(?:\.\d+)?(?:\s+to\s+\d+(?:\.\d+)?)?(?:-\d+(?:\.\d+)?)?%?)|(\b\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?%)|(\b\d+(?:-\d+)?\s+\[[^\]]+\])/gi;
+const TURN_TOKEN_REGEX = /\b\d+(?:-\d+)?\s+turns?\b/gi;
+const TIME_TOKEN_REGEX = /\b\d+(?:-\d+)?\s+times?\b/gi;
+
+/**
+ * Compute non-nested top-level character spans (outside `<...>` and `"..."`).
+ * Prevents inner state descriptions or scaling notes from being misidentified as outer stat tokens.
+ */
+function getTopLevelSpans(text) {
+  const spans = [];
+  let depth = 0;
+  let inQuotes = false;
+  let spanStart = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"' && depth === 0) {
+      if (!inQuotes) {
+        if (i > spanStart) spans.push([spanStart, i]);
+        inQuotes = true;
+      } else {
+        inQuotes = false;
+        spanStart = i + 1;
+      }
+    } else if (!inQuotes && ch === "<") {
+      if (depth === 0 && i > spanStart) spans.push([spanStart, i]);
+      depth += 1;
+    } else if (!inQuotes && ch === ">" && depth > 0) {
+      depth -= 1;
+      if (depth === 0) spanStart = i + 1;
+    }
+  }
+  if (depth === 0 && !inQuotes && spanStart < text.length) {
+    spans.push([spanStart, text.length]);
+  }
+  return spans;
+}
+
+function collectTopLevelMatches(text, regex) {
+  const matches = [];
+  const spans = getTopLevelSpans(text);
+  for (const [start, end] of spans) {
+    const slice = text.slice(start, end);
+    const re = new RegExp(regex.source, regex.flags);
+    let m;
+    while ((m = re.exec(slice)) !== null) {
+      const value = (m[1] || m[2] || m[3] || m[0]).trim().toLowerCase();
+      matches.push({
+        start: start + m.index,
+        end: start + m.index + m[0].length,
+        value,
+      });
+    }
+  }
+  return matches;
+}
+
+function extractQuotedInnerSpan(text) {
+  const s = String(text || "");
+  const openIdx = s.indexOf('"');
+  const closeIdx = s.lastIndexOf('"');
+  if (openIdx >= 0 && closeIdx > openIdx) {
+    return { openIdx, closeIdx, inner: s.slice(openIdx + 1, closeIdx) };
+  }
+  return null;
+}
+
+function splitInnerClauses(inner) {
+  const clauses = [];
+  let depth = 0;
+  let inQuotes = false;
+  let start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === '"' && depth === 0) {
+      inQuotes = !inQuotes;
+    } else if (!inQuotes && ch === "<") {
+      depth += 1;
+    } else if (!inQuotes && ch === ">" && depth > 0) {
+      depth -= 1;
+    } else if (!inQuotes && depth === 0 && inner.startsWith(" & ", i)) {
+      clauses.push(inner.slice(start, i).trim());
+      i += 2;
+      start = i + 1;
+    }
+  }
+  const tail = inner.slice(start).trim();
+  if (tail) clauses.push(tail);
+  return clauses;
+}
+
+function maskQuotedInner(line) {
+  const span = extractQuotedInnerSpan(line);
+  if (!span) return String(line || "");
+  return `${line.slice(0, span.openIdx)}"#INNER"${line.slice(span.closeIdx + 1)}`;
+}
+
+/**
+ * Normalize an effect line into a comparison signature across Rank Up tiers.
+ */
+export function normalizeEffectSignature(line) {
+  return maskQuotedInner(line)
+    .replace(/\[Demerit\]/gi, "")
+    .replace(/\([^)]*(?:turn|time)[^)]*\)/gi, "(#D)")
+    .replace(/\b\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?%?/g, "#N")
+    .replace(TARGET_PHRASE_REGEX, "#T")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function diffInlineTokens(prevText, currText, entry, tierIdx) {
+  const prevValues = collectTopLevelMatches(prevText, VALUE_TOKEN_REGEX);
+  const currValues = collectTopLevelMatches(currText, VALUE_TOKEN_REGEX);
+  const prevTurns = collectTopLevelMatches(prevText, TURN_TOKEN_REGEX);
+  const currTurns = collectTopLevelMatches(currText, TURN_TOKEN_REGEX);
+  const prevTimes = collectTopLevelMatches(prevText, TIME_TOKEN_REGEX);
+  const currTimes = collectTopLevelMatches(currText, TIME_TOKEN_REGEX);
+  const prevTargets = collectTopLevelMatches(prevText, TARGET_PHRASE_REGEX);
+  const currTargets = collectTopLevelMatches(currText, TARGET_PHRASE_REGEX);
+
+  let changedAnyInline = false;
+
+  if (prevValues.length === currValues.length) {
+    let changedValIndices = [];
+    for (let i = 0; i < currValues.length; i++) {
+      if (prevValues[i].value !== currValues[i].value) {
+        changedValIndices.push(i);
+      }
+    }
+    if (changedValIndices.length > 1 && /^Deal\b.*\bdamage(?:\s+<[^>]+>)?\s+by\s+/i.test(currText)) {
+      changedValIndices = [changedValIndices[changedValIndices.length - 1]];
+    }
+    for (const i of changedValIndices) {
+      if (!entry.valueTiers[i]) entry.valueTiers[i] = [];
+      entry.valueTiers[i].push(tierIdx);
+      changedAnyInline = true;
+    }
+  } else if (
+    currValues.length > 0 &&
+    prevValues.map((v) => v.value).join("|") !== currValues.map((v) => v.value).join("|")
+  ) {
+    const idx = currValues.length - 1;
+    if (!entry.valueTiers[idx]) entry.valueTiers[idx] = [];
+    entry.valueTiers[idx].push(tierIdx);
+    changedAnyInline = true;
+  }
+
+  let turnChanged = false;
+  if (prevTurns.length === currTurns.length) {
+    for (let i = 0; i < currTurns.length; i++) {
+      if (prevTurns[i].value !== currTurns[i].value) {
+        if (!entry.turnTiers[i]) entry.turnTiers[i] = [];
+        entry.turnTiers[i].push(tierIdx);
+        changedAnyInline = true;
+        turnChanged = true;
+      }
+    }
+  } else if (
+    currTurns.length > 0 &&
+    prevTurns.map((t) => t.value).join("|") !== currTurns.map((t) => t.value).join("|")
+  ) {
+    const idx = currTurns.length - 1;
+    if (!entry.turnTiers[idx]) entry.turnTiers[idx] = [];
+    entry.turnTiers[idx].push(tierIdx);
+    changedAnyInline = true;
+    turnChanged = true;
+  }
+
+  if (!turnChanged) {
+    if (prevTimes.length === currTimes.length) {
+      for (let i = 0; i < currTimes.length; i++) {
+        if (prevTimes[i].value !== currTimes[i].value) {
+          if (!entry.timeTiers[i]) entry.timeTiers[i] = [];
+          entry.timeTiers[i].push(tierIdx);
+          changedAnyInline = true;
+        }
+      }
+    } else if (
+      currTimes.length > 0 &&
+      prevTimes.map((t) => t.value).join("|") !== currTimes.map((t) => t.value).join("|")
+    ) {
+      const idx = currTimes.length - 1;
+      if (!entry.timeTiers[idx]) entry.timeTiers[idx] = [];
+      entry.timeTiers[idx].push(tierIdx);
+      changedAnyInline = true;
+    }
+  }
+
+  if (prevTargets.length === currTargets.length) {
+    for (let i = 0; i < currTargets.length; i++) {
+      if (prevTargets[i].value !== currTargets[i].value) {
+        if (!entry.targetTiers[i]) entry.targetTiers[i] = [];
+        entry.targetTiers[i].push(tierIdx);
+        changedAnyInline = true;
+      }
+    }
+  } else if (
+    currTargets.length > 0 &&
+    prevTargets.map((t) => t.value).join("|") !== currTargets.map((t) => t.value).join("|")
+  ) {
+    const idx = currTargets.length - 1;
+    if (!entry.targetTiers[idx]) entry.targetTiers[idx] = [];
+    entry.targetTiers[idx].push(tierIdx);
+    changedAnyInline = true;
+  }
+
+  if (!changedAnyInline) {
+    entry.fallbackTiers.push(tierIdx);
+  }
+}
+
+function advancePastEffectNote(text, pos) {
+  let outPos = pos;
+  const chanceMatch = text.slice(outPos).match(/^\s+chance\b/i);
+  if (chanceMatch) {
+    outPos += chanceMatch[0].length;
+  }
+  let idx = outPos;
+  while (idx < text.length && text[idx] === " ") idx += 1;
+  if (text[idx] === "<" && /^<effect\b/i.test(text.slice(idx))) {
+    const closeIdx = findBalancedAngleEnd(text, idx);
+    if (closeIdx > idx) return closeIdx + 1;
+  }
+  return outPos;
+}
+
+function formatTierMarks(tiers) {
+  return tiers.map((t) => `[\u25b2${t >= 2 ? 2 : 1}]`).join("");
+}
+
+function formatAnnotatedEffectLine(entry) {
+  const { upgradeTiers, origin } = entry;
+  if (upgradeTiers.length === 0) return entry.text;
+  if (origin === "new") {
+    return `${entry.text} ${formatTierMarks(upgradeTiers)}`;
+  }
+
+  let text = entry.text;
+  if (entry.innerChanged && entry.innerHistory && entry.innerHistory.length > 1) {
+    const span = extractQuotedInnerSpan(text);
+    if (span) {
+      const maxInnerTier = entry.innerHistory[entry.innerHistory.length - 1].tierIdx;
+      const denseLists = [];
+      let prevClauses = entry.innerHistory[0].clauses;
+      let hIdx = 0;
+      for (let t = 0; t <= maxInnerTier; t++) {
+        if (hIdx < entry.innerHistory.length && entry.innerHistory[hIdx].tierIdx === t) {
+          prevClauses = entry.innerHistory[hIdx].clauses;
+          hIdx += 1;
+        }
+        denseLists.push(prevClauses);
+      }
+      const annotatedInner = annotateRankUpEffects(denseLists).join(" & ");
+      text = `${text.slice(0, span.openIdx + 1)}${annotatedInner}${text.slice(span.closeIdx)}`;
+    }
+  }
+
+  const insertions = [];
+  const pushMarks = (matches, tiersMap) => {
+    for (const [idxStr, tiers] of Object.entries(tiersMap)) {
+      const idx = Number(idxStr);
+      if (tiers.length > 0 && matches[idx]) {
+        insertions.push({ pos: advancePastEffectNote(text, matches[idx].end), mark: ` ${formatTierMarks(tiers)}` });
+      }
+    }
+  };
+
+  pushMarks(collectTopLevelMatches(text, VALUE_TOKEN_REGEX), entry.valueTiers);
+  pushMarks(collectTopLevelMatches(text, TURN_TOKEN_REGEX), entry.turnTiers);
+  pushMarks(collectTopLevelMatches(text, TIME_TOKEN_REGEX), entry.timeTiers);
+  pushMarks(collectTopLevelMatches(text, TARGET_PHRASE_REGEX), entry.targetTiers);
+
+  if (insertions.length === 0) {
+    if (entry.innerChanged) return text;
+    const fallback = entry.fallbackTiers.length > 0 ? entry.fallbackTiers : upgradeTiers;
+    return `${text} ${formatTierMarks(fallback)}`;
+  }
+
+  insertions.sort((a, b) => b.pos - a.pos);
+  let out = text;
+  for (const ins of insertions) {
+    out = out.slice(0, ins.pos) + ins.mark + out.slice(ins.pos);
+  }
+  return out;
+}
+
+function cloneTierMap(map) {
+  const copy = {};
+  for (const [k, v] of Object.entries(map)) {
+    copy[k] = [...v];
+  }
+  return copy;
+}
+
+/**
+ * Annotate an active tier's effect lines with official-NA-consistent Rank Up `[▲1]`/`[▲2]` markers
+ * (always preceded by a single space), given `[tier0Effects, ..., activeTierEffects]`.
+ */
+export function annotateRankUpEffects(tierEffectLists) {
+  if (!Array.isArray(tierEffectLists) || tierEffectLists.length === 0) return [];
+  if (tierEffectLists.length === 1) return [...(tierEffectLists[0] || [])];
+
+  let prevEntries = (tierEffectLists[0] || []).map((text) => {
+    const span = extractQuotedInnerSpan(text);
+    return {
+      text,
+      sig: normalizeEffectSignature(text),
+      origin: "base",
+      upgradeTiers: [],
+      valueTiers: {},
+      turnTiers: {},
+      timeTiers: {},
+      targetTiers: {},
+      fallbackTiers: [],
+      innerHistory: span ? [{ tierIdx: 0, clauses: splitInnerClauses(span.inner) }] : null,
+      innerChanged: false,
+    };
+  });
+
+  for (let tierIdx = 1; tierIdx < tierEffectLists.length; tierIdx++) {
+    const currLines = tierEffectLists[tierIdx] || [];
+    const usedPrev = new Set();
+    const currEntries = new Array(currLines.length);
+
+    // Pass 1: exact text match carries state unchanged
+    for (let i = 0; i < currLines.length; i++) {
+      const line = currLines[i];
+      const matchIdx = prevEntries.findIndex((p, idx) => !usedPrev.has(idx) && p.text === line);
+      if (matchIdx >= 0) {
+        usedPrev.add(matchIdx);
+        currEntries[i] = { ...prevEntries[matchIdx] };
+      }
+    }
+
+    // Pass 2: signature match tracks inline or new-effect upgrades
+    for (let i = 0; i < currLines.length; i++) {
+      if (currEntries[i]) continue;
+      const line = currLines[i];
+      const sig = normalizeEffectSignature(line);
+      const matchIdx = prevEntries.findIndex((p, idx) => !usedPrev.has(idx) && p.sig === sig);
+      if (matchIdx >= 0) {
+        usedPrev.add(matchIdx);
+        const prev = prevEntries[matchIdx];
+        if (prev.origin === "new") {
+          currEntries[i] = {
+            ...prev,
+            text: line,
+            sig,
+            upgradeTiers: [...prev.upgradeTiers, tierIdx],
+          };
+        } else {
+          const prevSpan = extractQuotedInnerSpan(prev.text);
+          const currSpan = extractQuotedInnerSpan(line);
+          const innerChangedStep = Boolean(prevSpan && currSpan && prevSpan.inner !== currSpan.inner);
+          const nextHistory = prev.innerHistory ? prev.innerHistory.map((h) => ({ ...h })) : null;
+          if (innerChangedStep && nextHistory) {
+            nextHistory.push({ tierIdx, clauses: splitInnerClauses(currSpan.inner) });
+          }
+
+          const nextEntry = {
+            text: line,
+            sig,
+            origin: "base",
+            upgradeTiers: [...prev.upgradeTiers, tierIdx],
+            valueTiers: cloneTierMap(prev.valueTiers),
+            turnTiers: cloneTierMap(prev.turnTiers),
+            timeTiers: cloneTierMap(prev.timeTiers),
+            targetTiers: cloneTierMap(prev.targetTiers),
+            fallbackTiers: [...prev.fallbackTiers],
+            innerHistory: nextHistory,
+            innerChanged: prev.innerChanged || innerChangedStep,
+          };
+
+          const outerChanged = maskQuotedInner(prev.text) !== maskQuotedInner(line);
+          if (outerChanged || !innerChangedStep) {
+            diffInlineTokens(prev.text, line, nextEntry, tierIdx);
+          }
+          currEntries[i] = nextEntry;
+        }
+      } else {
+        currEntries[i] = {
+          text: line,
+          sig,
+          origin: "new",
+          upgradeTiers: [tierIdx],
+          valueTiers: {},
+          turnTiers: {},
+          timeTiers: {},
+          targetTiers: {},
+          fallbackTiers: [],
+          innerHistory: null,
+          innerChanged: false,
+        };
+      }
+    }
+
+    prevEntries = currEntries;
+  }
+
+  return prevEntries.map(formatAnnotatedEffectLine);
+}
+
+/**
+ * Return the list of Rank Up tier indices (1, 2, ...) where cooldown decreased.
+ */
+export function getCooldownRankUpTiers(tierCooldowns) {
+  if (!Array.isArray(tierCooldowns) || tierCooldowns.length <= 1) return [];
+  const tiers = [];
+  for (let i = 1; i < tierCooldowns.length; i++) {
+    const prev = tierCooldowns[i - 1];
+    const curr = tierCooldowns[i];
+    if (prev && curr && prev !== curr) {
+      tiers.push(i);
+    }
+  }
+  return tiers;
+}
+
+/**
+ * Count how many Rank Up steps reduced the skill cooldown up to the active tier.
+ */
+export function getCooldownRankUpCount(tierCooldowns) {
+  return getCooldownRankUpTiers(tierCooldowns).length;
 }
 
 function getTargetStageForAscensionForm(formLabel) {
@@ -2007,10 +2446,90 @@ export const ServantInfoApp = {
     effectsContainer.replaceChildren(ul);
   },
 
-  _renderOptionableEffects(effectsContainer, rawEffects, optState, onSelect, emptyFallback = "No effects.") {
+  _getTiersUpToActive(slot, activeTier, formIdx, modalState) {
+    const validTiers = this._getSupportedTiersForForm(slot, formIdx, modalState);
+    const maxTier = Number(activeTier) || 0;
+    const upTo = validTiers.filter((t) => t <= maxTier).sort((a, b) => a - b);
+    return upTo.length > 0 ? upTo : [maxTier];
+  },
+
+  _resolveSkillFormEntryForTier(variant, formIdx, isServantForm, targetLabel, modalState) {
+    if (!variant) return null;
+    if (isServantForm) {
+      return this._findFormEntry(variant, formIdx, modalState).formEntry;
+    }
+    if (variant.forms && variant.forms.length > 0) {
+      if (targetLabel) {
+        const lower = targetLabel.toLowerCase();
+        const byLabel = variant.forms.find((f) => (f.label || "").toLowerCase() === lower);
+        if (byLabel) return byLabel;
+      }
+      const idx = Math.min(Math.max(0, parseInt(formIdx, 10) || 0), variant.forms.length - 1);
+      return variant.forms[idx];
+    }
+    return null;
+  },
+
+  _renderCooldownWithMark(cooldownText, cdText, rankUpTiers) {
+    cooldownText.hidden = !cdText;
+    cooldownText.style.display = cdText ? "" : "none";
+    if (!cdText) {
+      cooldownText.replaceChildren();
+      return;
+    }
+    const tiers = Array.isArray(rankUpTiers) ? rankUpTiers : [];
+    if (tiers.length > 0) {
+      const marksWrap = DOMFactory.el("span", "f-rankup-marks");
+      tiers.forEach((t) => {
+        const tier = t >= 2 ? "2" : "1";
+        const mark = DOMFactory.el("span", ["f-rankup-mark", `f-rankup-mark--${tier}`]);
+        mark.textContent = "\u25b2";
+        marksWrap.appendChild(mark);
+      });
+      cooldownText.replaceChildren(document.createTextNode(`${cdText} `), marksWrap);
+    } else {
+      cooldownText.textContent = cdText;
+    }
+  },
+
+  _selectOptionEffectsForTier(rawEffects, optLabel, optIdx, subLabel, subIdx) {
     const optInfo = parseSkillOptions(rawEffects);
     if (!optInfo.hasOptions || optInfo.options.length < 2) {
-      this._renderEffectsList(effectsContainer, rawEffects, emptyFallback);
+      return rawEffects || [];
+    }
+    const lowerOpt = (optLabel || "").toLowerCase();
+    const matchedOpt =
+      (lowerOpt && optInfo.options.find((o) => (o.label || "").toLowerCase() === lowerOpt)) ||
+      optInfo.options[optIdx] ||
+      optInfo.options[0];
+    let branchEffects = matchedOpt ? matchedOpt.effects || [] : [];
+    if (subLabel !== null && subIdx !== null) {
+      const subInfo = parseSkillOptions(branchEffects);
+      if (subInfo.hasOptions && subInfo.options.length >= 2) {
+        const lowerSub = (subLabel || "").toLowerCase();
+        const matchedSub =
+          (lowerSub && subInfo.options.find((o) => (o.label || "").toLowerCase() === lowerSub)) ||
+          subInfo.options[subIdx] ||
+          subInfo.options[0];
+        branchEffects = matchedSub ? matchedSub.effects || [] : [];
+      }
+    }
+    return branchEffects;
+  },
+
+  _renderOptionableEffects(
+    effectsContainer,
+    rawEffects,
+    optState,
+    onSelect,
+    emptyFallback = "No effects.",
+    tierEffectsHistory = null,
+  ) {
+    const optInfo = parseSkillOptions(rawEffects);
+    if (!optInfo.hasOptions || optInfo.options.length < 2) {
+      const annotated =
+        tierEffectsHistory && tierEffectsHistory.length > 1 ? annotateRankUpEffects(tierEffectsHistory) : rawEffects;
+      this._renderEffectsList(effectsContainer, annotated, emptyFallback);
       return;
     }
 
@@ -2041,11 +2560,21 @@ export const ServantInfoApp = {
 
     let displayEffects = currentOpt ? currentOpt.effects : [];
     const subOptInfo = parseSkillOptions(displayEffects);
+    let activeSubIdx = null;
+    let activeSubLabel = null;
     if (subOptInfo.hasOptions && subOptInfo.options.length >= 2) {
       const parsedSub = parseInt(optState?.subOption, 10);
-      const activeSubIdx = !isNaN(parsedSub) && parsedSub >= 0 && parsedSub < subOptInfo.options.length ? parsedSub : 0;
+      activeSubIdx = !isNaN(parsedSub) && parsedSub >= 0 && parsedSub < subOptInfo.options.length ? parsedSub : 0;
+      activeSubLabel = subOptInfo.options[activeSubIdx]?.label || null;
       frag.appendChild(buildOptionBar(subOptInfo.options, activeSubIdx, (subIdx) => onSelect(activeOptIdx, subIdx)));
       displayEffects = subOptInfo.options[activeSubIdx]?.effects || [];
+    }
+
+    if (tierEffectsHistory && tierEffectsHistory.length > 1) {
+      const optionTierHistory = tierEffectsHistory.map((tierRaw) =>
+        this._selectOptionEffectsForTier(tierRaw, currentOpt?.label || "", activeOptIdx, activeSubLabel, activeSubIdx),
+      );
+      displayEffects = annotateRankUpEffects(optionTierHistory);
     }
 
     if (displayEffects.length === 0) {
@@ -2070,8 +2599,12 @@ export const ServantInfoApp = {
     const slot = card._slot;
     const servantForms = modalState.servantForms;
     const hasServantForms = this._slotHasServantForms(slot, modalState) && servantForms && servantForms.length > 1;
+    const formIdxForTier = hasServantForms ? modalState.activeFormIndex || 0 : selectedForm;
+    const activeTier = variant.tier !== undefined ? variant.tier : slot.activeTier;
+    const tiersUpToActive = this._getTiersUpToActive(slot, activeTier, formIdxForTier, modalState);
 
     let activeEffects = variant.effects || [];
+    let activeFormLabel = "";
     const applyTitleAndCooldown = (activeForm) => {
       if (activeForm && activeForm.name) {
         const numMatch = variant.cleanTitle.match(/^Skill\s+(\d+)/i);
@@ -2082,9 +2615,12 @@ export const ServantInfoApp = {
         titleText.textContent = variant.cleanTitle;
       }
       const cdText = (activeForm && activeForm.cooldown) || variant.cooldown;
-      cooldownText.hidden = !cdText;
-      cooldownText.style.display = cdText ? "" : "none";
-      cooldownText.textContent = cdText || "";
+      const tierCooldowns = tiersUpToActive.map((t) => {
+        const v = getVariantByTier(slot, t);
+        const f = this._resolveSkillFormEntryForTier(v, formIdxForTier, hasServantForms, activeFormLabel, modalState);
+        return (f && f.cooldown) || (v && v.cooldown) || "";
+      });
+      this._renderCooldownWithMark(cooldownText, cdText, getCooldownRankUpTiers(tierCooldowns));
       if (skillIconEl) {
         const iconPath = slot.type === "skill" ? (activeForm && activeForm.icon) || variant.icon || null : null;
         if (iconPath) {
@@ -2105,6 +2641,7 @@ export const ServantInfoApp = {
       const currentFormIdx = modalState.activeFormIndex || 0;
       card.dataset.activeSkillForm = String(currentFormIdx);
       const activeForm = this._findFormEntry(variant, currentFormIdx, modalState).formEntry;
+      activeFormLabel = activeForm?.label || "";
       activeEffects = activeForm ? activeForm.effects || [] : variant.effects || [];
       applyTitleAndCooldown(activeForm);
 
@@ -2126,6 +2663,7 @@ export const ServantInfoApp = {
       const fIdx = Math.min(Math.max(0, parseInt(selectedForm, 10) || 0), variant.forms.length - 1);
       card.dataset.activeSkillForm = String(fIdx);
       const activeForm = variant.forms[fIdx];
+      activeFormLabel = activeForm?.label || "";
       activeEffects =
         activeForm && Array.isArray(activeForm.effects) && activeForm.effects.length > 0
           ? activeForm.effects
@@ -2174,6 +2712,21 @@ export const ServantInfoApp = {
       titleText.textContent = this._resolveSingleSlotTitle(slot, variant, modalState.activeSgEntry);
     }
 
+    const tierEffectsHistory =
+      tiersUpToActive.length > 1
+        ? tiersUpToActive.map((t) => {
+            const v = getVariantByTier(slot, t);
+            const f = this._resolveSkillFormEntryForTier(
+              v,
+              formIdxForTier,
+              hasServantForms,
+              activeFormLabel,
+              modalState,
+            );
+            return f && Array.isArray(f.effects) && f.effects.length > 0 ? f.effects : (v && v.effects) || [];
+          })
+        : null;
+
     const prevOpt = card.dataset.activeOption;
     const nextOpt = String(parseInt(selectedOption, 10) || 0);
     if (prevOpt !== nextOpt) {
@@ -2189,6 +2742,7 @@ export const ServantInfoApp = {
         { option: optIdx, subOption: subIdx },
         renderSkillEffects,
         emptyFallback,
+        tierEffectsHistory,
       );
     };
     renderSkillEffects(nextOpt, card.dataset.activeSubOption || "0");
@@ -2239,11 +2793,50 @@ export const ServantInfoApp = {
     } else {
       titleText.textContent = activeForm.name ? `Noble Phantasm (${activeForm.name})` : variant.cleanTitle;
     }
-    this._renderNpDetails(card, activeOpt.metaLines, activeOpt.effects);
+    const tierEffectsHistory = this._buildNpTierEffectsHistory(
+      card._slot,
+      variant,
+      activeForm,
+      optIdx,
+      activeOpt,
+      modalState,
+    );
+    this._renderNpDetails(card, activeOpt.metaLines, activeOpt.effects, tierEffectsHistory);
     return true;
   },
 
-  _renderNpDetails(card, metaLines, effects) {
+  _buildNpTierEffectsHistory(slot, variant, activeForm, npOptIdx, activeOpt, modalState) {
+    const activeTier = variant.tier !== undefined ? variant.tier : slot.activeTier;
+    const servantForms = modalState?.servantForms;
+    const hasServantForms = this._slotHasServantForms(slot, modalState) && servantForms && servantForms.length > 1;
+    const formIdx = hasServantForms
+      ? modalState.activeFormIndex || 0
+      : activeForm
+        ? variant.forms?.indexOf(activeForm)
+        : 0;
+    const tiersUpToActive = this._getTiersUpToActive(slot, activeTier, formIdx, modalState);
+    if (tiersUpToActive.length <= 1) return null;
+
+    const targetFormLabel = (activeForm && activeForm.label ? activeForm.label : "").toLowerCase();
+    const targetOptLabel = (activeOpt && activeOpt.label ? activeOpt.label : "").toLowerCase();
+
+    return tiersUpToActive.map((t) => {
+      const v = getVariantByTier(slot, t);
+      if (!v) return [];
+      const f = this._resolveSkillFormEntryForTier(v, formIdx, hasServantForms, targetFormLabel, modalState);
+      if (f && Array.isArray(f.options) && f.options.length > 0 && npOptIdx !== null) {
+        const opt =
+          (targetOptLabel && f.options.find((o) => (o.label || "").toLowerCase() === targetOptLabel)) ||
+          f.options[npOptIdx] ||
+          f.options[0];
+        return (opt && opt.effects) || [];
+      }
+      if (f && Array.isArray(f.effects) && f.effects.length > 0) return f.effects;
+      return v.effects || [];
+    });
+  },
+
+  _renderNpDetails(card, metaLines, effects, tierEffectsHistory = null) {
     const { npMetaEl, effectsContainer } = card._refs;
     const lines = metaLines || [];
     if (lines.length > 0) {
@@ -2270,6 +2863,7 @@ export const ServantInfoApp = {
         { option: optIdx, subOption: subIdx },
         renderNpEffects,
         EMPTY_EFFECTS_FALLBACK.np,
+        tierEffectsHistory,
       );
     };
     renderNpEffects(card.dataset.activeNpEffectOption || "0", card.dataset.activeNpEffectSubOption || "0");
@@ -2309,10 +2903,12 @@ export const ServantInfoApp = {
 
       titleText.textContent =
         activeForm && activeForm.name ? `Noble Phantasm (${activeForm.name})` : variant.cleanTitle;
+      const tierEffectsHistory = this._buildNpTierEffectsHistory(slot, variant, activeForm, null, null, modalState);
       this._renderNpDetails(
         card,
         activeForm ? activeForm.metaLines : variant.metaLines,
         activeForm ? activeForm.effects : variant.effects,
+        tierEffectsHistory,
       );
       return;
     }
@@ -2327,7 +2923,8 @@ export const ServantInfoApp = {
       npOptionsBar.style.display = "none";
       npOptionsBar.replaceChildren();
       titleText.textContent = this._resolveSingleSlotTitle(slot, variant, modalState.activeSgEntry);
-      this._renderNpDetails(card, variant.metaLines, variant.effects);
+      const tierEffectsHistory = this._buildNpTierEffectsHistory(slot, variant, null, null, null, modalState);
+      this._renderNpDetails(card, variant.metaLines, variant.effects, tierEffectsHistory);
       return;
     }
 
@@ -2409,10 +3006,12 @@ export const ServantInfoApp = {
       titleText.textContent = variant.cleanTitle;
     }
 
+    const tierEffectsHistory = this._buildNpTierEffectsHistory(slot, variant, activeForm, null, null, modalState);
     this._renderNpDetails(
       card,
       activeForm ? activeForm.metaLines : variant.metaLines,
       activeForm ? activeForm.effects : variant.effects,
+      tierEffectsHistory,
     );
   },
 
