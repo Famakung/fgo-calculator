@@ -1,11 +1,3 @@
 # GEMINI.md
 
-The project rules for every AI agent live in [AGENTS.md](AGENTS.md) — read it in full before touching code, then navigate the project knowledge base via [.wiki/_index.md](.wiki/_index.md) (3-hop navigation: `.wiki/_index.md` → `.wiki/wiki/{concepts,topics,references}/_index.md` → matched articles). All paths are relative to the project root.
-
-Non-negotiable, even if you read nothing else:
-
-- Never `innerHTML` / `insertAdjacentHTML` — `createElement()` + `textContent` + `setAttribute()`, or a `DocumentFragment` with one `replaceChildren()`. A Trusted Types policy makes unsanitized sinks throw.
-- All CSS is the single inline `<style>` in `src/layouts/BaseLayout.astro` — the site has no `.css` file and no `src/styles/` directory. A stylesheet you create there ships nothing.
-- JS: ES modules, 2-space indent, semicolons, double quotes. Trait IDs are 4-digit zero-padded strings.
-- Generated data (`src/scripts/data/*.js`, `public/servants/`, `public/servant_info/`, `public/saint_graphs/`, `public/skill_icons/`, `public/craft_essences/`, `public/event_shop/`) is gitignored — `npm run data:sync` on a fresh clone.
-- Build from the native clone, never the `/mnt/storage` ntfs3 checkout (`astro build` dies there).
+All project rules, build commands, and direct `.wiki/wiki/` article links live in [AGENTS.md](AGENTS.md). Read it before touching code; update the matching `.wiki/wiki/` article after shipping changes and run `llm-wiki lint --local`.

@@ -52,6 +52,15 @@ Step 3 of `scripts/sync_atlas_data.py` (`--skip-event-shop`, `--event-id N`) pro
 4. **Shop Trades** (`.farm-res-trades`, R17/R18/R19): Per-trade neutral `.farm-card` tiles with `64px` from→to icons carrying inset ratio overlays (`10`, `1`; `margin-right: 3px; margin-bottom: 7px`), no header separator bar, and plain numeric trade count + `trades` label.
 5. **Sliding Names (R25–R29)**: `event-shop-farm-names.js` converts overflowing quest names and `.material-name` labels into a continuous one-direction marquee (`translateX(0)` → `translateX(-50%)`, duplicated `aria-hidden` track + 24px gap, `2s + 0.05s/px`, disabled under `prefers-reduced-motion`). A `ResizeObserver` on `#panel-event` plus a single debounced window `resize` listener triggers re-measurement on first tab reveal.
 
+## Key Files, Symbols & Tests
+
+| Role | Target |
+|---|---|
+| Lazy entry & controllers | `src/scripts/event-lazy.js`, `src/scripts/event-shop.js`, `src/scripts/event-shop-tier.js`, `src/scripts/event-shop-ce.js`, `src/scripts/event-shop-modal.js` |
+| Farm cards & results | `src/scripts/event-shop-farm.js`, `src/scripts/event-shop-farm-lines.js`, `src/scripts/event-shop-farm-controls.js`, `src/scripts/event-shop-farm-results.js`, `src/scripts/event-shop-farm-names.js` |
+| Per-event state & optimizer | `src/scripts/event-planner.js`, `src/scripts/event-planner-state.js`, `src/scripts/event-planner-parts.js`, `src/scripts/domain.js` (`EventShop`) |
+| Tests & browser checks | `tests/event-shop*.test.js`, `scripts/test_sync_event_shop.py`, `scripts/test_sync_event_shop_adversarial.py`, `tools/test_event_shop*.js` |
+
 ## See Also
 
 - [[zero-commit-data-pipeline|Zero-Commit Data Pipeline]] ([Zero-Commit Data Pipeline](../concepts/zero-commit-data-pipeline.md)) — CI shop probe, asset caching, and `validate_data.js`

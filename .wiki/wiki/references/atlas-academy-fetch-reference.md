@@ -43,12 +43,12 @@ All JSON fetches route through `get_cached_json` with conditional `ETag` / `If-N
 
 | Domain | Endpoint (`https://api.atlasacademy.io/...`) | Usage |
 |--------|----------------------------------------------|-------|
-| **Version gate** | `GET /info` | Returns ~230-byte JSON with `JP.hash` and `NA.hash` for CI short-circuiting |
-| **Servants & Bond** | `GET /export/JP/nice_servant_lore_lang_en.json` | Bulk playable servants (`type` in `normal`, `heroine`), `bondGrowth`, `traitAdd`, `ascensionAdd`, skills/NPs, and `profile.costume` |
-| **Single Servant** | `GET /nice/JP/svt/{long_id}?lore=false&lang=en` | Ad-hoc manual inspection of `traits`, `ascensionAdd`, `traitAdd`, and `costumes` |
+| **Version gate** | `GET /info` | Returns ~230-byte JSON with `JP.hash` and `NA.hash` for CI short-circuiting (`ATLAS_INFO_URL` / `ATLAS_API_BASE` overrides in `scripts/check_data_version.py`) |
+| **Servants & Bond** | `GET /export/JP/nice_servant_lore_lang_en.json`, `GET /export/JP/basic_servant.json` | Bulk playable servants (`type` in `normal`, `heroine`), `bondGrowth`, `traitAdd`, `ascensionAdd`, skills/NPs, `profile.costume`, and playable catalog discovery |
+| **Single Servant** | `GET /nice/JP/svt/{long_id}?lore=true\|false&lang=en`, `GET /nice/JP/servant/{servant_id}?lang=en` | Fallback single-servant fetch (`lore=true`) when absent from bulk export, and `costumeMaterials` keys for shop costume icon resolution |
 | **Inner Skills** | `GET /nice/JP/skill/{id}?lang=en` | On-demand fetch (cached in `.cache/atlas/inner_skills.json`) for nested `Apply a state` skill triggers absent from servant payloads |
-| **Traits & CEs** | `GET /export/NA/nice_trait.json`, `nice_equip_lang_en.json`, `export/NA/basic_equip.json` | Trait labels, NA CE skill brackets, full CE ingestion, and NA official CE names |
-| **Event List & Shop** | `GET /export/JP/basic_event.json`, `GET /nice/JP/event/{id}?lang=en` | Active `eventQuest` selection (`startedAt <= now < finishedAt`), `shop` array, and `warIds` |
+| **Traits & CEs** | `GET /export/NA/nice_trait.json`, `nice_equip_lang_en.json`, `export/NA/basic_equip.json`, `GET /nice/NA/equip/{eid}` | Trait labels, NA CE skill brackets, full CE ingestion, NA official CE names, and per-CE NA skill detail scans |
+| **Event List & Shop** | `GET /export/{region}/basic_event.json` (`JP`, `NA`, `CN`, `TW`, `KR`), `GET /nice/JP/event/{id}?lang=en` | Active `eventQuest` selection across `EVENT_SERVERS` (`startedAt <= now < finishedAt`), `shop` array, and `warIds` |
 | **Items & Equips** | `GET /export/JP/nice_item.json`, `nice_item_lang_en.json`, `NA/nice_item.json`, `GET /nice/JP/equip/{id}?lang=en` | Item metadata (`item.icon`, e.g., `JP/Coins/`) and per-ID CE faces (`faces.equip` fallback `faces.ascension`) |
 | **Wars & Drops** | `GET /nice/JP/war/{warId}?lang=en`, `GET /nice/JP/quest/{id}/{phase}?lang=en` | Repeatable quests (`afterClear` `repeatLast`\|`repeat`), `consume` AP, `recommendLv`, and community `drops` (`dropExpected`, `num`, `runs`) |
 
@@ -60,7 +60,7 @@ All JSON fetches route through `get_cached_json` with conditional `ETag` / `If-N
 
 ## ID Derivation and Static Asset Conventions
 
-- **Servant IDs & stages**: Each servant has a 3-digit in-game `collectionNo` (`Short ID`, e.g., `388`) and an Atlas `id` (`Long ID`, e.g., `1101600`). Stripping the trailing `00` yields `{base}` (`11016`) for face URLs `https://static.atlasacademy.io/JP/Faces/f_{base}{asc}_bordered.png` (`000`–`003` for ascensions; `300`/costume key for Spiritron Dresses). Flat-file portraits are removed when upgraded to multi-ascension directories (`servants/{atlasId}/{stage}.webp`).
+- **Servant IDs & stages**: Each servant has a 3-digit in-game `collectionNo` (`Short ID`, e.g., `388`) and an Atlas `id` (`Long ID`, e.g., `1101600`). Stripping the trailing `00` yields `{base}` (`11016`) for face URLs `https://static.atlasacademy.io/JP/Faces/f_{base}{asc}_bordered.png` (`000`–`003` for ascensions; `300`/costume key for Spiritron Dresses), with fallback candidates checking `battle_chara_id` (`f_{battle_chara_id}0`) and `f_{long_str}{stage_int}` (`0` fallback). Flat-file portraits are removed when upgraded to multi-ascension directories (`servants/{atlasId}/{stage}.webp`).
 - **Costume shop icons**: Because Atlas returns 404 on direct costume endpoints, `costumeRelease` resolves `servantId = target // 100`, inspects `costumeMaterials` keys (disambiguating multiple keys via lore `profile.costume` where `id == target % 100`), and downloads `JP/Faces/f_{detailId}0.png` (falling back to base face with a warning).
 - **Bordered-first & lossless WebP**: Face and CE fetchers request `_bordered.png` first and fall back to plain `.png` only on `"HTTP Error 404"` (phrase-gated so IDs containing `404` like `f_9404xxx` never false-trigger). Non-404 errors abort cleanly. Faces/CEs save as `142×155` WebP; Saint Graphs (`512×724`), skill icons, and event icons (`≤160px`) use `lossless=True, method=6`.
 - **Committed UI icons (`public/icons/`)**:
@@ -68,6 +68,25 @@ All JSON fetches route through `get_cached_json` with conditional `ETag` / `If-N
   - Stargazer's Teapot: `icons/teapot.webp` (`JP/Items/94065901_bordered.png`, `142×155` rendered at `48px`)
   - Golden Fruit: `icons/100_bordered.webp` (`JP/Items/100_bordered.png`, rendered at `48px`)
   - Class icons (`15` classes): `icons/classes/{class}.webp` (`JP/ClassIcons/class3_{1..11,23,25,28,33}.png`, resized to `64×64` for 2× Retina `32×32` display)
+
+## Atlas JSON Fields Read by Sync & Converter
+
+Compact map of Atlas payload keys consumed in `scripts/sync_atlas_data.py` and `scripts/servant_info_converter/` (use `python3 tools/query_effect.py` for live values):
+
+| Payload | Fields Consumed |
+|---|---|
+| **Servant (`svt`)** | `id`, `collectionNo`, `type`, `name`, `originalName`, `className`, `rarity`, `cost`, `hpBase`, `hpMax`, `atkBase`, `atkMax`, `bondGrowth`, `traits[]`, `traitAdd[]`, `ascensionAdd.{attribute,overWriteTDName,overwriteSkillName}`, `profile.costume`, `costumeMaterials`, `skills[]`, `classPassive[]`, `appendPassive[]`, `noblePhantasms[]`, `extraAssets.{faces,charaGraph}` |
+| **Skill / NP** | `num`, `card`, `effectFlags[]`, `coolDown[]`, `icon`, `releaseConditions[]`, `functions[]` (`funcType`, `funcTargetTeam`, `funcTargetType`, `svals`..`svals5`, `followerVals`, `buffs[]`, `functvals[]`, `funcquestTvals[]`) |
+| **Equip (`ce`)** | `id`, `collectionNo`, `name`, `skills[]` (`functions[].{svals,followerVals,functvals}`) |
+| **Event / War / Quest** | `event`: `id`, `type`, `startedAt`, `finishedAt`, `warIds[]`, `shop[]` (`targetIds`, `cost`, `limitNum`, `setNum`, `priority`); `war`: `spots[].quests[]` (`afterClear`); `quest`: `consume`, `recommendLv`, `drops[]` (`objectId`, `num`, `dropExpected`, `runs`) |
+
+## Key Files
+
+- `scripts/sync_atlas_data.py` — main Atlas sync pipeline (servants, bond growth, CEs, traits, event shops, assets)
+- `scripts/check_data_version.py` — `/info`, `--check-shop`, and `--data-hash` CI gate
+- `scripts/fetch_bordered_ces.py` — bordered CE WebP downloader/converter
+- `scripts/validate_data.js` — post-sync schema and image gate (`npm run data:validate`)
+- `tools/query_effect.py` — offline SQLite query CLI (`.cache/atlas/effects.db`)
 
 ## See Also
 

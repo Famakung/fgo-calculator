@@ -1,21 +1,18 @@
 # FGO Calculator — rules for AI coding agents
 
-Read this first, then navigate the project knowledge base via [.wiki/_index.md](.wiki/_index.md). Every file path in this repo is relative to the project root; there is no `d:/` path here.
+Read this first, then open only the matched [.wiki/wiki/](.wiki/wiki/_index.md) article directly (no `d:/` path exists). Open [.wiki/_index.md](.wiki/_index.md) only if unsure which article applies.
 
 FGO Calculator: Astro static site (Astro 7 + Vite 8/Rolldown), deployed to GitHub Pages, vanilla JS ES modules, no framework, no TypeScript at runtime. Four tools (tab order left to right): Servant Info, Bond Gain CE (default), Bond Calculator, Event Shop Calculator. Live at https://famakung.github.io/fgo-calculator/, repo `Famakung/fgo-calculator`.
 
 ## Before you write code
 
-Use **3-hop navigation** in the `.wiki/` knowledge base instead of loading whole docs blindly:
+Read only the matched `.wiki/wiki/` article for your task instead of loading whole docs or traversing `_index.md` hops:
 
-1. Start at [.wiki/_index.md](.wiki/_index.md) to orient across raw sources and compiled wiki categories.
-2. Open the relevant category index: `.wiki/wiki/concepts/_index.md`, `.wiki/wiki/topics/_index.md`, or `.wiki/wiki/references/_index.md`.
-3. Read only the matched articles for your task:
-   - **Concepts** (`.wiki/wiki/concepts/`): `architecture-and-bundling.md`, `security-and-dom-safety.md`, `zero-commit-data-pipeline.md`
-   - **References** (`.wiki/wiki/references/`): `code-style-and-conventions.md`, `data-schemas-and-traits.md`, `atlas-academy-fetch-reference.md`
-   - **Topics** (`.wiki/wiki/topics/`): `bond-gain-ce-and-filters.md`, `bond-calculator.md`, `servant-info-system.md`, `event-shop-calculator.md`, `project-history-and-decisions.md`
+- **Concepts** (`.wiki/wiki/concepts/`): `architecture-and-bundling.md`, `security-and-dom-safety.md`, `zero-commit-data-pipeline.md`
+- **References** (`.wiki/wiki/references/`): `code-style-and-conventions.md`, `data-schemas-and-traits.md`, `atlas-academy-fetch-reference.md`
+- **Topics** (`.wiki/wiki/topics/`): `bond-gain-ce-and-filters.md`, `bond-calculator.md`, `servant-info-system.md`, `event-shop-calculator.md`, `project-history-and-decisions.md`
 
-For wiki conventions, entity types, and compile guidance, see [.wiki/schema.md](.wiki/schema.md). Run `llm-wiki lint --local` after any documentation edits inside `.wiki/`.
+After shipping feature or fix changes, update the matching `.wiki/wiki/` article (1–3 concise bullets) and run `llm-wiki lint --local` (conventions in [.wiki/schema.md](.wiki/schema.md)).
 
 ## The rules that break the site if ignored
 

@@ -65,6 +65,13 @@ Without CSP headers from the host, security rests on three pillars: self-contain
 - **Zero third-party origins**: Production bundles contain zero CDN scripts, external fonts, third-party images, or analytics. Automated verification confirms zero `https://` URLs inside any built JS chunk or generated `public/servant_info/*.json` payload.
 - **Local `.webp` assets**: All servant portraits, Saint Graphs, skill icons, Craft Essences, event shop icons, and UI icons load from same-origin `.webp` files keyed by known game IDs (never raw user input), with `DOMFactory` `onerror` fallbacks. `public/favicon.svg` is the sole SVG asset.
 
+## Key Files & Tests
+
+- `src/layouts/BaseLayout.astro` — inline Trusted Types `'default'` policy and legacy SW/`CacheStorage` cleanup
+- `public/sw.js` — self-unregistering kill-switch Service Worker
+- `src/scripts/presentation.js` (`DOMFactory`), `src/scripts/domain.js` (`Validator`, `Schema`) — safe DOM creation and storage/bounds sanitization
+- `tests/validate-picks.test.js`, `tests/shell-state-a11y.test.js`, `tools/verify_render.js` — pick validation, a11y/state, and zero-external-URL render checks
+
 ## See Also
 
 - [[architecture-and-bundling|Architecture and Bundling]] ([Architecture and Bundling](../concepts/architecture-and-bundling.md)) — `<head>` script ordering and Astro static output layout

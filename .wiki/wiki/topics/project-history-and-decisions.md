@@ -59,6 +59,12 @@ summary: "Chronological synthesis of FGO Calculator milestones and architectural
 - **2026-11-21 — Servant Info Launch**: Shipped the 4th tab (`#tab-servantinfo`), static `public/servant_info/*.json` payloads, lossless `public/saint_graphs/*.webp` (`fgo-saint-graphs-v1`), `32px` `public/skill_icons/*.webp` (`fgo-static-images-v2`), `.cache/atlas/inner_skills.json`, special handling for Mash/Mélusine/467/transform partners, and `python3 -u` unbuffered CI logging.
 - **2026-11-22 — Polish & Fast-Path CI**: Added CI fast-path cache skip when `CHECK=UNCHANGED` and all 3 caches hit, settled ended-event disk caching (`7`-day grace), duplicate-effect NP/skill choice deduplication, stage-driven NP/skill name switching, 2-layer `[Nth Time]` / `[XX% Chance]` option UI, special unremovable sleep formatting (`JP_BUFF_NAME_MAP`), and `fmt_trigger_function` inner-skill enemy-side filtering.
 
+## 7. LLM Wiki, CI Trigger Shift & Servant Info Filters (Nov 24, 2026)
+
+- **Local `.wiki/` & `tools/` Split (`f468d6e`, `43a6097`)**: Replaced legacy `.claude/docs/` with `.wiki/`, moved `develop`-only verification/merge scripts out of `scripts/` into `tools/`, added offline SQLite lookup `tools/query_effect.py` (`.cache/atlas/effects.db`), and switched agent routing to direct article reads.
+- **CI Dispatch & Hash Normalization (`4d53a67`, `a788e30`, `fb534f6`)**: Removed GitHub Actions `schedule` triggers in favor of external `workflow_dispatch` with `run_label`, and normalized `sampleRuns` / `dropExpected` out of `compute_data_hash()` and `_drops_digest()` to stop volatile community drop-count deploys.
+- **Servant Info & Perf (`dd1c01a`, `f5eef6d`, `641b40e`, `68f7573`, `537da5b`, `75687bb`, `7a3d86d`)**: Stripped duplicate formatted arrays from `public/servant_info/*.json`, deferred `event-lazy` load to tab click, added tier-colored Rank Up markers, fixed Spiritron Dress ascension button sync, and added NP Type (`quick`/`arts`/`buster`) and NP Effect (`aoe`/`st`/`support`) filters.
+
 ## See Also
 
 - [[architecture-and-bundling|Architecture and Bundling]] ([Architecture and Bundling](../concepts/architecture-and-bundling.md)) — current Astro 7 + Rolldown and single-CSS architecture

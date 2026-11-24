@@ -72,6 +72,15 @@ Refactored from 3 legacy rows into **eight labelled, 2px-bordered sections** in 
 - **Page-Scoped Ephemeral State**: Filter modal selections, `matchCustomCounts`, search query (clamped to `MAX_SEARCH = 40`), and `currentPage` reset on page reload.
 - **Unified Comparator**: `CEFilterApp._sortEntries` delegates to `ServantSort.sorted()` (`src/scripts/domain.js`) so the tab grid and `#servantModal` share identical ID/Rarity/Class ordering.
 
+## Key Files, Symbols & Tests
+
+| Role | Target |
+|---|---|
+| Main & Servant Select controllers | `src/scripts/ce-filter-app.js` (`CEFilterApp`), `src/scripts/ce-servant-select.js` (`ServantSelect`, `CEFilterStore`) |
+| Worker & filter UI | `src/scripts/ce-match-worker.js`, `src/scripts/filter-sections.js` (`FilterSections`, `FilterModalController`, `createAvailPredicates`) |
+| Domain matchers & selectors | `src/scripts/domain.js` (`TraitMatcher`, `ServantComboCalculator`, `ServantFilters`, `ServantSort`), `src/scripts/selectors.js` (`CEServantOverlap`) |
+| Tests | `tests/ce-atlas-id-migration.test.js`, `tests/ce-filter-modal-avail.test.js`, `tests/ce-filter-store.test.js`, `tests/ce-servant-select.test.js`, `tests/servant-combo.test.js`, `tests/servant-filters.test.js`, `tests/servant-sort.test.js` |
+
 ## See Also
 
 - [[bond-calculator|Bond Calculator]] ([Bond Calculator](../topics/bond-calculator.md)) — shares `#servantModal`, `FilterSections`, `ServantFilters`, and `ServantSort`

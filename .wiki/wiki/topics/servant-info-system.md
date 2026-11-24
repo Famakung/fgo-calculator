@@ -20,13 +20,14 @@ summary: "Specifies the Servant Info tab architecture, the Python static convert
 
 ## UI, Lazy Loading & Modal Sync
 
-- **Lazy Entry & Grid**: Switching to `#tab-servantinfo` dynamically imports `servant-info-lazy` (`ServantInfoApp.init`). First-row LCP preloads for `servantinfo` run from `BaseLayout.astro` `<head>`. The grid shares search/filter/sort conventions and renders via Trusted-Types-safe `DOMFactory.el()`, `document.createTextNode()`, `setAttribute()`, and `DocumentFragment` + `replaceChildren()`.
+- **Lazy Entry, Filters & Grid**: Switching to `#tab-servantinfo` dynamically imports `servant-info-lazy` (`ServantInfoApp.init`). First-row LCP preloads for `servantinfo` run from `BaseLayout.astro` `<head>`. The grid shares search/filter/sort conventions and adds **NP Type** (`NP_TYPE_FILTERS`: `quick`, `arts`, `buster`) and **NP Effect** (`NP_EFFECT_FILTERS`: `aoe`, `st`, `support`) modal rows (`#servantInfoNpTypeFilter`, `#servantInfoNpEffectFilter`) backed by `ServantData.getNpTagSet(id)` and `ServantFilters.match(traits, filters, npTags)` (checked before sub-alignment `Other` early return). Renders via Trusted-Types-safe `DOMFactory.el()`, `document.createTextNode()`, `setAttribute()`, and `DocumentFragment` + `replaceChildren()`.
 - **Detail & Saint Graph Modal (`#servantInfoModal`)**: Locked to `calc(var(--screen-h) - 32px)`. `_openDetailModal()` fetches `servant_info/{id}.json` and runs `_preloadModalImages()` (including `_collectModalAssetUrls()` for Saint Graphs, hero faces, and 32×32px `.f-skill-icon` active skill icons) before painting, falling back to `_renderFallbackModal()` if fetch fails.
 - **Converter ↔ UI Parser Contracts**:
   - `appendHighlightedEffect`: maps `[Demerit]` → `<span class="f-demerit-tag">Demerit</span>`, scaling notes matching `SCALING_NOTE_REGEX` → `<em class="f-overcharge-note">`, and balanced `<...>` annotations → `<span class="f-effect-note">` (recursively highlighting nested tags; unbalanced brackets break parsing).
   - `parseSkillOptions`: extracts `[Nth Time]` usage-cycle headers (final button labeled `Nth Time -> 1st Time`), `[XX% Chance]` random-weight headers (`.f-effects-container` supports 2-layer choice selection), `Select N Options (...)`, and `OPTION_TRANSLATIONS`.
   - `EMPTY_EFFECTS_FALLBACK`: `"No class passives."`, `"No append skills."`, `"No skill effects."`, `"No Noble Phantasm effects."`.
-- **Stage & Form Synchronization**: `_syncAllCardsToForm`, `_setServantAscensionStage`, `_applyStageSlotNames`, and `_applyStageIdentity` synchronize the Saint Graph stage, `.f-form-selector-bar` (for non-Mash multi-form Servants), hero face icon, skill/NP tier buttons, and stage-overwritten NP/skill names (`modalState.activeSgEntry`).
+- **Stage & Form Synchronization**: `_syncAllCardsToForm`, `_setServantAscensionStage`, `_applyStageSlotNames`, and `_applyStageIdentity` synchronize the Saint Graph stage, `.f-form-selector-bar` (for non-Mash multi-form Servants; clicks on already-active `.f-option-btn` are ignored), hero face icon, skill/NP tier buttons, and stage-overwritten NP/skill names (`modalState.activeSgEntry`). Selecting a Spiritron Dress Saint Graph resolves `targetStage = entry.ascensionStage || (entry.kind === "costume" ? "1" : null)` so ascension buttons stay synced.
+- **Tier-Colored Rank Up Markers**: `annotateRankUpEffects()`, `diffInlineTokens()`, `advancePastEffectNote()`, `formatAnnotatedEffectLine()`, and `getCooldownRankUpTiers()` in `src/scripts/servant-info-app.js` render `.f-rankup-marks` / `.f-rankup-mark` (`--rankup-1`, `--rankup-2` in `BaseLayout.astro`) on upgraded effect values (including both Special Attack and NP damage multipliers) and skill cooldown reductions.
 
 ## Python Converter Package & Static JSON Schema
 
@@ -45,7 +46,7 @@ summary: "Specifies the Servant Info tab architecture, the Python static convert
 
 ## Effect Formatting & Enemy-Side Filtering Rules
 
-- **Capitalization & Chaining**: Every top-level effect line and every inner clause inside `Apply a state that "..."` starts with a capital letter. `fmt_condition(turn, count, turn_end)` emits `(X-Y turns)` when `sv0["Turn"] != sv9["Turn"]`. `oc_last()` resolves Overcharge across `svals5`..`svals2`..`svals`. `fold_chained_functions` + `append_chained_roll_tag` collapse repeated consecutive identical rolls into `(xN)` while preserving passive stacking.
+- **Capitalization, Pluralization & Chaining**: Every top-level effect line and every inner clause inside `Apply a state that "..."` starts with a capital letter. `fmt_sub_state_label()` in `utils.py` pluralizes `Buff`/`Debuff`/`Mental Debuff` vs singular `Buffs`/`Debuffs` (`TRAIT_ID_LABELS[3009]` = `"DEF Debuffs"`). `fmt_condition(turn, count, turn_end)` emits `(X-Y turns)` when `sv0["Turn"] != sv9["Turn"]`. `oc_last()` resolves Overcharge across `svals5`..`svals2`..`svals`. `fold_chained_functions` + `append_chained_roll_tag` collapse repeated consecutive identical rolls into `(xN)` while preserving passive stacking.
 - **Enemy-Side Filtering (Top-Level & Inner Skills)**: Both `_resolve_core_context` and `fmt_trigger_function` inspect `raw_inner_fn.get("funcTargetTeam")` **before** overwriting `inner_fn["funcTargetTeam"]` with the outer team:
   - Always skip `displayBuffstring` (except top-level `CheckOverChargeStageRange`) and `hastenNpturn` (Charge Up is enemy-only).
   - Skip `delayNpturn` targeting `self`/`ptOne`/`ptAll` (keep `enemy`/`enemyOne`/`enemyAll` Charge Drain, e.g., `#418` C.I.E.L S2).
@@ -63,6 +64,16 @@ summary: "Specifies the Servant Info tab architecture, the Python static convert
   3. Full-catalog sanity scan across `public/servant_info/*.json`: assert 0 `"https://"` URLs, 0 `"[unknown"` tokens, 0 lowercase effect starts, and 0 `"Increase Charge"` / `"Decrease Charge for yourself"` leaks.
   4. UI/JS/CSS validation: `npm run lint`, `npm run test`, `npm run build`, `npm run check:build`, `npm run data:validate`.
 - **Offline Effect Lookup (`tools/query_effect.py`)**: Inspect raw Atlas skill/NP functions (`--svt`, `--name`, `--skill`, `--func`, `--buff`, `--kind`, `--fmt`) and formatted display text (`--text`) locally via `tools/query_effect.py`, which auto-caches `.cache/atlas/effects.db` (SQLite, ~9 MB, auto-rebuilt on source mtime change) with compact deduplicated `svals` (`--full-svals` for all 10 levels). Never fetch Atlas API or read `.cache/atlas/nice_servant_lore_lang_en.json` (100 MB) directly, and never run plain `rg` content mode on minified `public/servant_info/*.json` (use `--text` or `rg -l`).
+
+## Key Files, Symbols & Tests
+
+| Role | Target |
+|---|---|
+| UI controller & Rank Up markers | `src/scripts/servant-info-app.js` (`ServantInfoApp`, `annotateRankUpEffects`, `diffInlineTokens`, `parseSkillOptions`, `appendHighlightedEffect`) |
+| Lazy entry & modal HTML | `src/scripts/servant-info-lazy.js`, `src/pages/index.astro` (`#servantInfoFilterModal`, `#servantInfoModal`) |
+| Filter constants & matcher | `src/scripts/constants.js` (`NP_TYPE_FILTERS`, `NP_EFFECT_FILTERS`), `src/scripts/domain.js` (`ServantFilters.compile`/`match`), `src/scripts/data.js` (`ServantData.getNpTagSet`) |
+| Python static converter | `scripts/servant_info_converter/` (`export_servant_info.py`, `servant_formatter.py`, `skill_formatter.py`, `np_formatter.py`, `function_formatter.py`, `effect_map.py`, `utils.py`) |
+| Tests | `tests/servant-filters.test.js`, `tests/servant-info-stage-names.test.js`, `tests/servant-info-rankup-marks.test.js`, `scripts/test_servant_info_converter.py` |
 
 ## See Also
 

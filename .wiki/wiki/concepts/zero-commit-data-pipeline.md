@@ -34,13 +34,13 @@ Locally, `npm run dev` and `npm run build` invoke `scripts/ensure_data.js` via `
 
 ## Multi-Stage CI Gate (`deploy.yml`)
 
-The workflow triggers on `push` to `main`, `workflow_dispatch` (with optional `force_sync` boolean), or fixed-slot `schedule` events (manual external watchers may also dispatch it):
+The workflow triggers on `push` to `main` or `workflow_dispatch` (with optional `force_sync` boolean and `run_label` display name for external watchers):
 
 1. **JP + NA `/info` & `--check-shop` gate (`scripts/check_data_version.py`)**: Before Python/Node setup or asset cache restoration, a ~230-byte `GET https://api.atlasacademy.io/info` compares both `JP.hash` and `NA.hash` against `.ci-baselines/data_version.txt` (`JP <hash>\nNA <hash>`). Checking both regions is mandatory because the app uses JP entity data alongside NA CE names and traits. When `/info` hashes match, `--check-shop` inspects `.ci-baselines/shop_probe.json` (`nextTransitionAt` window rollovers and ETag-conditional quest drop checks). Any network or parse failure fails open (`CHECK=UNKNOWN`).
-2. **`DO_WORK` and `DEPLOY` gates**: Idle `schedule` or non-forced `workflow_dispatch` runs reporting `CHECK=UNCHANGED` stop green immediately. `push` and `force_sync: true` (`--force`) always proceed.
+2. **`DO_WORK` and `DEPLOY` gates**: Non-forced `workflow_dispatch` runs reporting `CHECK=UNCHANGED` stop green immediately. `push` and `force_sync: true` (`--force`) always proceed.
 3. **ETag revalidation & settled cache (`sync_atlas_data.py`)**: Invoked with `python3 -u` for live per-phase logging, the sync script uses `PoliteRateLimiter` (0.1s delay, ~8 req/s) and ETag conditional GETs (`304 Not Modified` = ~0 bytes) over `.cache/atlas/`. Static `nice_equip_*.json` and settled JP events (`finishedAt + 7 days < now`) read from on-disk cache via `_read_settled_cache()` without HTTP requests unless `--force` is passed.
 4. **Full regeneration over incremental drift (`2026-10-20` decision)**: CI wipes `src/scripts/data/*.js` before syncing rather than caching it to run `revalidate_servant_traits()` incrementally. Full regeneration takes only seconds on warm JSON/image caches and eliminates the risk of stale servant traits persisting across missed drift checks.
-5. **Post-sync data-hash gate**: CI hashes all five generated `.js` files plus `public/servant_info/*.json` against `.ci-baselines/data_hash.txt`. Non-forced scheduled/dispatched runs skip Astro build and Pages deploy when `DATA_DIRTY != 'true'`.
+5. **Post-sync data-hash gate**: CI runs `python3 scripts/check_data_version.py --data-hash` (`compute_data_hash()`) over the five generated `.js` files plus `public/servant_info/*.json` against `.ci-baselines/data_hash.txt`. `_normalize_event_shop_js()` strips volatile `sampleRuns` and `dropExpected`, and `_drops_digest()` hashes `(objectId, num)` pairs only so community drop-rate/run-count jitter never triggers spurious builds or shop-probe false positives. Non-forced scheduled/dispatched runs skip Astro build and Pages deploy when `DATA_DIRTY != 'true'`.
 
 ## `.ci-baselines/` and Split `actions/cache@v6` Design
 
@@ -55,9 +55,9 @@ In October 2026 (CI runs #58–#61), storing `data_version.txt` inside the `.cac
 
 When `CHECK=UNCHANGED` and `atlas_cache`, `static_img_cache`, and `saint_graph_cache` all hit, `sync_atlas_data.py` is skipped entirely.
 
-## Fixed Cron Schedule (`2026-11-11`)
+## Cron History & Schedule Removal
 
-Originally configured as `*/10 * * * *`, GitHub throttled the 10-minute cron to 3–5 random fires/day (avg gap 5.8h). It was replaced by four fixed UTC slots (`10 9,11,15,19 * * *`) aligned to JP/NA maintenance ends (`16:10`/`18:10`/`22:10`/`02:10` ICT), dodging top-of-hour load at `:10`.
+Originally configured as `*/10 * * * *`, GitHub throttled the 10-minute cron to 3–5 random fires/day (avg gap 5.8h), leading to four fixed UTC slots (`10 9,11,15,19 * * *` on `2026-11-11`). GitHub Actions `schedule` triggers were later removed from `.github/workflows/deploy.yml` in favor of external `workflow_dispatch` triggers carrying `run_label` and `force_sync`.
 
 ## Lossless WebP Asset Fetching and Verification
 
@@ -67,6 +67,16 @@ Originally configured as `*/10 * * * *`, GitHub throttled the 10-minute cron to 
   - `npm run data:validate` (`scripts/validate_data.js`) checks trait sorting, 16-int `bond_growth.js` tables, `servant_info` schema/no-external-URL invariants, and image existence.
   - `npm run check:build` (`scripts/check_build_output.js` against `scripts/build_baseline.json`) asserts chunk names, 25% byte floors, 3× byte ceilings, `<head>` marker order, raw vs normalised visible-text SHAs, and `.cefilter-subpanel` CSS rules.
   - `self-test` job runs 7 public Python suites (`test_check_data_version.py`, `test_deploy_workflow.py`, `test_drift.py`, `test_sync_event_shop.py`, `test_sync_event_shop_adversarial.py`, `test_image_webp_lossless.py`, `test_repro_action_versions.py`).
+
+## Key Files & Gates
+
+| Role | Target |
+|---|---|
+| CI workflow & caches | `.github/workflows/deploy.yml` (`DO_WORK`, `DEPLOY`, `run_label`, `.ci-baselines/`) |
+| Version & hash gate | `scripts/check_data_version.py` (`fetch_latest`, `decide`, `compute_data_hash`, `check_shop_probe`) |
+| Data sync & bootstrap | `scripts/sync_atlas_data.py`, `scripts/ensure_data.js`, `scripts/validate_data.js` |
+| Build baseline gate | `scripts/check_build_output.js`, `scripts/build_baseline.json` |
+| Public CI tests | `scripts/test_check_data_version.py`, `scripts/test_deploy_workflow.py`, `scripts/test_drift.py`, `scripts/test_sync_event_shop*.py`, `scripts/test_image_webp_lossless.py`, `scripts/test_repro_action_versions.py` |
 
 ## See Also
 

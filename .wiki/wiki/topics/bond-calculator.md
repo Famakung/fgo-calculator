@@ -52,6 +52,15 @@ The **Select Quest** card sits above **Party Setup** and uses segmented family t
 - **0.00px CLS Pre-Paint**: `BaseLayout.astro` `<head>` sets `data-bond-quest` and `data-bond-custom` from `fgo_bond_calculator_data`; `index.astro` pre-renders `#freeQuestTierPills`, `#raidTierPills`, `#bondGrandClassSelect`, `#bondGrandDiffPills`, the 6 empty `.servant-add-slot` cards in `#servantGrid`, and an inline `<script is:inline>` right after `#bondQuestSummary` that restores inputs, active pills, and summary values synchronously before first paint (tested at 0.00px CLS in `tools/test_bond_layout_shift.js`).
 - **Servant Picker Modal (`#servantModal`)**: Mirrors Bond Gain CE's layout—search bar (`#servantPickerSearch`, bounded to `MAX_SEARCH = 40`), `#servantPickerFilterBtn` opening nested `#servantFilterModal` (`z-index: 1050`, placed after `#servantModal` in DOM; 7 sections built by `FilterSections`, reading `ServantData.getAllTraits(id)`), `#servantPickerSortBy` (ID/Rarity/Class via `ServantSort`), and `#servantPickerSortOrder`. Picker filters/sort persist for the page session only. Escape unwinds modals LIFO (filter sub-modal → ascension sub-modal → servant picker), and backdrop clicks do not close modals.
 
+## Key Files, Symbols & Tests
+
+| Role | Target |
+|---|---|
+| Tab controller & lazy entry | `src/scripts/bond-app.js` (`BondApp`, `defaultSlot`), `src/scripts/bond-lazy.js` |
+| Domain math & slot rules | `src/scripts/domain.js` (`Quest`, `SlotCEs`, `BondLevelCalculator`, `Teapot`, `ServantFilters`, `ServantSort`) |
+| Config, pickers & markup | `src/scripts/constants.js` (`QUEST_TIERS`, `GRAND_CLASSES`, `GRAND_DIFFICULTIES`), `src/scripts/selectors.js` (`ServantSelector`, `ServantDrag`), `src/pages/index.astro` (`#panel-bond`) |
+| Unit & layout tests | `tests/bond-level-calculator.test.js`, `tests/bond-quest.test.js`, `tests/bond-slot-ces.test.js`, `tests/bond-teapot.test.js`, `tools/test_bond_card_ap.js`, `tools/test_bond_layout_shift.js` |
+
 ## See Also
 
 - [[bond-gain-ce-and-filters|Bond Gain CE and Servant Filters]] ([Bond Gain CE and Servant Filters](../topics/bond-gain-ce-and-filters.md)) — shared `FilterSections`, `ServantFilters`, `ServantSort`, and `#servantModal`

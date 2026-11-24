@@ -45,6 +45,7 @@ Keyed by Atlas servant ID strings (e.g., `"800100"`, `"100100"`, `"505600"`), ca
   - *Stage costumes* have a key in `traits` (e.g., `444` `{"300": ["0304"]}`) and render as their own stage group via `getAscensionLabel`.
   - *Label-only costumes* appear in `optionLabels` without a `traits` key (e.g., `388` `{"300": "Serious Mode"}`) and surface via `ServantData.getSpiritronLabel()` when a Spiritron CE (trait `2780`) matches the base group.
 - **Alternate names & dual-persona servants**: `optionNames` maps stage keys to alternate names (`{"001": "Francesca Prélat"}`). Servant `467` merges into unified entry `"505600"` (`collectionNo: 467`, `altId: "505700"`) with swap portrait `505700/000.webp` rendered via `DOMFactory.createSwapImg` and `DOMFactory.fillSwapName`.
+- **NP filter tags (`np`)**: Optional sorted tag list (`["quick"|"arts"|"buster"|"aoe"|"st"|"support"]`) extracted by `extract_servant_np_tags()` in `sync_atlas_data.py` (including transform partners via `find_transform_svt_id()`), validated against `VALID_NP_TAGS` in `scripts/validate_data.js`, and exposed on `ServantData` as `np`, `npSet`, and `getNpTagSet(id)`.
 
 ## `CE_DATA` (`craft_essences.js`)
 

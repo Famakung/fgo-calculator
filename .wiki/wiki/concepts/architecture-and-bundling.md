@@ -62,6 +62,14 @@ Instead, the shipped site retains the 1120px content rail and scales wide deskto
 - **Detached daemons**: Astro 7 runs `astro dev` and `astro preview` as detached background daemons (`stop|status|logs`); `npm run preview` binds port 3000, while `node tools/verify_render.js` targets `npx astro preview --port 4173`.
 - **Branch shipping**: `develop` is local-only; `main` deploys to GitHub Pages via GitHub Actions. Because `.claude/`, `.wiki/`, `AGENTS.md`, `GEMINI.md`, `tools/`, and `tests/` belong only on `develop`, changes ship to `main` via `tools/merge_code_only.sh` (or cherry-pick) rather than a plain `git merge develop`.
 
+## Key Config & Gate Files
+
+- `astro.config.mjs` — Rolldown `codeSplitting.groups` and `vite.worker.format: "es"`
+- `src/layouts/BaseLayout.astro` — inline `<style is:inline>`, Trusted Types, pre-paint `<head>` scripts, CSS `zoom`
+- `src/scripts/main.js` — `DOMContentLoaded` default-tab boot and dynamic `import()` tab loaders
+- `scripts/check_build_output.js` & `scripts/build_baseline.json` — `npm run check:build` bundle/HTML assertions
+- `tools/verify_render.js` — local Chromium render gate; `tools/merge_code_only.sh` & `tests/merge-code-only.test.js` — `main` shipping gate
+
 ## See Also
 
 - [[security-and-dom-safety|Security and DOM Safety]] ([Security and DOM Safety](../concepts/security-and-dom-safety.md)) — Trusted Types policy and head inline script invariants

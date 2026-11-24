@@ -4,16 +4,13 @@ Guidance for Claude Code and AI coding assistants working in `/home/famakung/dev
 
 ## Knowledge Base Navigation (Read Before Editing)
 
-Navigate `.wiki/` via **3-hop navigation** instead of loading large raw docs:
+Read only the matched [.wiki/wiki/](../.wiki/wiki/_index.md) article directly before editing (open [.wiki/_index.md](../.wiki/_index.md) only if unsure):
 
-1. Start at [.wiki/_index.md](../.wiki/_index.md).
-2. Open the relevant category index: `.wiki/wiki/concepts/_index.md`, `.wiki/wiki/topics/_index.md`, or `.wiki/wiki/references/_index.md`.
-3. Read only the matched articles:
-   - **Concepts**: `architecture-and-bundling.md`, `security-and-dom-safety.md`, `zero-commit-data-pipeline.md`
-   - **References**: `code-style-and-conventions.md`, `data-schemas-and-traits.md`, `atlas-academy-fetch-reference.md`
-   - **Topics**: `bond-gain-ce-and-filters.md`, `bond-calculator.md`, `servant-info-system.md`, `event-shop-calculator.md`, `project-history-and-decisions.md`
+- **Concepts**: `architecture-and-bundling.md`, `security-and-dom-safety.md`, `zero-commit-data-pipeline.md`
+- **References**: `code-style-and-conventions.md`, `data-schemas-and-traits.md`, `atlas-academy-fetch-reference.md`
+- **Topics**: `bond-gain-ce-and-filters.md`, `bond-calculator.md`, `servant-info-system.md`, `event-shop-calculator.md`, `project-history-and-decisions.md`
 
-See [.wiki/schema.md](../.wiki/schema.md) for wiki conventions; run `llm-wiki lint --local` after `.wiki/` edits.
+After shipping feature/fix changes, update the matching `.wiki/wiki/` article (1–3 bullets) and run `llm-wiki lint --local` (conventions in [.wiki/schema.md](../.wiki/schema.md)).
 
 ## Non-Negotiable Rules
 
