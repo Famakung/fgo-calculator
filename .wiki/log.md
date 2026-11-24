@@ -10,3 +10,4 @@
 ## [2026-11-24] update | Optimized AGENTS.md/GEMINI.md direct wiki routing, synced recent Servant Info & CI commits, added Atlas JSON field map and key symbol tables
 ## [2026-11-24] update | Added Key Files/Symbols/Tests tables to Bond Calculator, Bond Gain CE, Event Shop, Zero-Commit Pipeline, and Architecture articles; updated deploy.yml schedule removal and .claude/CLAUDE.md routing
 ## [2026-11-24] update | Finished Key Files tables in security-and-dom-safety and code-style-and-conventions; synced Nov 24 era into project-history-and-decisions
+## [2026-11-24] update | Added mandatory Finish Gate to AGENTS.md/.claude/CLAUDE.md and enforced .wiki/wiki/ sync check in tools/merge_code_only.sh (--no-wiki escape)

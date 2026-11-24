@@ -113,3 +113,13 @@ test("merge_code_only: excessive unquoted arguments (>2) exit 1 with quoting tip
   assert.strictEqual(resUnquotedWords.status, 1);
   assert.match(resUnquotedWords.stderr, /too many arguments \(got 4\) — quote commit message/);
 });
+
+test("merge_code_only: --no-wiki flag is accepted before branch/message validation", () => {
+  const resMissingMsg = runMergeScript(["--no-wiki"]);
+  assert.strictEqual(resMissingMsg.status, 1);
+  assert.match(resMissingMsg.stderr, /commit message required/);
+
+  const resBadBranch = runMergeScript(["--no-wiki", "nonexistent-branch-xyz", "feat(test): valid update"]);
+  assert.strictEqual(resBadBranch.status, 1);
+  assert.match(resBadBranch.stderr, /no local branch 'nonexistent-branch-xyz'/);
+});

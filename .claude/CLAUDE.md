@@ -10,8 +10,6 @@ Read only the matched [.wiki/wiki/](../.wiki/wiki/_index.md) article directly be
 - **References**: `code-style-and-conventions.md`, `data-schemas-and-traits.md`, `atlas-academy-fetch-reference.md`
 - **Topics**: `bond-gain-ce-and-filters.md`, `bond-calculator.md`, `servant-info-system.md`, `event-shop-calculator.md`, `project-history-and-decisions.md`
 
-After shipping feature/fix changes, update the matching `.wiki/wiki/` article (1–3 bullets) and run `llm-wiki lint --local` (conventions in [.wiki/schema.md](../.wiki/schema.md)).
-
 ## Non-Negotiable Rules
 
 - **Never `innerHTML` or `insertAdjacentHTML`**: use `createElement()` + `textContent` + `setAttribute()`, or `DocumentFragment` + `replaceChildren()`. An inline Trusted Types policy in `<head>` throws on unsanitized sinks.
@@ -35,6 +33,8 @@ npm run data:validate
 ```
 
 Requires Node `>= 22.23.4` (`.nvmrc`). Browser gate: `npx astro preview`, then `node tools/verify_render.js`.
+
+**Finish gate (before commit/final reply):** if `src/`, `scripts/`, or `.github/` changed, update the matching `.wiki/wiki/` article (1–3 bullets, schema in [.wiki/schema.md](../.wiki/schema.md)) and run `llm-wiki lint --local` (`tools/merge_code_only.sh` blocks unsynced code unless `--no-wiki` is passed).
 
 ## Branch & Merge Rule
 

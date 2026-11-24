@@ -11,8 +11,8 @@
 # .gitignore — its `.claude` and `tools/` lines are what hide the leftover files
 # on disk, so the work tree stays clean.
 #
-# Usage: tools/merge_code_only.sh <commit_message>              # default source: develop
-#        tools/merge_code_only.sh [source] <commit_message>
+# Usage: tools/merge_code_only.sh [--no-wiki] <commit_message>   # default source: develop
+#        tools/merge_code_only.sh [--no-wiki] [source] <commit_message>
 # Nothing is pushed — the script prints the push command when it is done.
 set -euo pipefail
 
@@ -20,6 +20,19 @@ TARGET="main"
 # develop-only paths; HIDDEN must stay a subset of '$TARGET's .gitignore entries.
 # scripts/ stays 100% public (CI and npm run build depend on it).
 HIDDEN_PATHS=(.claude .wiki AGENTS.md GEMINI.md tools tests)
+SKIP_WIKI=0
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --no-wiki)
+      SKIP_WIKI=1
+      shift
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -62,6 +75,16 @@ git rev-parse --verify --quiet "refs/heads/$SRC" >/dev/null || {
   echo "merge_code_only: working tree not clean — commit or stash first" >&2
   exit 1
 }
+
+if [ "$SKIP_WIKI" = 0 ]; then
+  last_wiki="$(git log -n 1 --format=%H "$TARGET..$SRC" -- .wiki/wiki/)"
+  check_base="${last_wiki:-$TARGET}"
+  stale_code="$(git diff --name-only "$check_base..$SRC" -- src/ scripts/ .github/)"
+  if [ -n "$stale_code" ]; then
+    echo "merge_code_only: code changed in src/, scripts/, or .github/ after last .wiki/wiki/ sync — update the matching .wiki/wiki/ article and run 'llm-wiki lint --local', or pass --no-wiki" >&2
+    exit 1
+  fi
+fi
 
 git checkout --quiet "$TARGET"
 
