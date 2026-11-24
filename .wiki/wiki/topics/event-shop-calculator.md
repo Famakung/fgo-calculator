@@ -5,6 +5,7 @@ sources:
   - raw/notes/2026-11-24-legacy-claude-md.md
   - raw/notes/2026-11-24-legacy-data-rules.md
   - raw/notes/2026-11-24-legacy-fetch-data-guideline.md
+  - raw/notes/plans/2026-11-11-event-shop-planner.md
   - raw/notes/plans/2026-11-12-event-shop-results-reorder.md
 created: 2026-11-24
 updated: 2026-11-24
@@ -62,4 +63,5 @@ Step 3 of `scripts/sync_atlas_data.py` (`--skip-event-shop`, `--event-id N`) pro
 - [CLAUDE.md Project Guide](../../raw/notes/2026-11-24-legacy-claude-md.md) — Event Shop modules, Bonus CE grid, and zero-CLS pre-render summary
 - [Data Schemas and Trait Rules](../../raw/notes/2026-11-24-legacy-data-rules.md) — `EVENT_SHOP_DATA` schema, Amendment J selection, and plan state
 - [Atlas Academy Data Fetch and Sync Guideline](../../raw/notes/2026-11-24-legacy-fetch-data-guideline.md) — `sync_event_shop()` endpoints, costume resolution, and icon rules
+- [Event Shop Planner — Frozen Implementation Plan](../../raw/notes/plans/2026-11-11-event-shop-planner.md) — frozen planner implementation plan, Atlas JP shop sync, `EVENT_SHOP_DATA` contract, UI parts, and QA gates
 - [Plan: Event Shop Results Card Reorder and Item Receive](../../raw/notes/plans/2026-11-12-event-shop-results-reorder.md) — frozen domain/UI contracts, acceptance criteria, and Amendments R1–R30

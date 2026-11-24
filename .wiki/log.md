@@ -5,3 +5,5 @@
 ## [2026-11-24] compile | 22 raw sources -> 11 articles (3 concepts, 5 topics, 3 references) + rebuilt all indexes
 ## [2026-11-24] lint | 0 critical, 21 warnings (unresolvable deleted .claude/docs raw source refs), 0 suggestions, 11 info
 ## [2026-11-24] lint | 0 critical, 0 warnings, 0 suggestions, 11 info (PASS after migrating 22 raw/notes source labels)
+## [2026-11-24] ingest | Losslessly ingested leftover .plans/event-shop-planner.plan.md into raw/notes/plans/2026-11-11-event-shop-planner.md and linked from event-shop-calculator.md
+## [2026-11-24] lint | 0 critical, 0 warnings, 0 suggestions, 11 info (PASS after ingesting event-shop-planner plan)

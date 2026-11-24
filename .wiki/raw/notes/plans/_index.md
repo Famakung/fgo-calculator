@@ -9,17 +9,19 @@ Last updated: 2026-11-24
 | File | Summary | Tags | Updated |
 |------|---------|------|---------|
 | [2026-11-11-atlas-cron-slots.md](2026-11-11-atlas-cron-slots.md) | Implementation plan to replace throttled 10-minute polling in .github/workflows/deploy.yml with four fixed UTC cron slots aligned to JP/NA maintenance windows. Preserves the /info hash gate while reducing redundant CI runs. | plan, github-actions, cron-schedule, atlas-academy, ci-optimization | 2026-11-24 |
+| [2026-11-11-event-shop-planner.md](2026-11-11-event-shop-planner.md) | Frozen implementation plan for the Event Shop Planner covering Atlas Academy JP shop sync, 3-layer architecture, generated EVENT_SHOP_DATA contract, UI components, and QA gates. | event-shop, planner, atlas-academy, plan | 2026-11-24 |
 | [2026-11-12-event-shop-results-reorder.md](2026-11-12-event-shop-results-reorder.md) | Implementation plan and owner directive record for reordering the Event Shop Best Farm Runs results card. Moves Quests to Play first, introduces per-quest Item Receive summaries, removes Required/Get currency displays, and aligns title typography and icon sizing. | plan, event-shop, ui-layout, domain-logic, results-card | 2026-11-24 |
 
 ## Categories
 
-- **atlas-academy**: 2026-11-11-atlas-cron-slots.md
+- **atlas-academy**: 2026-11-11-atlas-cron-slots.md, 2026-11-11-event-shop-planner.md
 - **ci-optimization**: 2026-11-11-atlas-cron-slots.md
 - **cron-schedule**: 2026-11-11-atlas-cron-slots.md
 - **domain-logic**: 2026-11-12-event-shop-results-reorder.md
-- **event-shop**: 2026-11-12-event-shop-results-reorder.md
+- **event-shop**: 2026-11-11-event-shop-planner.md, 2026-11-12-event-shop-results-reorder.md
 - **github-actions**: 2026-11-11-atlas-cron-slots.md
-- **plan**: 2026-11-11-atlas-cron-slots.md, 2026-11-12-event-shop-results-reorder.md
+- **plan**: 2026-11-11-atlas-cron-slots.md, 2026-11-11-event-shop-planner.md, 2026-11-12-event-shop-results-reorder.md
+- **planner**: 2026-11-11-event-shop-planner.md
 - **results-card**: 2026-11-12-event-shop-results-reorder.md
 - **ui-layout**: 2026-11-12-event-shop-results-reorder.md
 
@@ -27,3 +29,4 @@ Last updated: 2026-11-24
 
 - 2026-11-24: Ingested 2026-11-11-atlas-cron-slots.md from .claude/docs/plans/2026-11-11-atlas-cron-slots.plan.md
 - 2026-11-24: Ingested 2026-11-12-event-shop-results-reorder.md from .claude/docs/plans/2026-11-12-event-shop-results-reorder.plan.md
+- 2026-11-24: Ingested 2026-11-11-event-shop-planner.md from .plans/event-shop-planner.plan.md

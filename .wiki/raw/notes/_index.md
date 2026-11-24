@@ -16,7 +16,7 @@ Last updated: 2026-11-24
 | [2026-11-24-legacy-security.md](2026-11-24-legacy-security.md) | Defines mandatory DOM security controls and the inline head Trusted Types policy enforced at runtime. Prohibits innerHTML, outerHTML, and insertAdjacentHTML across all scripts to prevent XSS. | security, trusted-types, xss-prevention, dom-safety | 2026-11-24 |
 | [2026-11-24-legacy-servant-info-rules.md](2026-11-24-legacy-servant-info-rules.md) | Authoritative specification for the static Servant Info converter (scripts/servant_info_converter/) and lazy UI/modal rendering in servant-info-app.js. Covers enemy-side skill filtering, special Mash/ascension states, structured NP/skill formatting, lossless assets, and verification. | servant-info, python-converter, formatting-rules, enemy-filtering, asset-paths | 2026-11-24 |
 | [2026-11-24-legacy-structure.md](2026-11-24-legacy-structure.md) | Maps the FGO Calculator file layout, 3-layer separation (Domain, Application, Presentation), Vite/Rolldown manual chunk splitting, and lazy tab initialization flow. Covers BaseLayout.astro, index.astro, main.js, and each calculator controller. | architecture, module-structure, astro-7, vite-rolldown, lazy-loading | 2026-11-24 |
-| [plans/_index.md](plans/_index.md) | Subdirectory: 2 implementation plans from .claude/docs/plans/ | plan, raw-index | 2026-11-24 |
+| [plans/_index.md](plans/_index.md) | Subdirectory: 3 implementation plans from .claude/docs/plans/ and .plans/ | plan, raw-index | 2026-11-24 |
 | [archive/_index.md](archive/_index.md) | Subdirectory: 12 historical archive docs from .claude/docs/archive/ | archive, raw-index | 2026-11-24 |
 
 ## Categories
