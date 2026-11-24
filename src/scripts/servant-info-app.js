@@ -492,19 +492,12 @@ function diffInlineTokens(prevText, currText, entry, tierIdx) {
   let changedAnyInline = false;
 
   if (prevValues.length === currValues.length) {
-    let changedValIndices = [];
     for (let i = 0; i < currValues.length; i++) {
       if (prevValues[i].value !== currValues[i].value) {
-        changedValIndices.push(i);
+        if (!entry.valueTiers[i]) entry.valueTiers[i] = [];
+        entry.valueTiers[i].push(tierIdx);
+        changedAnyInline = true;
       }
-    }
-    if (changedValIndices.length > 1 && /^Deal\b.*\bdamage(?:\s+<[^>]+>)?\s+by\s+/i.test(currText)) {
-      changedValIndices = [changedValIndices[changedValIndices.length - 1]];
-    }
-    for (const i of changedValIndices) {
-      if (!entry.valueTiers[i]) entry.valueTiers[i] = [];
-      entry.valueTiers[i].push(tierIdx);
-      changedAnyInline = true;
     }
   } else if (
     currValues.length > 0 &&
@@ -586,11 +579,21 @@ function advancePastEffectNote(text, pos) {
   if (chanceMatch) {
     outPos += chanceMatch[0].length;
   }
+  const damageNoteMatch = text.slice(outPos).match(/^\s+damage\s+(?=<)/i);
+  if (damageNoteMatch) {
+    const angleStart = outPos + damageNoteMatch[0].length;
+    const closeIdx = findBalancedAngleEnd(text, angleStart);
+    if (closeIdx > angleStart && SCALING_NOTE_REGEX.test(text.slice(angleStart, closeIdx + 1))) {
+      return closeIdx + 1;
+    }
+  }
   let idx = outPos;
   while (idx < text.length && text[idx] === " ") idx += 1;
-  if (text[idx] === "<" && /^<effect\b/i.test(text.slice(idx))) {
+  if (text[idx] === "<") {
     const closeIdx = findBalancedAngleEnd(text, idx);
-    if (closeIdx > idx) return closeIdx + 1;
+    if (closeIdx > idx && SCALING_NOTE_REGEX.test(text.slice(idx, closeIdx + 1))) {
+      return closeIdx + 1;
+    }
   }
   return outPos;
 }

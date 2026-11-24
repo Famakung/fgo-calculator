@@ -204,7 +204,7 @@ test("NP marks appear after <effect...> notes, and #222 MHXX NP emits single mar
     ]),
     [
       "Increase ATK by 20-40% (1 turn) for yourself <effect increases with Overcharge>",
-      "Deal significant Special Attack [Saber-class Servant] by 200% damage by 1200-1800% <effect increases with Level> [\u25b21] to a single enemy",
+      "Deal significant Special Attack [Saber-class Servant] by 200% [\u25b21] damage by 1200-1800% <effect increases with Level> [\u25b21] to a single enemy",
     ],
   );
 
@@ -218,7 +218,7 @@ test("NP marks appear after <effect...> notes, and #222 MHXX NP emits single mar
       ],
     ]),
     [
-      "Deal significant Special Attack [Female] by 150-200% damage <Special Attack damage increases with Overcharge> by 800-1200% <effect increases with Level> [\u25b21] to a single enemy",
+      "Deal significant Special Attack [Female] by 150-200% damage <Special Attack damage increases with Overcharge> [\u25b21] by 800-1200% <effect increases with Level> [\u25b21] to a single enemy",
     ],
   );
 });
