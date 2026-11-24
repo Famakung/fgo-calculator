@@ -3090,17 +3090,15 @@ def _collect_event_snapshot(
 
 
 def _drops_digest(drops: Optional[list]) -> str:
-    """16-hex-char SHA-256 of canonical (objectId, num, dropExpected, runs) tuples with positive drops."""
-    canonical = sorted(
+    """16-hex-char SHA-256 of canonical (objectId, num) pairs with positive drops."""
+    canonical = sorted({
         (
             int(d.get("objectId") or 0),
             int(d.get("num") or 0),
-            round(float(d.get("dropExpected") or 0), 4),
-            int(d.get("runs") or 0),
         )
         for d in (drops or [])
         if isinstance(d, dict) and (d.get("dropExpected") or 0) > 0 and (d.get("num") or 0) > 0
-    )
+    })
     return hashlib.sha256(json.dumps(canonical, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
 
 

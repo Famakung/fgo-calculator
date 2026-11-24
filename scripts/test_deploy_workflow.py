@@ -197,8 +197,7 @@ def main():
     check_run = next(s for s in steps if s.get("name") == "Check Atlas data version")["run"]
     assert "--check-shop" in check_run, "Check Atlas data version must pass --check-shop"
     cat_run = next(s for s in steps if s.get("name") == "Check if generated data changed")["run"]
-    for data_file in ("servants.js", "craft_essences.js", "traits.js", "bond_growth.js", "event_shop.js"):
-        assert data_file in cat_run, f"{data_file} missing from the data-hash cat"
+    assert "check_data_version.py --data-hash" in cat_run, "data-hash step must invoke check_data_version.py --data-hash"
     n += 1
 
     # 7. self-test job runs all suites unconditionally

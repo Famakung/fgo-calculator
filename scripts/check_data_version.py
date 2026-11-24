@@ -71,19 +71,89 @@ def _write_version(path, jp, na):
         f.write(f"JP {jp}\nNA {na}\n")
 
 
+DEFAULT_DATA_DIR = os.path.join("src", "scripts", "data")
+DEFAULT_SERVANT_INFO_DIR = os.path.join("public", "servant_info")
+
+
 def _drops_digest(drops):
-    """16-hex-char SHA-256 of canonical (objectId, num, dropExpected, runs) tuples with positive drops."""
-    canonical = sorted(
+    """16-hex-char SHA-256 of canonical (objectId, num) pairs with positive drops."""
+    canonical = sorted({
         (
             int(d.get("objectId") or 0),
             int(d.get("num") or 0),
-            round(float(d.get("dropExpected") or 0), 4),
-            int(d.get("runs") or 0),
         )
         for d in (drops or [])
         if isinstance(d, dict) and (d.get("dropExpected") or 0) > 0 and (d.get("num") or 0) > 0
-    )
+    })
     return hashlib.sha256(json.dumps(canonical, separators=(",", ":")).encode("utf-8")).hexdigest()[:16]
+
+
+def _strip_volatile_quest_drops(quest):
+    if not isinstance(quest, dict):
+        return
+    quest.pop("sampleRuns", None)
+    drops = quest.get("drops")
+    if isinstance(drops, dict):
+        for drop in drops.values():
+            if isinstance(drop, dict):
+                drop.pop("dropExpected", None)
+
+
+def _normalize_event_shop_js(raw_bytes):
+    """Strip volatile sampleRuns and dropExpected from event_shop.js for deterministic hashing."""
+    try:
+        text = raw_bytes.decode("utf-8").strip()
+        prefix = "export const EVENT_SHOP_DATA ="
+        if not text.startswith(prefix) or not text.endswith(";"):
+            return raw_bytes
+        data = json.loads(text[len(prefix) : -1].strip())
+        if not isinstance(data, dict):
+            return raw_bytes
+        for event in data.get("events") or []:
+            if not isinstance(event, dict):
+                continue
+            farm = event.get("farm")
+            if not isinstance(farm, dict):
+                continue
+            for quest in farm.get("quests") or []:
+                _strip_volatile_quest_drops(quest)
+            for raid in farm.get("raids") or []:
+                if isinstance(raid, dict):
+                    for quest in raid.get("quests") or []:
+                        _strip_volatile_quest_drops(quest)
+        return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    except Exception:
+        return raw_bytes
+
+
+def compute_data_hash(data_dir=DEFAULT_DATA_DIR, servant_info_dir=DEFAULT_SERVANT_INFO_DIR):
+    """Return (64-char combined SHA-256 hex, dict of 12-char component prefixes)."""
+    combined = hashlib.sha256()
+    parts = {}
+    for filename in ("servants.js", "craft_essences.js", "traits.js", "bond_growth.js", "event_shop.js"):
+        path = os.path.join(data_dir, filename)
+        try:
+            with open(path, "rb") as f:
+                raw = f.read()
+        except OSError:
+            raw = b""
+        payload = _normalize_event_shop_js(raw) if filename == "event_shop.js" else raw
+        parts[filename] = hashlib.sha256(payload).hexdigest()[:12]
+        combined.update(filename.encode("utf-8") + b"\0" + payload + b"\0")
+
+    svt_hasher = hashlib.sha256()
+    if os.path.isdir(servant_info_dir):
+        for name in sorted(n for n in os.listdir(servant_info_dir) if n.endswith(".json")):
+            fpath = os.path.join(servant_info_dir, name)
+            if not os.path.isfile(fpath):
+                continue
+            with open(fpath, "rb") as f:
+                content = f.read()
+            entry = name.encode("utf-8") + b"\0" + content + b"\0"
+            svt_hasher.update(entry)
+            combined.update(entry)
+    parts["servant_info"] = svt_hasher.hexdigest()[:12]
+    return combined.hexdigest(), parts
 
 
 def _fetch_quest_drops(url, etag=None):
@@ -162,7 +232,17 @@ def main(argv=None):
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--check-shop", action="store_true")
     parser.add_argument("--shop-probe-file", default=DEFAULT_SHOP_PROBE_FILE)
+    parser.add_argument("--data-hash", action="store_true")
+    parser.add_argument("--data-dir", default=DEFAULT_DATA_DIR)
+    parser.add_argument("--servant-info-dir", default=DEFAULT_SERVANT_INFO_DIR)
     args = parser.parse_args(argv)
+
+    if args.data_hash:
+        combined_hex, parts = compute_data_hash(args.data_dir, args.servant_info_dir)
+        summary = " ".join(f"{k}={v}" for k, v in parts.items())
+        print(f"data-hash parts: {summary}", file=sys.stderr)
+        print(combined_hex)
+        return 0
 
     url = os.environ.get("ATLAS_INFO_URL", DEFAULT_URL)
     latest = fetch_latest(url)

@@ -170,14 +170,19 @@ jobs:
         run: |
           mkdir -p .ci-baselines
           HASH_FILE=".ci-baselines/data_hash.txt"
-          NEW_HASH=$({ cat src/scripts/data/servants.js src/scripts/data/craft_essences.js src/scripts/data/traits.js src/scripts/data/bond_growth.js src/scripts/data/event_shop.js; LC_ALL=C find public/servant_info -maxdepth 1 -name '*.json' -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum; } | sha256sum | cut -d' ' -f1)
+          # Covers servants.js, craft_essences.js, traits.js, bond_growth.js, event_shop.js (normalized) + public/servant_info/*.json
+          NEW_HASH=$(python3 scripts/check_data_version.py --data-hash)
+          OLD_HASH=""
+          if [ -f "$HASH_FILE" ]; then
+            OLD_HASH=$(cat "$HASH_FILE")
+          fi
           DIRTY=true
-          if [ -f "$HASH_FILE" ] && [ "$(cat "$HASH_FILE")" = "$NEW_HASH" ]; then
+          if [ -n "$OLD_HASH" ] && [ "$OLD_HASH" = "$NEW_HASH" ]; then
             DIRTY=false
-            echo "Generated data unchanged since last run."
+            echo "Generated data unchanged since last run (${NEW_HASH:0:12})."
           else
             echo "$NEW_HASH" > "$HASH_FILE"
-            echo "Generated data changed (or first run)."
+            echo "Generated data changed (or first run): ${OLD_HASH:0:12} -> ${NEW_HASH:0:12}."
           fi
           echo "DATA_DIRTY=$DIRTY" >> "$GITHUB_OUTPUT"
           # Deploy when ANY of:
@@ -217,7 +222,7 @@ jobs:
         run: npm run build
 
       # Chunk layout, <head> order and visible page text are asserted against
-      # scripts/build_baseline.json. The browser verifier (scripts/verify_render.js)
+      # scripts/build_baseline.json. The browser verifier (tools/verify_render.js)
       # is deliberately not here: it needs a Chromium download, and this workflow
       # runs on the data-poll schedule, so a flaky fetch would block deploys for a
       # reason unrelated to the site. It is a local pre-merge gate instead.
