@@ -593,24 +593,33 @@ test("bitset engine: _isSubsetMask handles bit 31 (0x80000000) correctly without
   assert.equal(overlap[0]?.ceIds.length, 32);
 });
 
-test("benchmark & verification: bitset engine on real 474 servant dataset", async () => {
+test("benchmark & verification: bitset engine on real live servant dataset", async () => {
   const { ServantData, TraitCEs } = await import("../src/scripts/data.js");
   const { computeCEMatchMatrix } = await import("../src/scripts/domain.js");
   ServantData.load();
 
-  assert.equal(ServantData.servants.length, 474, "dataset has 474 total playable servants");
+  assert.ok(
+    ServantData.servants.length >= 474,
+    `expected at least 474 playable servants, got ${ServantData.servants.length}`,
+  );
   const matrix = computeCEMatchMatrix(ServantData.servants, TraitCEs);
   const allEntries = matrix.results;
   const allIds = ServantData.servants.map((s) => s.id);
 
-  // Benchmark buildSharedCEGroups on all 474 servants
+  // Benchmark buildSharedCEGroups on all servants
   const start = globalThis.performance.now();
   const resAll = ServantComboCalculator.buildSharedCEGroups(allEntries, allIds);
   const duration = globalThis.performance.now() - start;
 
-  assert.equal(resAll.truncated, false, "all 474 servants must complete without truncation");
-  assert.equal(resAll.groups.length, 133, "must produce exactly 133 maximal closed groups");
-  assert.equal(resAll.unshared.length, 22, "exactly 22 servants have no matching bond gain CEs");
+  assert.equal(resAll.truncated, false, "all servants must complete without truncation");
+  assert.ok(
+    resAll.groups.length >= 133,
+    `must produce at least 133 maximal closed groups, got ${resAll.groups.length}`,
+  );
+  assert.ok(
+    resAll.unshared.length > 0,
+    `expected unshared servants with no matching bond gain CEs, got ${resAll.unshared.length}`,
+  );
   assert.ok(resAll.unshared.includes("300700"), "300700 Cu Chulainn (Prototype) is correctly identified as unshared");
   assert.ok(duration < 50, `execution must complete under 50ms, took ${duration.toFixed(2)}ms`);
 

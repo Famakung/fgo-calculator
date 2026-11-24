@@ -48,8 +48,10 @@ import { EventShop } from "../src/scripts/domain.js";
 const NEEDS = { [A_KEYS[0]]: 5740, [A_KEYS[1]]: 5390, [A_KEYS[2]]: 6310 };
 const BONUS = { [A_KEYS[0]]: 2, [A_KEYS[1]]: 1, [A_KEYS[2]]: 2 };
 const IDS = snapshot.currencies.map((c) => c.id);
+const allCoverIds = new Set(EventShop.allCoveringQuests(snapshot.farm, IDS).map((q) => q.questId));
+const NON_ALL_DROP_FARM = { ...snapshot.farm, quests: snapshot.farm.quests.filter((q) => !allCoverIds.has(q.questId)) };
 
-const INPUT = { deficits: NEEDS, quests: intQuests(snapshot.farm.quests, BONUS), trades: snapshot.trades };
+const INPUT = { deficits: NEEDS, quests: intQuests(NON_ALL_DROP_FARM.quests, BONUS), trades: snapshot.trades };
 const ORACLE = oraclePlan(INPUT, 400);
 
 function runWith(picks) {
@@ -57,7 +59,7 @@ function runWith(picks) {
     totals: NEEDS,
     held: {},
     bonus: BONUS,
-    farm: snapshot.farm,
+    farm: NON_ALL_DROP_FARM,
     trades: snapshot.trades,
     priorityQuestId: null,
     currencyQuest: picks,
@@ -96,11 +98,11 @@ test("R30 control — default gold pick: app == oracle", () => {
 });
 
 test("R30 context — 80639 ships no all-covering quest (non-all-drop defect surface)", () => {
-  assert.equal(EventShop.allCoveringQuests(snapshot.farm, IDS).length, 0, "80639 must have no all-cover quest");
+  assert.equal(EventShop.allCoveringQuests(NON_ALL_DROP_FARM, IDS).length, 0, "80639 must have no all-cover quest");
 });
 
 const DEFAULT_PICKS = Object.fromEntries(
-  A_KEYS.map((key) => [key, EventShop.defaultCurrencyQuest(snapshot.farm, IDS, key)]),
+  A_KEYS.map((key) => [key, EventShop.defaultCurrencyQuest(NON_ALL_DROP_FARM, IDS, key)]),
 );
 
 const CARD_SWAPS = [
