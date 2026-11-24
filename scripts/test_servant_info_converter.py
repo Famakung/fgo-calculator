@@ -30,6 +30,7 @@ from servant_info_converter.effect_map import TRAIT_ID_LABELS  # noqa: E402
 from servant_info_converter.function_formatter import fmt_function  # noqa: E402
 from servant_info_converter.np_formatter import (  # noqa: E402
     _extract_single_np_data,
+    fmt_np_function,
     format_np_structured,
 )
 from servant_info_converter.skill_formatter import (  # noqa: E402
@@ -2709,6 +2710,74 @@ class ServantInfoConverterTests(unittest.TestCase):
             fmt_function(ciel_s2_fn, ctx=ctx),
             'Apply a state that "Decrease Charge for one enemy" when Arts attacking after damage (3 turns) for yourself',
         )
+
+    def test_sub_state_remove_buffs_pluralization(self):
+        remove_all_buffs_fn = {
+            "funcId": 1001,
+            "funcType": "subState",
+            "funcTargetType": "enemy",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "traitVals": [{"id": 3004, "name": "buffPositiveEffect"}],
+            "buffs": [],
+            "svals": [{"Rate": 1000}],
+        }
+        self.assertEqual(fmt_function(remove_all_buffs_fn), "Remove Buffs for one enemy")
+        self.assertEqual(fmt_np_function(remove_all_buffs_fn), "Remove Buffs for one enemy")
+
+        remove_one_buff_fn = {
+            **remove_all_buffs_fn,
+            "svals": [{"Rate": 1000, "Value2": 1}],
+        }
+        self.assertEqual(fmt_function(remove_one_buff_fn), "Remove 1 Buff for one enemy")
+        self.assertEqual(fmt_np_function(remove_one_buff_fn), "Remove 1 Buff for one enemy")
+
+        remove_atk_buffs_np_fn = {
+            "funcId": 1002,
+            "funcType": "subState",
+            "funcTargetType": "enemyAll",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "traitVals": [{"id": 3006, "name": "buffAtkUp"}],
+            "buffs": [],
+            "svals": [{"Rate": 1000}],
+        }
+        self.assertEqual(fmt_np_function(remove_atk_buffs_np_fn), "Remove ATK Buffs for all enemies")
+
+        remove_all_debuffs_fn = {
+            "funcId": 1003,
+            "funcType": "subState",
+            "funcTargetType": "ptAll",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "traitVals": [{"id": 3005, "name": "buffNegativeEffect"}],
+            "buffs": [],
+            "svals": [{"Rate": 1000}],
+        }
+        self.assertEqual(fmt_function(remove_all_debuffs_fn), "Remove Debuffs for all allies")
+        self.assertEqual(fmt_np_function(remove_all_debuffs_fn), "Remove Debuffs for all allies")
+
+        remove_mental_debuffs_fn = {
+            **remove_all_debuffs_fn,
+            "traitVals": [{"id": 3010, "name": "buffMentalEffect"}],
+        }
+        self.assertEqual(fmt_function(remove_mental_debuffs_fn), "Remove Mental Debuffs for all allies")
+
+        remove_one_def_buff_fn = {
+            **remove_all_buffs_fn,
+            "traitVals": [{"id": 3007, "name": "buffDefUp"}],
+            "svals": [{"Rate": 1000, "Value2": 1}],
+        }
+        self.assertEqual(fmt_function(remove_one_def_buff_fn), "Remove 1 DEF Buff for one enemy")
+
+        remove_def_debuffs_fn = {
+            **remove_all_debuffs_fn,
+            "traitVals": [{"id": 3009, "name": "buffDefDown"}],
+        }
+        self.assertEqual(fmt_function(remove_def_debuffs_fn), "Remove DEF Debuffs for all allies")
 
 
 if __name__ == "__main__":

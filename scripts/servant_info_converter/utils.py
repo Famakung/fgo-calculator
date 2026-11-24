@@ -523,6 +523,16 @@ def fmt_val_range(v0, v9, divisor, is_pct):
     return f"{pv0}-{pv9}{suffix}"
 
 
+def fmt_sub_state_label(label: str, is_singular: bool) -> str:
+    if is_singular:
+        if label.endswith(("Buffs", "Debuffs")):
+            return label[:-1]
+        return label
+    if label in ("Buff", "Debuff", "Mental Debuff"):
+        return f"{label}s"
+    return label
+
+
 def fmt_condition(turn, count, turn_end=None):
     parts = []
     if count > 0:

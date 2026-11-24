@@ -720,7 +720,7 @@ TRAIT_ID_LABELS = {
     3006: "ATK Buffs",
     3007: "DEF Buffs",
     3008: "ATK Debuffs",
-    3009: "DEF debuffs",
+    3009: "DEF Debuffs",
     3010: "Mental Debuff",
     3011: "Poison",
     3012: "Charm",
