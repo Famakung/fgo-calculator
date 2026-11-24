@@ -638,8 +638,9 @@ class ServantInfoConverterTests(unittest.TestCase):
         fmt = data["formatted"]
         self.assertIn("profile", fmt)
         self.assertIn("slots", fmt)
-        self.assertIn("passives", fmt)
         self.assertIn("formConfig", fmt)
+        for dup_key in ("skills", "noblePhantasms", "passives", "appendSkills"):
+            self.assertNotIn(dup_key, fmt)
         self.assertIsInstance(fmt["profile"]["forms"], list)
         self.assertGreater(len(fmt["profile"]["forms"]), 0)
         for slot in fmt["slots"]:
@@ -686,8 +687,7 @@ class ServantInfoConverterTests(unittest.TestCase):
         self.assertIn("300-500%", np1["variantsByTier"][0]["effects"][0])
         self.assertIn("400-600%", np1["variantsByTier"][1]["effects"][0])
 
-        # Passives exist in both formatted.passives and formatted.slots
-        self.assertEqual(len(payload["formatted"]["passives"]), 1)
+        # Passives exist in formatted.slots (duplicate formatted.passives is stripped)
         self.assertIn("passive_1", slots_by_key)
 
     def test_transform_servant_uses_in_memory_svt_by_id(self):
@@ -709,7 +709,8 @@ class ServantInfoConverterTests(unittest.TestCase):
         self.assertTrue(fmt["formConfig"]["1"]["changeName"])
 
         # Passives split into 2 forms because they differ
-        passive_var = fmt["passives"][0]["variantsByTier"][0]
+        passive_slot = next(s for s in fmt["slots"] if s["slotKey"] == "passive_1")
+        passive_var = passive_slot["variantsByTier"][0]
         self.assertEqual(len(passive_var["forms"]), 2)
 
     def test_mash_costume_forms_and_offline_graceful_fallback(self):
@@ -741,6 +742,14 @@ class ServantInfoConverterTests(unittest.TestCase):
         self._assert_clean_schema(payload)
         sk2 = next(s for s in payload["formatted"]["slots"] if s["slotKey"] == "skill_2")
         self.assertTrue(len(sk2["variantsByTier"][0]["effects"]) >= 1)
+
+    def test_payload_strips_duplicate_formatted_arrays(self):
+        svt = _make_standard_servant()
+        payload = build_servant_info_payload(svt, svt_by_id={100100: svt}, skill_by_id={})
+        fmt = payload["formatted"]
+        self.assertEqual(set(fmt.keys()), {"profile", "slots", "formConfig"})
+        for dup_key in ("skills", "noblePhantasms", "passives", "appendSkills"):
+            self.assertNotIn(dup_key, fmt)
 
     def test_export_all_writes_only_playable_servants_and_sync_integration(self):
         std = _make_standard_servant()
@@ -1090,7 +1099,7 @@ class ServantInfoConverterTests(unittest.TestCase):
     def test_single_skill_clean_title_includes_name(self):
         svt = _make_standard_servant()
         payload = build_servant_info_payload(svt)
-        skills = payload["formatted"]["skills"]
+        skills = [s for s in payload["formatted"]["slots"] if s["type"] == "skill"]
         self.assertEqual(skills[0]["variantsByTier"][0]["cleanTitle"], "Skill 1 (Charisma B)")
         self.assertEqual(skills[0]["variantsByTier"][1]["cleanTitle"], "Skill 1 (Charisma of Dragon A)")
         self.assertEqual(skills[1]["variantsByTier"][0]["cleanTitle"], "Skill 2 (Mana Burst A)")
@@ -1203,7 +1212,7 @@ class ServantInfoConverterTests(unittest.TestCase):
 
         payload = build_servant_info_payload(std, svt_by_id={100100: std}, skill_by_id={})
         self._assert_clean_schema(payload)
-        skills = {s["slotKey"]: s for s in payload["formatted"]["skills"]}
+        skills = {s["slotKey"]: s for s in payload["formatted"]["slots"] if s["type"] == "skill"}
         self.assertEqual(skills["skill_1"]["variantsByTier"][0]["icon"], "skill_icons/skill_00300.webp")
         self.assertEqual(skills["skill_1"]["variantsByTier"][1]["icon"], "skill_icons/skill_00301.webp")
         self.assertEqual(skills["skill_2"]["variantsByTier"][0]["icon"], "skill_icons/skill_00306.webp")
@@ -1215,7 +1224,7 @@ class ServantInfoConverterTests(unittest.TestCase):
         svt_by_id = build_svt_by_id([main_svt, trans_svt])
         t_payload = build_servant_info_payload(main_svt, svt_by_id=svt_by_id, skill_by_id={})
         self._assert_clean_schema(t_payload)
-        t_var = t_payload["formatted"]["skills"][0]["variantsByTier"][0]
+        t_var = next(s for s in t_payload["formatted"]["slots"] if s["type"] == "skill")["variantsByTier"][0]
         self.assertEqual(t_var["icon"], "skill_icons/skill_00400.webp")
         self.assertEqual(t_var["forms"][0]["icon"], "skill_icons/skill_00400.webp")
         self.assertEqual(t_var["forms"][1]["icon"], "skill_icons/skill_00601.webp")
@@ -1225,7 +1234,7 @@ class ServantInfoConverterTests(unittest.TestCase):
         mash["skills"][1]["icon"] = "https://static.atlasacademy.io/JP/SkillIcons/skill_00404.png"
         m_payload = build_servant_info_payload(mash, svt_by_id={800100: mash}, skill_by_id={})
         self._assert_clean_schema(m_payload)
-        m_skills = {s["slotKey"]: s for s in m_payload["formatted"]["skills"]}
+        m_skills = {s["slotKey"]: s for s in m_payload["formatted"]["slots"] if s["type"] == "skill"}
         self.assertEqual(m_skills["skill_1"]["variantsByTier"][0]["icon"], "skill_icons/skill_00402.webp")
         self.assertEqual(m_skills["skill_1"]["variantsByTier"][0]["forms"][0]["icon"], "skill_icons/skill_00402.webp")
         self.assertEqual(m_skills["skill_2"]["variantsByTier"][0]["icon"], "skill_icons/skill_00404.webp")
@@ -1844,13 +1853,12 @@ class ServantInfoConverterTests(unittest.TestCase):
         payload = build_servant_info_payload(svt, svt_by_id={svt["id"]: svt}, skill_by_id={})
         self._assert_clean_schema(payload)
         fmt = payload["formatted"]
-        self.assertIn("appendSkills", fmt)
-        self.assertEqual(len(fmt["appendSkills"]), 1)
-        ap_slot = fmt["appendSkills"][0]
-        self.assertEqual(ap_slot["slotKey"], "append_1")
-        self.assertEqual(ap_slot["type"], "append")
+        self.assertNotIn("appendSkills", fmt)
         self.assertEqual(fmt["slots"][-1]["slotKey"], "append_1")
         self.assertEqual(fmt["slots"][-2]["slotKey"], "passive_1")
+        ap_slot = fmt["slots"][-1]
+        self.assertEqual(ap_slot["slotKey"], "append_1")
+        self.assertEqual(ap_slot["type"], "append")
         effects = ap_slot["variantsByTier"][0]["effects"]
         self.assertEqual(effects[0], "Increase Extra Card effectiveness by 30-50% for yourself")
         self.assertEqual(effects[1], "Reduce used skill's cooldown by 1 after Skill Use (1-3 times, max 1 time per skill) for yourself")
