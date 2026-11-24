@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # Merge a source branch into main carrying code only.
 #
-# The agent-doc tree (.claude/, .wiki/, AGENTS.md, GEMINI.md), this script itself,
-# the browser gate (scripts/verify_render.js, which CI never runs), puppeteer test
-# scripts (scripts/test_*.js), and the unit tests (tests/, which CI never runs
-# either — deploy.yml's only test steps are `npm run check:build` and the Python
-# self-checks under scripts/) are tracked on develop alone: a plain `git merge develop`
-# would drag them onto the public branch. This script runs the merge and drops
-# those paths from the merge result before the commit, and keeps main's own .gitignore —
-# its blanket `.claude` line and its `scripts/merge_code_only.sh` line are
-# what hide the leftover files on disk, so the work tree stays clean.
+# The agent-doc tree (.claude/, .wiki/, AGENTS.md, GEMINI.md), tools/ (including
+# this script, query_effect.py, verify_render.js, and test_*.js QA scripts), and
+# the unit tests (tests/, which CI never runs either — deploy.yml's only test
+# steps are `npm run check:build` and the Python self-checks under scripts/) are
+# tracked on develop alone: a plain `git merge develop` would drag them onto the
+# public branch. scripts/ is 100% public. This script runs the merge and drops
+# those paths from the merge result before the commit, and keeps main's own
+# .gitignore — its `.claude` and `tools/` lines are what hide the leftover files
+# on disk, so the work tree stays clean.
 #
-# Usage: scripts/merge_code_only.sh <commit_message>              # default source: develop
-#        scripts/merge_code_only.sh [source] <commit_message>
+# Usage: tools/merge_code_only.sh <commit_message>              # default source: develop
+#        tools/merge_code_only.sh [source] <commit_message>
 # Nothing is pushed — the script prints the push command when it is done.
 set -euo pipefail
 
 TARGET="main"
 # develop-only paths; HIDDEN must stay a subset of '$TARGET's .gitignore entries.
-# scripts/fetch_bordered_ces.py stays public: sync_atlas_data.py imports it at build time.
-HIDDEN_PATHS=(.claude .wiki AGENTS.md GEMINI.md scripts/merge_code_only.sh scripts/verify_render.js 'scripts/test_*.js' tests)
+# scripts/ stays 100% public (CI and npm run build depend on it).
+HIDDEN_PATHS=(.claude .wiki AGENTS.md GEMINI.md tools tests)
 
 cd "$(git rev-parse --show-toplevel)"
 

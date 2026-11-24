@@ -217,7 +217,7 @@ jobs:
         run: npm run build
 
       # Chunk layout, <head> order and visible page text are asserted against
-      # scripts/build_baseline.json. The browser verifier (scripts/verify_render.js)
+      # scripts/build_baseline.json. The browser verifier (tools/verify_render.js)
       # is deliberately not here: it needs a Chromium download, and this workflow
       # runs on the data-poll schedule, so a flaky fetch would block deploys for a
       # reason unrelated to the site. It is a local pre-merge gate instead.

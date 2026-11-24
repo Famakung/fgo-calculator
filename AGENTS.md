@@ -38,7 +38,9 @@ npm run data:validate
 node --version       # must be >= 22.23.4 (.nvmrc); npm only WARNS on EBADENGINE
 ```
 
-Browser gate (local only, needs Chromium): `npx astro preview`, then `node scripts/verify_render.js`.
+Browser gate (local only, needs Chromium): `npx astro preview`, then `node tools/verify_render.js`.
+
+- **Skill/NP effect lookup (token-saving, offline)**: Never fetch Atlas Academy API or read `.cache/atlas/nice_servant_lore_lang_en.json` (100 MB) directly, and never run plain `rg` content mode on `public/servant_info/` (minified single-line JSON). Search displayed text via `python3 tools/query_effect.py --text "<query>"` (or `rg -l`); inspect raw Atlas effects locally via `python3 tools/query_effect.py` (`--svt`, `--name`, `--skill`, `--func`, `--buff`, `--kind`, `--fmt`).
 
 Unit tests (`npm run test`) run only in the `develop` clone: `tests/` is tracked there and not on `main`, and CI never runs it — `deploy.yml`'s only test steps are `npm run check:build` and the Python self-checks `scripts/test_*.py`, which stay public. A fresh `main` clone has no `tests/` directory.
 
@@ -59,7 +61,7 @@ Unit tests (`npm run test`) run only in the `develop` clone: `tests/` is tracked
 | `scripts/servant_info_converter/` | static Servant Info converter (`public/servant_info/*.json`) |
 | `.github/workflows/` | Pages deploy, manual/external-dispatch ETag-gated data sync |
 
-`develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never plain-merge `develop` into `main`** (`git pull origin develop` is the same merge) — these docs (`.claude/**`, `.wiki/**`, `AGENTS.md`, `GEMINI.md`), the browser gate `scripts/verify_render.js` and puppeteer QA test scripts `scripts/test_*.js` (CI never runs them), the unit tests `tests/` (CI never runs them either) and that script itself are deliberately `develop`-only and must not become public; every other file under `scripts/` stays public because CI or `npm run build` needs it; ship code to `main` with `scripts/merge_code_only.sh [source] "<commit_message>"` (or `scripts/merge_code_only.sh "<commit_message>"` defaulting source to `develop`) where `<commit_message>` is mandatory and must describe what was updated (e.g. `feat(scope): ...`, `fix(scope): ...`), forbidding generic "Merge branch 'develop'" (merges the code, drops those paths — itself included — from the merge commit, keeps `main`'s `.gitignore`, pushes nothing) or by cherry-picking the code commits.
+`develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never plain-merge `develop` into `main`** (`git pull origin develop` is the same merge) — these docs (`.claude/**`, `.wiki/**`, `AGENTS.md`, `GEMINI.md`), `tools/` (including `tools/query_effect.py`, `tools/merge_code_only.sh`, `tools/verify_render.js`, and `tools/test_*.js`), and the unit tests `tests/` (CI never runs them) are deliberately `develop`-only and must not become public; `scripts/` is now 100% public (CI or `npm run build` needs it); ship code to `main` with `tools/merge_code_only.sh [source] "<commit_message>"` (or `tools/merge_code_only.sh "<commit_message>"` defaulting source to `develop`) where `<commit_message>` is mandatory and must describe what was updated (e.g. `feat(scope): ...`, `fix(scope): ...`), forbidding generic "Merge branch 'develop'" (merges the code, drops those paths — `tools/` included — from the merge commit, keeps `main`'s `.gitignore`, pushes nothing) or by cherry-picking the code commits.
 
 ## Which folder to work in
 

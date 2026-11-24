@@ -35,6 +35,7 @@ Invoke via `npm run data:sync -- [flags]` (or directly with `python3 -u scripts/
 | `--clean-cache` | Wipe `.cache/atlas/` locally |
 | `python3 scripts/fetch_bordered_ces.py` | Dedicated batch downloader/converter for bordered CE icons (`sync_atlas_data.py` imports it inside `try`) |
 | `npm run data:validate` | Verify trait formatting/sorting, 16-step bond tables, `servant_info` schema, and local image existence |
+| `python3 tools/query_effect.py` | Offline SQLite-backed (`.cache/atlas/effects.db`) query for local raw Atlas effects (`--svt`, `--func`, `--buff`, `--skill`) and formatted text (`--text`) with zero HTTP calls |
 
 ## Atlas Academy API Endpoints
 

@@ -58,7 +58,7 @@ All visual CSS lives in the single `<style is:inline>` block in `src/layouts/Bas
 ## Astro Directives and Git Shipping Rules
 
 - **Astro conventions**: Use `import.meta.env.BASE_URL` for root-relative `<link>`/`manifest` paths; pass `IMAGE_VERSION` from `constants.js` into head preload scripts via `define:vars={{ v: IMAGE_VERSION }}` (never shadow `var v` locally); use `<script is:inline>` only for synchronous pre-paint tasks. Astro 7 runs `astro dev` and `astro preview` as detached daemons (`stop|status|logs`).
-- **Code-only merge to `main`**: `develop` is local-only. Never run plain `git merge develop` or `git pull origin develop` into `main`. Always ship via `scripts/merge_code_only.sh [source] "<commit_message>"` (which runs `git merge --no-ff --no-commit`, removes `.claude`, `AGENTS.md`, `GEMINI.md`, `scripts/merge_code_only.sh`, `scripts/verify_render.js`, and `tests` from the merge index, preserves `main`'s `.gitignore`, and commits with an explicit message) or by cherry-picking code commits. Keep `.gitignore` partial negations (`.claude/*` + `!.claude/CLAUDE.md` + `!.claude/docs/`) intact on `develop`.
+- **Code-only merge to `main`**: `develop` is local-only. Never run plain `git merge develop` or `git pull origin develop` into `main`. Always ship via `tools/merge_code_only.sh [source] "<commit_message>"` (which runs `git merge --no-ff --no-commit`, removes `.claude`, `.wiki`, `AGENTS.md`, `GEMINI.md`, `tools`, and `tests` from the merge index, preserves `main`'s `.gitignore`, and commits with an explicit message) or by cherry-picking code commits. Keep `.gitignore` partial negations (`.claude/*` + `!.claude/CLAUDE.md`) intact on `develop`.
 
 ## See Also
 

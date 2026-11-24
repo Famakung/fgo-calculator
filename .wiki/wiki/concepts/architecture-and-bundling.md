@@ -59,8 +59,8 @@ Instead, the shipped site retains the 1120px content rail and scales wide deskto
 ## Checkout, Environment, and Branch Shipping
 
 - **Filesystem constraint**: Building and running dev/preview servers must happen in the native btrfs clone at `/home/famakung/dev/fgo-calculator`. Under `/mnt/storage` (`ntfs3`), Vite's client-environment dependency optimizer fails during `astro build` on `[MISSING_EXPORT] "loadDevToolbarApps"` and emits duplicate `__vite__injectQuery` console errors in dev.
-- **Detached daemons**: Astro 7 runs `astro dev` and `astro preview` as detached background daemons (`stop|status|logs`); `npm run preview` binds port 3000, while `node scripts/verify_render.js` targets `npx astro preview --port 4173`.
-- **Branch shipping**: `develop` is local-only; `main` deploys to GitHub Pages via GitHub Actions. Because `.claude/`, `AGENTS.md`, `GEMINI.md`, `scripts/verify_render.js`, and `tests/` belong only on `develop`, changes ship to `main` via `scripts/merge_code_only.sh` (or cherry-pick) rather than a plain `git merge develop`.
+- **Detached daemons**: Astro 7 runs `astro dev` and `astro preview` as detached background daemons (`stop|status|logs`); `npm run preview` binds port 3000, while `node tools/verify_render.js` targets `npx astro preview --port 4173`.
+- **Branch shipping**: `develop` is local-only; `main` deploys to GitHub Pages via GitHub Actions. Because `.claude/`, `.wiki/`, `AGENTS.md`, `GEMINI.md`, `tools/`, and `tests/` belong only on `develop`, changes ship to `main` via `tools/merge_code_only.sh` (or cherry-pick) rather than a plain `git merge develop`.
 
 ## See Also
 

@@ -62,6 +62,7 @@ summary: "Specifies the Servant Info tab architecture, the Python static convert
   2. Offline re-export via `export_all_servant_info(servants, output_dir="public/servant_info", nice_skills=list(inner.values()))`.
   3. Full-catalog sanity scan across `public/servant_info/*.json`: assert 0 `"https://"` URLs, 0 `"[unknown"` tokens, 0 lowercase effect starts, and 0 `"Increase Charge"` / `"Decrease Charge for yourself"` leaks.
   4. UI/JS/CSS validation: `npm run lint`, `npm run test`, `npm run build`, `npm run check:build`, `npm run data:validate`.
+- **Offline Effect Lookup (`tools/query_effect.py`)**: Inspect raw Atlas skill/NP functions (`--svt`, `--name`, `--skill`, `--func`, `--buff`, `--kind`, `--fmt`) and formatted display text (`--text`) locally via `tools/query_effect.py`, which auto-caches `.cache/atlas/effects.db` (SQLite, ~9 MB, auto-rebuilt on source mtime change) with compact deduplicated `svals` (`--full-svals` for all 10 levels). Never fetch Atlas API or read `.cache/atlas/nice_servant_lore_lang_en.json` (100 MB) directly, and never run plain `rg` content mode on minified `public/servant_info/*.json` (use `--text` or `rg -l`).
 
 ## See Also
 

@@ -6,7 +6,7 @@ import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, "..");
-const SCRIPT_PATH = path.join(ROOT_DIR, "scripts", "merge_code_only.sh");
+const SCRIPT_PATH = path.join(ROOT_DIR, "tools", "merge_code_only.sh");
 
 function runMergeScript(args = []) {
   return spawnSync("bash", [SCRIPT_PATH, ...args], {
