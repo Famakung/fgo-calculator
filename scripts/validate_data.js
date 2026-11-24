@@ -183,8 +183,8 @@ if (servantKeys.length > 0 && !fs.existsSync(servantInfoDir)) {
         }
       }
       const fmt = info.formatted;
-      if (!fmt || !fmt.profile || !Array.isArray(fmt.profile.forms) || !Array.isArray(fmt.slots) || !Array.isArray(fmt.passives)) {
-        errors.push(`Servant ${id}: servant_info.formatted missing required profile/slots/passives arrays`);
+      if (!fmt || !fmt.profile || !Array.isArray(fmt.profile.forms) || !Array.isArray(fmt.slots)) {
+        errors.push(`Servant ${id}: servant_info.formatted missing required profile/slots arrays`);
       } else {
         for (const slot of fmt.slots) {
           if (!slot || slot.type !== "skill" || !slot.variantsByTier || typeof slot.variantsByTier !== "object") {

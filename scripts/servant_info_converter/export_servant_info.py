@@ -405,6 +405,10 @@ def build_servant_info_payload(
     ):
         formatted_data["formConfig"]["1"]["faces"] = partner_faces
 
+    # Strip top-level arrays duplicated in formatted["slots"]; exported JSON only needs profile, slots, formConfig.
+    for dup_key in ("skills", "noblePhantasms", "passives", "appendSkills"):
+        formatted_data.pop(dup_key, None)
+
     payload = {
         "id": svt_id,
         "collectionNo": cno,
