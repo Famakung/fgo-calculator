@@ -20,6 +20,8 @@ from .utils import (
     is_mash,
     fold_chained_functions,
     append_chained_roll_tag,
+    fmt_val_range,
+    fmt_sub_state_label,
 )
 from .context import FetchContext
 from .function_formatter import fmt_function
@@ -89,18 +91,21 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
             if res:
                 return f"{res} <effect increases with Overcharge>"
     if func_type == "subState" and fn.get("traitVals"):
+        v2_0 = sv0.get("Value2")
+        v2_5 = sv_np5.get("Value2")
+        count_prefix = (
+            f"{fmt_val_range(v2_0, v2_5, 1, False)} " if v2_0 and v2_0 > 0 else ""
+        )
+        is_singular = bool(v2_0 == 1 and (not v2_5 or v2_5 == 1))
         trait_labels = []
-        is_buff_trait = False
         for t in fn["traitVals"]:
             tid = t.get("id")
-            label = TRAIT_ID_LABELS.get(tid, fmt_trait_name(t))
-            if tid == 2911 or "buff" in t.get("name", "").lower():
-                is_buff_trait = True
+            label = fmt_sub_state_label(
+                TRAIT_ID_LABELS.get(tid, fmt_trait_name(t)),
+                is_singular,
+            )
             trait_labels.append(label)
-        if is_buff_trait:
-            lowered = ", ".join(l.replace("Buffs", "buffs") for l in trait_labels)
-            return f"Remove {lowered} {target}"
-        return f"Remove {', '.join(trait_labels)} {target}"
+        return f"Remove {count_prefix}{', '.join(trait_labels)} {target}"
     if func_type in DAMAGE_FUNC_TYPES:
         val_np1, val_np5 = sv0.get("Value", 0) // 10, sv_np5.get("Value", 0) // 10
         if val_np1 == 0 and val_np5 == 0:

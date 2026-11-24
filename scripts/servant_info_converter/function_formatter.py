@@ -28,6 +28,7 @@ from .utils import (
     fmt_val_range,
     fmt_condition,
     fmt_hp_cond,
+    fmt_sub_state_label,
     oc_last,
 )
 
@@ -387,9 +388,14 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
         if inner_func_type == "subState" and inner_fn.get("traitVals"):
             remove_count = inner_sv0.get("Value2", 1)
             trait = inner_fn["traitVals"][0]
-            label = TRAIT_ID_LABELS.get(trait["id"], fmt_trait_name(trait))
+            label = fmt_sub_state_label(
+                TRAIT_ID_LABELS.get(trait["id"], fmt_trait_name(trait)),
+                remove_count == 1,
+            )
             trait_label = (
-                label if label == "Debuff" or trait["id"] >= 3000 else f"[{label}]"
+                label
+                if label in ("Debuff", "Debuffs") or trait["id"] >= 3000
+                else f"[{label}]"
             )
             inner_parts.append(f"Remove {remove_count} {trait_label} {inner_target}")
             continue
@@ -1779,22 +1785,26 @@ def _handle_sub_state(core):
         return None
     traits = core.fn.get("traitVals", [])
     if traits:
-        labels = []
-        for t in traits:
-            if t.get("id", 0) >= 10000:
-                continue
-            label = TRAIT_ID_LABELS.get(t["id"], fmt_trait_name(t))
-            if label == "Debuff" or t.get("id", 0) >= 3000:
-                labels.append(label)
-            else:
-                labels.append(f"[{label}]")
-        if not labels:
-            return None
         v2_0 = core.sv0.get("Value2")
         v2_9 = core.sv9.get("Value2")
         count_prefix = (
             f"{fmt_val_range(v2_0, v2_9, 1, False)} " if v2_0 and v2_0 > 0 else ""
         )
+        is_singular = bool(v2_0 == 1 and (not v2_9 or v2_9 == 1))
+        labels = []
+        for t in traits:
+            if t.get("id", 0) >= 10000:
+                continue
+            label = fmt_sub_state_label(
+                TRAIT_ID_LABELS.get(t["id"], fmt_trait_name(t)),
+                is_singular,
+            )
+            if label in ("Debuff", "Debuffs") or t.get("id", 0) >= 3000:
+                labels.append(label)
+            else:
+                labels.append(f"[{label}]")
+        if not labels:
+            return None
         return f"Remove {count_prefix}{' '.join(labels)}{core.cond_str} {core.target}"
     return None
 
