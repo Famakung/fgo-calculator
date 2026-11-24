@@ -3,12 +3,58 @@ import assert from "node:assert/strict";
 
 const elements = new Map();
 
+function matchesSimple(el, part) {
+  if (!el || !el.classList) return false;
+  const attrs = [];
+  const attrRe = /\[([^\]]+)\]/g;
+  let m;
+  while ((m = attrRe.exec(part))) attrs.push(m[1]);
+  let rest = part.replace(/\[[^\]]+\]/g, "");
+
+  const tagMatch = rest.match(/^[a-zA-Z][a-zA-Z0-9-]*/);
+  if (tagMatch) {
+    if (el.tagName !== tagMatch[0].toUpperCase()) return false;
+    rest = rest.slice(tagMatch[0].length);
+  }
+  for (const cls of rest.split(".").filter(Boolean)) {
+    if (!el.classList.contains(cls)) return false;
+  }
+  for (const attr of attrs) {
+    const eqIdx = attr.indexOf("=");
+    if (eqIdx === -1) {
+      if (el.getAttribute(attr) == null) return false;
+      continue;
+    }
+    const name = attr.slice(0, eqIdx).trim();
+    let val = attr.slice(eqIdx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (el.getAttribute(name) !== val) return false;
+  }
+  return true;
+}
+
 function matchesSelector(el, selector) {
   if (!el || !el.classList) return false;
-  if (selector.startsWith(".")) {
-    return el.classList.contains(selector.slice(1));
+  const parts = String(selector).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return false;
+  if (parts.length === 1) return matchesSimple(el, parts[0]);
+  if (!matchesSimple(el, parts[parts.length - 1])) return false;
+  let ancestor = el.parentNode;
+  for (let i = parts.length - 2; i >= 0; i--) {
+    let found = false;
+    while (ancestor) {
+      if (matchesSimple(ancestor, parts[i])) {
+        found = true;
+        ancestor = ancestor.parentNode;
+        break;
+      }
+      ancestor = ancestor.parentNode;
+    }
+    if (!found) return false;
   }
-  return false;
+  return true;
 }
 
 function collectMatches(root, selector, out = []) {
@@ -33,6 +79,7 @@ function createMockElement(tag) {
     children: [],
     attributes: {},
     parentNode: null,
+    _listeners: listeners,
     classList: {
       _classes: new Set(),
       add(...cls) {
@@ -55,6 +102,10 @@ function createMockElement(tag) {
     },
     setAttribute(k, v) {
       this.attributes[k] = String(v);
+      if (k.startsWith("data-")) {
+        const camel = k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        this.dataset[camel] = String(v);
+      }
     },
     getAttribute(k) {
       return this.attributes[k];
@@ -89,8 +140,13 @@ function createMockElement(tag) {
       listeners.get(type).push(fn);
     },
     click() {
-      for (const fn of listeners.get("click") || []) {
-        fn({ target: this });
+      const evt = { target: this };
+      let cur = this;
+      while (cur) {
+        for (const fn of (cur._listeners && cur._listeners.get("click")) || []) {
+          fn(evt);
+        }
+        cur = cur.parentNode;
       }
     },
     closest(selector) {
@@ -328,4 +384,157 @@ test("_renderDetailModal updates NP and Skill titles from active Saint Graph sta
   assert.equal(npTitle.textContent, "Noble Phantasm (Konzen Ittai)");
   assert.equal(s1Title.textContent, "Skill 1 (Wabisa & Beauty EX)");
   assert.equal(s2Title.textContent, "Skill 2 (Eternal Black A)");
+});
+
+test("Spiritron Dress without ascensionStage syncs Profile and Skill back to 1st&2nd Ascension", async () => {
+  const { ServantInfoApp } = await import("../src/scripts/servant-info-app.js");
+
+  const bodyEl = getMockElement("servantInfoModalBody");
+  const titleEl = getMockElement("servantInfoModalTitle");
+  const baseServant = {
+    id: "4400100",
+    collectionNo: 444,
+    name: "U-Olga Marie",
+    image: "servants/4400100/000.webp",
+  };
+
+  const svt = {
+    id: 4400100,
+    collectionNo: 444,
+    name: "U-Olga Marie",
+    originalName: "U-オルガマリー",
+    className: "Beast",
+    rarity: 5,
+    saintGraphs: [
+      { key: "1", label: "1st Ascension", file: "4400100a@1.webp", kind: "ascension", form: 0, ascensionStage: "1" },
+      { key: "2", label: "2nd Ascension", file: "4400100a@2.webp", kind: "ascension", form: 0, ascensionStage: "2" },
+      {
+        key: "3",
+        label: "3rd Ascension",
+        file: "4400100a@3.webp",
+        kind: "ascension",
+        form: 0,
+        ascensionStage: "3",
+        name: "Olga Marie Animusphere",
+      },
+      {
+        key: "4",
+        label: "Final Ascension",
+        file: "4400100a@4.webp",
+        kind: "ascension",
+        form: 0,
+        ascensionStage: "4",
+        name: "Olga Marie Animusphere",
+      },
+      { key: "4000130", label: "Spiritron Dress", file: "4400100a@5.webp", kind: "costume", form: 0 },
+      {
+        key: "3120000",
+        label: "Spiritron Dress",
+        file: "4400100a@6.webp",
+        kind: "costume",
+        form: 0,
+        ascensionStage: "3",
+      },
+    ],
+    formatted: {
+      profile: {
+        forms: [
+          {
+            label: "Default",
+            className: "Beast",
+            alignment: "Lawful-Evil",
+            subAttr: "Star",
+            gender: "Female",
+            rarity: 5,
+            hpBase: 3000,
+            hpMax: 15000,
+            atkBase: 2000,
+            atkMax: 13000,
+            cardDeck: "QAABB",
+            hits: ["Q 3", "A 3", "B 3", "EX 5"],
+          },
+        ],
+        alignmentBlocks: ["[1st&2nd Ascension]", "Lawful-Evil", "[3rd Ascension]", "Lawful-Good"],
+        attributeBlocks: ["[1st&2nd Ascension]", "Star", "[3rd Ascension]", "Human"],
+      },
+      slots: [
+        {
+          slotKey: "skill_1",
+          type: "skill",
+          slotNum: 1,
+          tiers: [0],
+          maxTier: 0,
+          activeTier: 0,
+          variantsByTier: {
+            0: {
+              tier: 0,
+              type: "skill",
+              cleanTitle: "Skill 1 (Unparalleled)",
+              cooldown: "Cooldown 8-6 turns",
+              effects: ["Increase Buster Card effectiveness by 30%"],
+              forms: [
+                {
+                  label: "1st&2nd Ascension",
+                  name: "Unparalleled EX",
+                  effects: ["Increase Buster Card effectiveness by 30%"],
+                },
+                {
+                  label: "3rd Ascension",
+                  name: "Ultra Manifest EX",
+                  effects: ["Increase Buster Card effectiveness by 50%"],
+                },
+              ],
+            },
+          },
+        },
+      ],
+      passives: [],
+    },
+  };
+
+  ServantInfoApp._renderDetailModal(svt, baseServant, bodyEl, titleEl);
+
+  const state = ServantInfoApp._modalState;
+  const profileBtns = state.profileCard.querySelectorAll(".f-option-btn");
+  const skillCard = state.slotCards[0];
+  const skillTitle = skillCard._refs.titleText;
+  const activeLabel = (btns) => {
+    const active = btns.find((b) => b.classList.contains("active"));
+    return active ? active.textContent : null;
+  };
+
+  // Initial Stage 1: Profile and Skill both on "1st&2nd Ascension"
+  assert.equal(activeLabel(profileBtns), "1st&2nd Ascension");
+  assert.equal(skillTitle.textContent, "Skill 1 (Unparalleled EX)");
+
+  // Step to 3rd Ascension: both Profile and Skill select "3rd Ascension"
+  state.sgController.step(1);
+  state.sgController.step(1);
+  assert.equal(activeLabel(profileBtns), "3rd Ascension");
+  assert.equal(activeLabel(skillCard._refs.formBar.querySelectorAll(".f-option-btn")), "3rd Ascension");
+  assert.equal(skillTitle.textContent, "Skill 1 (Ultra Manifest EX)");
+
+  // Step to Final Ascension: stays on "3rd Ascension"
+  state.sgController.step(1);
+  assert.equal(state.sgController.getCurrentEntry().key, "4");
+  assert.equal(activeLabel(profileBtns), "3rd Ascension");
+  assert.equal(skillTitle.textContent, "Skill 1 (Ultra Manifest EX)");
+
+  // Step to the Spiritron Dress (no ascensionStage): both revert to "1st&2nd Ascension"
+  state.sgController.step(1);
+  assert.equal(state.sgController.getCurrentEntry().key, "4000130");
+  assert.equal(activeLabel(profileBtns), "1st&2nd Ascension");
+  assert.equal(activeLabel(skillCard._refs.formBar.querySelectorAll(".f-option-btn")), "1st&2nd Ascension");
+  assert.equal(skillTitle.textContent, "Skill 1 (Unparalleled EX)");
+
+  // Clicking the already-active Profile button does not jump the Saint Graph back
+  const activeProfileBtn = profileBtns.find((b) => b.classList.contains("active"));
+  activeProfileBtn.click();
+  assert.equal(state.sgController.getCurrentEntry().key, "4000130");
+
+  // Costume with an explicit ascensionStage still selects "3rd Ascension"
+  state.sgController.step(1);
+  assert.equal(state.sgController.getCurrentEntry().key, "3120000");
+  assert.equal(activeLabel(profileBtns), "3rd Ascension");
+  assert.equal(skillTitle.textContent, "Skill 1 (Ultra Manifest EX)");
 });
