@@ -51,6 +51,7 @@ if (traitKeys.length === 0) {
 
 // 2. Validate SERVANT_DATA
 console.log(`Validating SERVANT_DATA (${Object.keys(SERVANT_DATA).length} entries)...`);
+const VALID_NP_TAGS = new Set(["quick", "arts", "buster", "aoe", "st", "support"]);
 for (const [id, svt] of Object.entries(SERVANT_DATA)) {
   const ctx = `Servant ${id}`;
   if (!svt || typeof svt !== "object") {
@@ -88,6 +89,14 @@ for (const [id, svt] of Object.entries(SERVANT_DATA)) {
     }
   } else {
     errors.push(`${ctx}: Missing or invalid traits field`);
+  }
+
+  // Validate NP filter tags (optional until data:sync regenerates the entry)
+  if (
+    svt.np !== undefined &&
+    (!Array.isArray(svt.np) || svt.np.length === 0 || !svt.np.every((t) => VALID_NP_TAGS.has(t)))
+  ) {
+    errors.push(`${ctx}: Invalid np tags field`);
   }
 
   // Validate default face image

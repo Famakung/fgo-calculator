@@ -1,7 +1,7 @@
-import { CLASS_FILTERS, DEBOUNCE_MS, IMAGE_VERSION } from "./constants.js";
+import { CLASS_FILTERS, DEBOUNCE_MS, IMAGE_VERSION, NP_TYPE_FILTERS, NP_EFFECT_FILTERS } from "./constants.js";
 import { ServantData } from "./data.js";
 import { ServantFilters, ServantSort } from "./domain.js";
-import { FilterModalController } from "./filter-sections.js";
+import { FilterSections, FilterModalController } from "./filter-sections.js";
 import { DOMFactory, debounce } from "./presentation.js";
 
 /* ============================================
@@ -863,6 +863,8 @@ export const ServantInfoApp = {
     subAliFilters: [],
     subAttrFilters: [],
     genderFilters: [],
+    npTypeFilters: [],
+    npEffectFilters: [],
     sortBy: "id",
     sortOrder: "asc",
     currentPage: 1,
@@ -1023,7 +1025,7 @@ export const ServantInfoApp = {
   _openFilterModal() {
     const modal = document.getElementById("servantInfoFilterModal");
     if (!modal) return;
-    this._draftFilters = FilterModalController.clone(this.state);
+    this._draftFilters = FilterModalController.clone(this.state, ["npTypeFilters", "npEffectFilters"]);
     this._renderFilterRows(this._draftFilters);
     modal.classList.add("open");
   },
@@ -1036,7 +1038,7 @@ export const ServantInfoApp = {
 
   _defaultFilterModal() {
     if (!this._draftFilters) return;
-    this._draftFilters = FilterModalController.createInitial();
+    this._draftFilters = { ...FilterModalController.createInitial(), npTypeFilters: [], npEffectFilters: [] };
     this._renderFilterRows(this._draftFilters);
   },
 
@@ -1045,6 +1047,8 @@ export const ServantInfoApp = {
     this._draftFilters = FilterModalController.selectAll({}, (res) => {
       const scope = ServantFilters.rowScope(res.groupClassFilters);
       if (scope) res.classFilters = res.classFilters.filter((id) => scope.includes(id));
+      res.npTypeFilters = NP_TYPE_FILTERS.map((c) => c.id);
+      res.npEffectFilters = NP_EFFECT_FILTERS.map((c) => c.id);
     });
     this._renderFilterRows(this._draftFilters);
   },
@@ -1075,10 +1079,26 @@ export const ServantInfoApp = {
       }
     };
     FilterModalController.renderStandardRows("servantInfo", filterState, toggle);
+    FilterSections.renderRow(
+      document.getElementById("servantInfoNpTypeFilter"),
+      NP_TYPE_FILTERS,
+      filterState.npTypeFilters,
+      toggle("npTypeFilters"),
+      { word: true },
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantInfoNpEffectFilter"),
+      NP_EFFECT_FILTERS,
+      filterState.npEffectFilters,
+      toggle("npEffectFilters"),
+      { word: true },
+    );
   },
 
   _hasActiveFilters() {
-    return FilterModalController.STANDARD_KEYS.some((key) => this.state[key].length > 0);
+    return [...FilterModalController.STANDARD_KEYS, "npTypeFilters", "npEffectFilters"].some(
+      (key) => (this.state[key] || []).length > 0,
+    );
   },
 
   _updateFilterBtn() {
@@ -1102,7 +1122,8 @@ export const ServantInfoApp = {
             ServantData.getAllNames(servant.id).some((n) => n.toLowerCase().includes(query));
         if (!matchesQuery) return false;
       }
-      if (matcher && !matcher(ServantData.getAllTraitSet(servant.id))) return false;
+      if (matcher && !matcher(ServantData.getAllTraitSet(servant.id), ServantData.getNpTagSet(servant.id)))
+        return false;
       return true;
     });
   },

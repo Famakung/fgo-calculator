@@ -7,6 +7,8 @@ import {
   SUB_ATTR_FILTERS,
   ALIGNMENT_GBE_FILTERS,
   GENDER_FILTERS,
+  NP_TYPE_FILTERS,
+  NP_EFFECT_FILTERS,
 } from "../src/scripts/constants.js";
 
 const sabers = ["0001", "0100", "0200", "0300", "0303", "0404"];
@@ -232,4 +234,69 @@ test("every chip row's ids are trait ids, except Other", () => {
   const last = ALIGNMENT_GBE_FILTERS[ALIGNMENT_GBE_FILTERS.length - 1];
   assert.equal(last.other, true);
   assert.equal(last.id, null);
+});
+
+test("NP Type filters on the np tag list, not the traits", () => {
+  const arts = { npTypeFilters: ["arts"] };
+  assert.equal(ServantFilters.match(sabers, arts, new Set(["arts", "aoe"])), true);
+  assert.equal(ServantFilters.match(sabers, arts, new Set(["quick", "st"])), false);
+  assert.equal(ServantFilters.match(sabers, arts, ["arts", "aoe"]), true); // array collection works too
+  assert.equal(ServantFilters.match(sabers, arts, null), false); // no NP data cannot match
+  assert.equal(ServantFilters.match(sabers, arts), false);
+  // union inside the row; an empty row is no filter
+  assert.equal(ServantFilters.match(sabers, { npTypeFilters: ["arts", "quick"] }, new Set(["quick", "st"])), true);
+  assert.equal(ServantFilters.match(sabers, { npTypeFilters: [] }, null), true);
+});
+
+test("NP Effect is its own row and ANDs with NP Type", () => {
+  assert.equal(ServantFilters.match(sabers, { npEffectFilters: ["aoe"] }, new Set(["arts", "aoe"])), true);
+  assert.equal(ServantFilters.match(sabers, { npEffectFilters: ["support"] }, new Set(["arts", "aoe"])), false);
+  assert.equal(
+    ServantFilters.match(sabers, { npTypeFilters: ["arts"], npEffectFilters: ["st"] }, new Set(["arts", "aoe"])),
+    false,
+  );
+  assert.equal(
+    ServantFilters.match(sabers, { npTypeFilters: ["arts"], npEffectFilters: ["aoe"] }, new Set(["arts", "aoe"])),
+    true,
+  );
+});
+
+test("NP rows are checked before the sub-alignment row's early true", () => {
+  const other = { subAliFilters: [ServantFilters.SUB_ALI_OTHER], npTypeFilters: ["buster"] };
+  assert.equal(ServantFilters.match(summerOnly, other, new Set(["arts", "aoe"])), false);
+  assert.equal(ServantFilters.match(summerOnly, other, new Set(["buster", "st"])), true);
+  const good = { subAliFilters: ["0303"], npEffectFilters: ["support"] };
+  assert.equal(ServantFilters.match(helena, good, new Set(["arts", "aoe"])), false);
+  assert.equal(ServantFilters.match(helena, good, new Set(["arts", "support"])), true);
+});
+
+test("NP rows AND with the trait rows", () => {
+  const filters = { classFilters: ["0100"], npTypeFilters: ["quick"] };
+  assert.equal(ServantFilters.match(sabers, filters, new Set(["quick", "st"])), true);
+  assert.equal(ServantFilters.match(helena, filters, new Set(["quick", "st"])), false); // Caster, not Saber
+  assert.equal(ServantFilters.match(sabers, filters, new Set(["arts", "aoe"])), false);
+});
+
+test("the NP rows offer the card types and scopes the data uses", () => {
+  assert.deepEqual(
+    NP_TYPE_FILTERS.map((c) => c.id),
+    ["quick", "arts", "buster"],
+  );
+  assert.deepEqual(
+    NP_EFFECT_FILTERS.map((c) => c.id),
+    ["aoe", "st", "support"],
+  );
+});
+
+test("ServantData exposes each servant's NP tags as a Set", async () => {
+  const { ServantData } = await import("../src/scripts/data.js");
+  ServantData.load();
+  const valid = new Set([...NP_TYPE_FILTERS, ...NP_EFFECT_FILTERS].map((c) => c.id));
+  for (const servant of ServantData.servants) {
+    const set = ServantData.getNpTagSet(servant.id);
+    assert.ok(set instanceof Set);
+    assert.deepEqual([...set], servant.np);
+    for (const t of set) assert.ok(valid.has(t), `unknown np tag ${t} on ${servant.id}`);
+  }
+  assert.deepEqual([...ServantData.getNpTagSet("nonexistent")], []);
 });

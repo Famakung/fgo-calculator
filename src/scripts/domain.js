@@ -809,7 +809,8 @@ export const ServantFilters = {
   },
 
   compile(filters = {}) {
-    const { rarityFilters, aliFilters, subAliFilters, subAttrFilters, genderFilters } = filters;
+    const { rarityFilters, aliFilters, subAliFilters, subAttrFilters, genderFilters, npTypeFilters, npEffectFilters } =
+      filters;
     const classIds = this.effectiveClassIds(filters);
 
     const hasClass = classIds && classIds.length > 0;
@@ -818,8 +819,10 @@ export const ServantFilters = {
     const hasSubAli = subAliFilters && subAliFilters.length > 0;
     const hasSubAttr = subAttrFilters && subAttrFilters.length > 0;
     const hasGender = genderFilters && genderFilters.length > 0;
+    const hasNpType = npTypeFilters && npTypeFilters.length > 0;
+    const hasNpEffect = npEffectFilters && npEffectFilters.length > 0;
 
-    if (!hasClass && !hasRarity && !hasAli && !hasSubAli && !hasSubAttr && !hasGender) {
+    if (!hasClass && !hasRarity && !hasAli && !hasSubAli && !hasSubAttr && !hasGender && !hasNpType && !hasNpEffect) {
       return () => true;
     }
 
@@ -830,31 +833,39 @@ export const ServantFilters = {
     const subAliSet = hasSubAli ? new Set(subAliFilters.filter((id) => id !== this.SUB_ALI_OTHER)) : null;
     const subAttrSet = hasSubAttr ? new Set(subAttrFilters) : null;
     const genderSet = hasGender ? new Set(genderFilters) : null;
+    const npTypeSet = hasNpType ? new Set(npTypeFilters) : null;
+    const npEffectSet = hasNpEffect ? new Set(npEffectFilters) : null;
     const gbeList = this.GBE;
 
-    return (traits) => {
-      if (!traits) return false;
-      const isSet = traits instanceof Set;
-      const hasAny = (set) => {
-        if (!set) return true;
-        if (isSet) {
-          for (const t of set) {
-            if (traits.has(t)) return true;
-          }
-          return false;
-        }
-        for (let i = 0; i < traits.length; i++) {
-          if (set.has(traits[i])) return true;
+    /* Intersection test against any collection (Set or Array); a missing collection never matches. */
+    const hasAnyIn = (col, set) => {
+      if (!col) return false;
+      if (col instanceof Set) {
+        for (const t of set) {
+          if (col.has(t)) return true;
         }
         return false;
-      };
+      }
+      for (let i = 0; i < col.length; i++) {
+        if (set.has(col[i])) return true;
+      }
+      return false;
+    };
+
+    return (traits, npTags) => {
+      if (!traits) return false;
+      const hasAny = (set) => !set || hasAnyIn(traits, set);
 
       if (classSet && !hasAny(classSet)) return false;
       if (raritySet && !hasAny(raritySet)) return false;
       if (aliSet && !hasAny(aliSet)) return false;
       if (subAttrSet && !hasAny(subAttrSet)) return false;
       if (genderSet && !hasAny(genderSet)) return false;
+      // NP rows must be checked before the sub-alignment row: a matching Other chip returns true early.
+      if (npTypeSet && !hasAnyIn(npTags, npTypeSet)) return false;
+      if (npEffectSet && !hasAnyIn(npTags, npEffectSet)) return false;
       if (hasSubAli) {
+        const isSet = traits instanceof Set;
         if (subAliOther) {
           const hasGBE = isSet ? gbeList.some((t) => traits.has(t)) : traits.some((t) => gbeList.includes(t));
           if (!hasGBE) return true;
@@ -866,8 +877,8 @@ export const ServantFilters = {
     };
   },
 
-  match(traits, filters = {}) {
-    return this.compile(filters)(traits);
+  match(traits, filters = {}, npTags = null) {
+    return this.compile(filters)(traits, npTags);
   },
 };
 
