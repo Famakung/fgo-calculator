@@ -1589,8 +1589,9 @@ export const ServantInfoApp = {
             if (entry.form !== undefined && entry.form !== modalState.activeFormIndex && activeFormHasSg) {
               this._syncAllCardsToForm(modalState, entry.form, false);
             }
-            if (entry.ascensionStage) {
-              this._setServantAscensionStage(modalState, entry.ascensionStage, false);
+            const targetStage = entry.ascensionStage || (entry.kind === "costume" ? "1" : null);
+            if (targetStage) {
+              this._setServantAscensionStage(modalState, targetStage, false);
             }
           } finally {
             modalState.isSyncingSg = false;
@@ -2207,7 +2208,7 @@ export const ServantInfoApp = {
     if (formBtnGroup) {
       formBtnGroup.addEventListener("click", (e) => {
         const btn = e.target.closest(".f-option-btn");
-        if (!btn) return;
+        if (!btn || btn.classList.contains("active")) return;
         const idx = parseInt(btn.dataset.formIdx, 10);
         if (isNaN(idx) || !formsToUse[idx]) return;
 
