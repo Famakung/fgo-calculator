@@ -21,7 +21,7 @@
  * Amendment R6 play cards wearing the
  * Drop Rates farm chrome, Amendment R5a one-row 320px Item Receive, Amendment R4a Bond-fruit
  * overlay at 1rem, on top of the R1 icon sizes (plan of record:
- * .claude/docs/plans/2026-11-12-event-shop-results-reorder.plan.md, Acceptance 1-8 + R1-R7 + R17-R28).
+ * .wiki/raw/notes/plans/2026-11-12-event-shop-results-reorder.md, Acceptance 1-8 + R1-R7 + R17-R28).
  * Tracked harness: staging, patched copies, servers and pins all live HERE.
  *
  * Checks (ids verbatim):

@@ -1,0 +1,76 @@
+---
+title: "Servant Info System"
+category: topic
+sources:
+  - raw/notes/2026-11-24-legacy-servant-info-rules.md
+  - raw/notes/2026-11-24-legacy-data-rules.md
+  - raw/notes/2026-11-24-legacy-claude-md.md
+created: 2026-11-24
+updated: 2026-11-24
+tags: [servant-info, python-converter, saint-graph, skill-icons, enemy-filtering]
+aliases: [Servant Info, Servant Info Converter, Saint Graph Viewer]
+confidence: high
+volatility: warm
+summary: "Specifies the Servant Info tab architecture, the Python static converter package (scripts/servant_info_converter/), the sanitized public/servant_info/<atlasId>.json schema, enemy-side and hidden-hook filtering, stage-aware names, multi-choice effect formatting, lossless WebP assets, and catalog verification."
+---
+
+# Servant Info System
+
+> **Servant Info** (`#tab-servantinfo`, leftmost tab) is a lazy-loaded Servant encyclopedia (`src/scripts/servant-info-lazy.js` + `src/scripts/servant-info-app.js`) backed by statically generated, sanitized JSON payloads (`public/servant_info/<atlasId>.json`) and lossless WebP Saint Graphs, faces, and skill icons produced by `scripts/servant_info_converter/`.
+
+## UI, Lazy Loading & Modal Sync
+
+- **Lazy Entry & Grid**: Switching to `#tab-servantinfo` dynamically imports `servant-info-lazy` (`ServantInfoApp.init`). First-row LCP preloads for `servantinfo` run from `BaseLayout.astro` `<head>`. The grid shares search/filter/sort conventions and renders via Trusted-Types-safe `DOMFactory.el()`, `document.createTextNode()`, `setAttribute()`, and `DocumentFragment` + `replaceChildren()`.
+- **Detail & Saint Graph Modal (`#servantInfoModal`)**: Locked to `calc(var(--screen-h) - 32px)`. `_openDetailModal()` fetches `servant_info/{id}.json` and runs `_preloadModalImages()` (including `_collectModalAssetUrls()` for Saint Graphs, hero faces, and 32×32px `.f-skill-icon` active skill icons) before painting, falling back to `_renderFallbackModal()` if fetch fails.
+- **Converter ↔ UI Parser Contracts**:
+  - `appendHighlightedEffect`: maps `[Demerit]` → `<span class="f-demerit-tag">Demerit</span>`, scaling notes matching `SCALING_NOTE_REGEX` → `<em class="f-overcharge-note">`, and balanced `<...>` annotations → `<span class="f-effect-note">` (recursively highlighting nested tags; unbalanced brackets break parsing).
+  - `parseSkillOptions`: extracts `[Nth Time]` usage-cycle headers (final button labeled `Nth Time -> 1st Time`), `[XX% Chance]` random-weight headers (`.f-effects-container` supports 2-layer choice selection), `Select N Options (...)`, and `OPTION_TRANSLATIONS`.
+  - `EMPTY_EFFECTS_FALLBACK`: `"No class passives."`, `"No append skills."`, `"No skill effects."`, `"No Noble Phantasm effects."`.
+- **Stage & Form Synchronization**: `_syncAllCardsToForm`, `_setServantAscensionStage`, `_applyStageSlotNames`, and `_applyStageIdentity` synchronize the Saint Graph stage, `.f-form-selector-bar` (for non-Mash multi-form Servants), hero face icon, skill/NP tier buttons, and stage-overwritten NP/skill names (`modalState.activeSgEntry`).
+
+## Python Converter Package & Static JSON Schema
+
+`scripts/servant_info_converter/` runs in-memory during `sync_atlas_data.py` (`export_servant_info.py`: `export_all_servant_info`, `build_servant_info_payload`):
+
+- **Module Roles**: `servant_formatter.py` (`build_formatted_servant`, `format_profile_structured`, `formConfig`, slot indices); `skill_formatter.py` (active skills, Mash special skills, passives, 5 append skill slots, `ActSet`/`ActSetWeight` grouping, tier/form dedup); `np_formatter.py` (NPs, Mash NPs, empty-placeholder drop, `_pick_preferred_np` dedup); `function_formatter.py` (`fmt_function`, `fmt_trigger_function`, `fmt_delay_fn`, `_resolve_core_context`); `effect_map.py` (lookup maps incl. `JP_BUFF_NAME_MAP`, `SPIRITRON_DRESS_NAME_MAP`); `utils.py` (`fmt_val_range`, `fmt_condition`, `oc_last`, `is_demerit`, `fold_chained_functions`, `append_chained_roll_tag`); `context.py` / `mapper.py` (`FetchContext`).
+- **Playable Filter & Payload Keys**: `is_playable_servant` excludes Mash enemy/NPC duplicates (`800151`/`800200`) and non-playable entries. Output contains `id`, `collectionNo`, `name`, `originalName`, `className`, `rarity`, `cost`, `hpBase`, `hpMax`, `atkBase`, `atkMax`, `formatted` (`{ profile, skills, noblePhantasms, passives, appendSkills, slots, formConfig }`), and `saintGraphs`.
+- **Strict Sanitization**: Zero `https://` URLs anywhere in output; `_sanitize_no_forbidden()` strips `_FORBIDDEN_KEYS = {"convertedText", "charaGraphs", "faceUrl", "borderedFaceUrl"}`.
+- **Inner Skill Cache**: Nested trigger/delay/rank-up skills absent from servant-embedded skill lists are fetched per ID from `/nice/JP/skill/{id}?lang=en` via `collect_missing_inner_skill_ids()` and persisted in `.cache/atlas/inner_skills.json`.
+
+## Stage-Aware Names, Forms & Transform Partners
+
+- **Ascension Limit Keys**: 0-indexed `_ASC_LIMIT_KEYS = {"1": ("0",), "2": ("1", "2"), "3": ("3",), "4": ("4",)}`.
+- **Enriched `saintGraphs[]`**: Ordered `1st Ascension`–`Final Ascension` plus costumes (`shortName` / `name` / `Costume <k>` and `SPIRITRON_DRESS_NAME_MAP`), carrying `form`, `ascensionStage` (from skill/NP `releaseConditions` or costume keywords), `name`/`originalName`, site-relative `face` (`<id>/000.webp`–`003.webp`, `<id>/c_<key>.webp`), and optional `npName` (`ascensionAdd.overWriteTDName`) and `skillNames` (`ascensionAdd.overwriteSkillName`, omitting no-ops equal to base names).
+- **Mash & Transform Partners**: `is_mash(svt_id)` + `_mash_form(cid)` route Mash's story/Ortinax/Paladin forms. `_NO_SAINT_GRAPH_FORM_IDS = {600710, 1002100, 2501500}` (Jekyll/Hyde, Flora, Aoko — partner CharaGraphs 404 on Atlas CDN) skip partner CharaGraphs and populate `formConfig["1"].faces` (`{"1": "<partnerId>/000.webp", ...}`) for modal hero face swapping.
+
+## Effect Formatting & Enemy-Side Filtering Rules
+
+- **Capitalization & Chaining**: Every top-level effect line and every inner clause inside `Apply a state that "..."` starts with a capital letter. `fmt_condition(turn, count, turn_end)` emits `(X-Y turns)` when `sv0["Turn"] != sv9["Turn"]`. `oc_last()` resolves Overcharge across `svals5`..`svals2`..`svals`. `fold_chained_functions` + `append_chained_roll_tag` collapse repeated consecutive identical rolls into `(xN)` while preserving passive stacking.
+- **Enemy-Side Filtering (Top-Level & Inner Skills)**: Both `_resolve_core_context` and `fmt_trigger_function` inspect `raw_inner_fn.get("funcTargetTeam")` **before** overwriting `inner_fn["funcTargetTeam"]` with the outer team:
+  - Always skip `displayBuffstring` (except top-level `CheckOverChargeStageRange`) and `hastenNpturn` (Charge Up is enemy-only).
+  - Skip `delayNpturn` targeting `self`/`ptOne`/`ptAll` (keep `enemy`/`enemyOne`/`enemyAll` Charge Drain, e.g., `#418` C.I.E.L S2).
+  - Skip `lossNp` targeting `enemy`/`enemyOne`/`enemyAll` (enemies lack NP gauges; keep player-side `lossNp` demerit).
+  - Skip all other `funcTargetTeam == "enemy"` functions except top-level solo enemy `downCriticalrate`, `downNpturnval`, or `commandTypeSelfTreasureDevice`.
+- **Hidden Engine Hooks**: `_is_internal_hide_miss()` suppresses `HideMiss == 1` + `ShowState == -1` internal buffs (`addIndividuality`, `skillRankUp`, `delayFunction`, `donotReplace`, negative-rate `avoidState`, zero-value `upDamage`, `attackAfterFunctionMainOnly` with `UnSubStateWhileLinkedToOthers == 1`). Top-level `subState` with `HideNoEffect == 1` is suppressed, while inner `subState` inside `fmt_trigger_function` is preserved (`#310` Barghest S2, `#96` Edmond Dantès S2).
+- **Special Sleep, Trigger, Delay & Choice Blocks**: `donotAct` buffs with traits `3066` (`buffSleep`) + `3076` (`cantBeSacrificed`) emit `<Rate>% Chance to Apply [<Name>] <nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change><cond> <target>` using `JP_BUFF_NAME_MAP` (e.g., `"湖水の夢": "Lake Water Dream"`), suppressing hidden `donotReplace` companions (`funcId=7485`). `fmt_trigger_function` formats named `selfturnendFunction` / `selfturnstartFunction` buffs; `fmt_delay_fn` follows `additionalSkillId`. Both skills and NPs group `ActSet` / `ActSetWeight` under `[XX% Chance]` (`[Set N]` fallback) after shared base effects, collapse duplicate-effect variants (preferring non-`???` names), and append `[Demerit]` via `is_demerit(fn)`.
+
+## Lossless Assets & Verification Checklist
+
+- **Lossless WebP (`lossless=True, quality=90, method=6`)**: `sync_saint_graphs()` (`public/saint_graphs/*.webp`, native `512×724`, modal `max-height: 512px`), `sync_servant_faces()` (`public/servants/<id>/`, `142×155` bordered-first), and `sync_skill_icons()` (`public/skill_icons/skill_XXXXX.webp`, rendered at `32×32px`) use `_nonempty_file()` to repair 0-byte/missing files. All are gitignored and cached in CI (`fgo-atlas-cache-*`, `fgo-static-images-v2-*`, `fgo-saint-graphs-v1-*`).
+- **Verification Gates**:
+  1. Run converter tests standalone: `python3 -m unittest scripts/test_servant_info_converter.py` (never `unittest discover -s scripts`, as sibling tests mock `PIL.Image`).
+  2. Offline re-export via `export_all_servant_info(servants, output_dir="public/servant_info", nice_skills=list(inner.values()))`.
+  3. Full-catalog sanity scan across `public/servant_info/*.json`: assert 0 `"https://"` URLs, 0 `"[unknown"` tokens, 0 lowercase effect starts, and 0 `"Increase Charge"` / `"Decrease Charge for yourself"` leaks.
+  4. UI/JS/CSS validation: `npm run lint`, `npm run test`, `npm run build`, `npm run check:build`, `npm run data:validate`.
+
+## See Also
+
+- [[zero-commit-data-pipeline|Zero-Commit Data Pipeline]] ([Zero-Commit Data Pipeline](../concepts/zero-commit-data-pipeline.md)) — CI caches, `ensure_data.js`, and lossless WebP sync steps
+- [[data-schemas-and-traits|Data Schemas and Traits]] ([Data Schemas and Traits](../references/data-schemas-and-traits.md)) — trait IDs, ascension diffs, and asset paths
+- [[security-and-dom-safety|Security and DOM Safety]] ([Security and DOM Safety](../concepts/security-and-dom-safety.md)) — Trusted Types compliance in `#servantInfoModal`
+
+## Sources
+
+- [Servant Info Converter and Rendering Rules](../../raw/notes/2026-11-24-legacy-servant-info-rules.md) — converter modules, sanitization, formatting contracts, UI parser, and checklist
+- [Data Schemas and Trait Rules](../../raw/notes/2026-11-24-legacy-data-rules.md) — `saintGraphs[]`, `_ASC_LIMIT_KEYS`, `_NO_SAINT_GRAPH_FORM_IDS`, and asset sync rules
+- [CLAUDE.md Project Guide](../../raw/notes/2026-11-24-legacy-claude-md.md) — CI cache isolation and zero-commit asset directories

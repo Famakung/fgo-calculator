@@ -1,9 +1,11 @@
-# Agent guidance is tracked: CLAUDE.md + docs/ are the handoff contract for any
-# AI assistant or fresh clone. Only local permission state stays ignored.
+# Agent guidance is tracked: CLAUDE.md + .wiki/ are the handoff contract for any
+# AI assistant or fresh clone. Only local permission and session state stay ignored.
 # `.claude/*` (not `.claude`) so the negations below can actually re-include.
 .claude/*
 !.claude/CLAUDE.md
-!.claude/docs/
+.wiki/.research-session.json
+.wiki/.thesis-session.json
+.wiki/.sessions/
 .plans
 design-docs
 node_modules/

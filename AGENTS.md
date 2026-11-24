@@ -1,24 +1,21 @@
 # FGO Calculator — rules for AI coding agents
 
-Read this first, then the docs listed under **Before you write code**. Every file path in this repo is relative to the project root; there is no `d:/` path here.
+Read this first, then navigate the project knowledge base via [.wiki/_index.md](.wiki/_index.md). Every file path in this repo is relative to the project root; there is no `d:/` path here.
 
 FGO Calculator: Astro static site (Astro 7 + Vite 8/Rolldown), deployed to GitHub Pages, vanilla JS ES modules, no framework, no TypeScript at runtime. Four tools (tab order left to right): Servant Info, Bond Gain CE (default), Bond Calculator, Event Shop Calculator. Live at https://famakung.github.io/fgo-calculator/, repo `Famakung/fgo-calculator`.
 
 ## Before you write code
 
-Mandatory — read the ones that cover your change (25 KB total):
+Use **3-hop navigation** in the `.wiki/` knowledge base instead of loading whole docs blindly:
 
-- [.claude/docs/code-style.md](.claude/docs/code-style.md) — coding conventions, DOM safety, naming, state management, performance patterns
-- [.claude/docs/structure.md](.claude/docs/structure.md) — 3-layer architecture, module responsibilities, Vite chunk splitting, script loading order
-- [.claude/docs/data-rules.md](.claude/docs/data-rules.md) — trait ID conventions, `SERVANT_DATA` / `CE_DATA` schemas, trait match modes, asset paths
-- [.claude/docs/servant-info-rules.md](.claude/docs/servant-info-rules.md) — Servant Info converter formatting rules, enemy-side filtering, special states, asset paths, and verification
-- [.claude/docs/security.md](.claude/docs/security.md) — Trusted Types policy, safe DOM sinks
+1. Start at [.wiki/_index.md](.wiki/_index.md) to orient across raw sources and compiled wiki categories.
+2. Open the relevant category index: `.wiki/wiki/concepts/_index.md`, `.wiki/wiki/topics/_index.md`, or `.wiki/wiki/references/_index.md`.
+3. Read only the matched articles for your task:
+   - **Concepts** (`.wiki/wiki/concepts/`): `architecture-and-bundling.md`, `security-and-dom-safety.md`, `zero-commit-data-pipeline.md`
+   - **References** (`.wiki/wiki/references/`): `code-style-and-conventions.md`, `data-schemas-and-traits.md`, `atlas-academy-fetch-reference.md`
+   - **Topics** (`.wiki/wiki/topics/`): `bond-gain-ce-and-filters.md`, `bond-calculator.md`, `servant-info-system.md`, `event-shop-calculator.md`, `project-history-and-decisions.md`
 
-On demand, do **not** load them by default (they are big):
-
-- [.claude/CLAUDE.md](.claude/CLAUDE.md) (41 KB) — full architecture, build/deploy pipeline, Known Issues. Read the section matching your task; it is the deepest source of truth.
-- [.claude/docs/progress.md](.claude/docs/progress.md) (172 KB) — implementation log, per-feature status, testing checklists. Read the tail and grep for your feature, not the whole file.
-- [.claude/docs/fetch-data-guideline.md](.claude/docs/fetch-data-guideline.md) (63 KB) — only for Atlas Academy data-sync work.
+For wiki conventions, entity types, and compile guidance, see [.wiki/schema.md](.wiki/schema.md). Run `llm-wiki lint --local` after any documentation edits inside `.wiki/`.
 
 ## The rules that break the site if ignored
 
@@ -62,10 +59,10 @@ Unit tests (`npm run test`) run only in the `develop` clone: `tests/` is tracked
 | `scripts/servant_info_converter/` | static Servant Info converter (`public/servant_info/*.json`) |
 | `.github/workflows/` | Pages deploy, manual/external-dispatch ETag-gated data sync |
 
-`develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never plain-merge `develop` into `main`** (`git pull origin develop` is the same merge) — these docs (`.claude/**`, `AGENTS.md`, `GEMINI.md`), the browser gate `scripts/verify_render.js` and puppeteer QA test scripts `scripts/test_*.js` (CI never runs them), the unit tests `tests/` (CI never runs them either) and that script itself are deliberately `develop`-only and must not become public; every other file under `scripts/` stays public because CI or `npm run build` needs it; ship code to `main` with `scripts/merge_code_only.sh [source] "<commit_message>"` (or `scripts/merge_code_only.sh "<commit_message>"` defaulting source to `develop`) where `<commit_message>` is mandatory and must describe what was updated (e.g. `feat(scope): ...`, `fix(scope): ...`), forbidding generic "Merge branch 'develop'" (merges the code, drops those paths — itself included — from the merge commit, keeps `main`'s `.gitignore`, pushes nothing) or by cherry-picking the code commits.
+`develop` is a local-only branch; `origin` carries `main`, and `main` is what GitHub Pages deploys. Commit to a `feat/*` branch or `develop`. **Never plain-merge `develop` into `main`** (`git pull origin develop` is the same merge) — these docs (`.claude/**`, `.wiki/**`, `AGENTS.md`, `GEMINI.md`), the browser gate `scripts/verify_render.js` and puppeteer QA test scripts `scripts/test_*.js` (CI never runs them), the unit tests `tests/` (CI never runs them either) and that script itself are deliberately `develop`-only and must not become public; every other file under `scripts/` stays public because CI or `npm run build` needs it; ship code to `main` with `scripts/merge_code_only.sh [source] "<commit_message>"` (or `scripts/merge_code_only.sh "<commit_message>"` defaulting source to `develop`) where `<commit_message>` is mandatory and must describe what was updated (e.g. `feat(scope): ...`, `fix(scope): ...`), forbidding generic "Merge branch 'develop'" (merges the code, drops those paths — itself included — from the merge commit, keeps `main`'s `.gitignore`, pushes nothing) or by cherry-picking the code commits.
 
 ## Which folder to work in
 
 **`/home/famakung/dev/fgo-calculator` is the main checkout.** Work, build, test and commit here — never anywhere under `/mnt/storage`.
 
-A stale second copy exists at `/mnt/storage/Dev/Projects/fgo-calculator`: separate git dir, behind on commits, old docs, and `astro build` fails on its ntfs3 mount. Treat it as read-never. An agent that runs a command without `cd` into this folder lands there and starts reporting bugs that do not exist in this code — recorded in [.claude/docs/progress.md](.claude/docs/progress.md).
+A stale second copy exists at `/mnt/storage/Dev/Projects/fgo-calculator`: separate git dir, behind on commits, old docs, and `astro build` fails on its ntfs3 mount. Treat it as read-never. An agent that runs a command without `cd` into this folder lands there and starts reporting bugs that do not exist in this code — recorded in [.wiki/wiki/topics/project-history-and-decisions.md](.wiki/wiki/topics/project-history-and-decisions.md).
