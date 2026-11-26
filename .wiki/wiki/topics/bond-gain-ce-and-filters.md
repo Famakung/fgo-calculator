@@ -71,6 +71,7 @@ Refactored from 3 legacy rows into **eight labelled, 2px-bordered sections** in 
 - **`CEFilterStore` (`ce-servant-select.js`)**: Sole Bond Gain CE module touching `localStorage` (`CEFILTER_STORAGE_KEY` = `"fgo_ce_filter_data"`). Uses read-modify-write merging (`read()`, `write(patch)`) for `{ servantPicks, cePicks, ceMode, subTab }`. Restored IDs run through `Validator.validatePicks` (`/^\d{3,}$/`) and `CEData.migrateId()` / `ServantData.getServant()`.
 - **Page-Scoped Ephemeral State**: Filter modal selections, `matchCustomCounts`, search query (clamped to `MAX_SEARCH = 40`), and `currentPage` reset on page reload.
 - **Unified Comparator**: `CEFilterApp._sortEntries` delegates to `ServantSort.sorted()` (`src/scripts/domain.js`) so the tab grid and `#servantModal` share identical ID/Rarity/Class ordering.
+- **SSR Skeletons & Progressive Paint**: `#cefilterResults` ships 30 `.servant-info-card-placeholder` skeletons (breakpoint-capped until `data-hydrated="1"`) and `CEFilterApp.renderResults()` / `ServantSelect._paintResults()` pump deferred images via shared `createProgressiveLoader(6)` (`presentation.js`), loading servant portraits before CE match badges.
 
 ## Key Files, Symbols & Tests
 

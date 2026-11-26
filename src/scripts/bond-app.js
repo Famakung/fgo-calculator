@@ -9,7 +9,7 @@ import {
 } from "./constants.js";
 import { Validator, TraitMatcher, SlotCEs, Teapot, Quest } from "./domain.js";
 import { ServantData, CEData, CEById, TraitNames } from "./data.js";
-import { DOMFactory } from "./presentation.js";
+import { DOMFactory, createProgressiveLoader } from "./presentation.js";
 
 /* One servant slot's shape. Every place a slot is created or cleared goes through here, so a new
    field is added once instead of in each of the eight copies this replaced. */
@@ -539,7 +539,7 @@ export const BondApp = {
   /* One position of the slot's essence list: a 64px portrait and nothing else \u2014 the name and the bonus
      live in the chip's title and in the results card. An id that no longer resolves still gets a chip
      (the id as its text) so the player can always remove it. */
-  _buildCEChip(slotData, slotIndex, position) {
+  _buildCEChip(slotData, slotIndex, position, ceQueue = null) {
     const ceEntry = slotData.ces[position];
     if (!ceEntry) return this._buildCEAddChip(slotIndex, position);
 
@@ -557,8 +557,11 @@ export const BondApp = {
     });
     chip.title = ce ? `${ceName} \u00b7 ${this._ceBonusText(ce, ceEntry, slotData.type === "support")}` : ceName;
     if (ceImage) {
-      const img = DOMFactory.createLazyImg(ceImage, "ce-chip-img", { alt: ceName });
+      const img = ceQueue
+        ? DOMFactory.createDeferredImg("ce-chip-img", { alt: ceName })
+        : DOMFactory.createLazyImg(ceImage, "ce-chip-img", { alt: ceName });
       DOMFactory.addSimpleFallback(img, "ce-chip-fallback", idText);
+      if (ceQueue) ceQueue.push({ img, src: ceImage });
       chip.appendChild(img);
     } else {
       const fb = DOMFactory.el("div", "ce-chip-fallback");
@@ -598,7 +601,7 @@ export const BondApp = {
      party never wears two essences, so it is not offered the choice. Building the row or leaving it out
      (never hiding it) is what the house does for fields a state cannot use, and a quest change already
      rebuilds the rack through applyParty(), so the tick appears and goes with it. */
-  _buildSlotCEs(slotData, slotIndex) {
+  _buildSlotCEs(slotData, slotIndex, ceQueue = null) {
     const block = DOMFactory.el("div", "slot-ce-block");
     const grandOn = this.state.questMain === "gd";
 
@@ -633,7 +636,7 @@ export const BondApp = {
     const strip = DOMFactory.el("div", "slot-ce-strip");
     const chips = document.createDocumentFragment();
     for (let position = 0; position < SlotCEs.capacity(slotData); position++) {
-      chips.appendChild(this._buildCEChip(slotData, slotIndex, position));
+      chips.appendChild(this._buildCEChip(slotData, slotIndex, position, ceQueue));
     }
     strip.replaceChildren(chips);
     block.appendChild(strip);
@@ -682,7 +685,11 @@ export const BondApp = {
     this.elements = {};
 
     const frag = document.createDocumentFragment();
-    const bondTabActive = document.documentElement.getAttribute("data-tab") === "bond";
+    const portraitQueue = [];
+    const ceQueue = [];
+    const bondTabActive =
+      document.documentElement.getAttribute("data-tab") === "bond" ||
+      document.getElementById("panel-bond")?.classList.contains("active");
     let firstPortraitCreated = false;
 
     for (let i = 0; i < SERVANT_MAX_SLOTS; i++) {
@@ -719,20 +726,21 @@ export const BondApp = {
           const imgAttrs = {
             alt: servant.name,
             draggable: "false",
-            ...(isFirstPortrait ? { loading: "eager", fetchpriority: "high" } : {}),
+            ...(isFirstPortrait ? { fetchpriority: "high" } : {}),
           };
-          const portraitEl =
-            servant.altImage && !servant.hasAscensions
-              ? DOMFactory.createSwapImg({
-                  src: imgSrc,
-                  altSrc: servant.altImage,
-                  className: "servant-slot-portrait",
-                  attrs: imgAttrs,
-                  fallbackId: servant.id,
-                })
-              : DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", imgAttrs);
-          if (!servant.altImage || servant.hasAscensions) {
+          let portraitEl;
+          if (servant.altImage && !servant.hasAscensions) {
+            const { wrap, imgA, imgB } = DOMFactory.createDeferredSwapImg({
+              className: "servant-slot-portrait",
+              attrs: imgAttrs,
+              fallbackId: servant.id,
+            });
+            portraitEl = wrap;
+            portraitQueue.push({ img: imgA, src: imgSrc, altImg: imgB, altSrc: servant.altImage });
+          } else {
+            portraitEl = DOMFactory.createDeferredImg("servant-slot-portrait", imgAttrs);
             DOMFactory.addAscensionFallback(portraitEl, servant.id);
+            portraitQueue.push({ img: portraitEl, src: imgSrc });
           }
           portraitArea.appendChild(portraitEl);
         } else {
@@ -990,7 +998,7 @@ export const BondApp = {
         }
 
         // The essences belong to this card, so they follow the point box — or take its place.
-        info.appendChild(this._buildSlotCEs(slotData, i));
+        info.appendChild(this._buildSlotCEs(slotData, i, ceQueue));
 
         // Remove button
         const removeSlotIndex = i;
@@ -1043,6 +1051,8 @@ export const BondApp = {
     }
 
     grid.replaceChildren(frag);
+    this._slotImageLoader ||= createProgressiveLoader(6);
+    this._slotImageLoader.start([...portraitQueue, ...ceQueue]);
   },
 
   setServant(slotIndex, servantId, ascension) {
@@ -1358,6 +1368,9 @@ export const BondApp = {
     // Show results
     const container = document.getElementById("bondResultContent");
 
+    const portraitQueue = [];
+    const badgeQueue = [];
+
     /* One servant's result card. A teapot plan the stock cannot finish is drawn twice: the boosted
        stretch first, then what the ordinary rate still owes once the teapots are gone. */
     const buildCard = (sr, afterTeapot = false) => {
@@ -1367,18 +1380,20 @@ export const BondApp = {
 
       // Portrait
       if (sr.image) {
-        const portraitEl = sr.altImage
-          ? DOMFactory.createSwapImg({
-              src: sr.image,
-              altSrc: sr.altImage,
-              className: "servant-slot-portrait",
-              attrs: { alt: sr.name },
-              fallbackId: sr.servantId,
-            })
-          : DOMFactory.createLazyImg(sr.image, "servant-slot-portrait", {
-              alt: sr.name,
-            });
-        if (!sr.altImage) DOMFactory.addAscensionFallback(portraitEl, sr.servantId);
+        let portraitEl;
+        if (sr.altImage) {
+          const { wrap, imgA, imgB } = DOMFactory.createDeferredSwapImg({
+            className: "servant-slot-portrait",
+            attrs: { alt: sr.name },
+            fallbackId: sr.servantId,
+          });
+          portraitEl = wrap;
+          portraitQueue.push({ img: imgA, src: sr.image, altImg: imgB, altSrc: sr.altImage });
+        } else {
+          portraitEl = DOMFactory.createDeferredImg("servant-slot-portrait", { alt: sr.name });
+          DOMFactory.addAscensionFallback(portraitEl, sr.servantId);
+          portraitQueue.push({ img: portraitEl, src: sr.image });
+        }
         card.appendChild(portraitEl);
       } else {
         const fb = DOMFactory.el("div", "servant-slot-portrait-fallback");
@@ -1400,17 +1415,23 @@ export const BondApp = {
             const wrap = DOMFactory.el("div", "bond-result-ce-maxbond-wrap");
             const title = `${ce.altName ? `${ce.name} / ${ce.altName}` : ce.name} +${ce.bonus}%`;
             const badgeAttrs = { alt: ce.name, title };
-            const servantImg = ce.altImage
-              ? DOMFactory.createSwapImg({
-                  src: ce.image,
-                  altSrc: ce.altImage,
-                  className: "bond-result-ce-img",
-                  attrs: badgeAttrs,
-                  fallbackId: ce.id,
-                })
-              : DOMFactory.createLazyImg(ce.image, "bond-result-ce-img", badgeAttrs);
-            if (!ce.altImage) {
+            let servantImg;
+            if (ce.altImage) {
+              const {
+                wrap: swapWrap,
+                imgA,
+                imgB,
+              } = DOMFactory.createDeferredSwapImg({
+                className: "bond-result-ce-img",
+                attrs: badgeAttrs,
+                fallbackId: ce.id,
+              });
+              servantImg = swapWrap;
+              badgeQueue.push({ img: imgA, src: ce.image, altImg: imgB, altSrc: ce.altImage });
+            } else {
+              servantImg = DOMFactory.createDeferredImg("bond-result-ce-img", badgeAttrs);
               DOMFactory.addSimpleFallback(servantImg, "bond-result-ce-fallback", `+${ce.bonus}%`);
+              badgeQueue.push({ img: servantImg, src: ce.image });
             }
             wrap.appendChild(servantImg);
             const icon = DOMFactory.el("img", "bond-result-ce-maxbond-icon", {
@@ -1424,18 +1445,20 @@ export const BondApp = {
             wrap.appendChild(icon);
             ceImgGrid.appendChild(wrap);
           } else if (ce.isFlatBonus) {
-            const ceImg = DOMFactory.createLazyImg(ce.thumbImage, "bond-result-ce-img", {
+            const ceImg = DOMFactory.createDeferredImg("bond-result-ce-img", {
               alt: ce.name,
               title: `${ce.name} +${ce.flatBonus} pts`,
             });
             DOMFactory.addSimpleFallback(ceImg, "bond-result-ce-fallback", `+${ce.flatBonus} pts`);
+            badgeQueue.push({ img: ceImg, src: ce.thumbImage });
             ceImgGrid.appendChild(ceImg);
           } else {
-            const ceImg = DOMFactory.createLazyImg(ce.thumbImage || ce.image, "bond-result-ce-img", {
+            const ceImg = DOMFactory.createDeferredImg("bond-result-ce-img", {
               alt: ce.name,
               title: `${ce.name} +${ce.bonus}%`,
             });
             DOMFactory.addSimpleFallback(ceImg, "bond-result-ce-fallback", `+${ce.bonus}%`);
+            badgeQueue.push({ img: ceImg, src: ce.thumbImage || ce.image });
             ceImgGrid.appendChild(ceImg);
           }
         });
@@ -1444,11 +1467,12 @@ export const BondApp = {
           const teapotTitle = sr.teapotOut
             ? `Stargazer's Teapot: ×2 bond for ${paid}, then the ordinary rate`
             : "Stargazer's Teapot: ×2 bond";
-          const teapotImg = DOMFactory.createLazyImg("icons/teapot.webp", "bond-result-ce-img", {
+          const teapotImg = DOMFactory.createDeferredImg("bond-result-ce-img", {
             alt: "Stargazer's Teapot",
             title: teapotTitle,
           });
           DOMFactory.addSimpleFallback(teapotImg, "bond-result-ce-fallback", "×2");
+          badgeQueue.push({ img: teapotImg, src: "icons/teapot.webp" });
           ceImgGrid.appendChild(teapotImg);
         }
         card.appendChild(ceImgGrid);
@@ -1559,6 +1583,8 @@ export const BondApp = {
     }
 
     container.replaceChildren(frag);
+    this._resultImageLoader ||= createProgressiveLoader(6);
+    this._resultImageLoader.start([...portraitQueue, ...badgeQueue]);
 
     const results = document.getElementById("bondResults");
     results.classList.add("visible");

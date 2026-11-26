@@ -1,6 +1,6 @@
 import { DEBOUNCE_MS, IMAGE_VERSION, TIERS } from "./constants.js";
 import { EventShop, Schema } from "./domain.js";
-import { DOMFactory, debounce } from "./presentation.js";
+import { DOMFactory, createProgressiveLoader, debounce } from "./presentation.js";
 import { EventPlanner } from "./event-planner.js";
 import { applySlidingName, refreshSlidingNames } from "./event-shop-farm-names.js";
 
@@ -10,15 +10,18 @@ const BONUS_CE_GRID_ID = "bonusCeGrid";
 const CE_EQUIP_WRAP_ID = "ceBonusEquipWrap";
 const CE_EQUIP_INPUT_ID = "ceBonusEquipInput";
 
-export function buildCeImg(ce, className, fallbackClass) {
+const bonusCeLoader = createProgressiveLoader(6);
+
+export function buildCeImg(ce, className, fallbackClass, queue = null) {
   const fallbackText = ce.rarity ? `\u2605${ce.rarity}` : String(ce.id);
   const label = ce.name || String(ce.id);
   if (!ce.icon) return buildCeFallback(fallbackClass, fallbackText, label);
-  const img = DOMFactory.createLazyImg(`${ce.icon}?v=${IMAGE_VERSION}`, className, {
-    alt: label,
-    title: label,
-  });
+  const src = `${ce.icon}?v=${IMAGE_VERSION}`;
+  const img = queue
+    ? DOMFactory.createDeferredImg(className, { alt: label, title: label })
+    : DOMFactory.createLazyImg(src, className, { alt: label, title: label });
   DOMFactory.addSimpleFallback(img, fallbackClass, fallbackText);
+  if (queue) queue.push({ img, src });
   return img;
 }
 
@@ -38,12 +41,14 @@ export function hydrateBonusCeGrid(snapshot, plan) {
   }
   const ordered = sortBonusCes(ces, snapshot);
   const fragment = document.createDocumentFragment();
+  const queue = [];
   for (const ce of ordered) {
     const owned = (plan.ceOwned || {})[String(ce.id)] || { limitBreak: 0, nonLimitBreak: 0 };
-    fragment.appendChild(buildBonusCeCard(ce, owned));
+    fragment.appendChild(buildBonusCeCard(ce, owned, queue));
   }
   grid.replaceChildren(fragment);
   refreshSlidingNames(grid);
+  bonusCeLoader.start(queue);
 }
 
 /* Align bonus CE cards with the currency column order above (bronze/3★, silver/4★, gold/5★),
@@ -76,12 +81,12 @@ function sortBonusCes(ces, snapshot) {
   });
 }
 
-function buildBonusCeCard(ce, owned) {
+function buildBonusCeCard(ce, owned, queue = null) {
   const card = DOMFactory.el("div", ["material-card", "bonus-ce-card"], {
     dataset: { ceId: String(ce.id) },
   });
   const iconWrap = DOMFactory.el("div", "bonus-ce-icon-wrapper");
-  iconWrap.replaceChildren(buildCeImg(ce, "bonus-ce-img", "bonus-ce-fallback"));
+  iconWrap.replaceChildren(buildCeImg(ce, "bonus-ce-img", "bonus-ce-fallback", queue));
   const nameEl = DOMFactory.el("div", ["material-name", "bonus-ce-name"]);
   applySlidingName(nameEl, ce.name || String(ce.id));
   card.appendChild(iconWrap);

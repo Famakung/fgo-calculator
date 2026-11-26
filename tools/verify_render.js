@@ -49,6 +49,12 @@ try {
   // fires when the chunk 404s, which is precisely the failure being caught.
   // Record event-lazy from page load so either eager load (when event is the
   // saved active tab) or lazy load on tab click is captured.
+  const servantInfoFetched = new Promise((resolve) => {
+    page.on("response", (res) => {
+      if (/servant-info-lazy/.test(res.url())) resolve(res.status());
+    });
+    setTimeout(() => resolve("never"), 20000).unref();
+  });
   const eventFetched = new Promise((resolve) => {
     page.on("response", (res) => {
       if (/event-lazy/.test(res.url())) resolve(res.status());
@@ -67,11 +73,9 @@ try {
   );
   if (!hasPoller) errors.push("no inline script contains fgo_build_etag: stale-version prompt is gone");
 
-  // Servant Info tab must pull its lazy module, render servant cards, and open/close the detail modal.
-  const [servantInfoRes] = await Promise.all([
-    page.waitForResponse((r) => /servant-info-lazy/.test(r.url()), { timeout: 15000 }).catch(() => null),
-    page.click('.tab-btn[data-tab="servantinfo"]'),
-  ]);
+  // Servant Info tab is default: its lazy module loads on initial page load, renders servant cards, and opens/closes the detail modal.
+  await page.click('.tab-btn[data-tab="servantinfo"]');
+  const servantInfoStatus = await servantInfoFetched;
   let servantInfoCards = 0;
   try {
     await page.waitForFunction(
@@ -85,12 +89,10 @@ try {
     errors.push("servantinfo tab: #servantInfoResults never rendered any .servant-info-card");
   }
   console.log(
-    `NOTE: servantinfo tab rendered ${servantInfoCards} card(s), servant-info-lazy responded ${servantInfoRes ? servantInfoRes.status() : "never"}`,
+    `NOTE: servantinfo tab rendered ${servantInfoCards} card(s), servant-info-lazy responded ${servantInfoStatus}`,
   );
-  if (!servantInfoRes || servantInfoRes.status() !== 200) {
-    errors.push(
-      `servantinfo tab: servant-info-lazy was not fetched successfully (status ${servantInfoRes ? servantInfoRes.status() : "no request"})`,
-    );
+  if (servantInfoStatus !== 200) {
+    errors.push(`servantinfo tab: servant-info-lazy was not fetched successfully (status ${servantInfoStatus})`);
   }
   if (servantInfoCards > 0) {
     await page.click("#servantInfoResults > .servant-info-card");

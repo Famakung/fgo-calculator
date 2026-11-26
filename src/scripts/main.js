@@ -9,7 +9,7 @@ function getSavedActiveTab() {
   } catch (_e) {
     /* ignore */
   }
-  return "cefilter";
+  return "servantinfo";
 }
 
 const initialActiveTab = getSavedActiveTab();

@@ -134,14 +134,14 @@ describe("TabNavigator whitelist and roving keyboard nav (B2, S2, A3)", () => {
     };
   }
 
-  test("invalid saved tab defaults to cefilter and Arrow/Home/End switch tabs", async () => {
+  test("invalid saved tab defaults to servantinfo and Arrow/Home/End switch tabs", async () => {
     const storage = new Map([[ACTIVE_TAB_KEY, "invalid_tab"]]);
     const prevLS = globalThis.localStorage;
     const prevDoc = globalThis.document;
 
     const tabs = [
-      makeEl({ dataset: { tab: "servantinfo" }, classes: ["tab-btn"] }),
-      makeEl({ dataset: { tab: "cefilter" }, classes: ["tab-btn", "active"] }),
+      makeEl({ dataset: { tab: "servantinfo" }, classes: ["tab-btn", "active"] }),
+      makeEl({ dataset: { tab: "cefilter" }, classes: ["tab-btn"] }),
       makeEl({ dataset: { tab: "bond" }, classes: ["tab-btn"] }),
       makeEl({ dataset: { tab: "event" }, classes: ["tab-btn"] }),
     ];
@@ -193,28 +193,28 @@ describe("TabNavigator whitelist and roving keyboard nav (B2, S2, A3)", () => {
         () => calls.push("servantinfo"),
       );
 
-      // Invalid saved tab falls back to cefilter
-      assert.equal(tabs[1].classList.contains("active"), true);
+      // Invalid saved tab falls back to servantinfo
+      assert.equal(tabs[0].classList.contains("active"), true);
+      assert.equal(tabs[0].getAttribute("aria-selected"), "true");
+      assert.equal(tabs[0].tabIndex, 0);
+      assert.equal(tabs[1].tabIndex, -1);
+      assert.equal(tabs[2].tabIndex, -1);
+      assert.equal(panels["panel-servantinfo"].classList.contains("active"), true);
+
+      // ArrowRight from servantinfo -> cefilter
+      let prevented = false;
+      tabs[0].dispatch("keydown", { key: "ArrowRight", preventDefault: () => (prevented = true) });
+      assert.equal(prevented, true);
+      assert.equal(tabs[1].focused, true);
       assert.equal(tabs[1].getAttribute("aria-selected"), "true");
       assert.equal(tabs[1].tabIndex, 0);
+      assert.equal(tabs[0].getAttribute("aria-selected"), "false");
       assert.equal(tabs[0].tabIndex, -1);
-      assert.equal(tabs[2].tabIndex, -1);
-      assert.equal(panels["panel-cefilter"].classList.contains("active"), true);
-
-      // ArrowRight from cefilter -> bond
-      let prevented = false;
-      tabs[1].dispatch("keydown", { key: "ArrowRight", preventDefault: () => (prevented = true) });
-      assert.equal(prevented, true);
-      assert.equal(tabs[2].focused, true);
-      assert.equal(tabs[2].getAttribute("aria-selected"), "true");
-      assert.equal(tabs[2].tabIndex, 0);
-      assert.equal(tabs[1].getAttribute("aria-selected"), "false");
-      assert.equal(tabs[1].tabIndex, -1);
-      assert.equal(storage.get(ACTIVE_TAB_KEY), "bond");
-      assert.deepEqual(calls, ["bond"]);
+      assert.equal(storage.get(ACTIVE_TAB_KEY), "cefilter");
+      assert.deepEqual(calls, ["cefilter"]);
 
       // End -> event
-      tabs[2].dispatch("keydown", { key: "End", preventDefault: () => {} });
+      tabs[1].dispatch("keydown", { key: "End", preventDefault: () => {} });
       assert.equal(tabs[3].getAttribute("aria-selected"), "true");
       assert.equal(storage.get(ACTIVE_TAB_KEY), "event");
 
@@ -223,7 +223,7 @@ describe("TabNavigator whitelist and roving keyboard nav (B2, S2, A3)", () => {
       assert.equal(tabs[0].getAttribute("aria-selected"), "true");
       assert.equal(panels["panel-servantinfo"].classList.contains("active"), true);
       assert.equal(storage.get(ACTIVE_TAB_KEY), "servantinfo");
-      assert.deepEqual(calls, ["bond", "event", "servantinfo"]);
+      assert.deepEqual(calls, ["cefilter", "event", "servantinfo"]);
 
       // Theme toggle persists under THEME_STORAGE_KEY
       themeToggle.dispatch("click");
@@ -279,5 +279,55 @@ describe("BondApp B1 and S1", () => {
       console.warn = prevWarn;
       globalThis.localStorage = prevLS;
     }
+  });
+});
+
+describe("createProgressiveLoader", () => {
+  test("caps concurrency at 6 and cancels stale generation on re-start", async () => {
+    const { createProgressiveLoader } = await import("../src/scripts/presentation.js");
+    const makeFakeImg = () => {
+      const listeners = new Map();
+      return {
+        complete: false,
+        naturalWidth: 0,
+        _src: null,
+        set src(v) {
+          this._src = v;
+        },
+        get src() {
+          return this._src;
+        },
+        addEventListener(ev, fn) {
+          listeners.set(ev, fn);
+        },
+        fire(ev) {
+          const fn = listeners.get(ev);
+          if (fn) {
+            listeners.delete(ev);
+            fn();
+          }
+        },
+      };
+    };
+
+    const loader = createProgressiveLoader(6);
+    const batch1 = Array.from({ length: 10 }, (_, i) => ({ img: makeFakeImg(), src: `a/${i}.webp` }));
+    loader.start(batch1);
+
+    // Only first 6 receive src immediately
+    assert.equal(batch1.filter((t) => t.img.src !== null).length, 6);
+    assert.equal(batch1[6].img.src, null);
+
+    // Settling one pumps item #6
+    batch1[0].img.fire("load");
+    assert.equal(batch1[6].img.src, "a/6.webp");
+
+    // Starting a new batch cancels batch1's remaining items
+    const batch2 = Array.from({ length: 3 }, (_, i) => ({ img: makeFakeImg(), src: `b/${i}.webp` }));
+    loader.start(batch2);
+    assert.equal(batch2.filter((t) => t.img.src !== null).length, 3);
+
+    batch1[1].img.fire("load");
+    assert.equal(batch1[7].img.src, null);
   });
 });

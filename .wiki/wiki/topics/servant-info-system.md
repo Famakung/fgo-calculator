@@ -69,7 +69,7 @@ summary: "Specifies the Servant Info tab architecture, the Python static convert
 
 | Role | Target |
 |---|---|
-| UI controller & Rank Up markers | `src/scripts/servant-info-app.js` (`ServantInfoApp`, `annotateRankUpEffects`, `diffInlineTokens`, `parseSkillOptions`, `appendHighlightedEffect`) |
+| UI controller & Rank Up markers | `src/scripts/servant-info-app.js` (`ServantInfoApp`, default landing tab; uses shared `createProgressiveLoader(6)` from `presentation.js`, `annotateRankUpEffects`, `diffInlineTokens`, `parseSkillOptions`, `appendHighlightedEffect`) |
 | Lazy entry & modal HTML | `src/scripts/servant-info-lazy.js`, `src/pages/index.astro` (`#servantInfoFilterModal`, `#servantInfoModal`) |
 | Filter constants & matcher | `src/scripts/constants.js` (`NP_TYPE_FILTERS`, `NP_EFFECT_FILTERS`), `src/scripts/domain.js` (`ServantFilters.compile`/`match`), `src/scripts/data.js` (`ServantData.getNpTagSet`) |
 | Python static converter | `scripts/servant_info_converter/` (`export_servant_info.py`, `servant_formatter.py`, `skill_formatter.py`, `np_formatter.py`, `function_formatter.py`, `effect_map.py`, `utils.py`) |

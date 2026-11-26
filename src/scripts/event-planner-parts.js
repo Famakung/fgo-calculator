@@ -24,7 +24,7 @@ function metaText(item, currency) {
 
 /* Row icon at 48px with the item name as alt; unresolved icons fall back to the id badge
    directly instead of firing a request for a null path. */
-function buildRowIcon(item) {
+function buildRowIcon(item, queue = null) {
   if (!item.icon) {
     const fb = DOMFactory.el("div", "eshop-item-icon-fallback", {
       title: item.name,
@@ -33,8 +33,12 @@ function buildRowIcon(item) {
     fb.textContent = String(item.id);
     return fb;
   }
-  const img = DOMFactory.createLazyImg(iconUrl(item.icon), "eshop-item-icon", { alt: item.name });
+  const src = iconUrl(item.icon);
+  const img = queue
+    ? DOMFactory.createDeferredImg("eshop-item-icon", { alt: item.name })
+    : DOMFactory.createLazyImg(src, "eshop-item-icon", { alt: item.name });
   DOMFactory.addSimpleFallback(img, "eshop-item-icon-fallback", String(item.id));
+  if (queue) queue.push({ img, src });
   return img;
 }
 
@@ -80,13 +84,13 @@ function buildStepper(item, require, handlers) {
 
 /* Draft rows are icon | name+meta | require cell | subtotal, one skeleton so every row carries
    identical geometry; the require cell is supplied by the caller. */
-function rowShell(item, currency, require, requireCell) {
+function rowShell(item, currency, require, requireCell, imageQueue = null) {
   const row = DOMFactory.el("div", "eshop-item" + (require > 0 ? " eshop-item--active" : ""), {
     "data-item-id": String(item.id),
   });
 
   const iconWrap = DOMFactory.el("div", "eshop-item-icon-wrap");
-  iconWrap.appendChild(buildRowIcon(item));
+  iconWrap.appendChild(buildRowIcon(item, imageQueue));
 
   const total = DOMFactory.el("div", "eshop-item-total");
   total.textContent = fmt(EventShop.rowCost(item, require));
@@ -99,5 +103,5 @@ function rowShell(item, currency, require, requireCell) {
    EventShopModal can patch one row's value and subtotal through .eshop-item[data-item-id]. */
 export function buildDraftRow(item, currency, ctx) {
   const require = ctx.state.requires[String(item.id)] || 0;
-  return rowShell(item, currency, require, buildStepper(item, require, ctx.handlers));
+  return rowShell(item, currency, require, buildStepper(item, require, ctx.handlers), ctx.imageQueue || null);
 }

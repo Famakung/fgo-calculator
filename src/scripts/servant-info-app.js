@@ -2,7 +2,7 @@ import { CLASS_FILTERS, DEBOUNCE_MS, IMAGE_VERSION, NP_TYPE_FILTERS, NP_EFFECT_F
 import { ServantData } from "./data.js";
 import { ServantFilters, ServantSort } from "./servant-filters.js";
 import { FilterSections, FilterModalController } from "./filter-sections.js";
-import { DOMFactory, debounce } from "./presentation.js";
+import { DOMFactory, createProgressiveLoader, debounce } from "./presentation.js";
 
 /* ============================================
    CONSTANTS & TRANSLATION HELPERS
@@ -853,10 +853,8 @@ function getVariantByTier(slot, tier) {
    SERVANT INFO APPLICATION
    ============================================ */
 
-const PORTRAIT_LOAD_CONCURRENCY = 6;
-
 export const ServantInfoApp = {
-  _portraitLoadGen: 0,
+  _portraitLoader: createProgressiveLoader(6),
   state: {
     searchQuery: "",
     classFilters: [],
@@ -1155,8 +1153,6 @@ export const ServantInfoApp = {
     const isFirstPage = this.state.currentPage === 1;
     const cols = this._getCols();
 
-    const loadGen = ++this._portraitLoadGen;
-
     const frag = document.createDocumentFragment();
     const queue = [];
     if (pageSlice.length === 0) {
@@ -1174,9 +1170,7 @@ export const ServantInfoApp = {
     grid.replaceChildren(frag);
     grid.dataset.hydrated = "1";
     this._renderPagination(totalPages);
-    if (queue.length > 0) {
-      this._startProgressivePortraitLoad(queue, loadGen);
-    }
+    this._portraitLoader.start(queue);
   },
 
   _buildCard(servant, isPriority) {
@@ -1232,45 +1226,12 @@ export const ServantInfoApp = {
     return {
       card,
       loadTask: {
-        slot,
         img: imgA,
         src: servant.image,
         altImg: imgB,
         altSrc: servant.altImage || null,
       },
     };
-  },
-
-  _startProgressivePortraitLoad(queue, loadGen) {
-    const total = queue.length;
-    let nextIdx = 0;
-
-    const pump = () => {
-      if (loadGen !== this._portraitLoadGen || nextIdx >= total) return;
-      const task = queue[nextIdx++];
-      let settled = false;
-      const onSettled = () => {
-        if (settled) return;
-        settled = true;
-        if (loadGen !== this._portraitLoadGen) return;
-        pump();
-      };
-
-      task.img.addEventListener("load", onSettled, { once: true });
-      task.img.addEventListener("error", onSettled, { once: true });
-      task.img.src = task.src;
-      if (task.altImg && task.altSrc) {
-        task.altImg.src = task.altSrc;
-      }
-      if (task.img.complete && task.img.naturalWidth > 0) {
-        onSettled();
-      }
-    };
-
-    const workerCount = Math.min(PORTRAIT_LOAD_CONCURRENCY, total);
-    for (let i = 0; i < workerCount; i++) {
-      pump();
-    }
   },
 
   _renderPagination(totalPages) {

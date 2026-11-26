@@ -15,17 +15,26 @@ function modulepreloadIntegration() {
         const files = fs.readdirSync(astroDir).filter((f) => f.endsWith(".js"));
         const findChunk = (prefix) => files.find((f) => f.startsWith(`${prefix}.`) || f.startsWith(`${prefix}-`));
         const base = "/fgo-calculator/_astro/";
-        const boot = ["main-entry", "constants-chunk", "data-chunk", "tab-navigator-chunk", "shared-ui-chunk", "rolldown-runtime"]
+        const boot = [
+          "main-entry",
+          "constants-chunk",
+          "data-chunk",
+          "tab-navigator-chunk",
+          "shared-ui-chunk",
+          "rolldown-runtime",
+        ]
           .map(findChunk)
           .filter(Boolean);
         const links = boot.map((f) => `<link rel="modulepreload" href="${base}${f}" />`).join("");
         const byTab = {
           servantinfo: [findChunk("servant-info-lazy")].filter(Boolean).map((f) => `${base}${f}`),
-          cefilter: [findChunk("ce-filter-chunk"), findChunk("selectors-chunk")].filter(Boolean).map((f) => `${base}${f}`),
+          cefilter: [findChunk("ce-filter-chunk"), findChunk("selectors-chunk")]
+            .filter(Boolean)
+            .map((f) => `${base}${f}`),
           bond: [findChunk("bond-lazy"), findChunk("selectors-chunk")].filter(Boolean).map((f) => `${base}${f}`),
           event: [findChunk("event-lazy"), findChunk("selectors-chunk")].filter(Boolean).map((f) => `${base}${f}`),
         };
-        const tabScript = `<script>(function(){var t=document.documentElement.getAttribute("data-tab")||"cefilter",m=${JSON.stringify(byTab)};(m[t]||[]).forEach(function(h){var l=document.createElement("link");l.rel="modulepreload";l.href=h;document.head.appendChild(l);});})();</script>`;
+        const tabScript = `<script>(function(){var t=document.documentElement.getAttribute("data-tab")||"servantinfo",m=${JSON.stringify(byTab)};(m[t]||[]).forEach(function(h){var l=document.createElement("link");l.rel="modulepreload";l.href=h;document.head.appendChild(l);});})();</script>`;
         const html = fs.readFileSync(indexPath, "utf8");
         if (html.includes("</head>")) {
           fs.writeFileSync(indexPath, html.replace("</head>", `${links}${tabScript}</head>`));

@@ -36,7 +36,7 @@ export const TabNavigator = {
     const tabBtns = Array.from(navbar.querySelectorAll(".tab-btn"));
 
     // Restore active tab
-    let initialTab = "cefilter";
+    let initialTab = "servantinfo";
     try {
       const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
       if (VALID_TABS.includes(savedTab)) initialTab = savedTab;
