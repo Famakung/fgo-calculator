@@ -3663,6 +3663,22 @@ class ServantInfoConverterTests(unittest.TestCase):
                 },
                 "Negate the DEF disadvantage due to Class attributes {{icon:bufficon_520}} (3 turns) for yourself",
             ),
+            (
+                {
+                    "funcId": 1,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [
+                        {
+                            "id": 2436,
+                            "type": "pierceSpecialInvincible",
+                            "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_403.png",
+                        }
+                    ],
+                    "svals": [{"Turn": 1, "Count": -1}],
+                },
+                "Apply Ignore Anti-Enforcement DEF {{icon:bufficon_403}} <Does not ignore Evade> (1 turn) for yourself",
+            ),
         ]
         for fn, expected in cases:
             self.assertEqual(fmt_function(fn, ctx=FetchContext()), expected)

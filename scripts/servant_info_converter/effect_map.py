@@ -328,7 +328,7 @@ BUFF_TYPE_MAP = {
     "pierceDefence": BuffTypeEntry("Apply Ignore DEF", 0, False),
     "pierceInvincible": BuffTypeEntry("Apply Ignore Invincible", 0, False),
     "pierceSpecialInvincible": BuffTypeEntry(
-        "Apply Ignore Anti-Enforcement DEF", 0, False
+        "Apply Ignore Anti-Enforcement DEF <Does not ignore Evade>", 0, False
     ),
     "pierceSubdamage": BuffTypeEntry("Apply Pierce Damage Cut", 0, False),
     "specialInvincible": BuffTypeEntry(
