@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/constants.js';
+const BLANK_SERVANT_SLOTS = Array.from({ length: 30 }, (_, i) => i);
 ---
 
 <BaseLayout>
@@ -76,9 +77,24 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                   <span class="cefilter-sort-order-icon">&#9650;</span>
                 </button>
               </div>
-              <div class="cefilter-pagination" id="servantInfoPaginationTop"></div>
-              <div class="cefilter-results-grid grid" id="servantInfoResults"></div>
-              <div class="cefilter-pagination" id="servantInfoPaginationBottom"></div>
+              <div class="cefilter-pagination" id="servantInfoPaginationTop">
+                <button type="button" class="cefilter-page-btn" aria-label="Previous page" disabled>&lsaquo;</button>
+                <span class="cefilter-page-indicator">1 / &ndash;</span>
+                <button type="button" class="cefilter-page-btn" aria-label="Next page" disabled>&rsaquo;</button>
+              </div>
+              <div class="cefilter-results-grid grid" id="servantInfoResults">
+                {BLANK_SERVANT_SLOTS.map(() => (
+                  <div class="cefilter-servant-card servant-info-card servant-info-card-placeholder" aria-hidden="true">
+                    <div class="servant-info-portrait-slot is-loading"></div>
+                    <div class="cefilter-servant-name">&nbsp;</div>
+                  </div>
+                ))}
+              </div>
+              <div class="cefilter-pagination" id="servantInfoPaginationBottom">
+                <button type="button" class="cefilter-page-btn" aria-label="Previous page" disabled>&lsaquo;</button>
+                <span class="cefilter-page-indicator">1 / &ndash;</span>
+                <button type="button" class="cefilter-page-btn" aria-label="Next page" disabled>&rsaquo;</button>
+              </div>
             </div>
           </div>
         </section>
@@ -759,6 +775,8 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                   alt="Max AP"
                   width="142"
                   height="155"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div class="bond-input-box bond-max-ap-box">
                   <label class="bond-input-box-label" for="maxApInput">Max AP</label>
@@ -781,6 +799,8 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                   alt="Stargazer's Teapot"
                   width="142"
                   height="155"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div class="bond-input-box bond-teapot-box">
                   <label class="bond-input-box-label" for="teapotCountInput">Stargazer's Teapot</label>

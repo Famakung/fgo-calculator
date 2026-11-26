@@ -4,7 +4,7 @@ import { ACTIVE_TAB_KEY, THEME_STORAGE_KEY, VALID_TABS } from "./constants.js";
    TAB NAVIGATION
    ============================================ */
 export const TabNavigator = {
-  init(ceFilterInit, bondInit, eventInit, servantInfoInit) {
+  init(ceFilterInit, bondInit, eventInit, servantInfoInit, prefetchByTab = null) {
     const navbar = document.querySelector(".navbar");
     if (!navbar) return;
 
@@ -61,6 +61,7 @@ export const TabNavigator = {
 
     function switchTab(tab) {
       if (!VALID_TABS.includes(tab)) return;
+      prefetched.add(tab);
       tabBtns.forEach((b) => {
         const isActive = b.dataset.tab === tab;
         b.classList.toggle("active", isActive);
@@ -127,6 +128,20 @@ export const TabNavigator = {
       hamburger.classList.toggle("open", isOpen);
       hamburger.setAttribute("aria-expanded", String(isOpen));
       dropdown.setAttribute("aria-hidden", String(!isOpen));
+    }
+
+    const prefetched = new Set([initialTab]);
+    const handlePrefetch = (e) => {
+      if (!prefetchByTab) return;
+      const btn = e.target.closest(".tab-btn, .navbar-dropdown-item");
+      const tab = btn && btn.dataset.tab;
+      if (!tab || prefetched.has(tab)) return;
+      prefetched.add(tab);
+      prefetchByTab[tab]?.();
+    };
+    if (prefetchByTab) {
+      navbar.addEventListener("pointerover", handlePrefetch, { passive: true });
+      navbar.addEventListener("focusin", handlePrefetch, { passive: true });
     }
 
     // Tab clicks (desktop tabs + dropdown items)
