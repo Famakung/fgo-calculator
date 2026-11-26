@@ -2996,6 +2996,79 @@ class ServantInfoConverterTests(unittest.TestCase):
         _fmt_single_skill_functions(unpaired_lines, {"functions": [fn_invincible]})
         self.assertEqual(unpaired_lines, ["Apply Invincible for all allies"])
 
+    def test_enemy_targeted_delay_function_perspective_inversion(self):
+        inner_skills = {
+            "963003": {
+                "id": 963003,
+                "functions": [
+                    {"funcId": 3996, "funcType": "delayNpturn", "funcTargetType": "self", "funcTargetTeam": "enemy", "buffs": [], "svals": [{"Rate": 1000, "Value": 1}]},
+                    {"funcId": 708, "funcType": "lossNp", "funcTargetType": "self", "funcTargetTeam": "player", "buffs": [], "svals": [{"Rate": 1000, "Value": 2000}]},
+                    {"funcId": 3988, "funcType": "gainNp", "funcTargetType": "enemyAll", "funcTargetTeam": "player", "buffs": [], "svals": [{"Rate": 1000, "Value": 1500}, {"Rate": 1000, "Value": 2500}]},
+                    {"funcId": 1309, "funcType": "hastenNpturn", "funcTargetType": "enemyAll", "funcTargetTeam": "enemy", "buffs": [], "svals": [{"Rate": 1000, "Value": 1}]},
+                ],
+            },
+            "960914": {
+                "id": 960914,
+                "functions": [
+                    {
+                        "funcId": 1624,
+                        "funcType": "addState",
+                        "funcTargetType": "ptOther",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "buffs": [{"id": 178, "name": "Stun", "type": "donotAct", "script": {}, "vals": [{"id": 3005}]}],
+                        "svals": [{"Rate": 200, "Turn": 1, "Count": -1}],
+                    }
+                ],
+            },
+            "960001": {
+                "id": 960001,
+                "functions": [
+                    {"funcId": 9901, "funcType": "lossNp", "funcTargetType": "enemyAll", "funcTargetTeam": "player", "buffs": [], "svals": [{"Rate": 1000, "Value": 1000}]},
+                ],
+            },
+        }
+        ctx = FetchContext(fetch_inner_skill=lambda sid: inner_skills.get(str(sid)))
+
+        carmilla_fn = {
+            "funcId": 9001,
+            "funcType": "addState",
+            "funcTargetType": "enemy",
+            "funcTargetTeam": "player",
+            "buffs": [{"id": 5001, "type": "delayFunction", "script": {}, "vals": []}],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 963003}],
+        }
+        self.assertEqual(
+            fmt_function(carmilla_fn, ctx=ctx),
+            'After 1 turn "Decrease Charge for that enemy & Increase NP Gauge by 15-25% for all allies" (1 turn) for one enemy',
+        )
+        self.assertFalse(ctx.invert_perspective)
+
+        frank_fn = {
+            "funcId": 9002,
+            "funcType": "addState",
+            "funcTargetType": "enemy",
+            "funcTargetTeam": "playerAndEnemy",
+            "buffs": [{"id": 5002, "type": "delayFunction", "script": {}, "vals": []}],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 960914}],
+        }
+        self.assertEqual(
+            fmt_function(frank_fn, ctx=ctx),
+            'After 1 turn "20% Chance to Inflict Stun (1 turn) for all other enemies" (1 turn) for one enemy',
+        )
+
+        ally_demerit_fn = {
+            "funcId": 9003,
+            "funcType": "addState",
+            "funcTargetType": "enemy",
+            "funcTargetTeam": "player",
+            "buffs": [{"id": 5003, "type": "delayFunction", "script": {}, "vals": []}],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 960001}],
+        }
+        self.assertEqual(
+            fmt_function(ally_demerit_fn, ctx=ctx),
+            'After 1 turn "Decrease NP Gauge by 10% for all allies [Demerit]" (1 turn) for one enemy',
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

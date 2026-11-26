@@ -516,6 +516,23 @@ TARGET_LABELS = {
     "commandTypeSelfTreasureDevice": "for yourself",
 }
 
+# Target labels when an enemy-targeted delayFunction inner skill runs from the enemy's perspective
+ENEMY_CASTER_TARGET_LABELS = {
+    "self": "for that enemy",
+    "noTarget": "for that enemy",
+    "ptOne": "for one enemy",
+    "ptAll": "for all enemies",
+    "ptFull": "for all enemies",
+    "ptOther": "for all other enemies",
+    "ptOtherFull": "for all other enemies",
+    "enemy": "for a single ally",
+    "enemyOne": "for a single ally",
+    "enemyAll": "for all allies",
+    "enemyFull": "for all allies",
+    "enemyOther": "for all other allies",
+    "enemyOtherFull": "for all other allies",
+}
+
 # trait id -> display label (used in ckOpIndv / ckSelfIndv condition formatting)
 CLASS_TRAIT_IDS = {
     100,

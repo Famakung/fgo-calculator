@@ -7,6 +7,7 @@ from .effect_map import (
     BuffTypeEntry,
     BUFF_TYPE_MAP,
     TARGET_LABELS,
+    ENEMY_CASTER_TARGET_LABELS,
     TRAIT_ID_LABELS,
     HP_REDUCE_LABELS,
     JP_BUFF_NAME_MAP,
@@ -712,6 +713,13 @@ def fmt_delay_fn(fn, ctx=None) -> str | None:
     outer_cond_str = f" {outer_cond}" if outer_cond else ""
     target_type = fn.get("funcTargetType", "")
     outer_target = TARGET_LABELS.get(target_type, f"for {target_type}")
+    parent_invert = bool(ctx and ctx.invert_perspective)
+    child_invert = (not parent_invert) if target_type in ("enemy", "enemyOne", "enemyAll") else parent_invert
+    inner_ctx = (
+        ctx.with_perspective(child_invert)
+        if ctx is not None
+        else FetchContext(invert_perspective=child_invert)
+    )
     inner_parts = []
     for ifn in (inner_skill or {}).get("functions", []):
         if ifn.get("funcType") == "moveToLastSubmember":
@@ -719,7 +727,7 @@ def fmt_delay_fn(fn, ctx=None) -> str | None:
                 "Retreat to the sub-member slot <cannot retreat if there is only 1 allied Servant on the field>"
             )
             continue
-        r = _fmt_function_core(ifn, ctx=ctx)
+        r = _fmt_function_core(ifn, ctx=inner_ctx)
         if r:
             inner_parts.append(r)
     for add_id in ((inner_skill or {}).get("script") or {}).get("additionalSkillId", []):
@@ -733,7 +741,7 @@ def fmt_delay_fn(fn, ctx=None) -> str | None:
                         "Retreat to the sub-member slot <cannot retreat if there is only 1 allied Servant on the field>"
                     )
                     continue
-                r = _fmt_function_core(ifn, ctx=ctx)
+                r = _fmt_function_core(ifn, ctx=inner_ctx)
                 if r:
                     inner_parts.append(r)
         elif add_id == 970412 or ((fn.get("buffs") or [{}])[0].get("id") == 5447):
@@ -856,21 +864,38 @@ def _resolve_core_context(fn, sv_start=None, sv_end=None, ctx=None) -> _CoreCtx 
     svals = fn.get("svals", [])
     buff_type_str = buffs[0].get("type", "") if buffs else ""
 
-    _ENEMY_TEAM_ALLOWED = {"delayNpturn"}
-    if fn.get("funcTargetTeam") == "enemy" and func_type not in _ENEMY_TEAM_ALLOWED:
-        is_enemy_down_npturnval = (
-            buff_type_str == "downNpturnval"
-            and target_type in ("enemy", "enemyOne", "enemyAll")
-        )
-        if (
-            target_type != "commandTypeSelfTreasureDevice"
-            and not is_enemy_down_npturnval
-            and not _is_solo_enemy_down_crit(fn, buff_type_str, target_type, ctx)
-        ):
-            return None
+    invert = bool(ctx and ctx.invert_perspective)
+    team = fn.get("funcTargetTeam", "")
 
-    if func_type == "delayNpturn" and target_type in ("self", "ptOne", "ptAll"):
-        return None
+    if invert:
+        is_caster_side = target_type == "self" or (
+            target_type.startswith("pt") and not target_type.startswith("ptAndEnemy")
+        )
+        is_opposing_side = target_type.startswith("enemy")
+        if is_caster_side and team == "player":
+            return None
+        if is_opposing_side and team == "enemy":
+            return None
+        if func_type == "delayNpturn" and not is_caster_side:
+            return None
+        if func_type == "lossNp" and not is_opposing_side:
+            return None
+    else:
+        _ENEMY_TEAM_ALLOWED = {"delayNpturn"}
+        if team == "enemy" and func_type not in _ENEMY_TEAM_ALLOWED:
+            is_enemy_down_npturnval = (
+                buff_type_str == "downNpturnval"
+                and target_type in ("enemy", "enemyOne", "enemyAll")
+            )
+            if (
+                target_type != "commandTypeSelfTreasureDevice"
+                and not is_enemy_down_npturnval
+                and not _is_solo_enemy_down_crit(fn, buff_type_str, target_type, ctx)
+            ):
+                return None
+
+        if func_type == "delayNpturn" and target_type in ("self", "ptOne", "ptAll"):
+            return None
 
     sv0 = sv_start if sv_start is not None else (svals[0] if svals else {})
     if func_type == "displayBuffstring" and "CheckOverChargeStageRange" not in sv0:
@@ -885,13 +910,17 @@ def _resolve_core_context(fn, sv_start=None, sv_end=None, ctx=None) -> _CoreCtx 
     if func_type == "subState" and sv0.get("HideNoEffect") == 1:
         return None
     # Enemies have no NP gauge, only Charge (delayNpturn), so lossNp never hits them.
-    if func_type == "lossNp" and target_type in ("enemy", "enemyOne", "enemyAll"):
+    if not invert and func_type == "lossNp" and target_type in ("enemy", "enemyOne", "enemyAll"):
         return None
 
     if _is_internal_hide_miss(func_type, buff_type_str, sv0):
         return None
 
-    target = TARGET_LABELS.get(target_type, target_type)
+    target = (
+        ENEMY_CASTER_TARGET_LABELS.get(target_type, TARGET_LABELS.get(target_type, target_type))
+        if invert
+        else TARGET_LABELS.get(target_type, target_type)
+    )
     if target_type == "noTarget":
         field_target = sv0.get("FieldBuffApplyTarget")
         if field_target == 1:
@@ -1582,14 +1611,15 @@ def _render_buff_template(
         and "when receiving a Buff" not in template
         else ""
     )
-    demerit_suffix = " [Demerit]" if is_demerit(core.fn) else ""
+    invert = bool(core.ctx and core.ctx.invert_perspective)
+    demerit_suffix = " [Demerit]" if is_demerit(core.fn, invert_perspective=invert) else ""
     _target = (
         {
             "enemy": "to a single enemy",
             "enemyOne": "to a single enemy",
             "enemyAll": "to all enemies",
         }.get(core.target_type, core.target)
-        if config and config.get("target_override") == "inflict_target"
+        if config and config.get("target_override") == "inflict_target" and not invert
         else core.target
     )
     rate_prefix = (
@@ -1798,7 +1828,8 @@ def _handle_shorten_buffcount(core):
     """Handle the shortenBuffcount func type."""
     counter = (core.ctx.counter_name if core.ctx else None) or "Counter"
     val = core.sv0.get("Value", 1)
-    return f"Decrease {counter} by {val} {core.target}{' [Demerit]' if is_demerit(core.fn) else ''}"
+    invert = bool(core.ctx and core.ctx.invert_perspective)
+    return f"Decrease {counter} by {val} {core.target}{' [Demerit]' if is_demerit(core.fn, invert_perspective=invert) else ''}"
 
 
 def _handle_sub_state(core):
@@ -1949,7 +1980,8 @@ def _handle_move_state(core):
     traits = [TRAIT_ID_LABELS.get(t["id"], fmt_trait_name(t)) for t in raw_traits]
     trait_str = " and ".join(f"[{t}]" for t in traits) if traits else "states"
     is_ailment = any(t.get("id") in (3011, 3015, 3026, 3005) for t in raw_traits)
-    demerit_str = " [Demerit]" if is_ailment or is_demerit(core.fn) else ""
+    invert = bool(core.ctx and core.ctx.invert_perspective)
+    demerit_str = " [Demerit]" if is_ailment or is_demerit(core.fn, invert_perspective=invert) else ""
     return f"Absorb {trait_str} {from_str} {core.target}{demerit_str}"
 
 
@@ -2034,7 +2066,8 @@ def _handle_func_type_no_buff(core):
     ):
         template = "Apply Death <Ignore Guts>"
     use_rate = entry.use_rate
-    demerit_suffix = " [Demerit]" if is_demerit(core.fn) else ""
+    invert = bool(core.ctx and core.ctx.invert_perspective)
+    demerit_suffix = " [Demerit]" if is_demerit(core.fn, invert_perspective=invert) else ""
     if core.func_type == "shortenSkill":
         val_str = fmt_val_range(core.val0, core.val9, 1, False)
         v2 = core.sv0.get("Value2")
