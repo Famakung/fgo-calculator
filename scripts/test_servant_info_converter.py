@@ -2779,6 +2779,59 @@ class ServantInfoConverterTests(unittest.TestCase):
         }
         self.assertEqual(fmt_function(remove_def_debuffs_fn), "Remove DEF Debuffs for all allies")
 
+    def test_kingprotea_alter_skill_2_guardian_parry(self):
+        from servant_info_converter.skill_formatter import _fmt_single_skill_functions
+
+        fn_state = {
+            "funcId": 23491,
+            "funcType": "addState",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [
+                {
+                    "id": 6096,
+                    "name": "巨人の庇護",
+                    "type": "addIndividuality",
+                    "script": {},
+                    "vals": [{"id": 3004}, {"id": 3007}],
+                }
+            ],
+            "svals": [{"Rate": 1000, "Turn": 3, "Count": 3, "Value": 0, "AddIndividualityEx": 10048}],
+        }
+        fn_invincible = {
+            "funcId": 23492,
+            "funcType": "addState",
+            "funcTargetType": "ptFull",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [
+                {
+                    "id": 6095,
+                    "name": "巨人の庇護",
+                    "type": "invincible",
+                    "script": {},
+                    "vals": [],
+                }
+            ],
+            "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "ShowState": -2, "SameIndivBuffActorOnField": 10048}],
+        }
+        expected = (
+            "Apply [Protection of the Giant] <activates a special Invincible [Guardian Parry] "
+            "that also activates for allies other than yourself> (3 times, 3 turns) for yourself"
+        )
+        self.assertEqual(fmt_function(fn_state), expected)
+
+        lines = []
+        _fmt_single_skill_functions(lines, {"functions": [fn_state, fn_invincible]})
+        self.assertEqual(lines, [expected])
+
+        unpaired_lines = []
+        _fmt_single_skill_functions(unpaired_lines, {"functions": [fn_invincible]})
+        self.assertEqual(unpaired_lines, ["Apply Invincible for all allies"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

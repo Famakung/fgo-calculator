@@ -1431,6 +1431,9 @@ def _resolve_traits_from_config(core, buff, config, template, divisor, is_pct):
         ]
         if tid and tid != 9999 and tid in TRAIT_ID_LABELS:
             traits_raw = [{"id": tid}]
+        elif not tid and core.sv0.get("AddIndividualityEx") and buff.get("name"):
+            raw_bname = buff["name"]
+            traits_raw = [{"name": JP_BUFF_NAME_MAP.get(raw_bname, raw_bname)}]
         elif valid_vals:
             traits_raw = valid_vals
         elif buff.get("name"):
@@ -1700,6 +1703,14 @@ def _handle_buff_type(core):
     buff = core.fn.get("buffs", [])[0]
     buff_type_str = buff["type"]
     if buff_type_str == "addIndividuality":
+        if buff.get("id") == 6096:
+            bname = JP_BUFF_NAME_MAP.get(
+                buff.get("name", ""), buff.get("name", "Protection of the Giant")
+            )
+            return (
+                f"Apply [{bname}] <activates a special Invincible [Guardian Parry] "
+                f"that also activates for allies other than yourself>{core.cond_str} {core.target}"
+            )
         if not buff.get("name") and not core.sv0.get("Value") and not [v for v in buff.get("vals", []) if v.get("id") not in (3004, 3005)]:
             return None
     if buff_type_str == "donotAct" and {3066, 3076}.issubset(

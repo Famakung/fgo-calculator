@@ -38,6 +38,21 @@ _MEAL_SKILL_CHAIN = {
 
 def _fmt_single_skill_functions(lines, sk, ctx=None):
     functions = sk.get("functions", [])
+    add_indiv_ex_ids = {
+        sv0["AddIndividualityEx"]
+        for fn in functions
+        for sv0 in [(fn.get("svals") or [{}])[0]]
+        if sv0.get("AddIndividualityEx")
+    }
+    if add_indiv_ex_ids:
+        functions = [
+            fn
+            for fn in functions
+            if not (
+                (sv0 := (fn.get("svals") or [{}])[0]).get("ShowState") == -2
+                and sv0.get("SameIndivBuffActorOnField") in add_indiv_ex_ids
+            )
+        ]
     if not any(
         (fn.get("buffs") or [{}])[0].get("type", "")
         in (
