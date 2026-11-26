@@ -17,6 +17,8 @@ public/saint_graphs/
 public/craft_essences/
 public/skill_icons/*
 !public/skill_icons/.gitkeep
+public/buff_icons/*
+!public/buff_icons/.gitkeep
 public/event_shop/*
 !public/event_shop/.gitkeep
 src/scripts/data/*.js
