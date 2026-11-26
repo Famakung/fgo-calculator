@@ -44,6 +44,13 @@ try:
 except ImportError:
     from scripts.translations import ASCENSION_NAMES, CE_NAMES, COSTUME_LABELS, SERIES_NAMES, SERVANT_NAMES
 
+try:
+    from servant_info_converter.np_formatter import DAMAGE_FUNC_TYPES
+    from servant_info_converter.utils import find_transform_svt_id
+except ImportError:
+    from scripts.servant_info_converter.np_formatter import DAMAGE_FUNC_TYPES
+    from scripts.servant_info_converter.utils import find_transform_svt_id
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "src", "scripts", "data")
 SERVANTS_JS = os.path.join(DATA_DIR, "servants.js")
@@ -577,6 +584,42 @@ def load_all_servant_stages() -> Dict[str, List[str]]:
     return stages_by_id
 
 
+def extract_servant_np_tags(svt_data: dict, svt_by_id: Optional[Dict[int, dict]] = None) -> List[str]:
+    """NP filter tags for the Servant Info modal: card type + damage scope per NP.
+
+    Transform partners (Aoko, Prélati, Jekyll) contribute their NPs too. Scope
+    classification mirrors np_formatter: no damage function = support NP,
+    otherwise effectFlags decide AOE vs single-target."""
+    card_tags = {
+        "1": "arts", "arts": "arts",
+        "2": "buster", "buster": "buster",
+        "3": "quick", "quick": "quick",
+    }
+    nps = list(svt_data.get("noblePhantasms") or [])
+    if svt_by_id:
+        tid = find_transform_svt_id(svt_data)
+        if tid and tid in svt_by_id:
+            nps.extend(svt_by_id[tid].get("noblePhantasms") or [])
+    tags = set()
+    for np in nps:
+        funcs = np.get("functions") or []
+        if not funcs:
+            continue
+        card_tag = card_tags.get(str(np.get("card", "")).lower())
+        if card_tag:
+            tags.add(card_tag)
+        flags = np.get("effectFlags") or []
+        if not any(fn.get("funcType") in DAMAGE_FUNC_TYPES for fn in funcs):
+            tags.add("support")
+        elif "attackEnemyAll" in flags:
+            tags.add("aoe")
+        elif any("attackEnemy" in f for f in flags):
+            tags.add("st")
+        else:
+            tags.add("support")
+    return [t for t in ("quick", "arts", "buster", "aoe", "st", "support") if t in tags]
+
+
 def format_servant_js_entry(
     svt_id: str,
     name: str,
@@ -586,14 +629,17 @@ def format_servant_js_entry(
     option_names: Optional[Dict[str, str]] = None,
     collection_no: Optional[int] = None,
     alt_id: Optional[str] = None,
+    np_tags: Optional[List[str]] = None,
 ) -> str:
     """Format a servant JS entry matching code conventions."""
     escaped_name = name.replace('"', '\\"')
     cno_part = f", collectionNo: {collection_no}" if collection_no is not None else ""
+    np_json = json.dumps(np_tags) if np_tags else None
 
     if not ascension_diffs and not option_labels and not option_names and not alt_id:
         traits_json = json.dumps(base_traits)
-        return f'  "{svt_id}": {{ name: "{escaped_name}"{cno_part}, traits: {{ base: {traits_json} }} }},'
+        np_part = f", np: {np_json}" if np_json else ""
+        return f'  "{svt_id}": {{ name: "{escaped_name}"{cno_part}, traits: {{ base: {traits_json} }}{np_part} }},'
 
     lines = [f'  "{svt_id}": {{']
     lines.append(f'    name: "{escaped_name}",')
@@ -607,6 +653,8 @@ def format_servant_js_entry(
         stage_repr = stage if stage.isdigit() and int(stage) >= 300 else f'"{stage}"'
         lines.append(f'      {stage_repr}: {json.dumps(diff)},')
     lines.append('    },')
+    if np_json:
+        lines.append(f'    np: {np_json},')
     if option_labels:
         labels_parts = [f'{k}: {json.dumps(v, ensure_ascii=False)}' for k, v in sorted(option_labels.items())]
         if len(labels_parts) > 1:
@@ -771,7 +819,7 @@ def _parse_servant_entries() -> Dict[str, str]:
     return entries
 
 
-def format_467_split(svt: dict) -> Dict[str, str]:
+def format_467_split(svt: dict, svt_by_id: Optional[Dict[int, dict]] = None) -> Dict[str, str]:
     """Format the François/Francesca Prélat (cno 467) unified entry.
 
     cno 467 is unified under single ID "505600" with traits from both forms:
@@ -789,6 +837,7 @@ def format_467_split(svt: dict) -> Dict[str, str]:
             {"001": "Francesca Prélat"},
             collection_no=467,
             alt_id="505700",
+            np_tags=extract_servant_np_tags(svt, svt_by_id),
         ),
     }
 
@@ -809,12 +858,13 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
         return []
 
     changed = []
+    svt_by_id = {s.get("id"): s for s in nice_servants if s.get("id")}
     for s in nice_servants:
         cno = s.get("collectionNo", 0)
         if cno <= 0 or cno not in playable_by_cno:
             continue
         if cno == 467:
-            fresh = format_467_split(s)
+            fresh = format_467_split(s, svt_by_id)
             if "467-1" in existing or "467-2" in existing or "467" in existing or fresh["505600"] != existing.get("505600"):
                 print(f"  Entry change detected for servant 467 (split traits differ)")
                 changed.append(cno)
@@ -826,7 +876,10 @@ def revalidate_servant_traits(playable_by_cno: Dict[int, dict], nice_servants: L
             continue
         base, asc_diffs, opt_labels, opt_names, _ = extract_servant_traits(s)
         name = UNOFFICIAL_SERVANT_TRANSLATIONS.get(key) or UNOFFICIAL_SERVANT_TRANSLATIONS.get(str(cno)) or s.get("name") or ""
-        fresh = format_servant_js_entry(key, name, base, asc_diffs, opt_labels, opt_names, collection_no=cno)
+        fresh = format_servant_js_entry(
+            key, name, base, asc_diffs, opt_labels, opt_names, collection_no=cno,
+            np_tags=extract_servant_np_tags(s, svt_by_id),
+        )
         if key not in existing or fresh != existing[key]:
             print(f"  Entry change detected for servant {key} (traits/ascensions/labels differ)")
             changed.append(cno)
@@ -1058,7 +1111,7 @@ def sync_servants(args):
                 # Handle François and Francesca Prélat unified entry
                 icon_tasks.append(("505600", 505600, "000", None))
                 icon_tasks.append(("505700", 505700, "000", None))
-                new_entries.update(format_467_split(svt_payload))
+                new_entries.update(format_467_split(svt_payload, bulk_svt_map))
                 continue
 
             icon_tasks.append((svt_id, long_id, "000", None))
@@ -1068,7 +1121,10 @@ def sync_servants(args):
             for stage in _extra_image_stages(asc_diffs, costume_battle_ids, opt_labels):
                 icon_tasks.append((svt_id, long_id, stage, costume_battle_ids.get(stage)))
 
-            entry_code = format_servant_js_entry(svt_id, name, base_traits, asc_diffs, opt_labels, opt_names, collection_no=cno)
+            entry_code = format_servant_js_entry(
+                svt_id, name, base_traits, asc_diffs, opt_labels, opt_names, collection_no=cno,
+                np_tags=extract_servant_np_tags(svt_payload, bulk_svt_map),
+            )
             new_entries[svt_id] = entry_code
         else:
             svt_payload = bulk_svt_map.get(long_id)
@@ -1079,7 +1135,7 @@ def sync_servants(args):
                     # The unified entry stores as "505600"; rebuild and download both portraits
                     icon_tasks.append(("505600", 505600, "000", None))
                     icon_tasks.append(("505700", 505700, "000", None))
-                    new_entries.update(format_467_split(svt_payload))
+                    new_entries.update(format_467_split(svt_payload, bulk_svt_map))
                     full_replacement = True
                     continue
                 name = (
@@ -1095,7 +1151,10 @@ def sync_servants(args):
                     icon_tasks.append((svt_id, long_id, "002", None))
                 for stage in _extra_image_stages(asc_diffs, costume_battle_ids, opt_labels):
                     icon_tasks.append((svt_id, long_id, stage, costume_battle_ids.get(stage)))
-                new_entries[svt_id] = format_servant_js_entry(svt_id, name, base_traits, asc_diffs, opt_labels, opt_names, collection_no=cno)
+                new_entries[svt_id] = format_servant_js_entry(
+                    svt_id, name, base_traits, asc_diffs, opt_labels, opt_names, collection_no=cno,
+                    np_tags=extract_servant_np_tags(svt_payload, bulk_svt_map),
+                )
                 full_replacement = True
             elif cno == 467:
                 icon_tasks.append(("505600", 505600, "000", None))

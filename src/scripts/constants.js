@@ -125,6 +125,18 @@ export const GENDER_FILTERS = [
   { id: "0003", label: "Unknown" },
 ];
 
+export const NP_TYPE_FILTERS = [
+  { id: "quick", label: "Quick NP" },
+  { id: "arts", label: "Arts NP" },
+  { id: "buster", label: "Buster NP" },
+];
+
+export const NP_EFFECT_FILTERS = [
+  { id: "aoe", label: "All Enemies" },
+  { id: "st", label: "One Enemy" },
+  { id: "support", label: "Support NP" },
+];
+
 /* The quest a Bond plan is priced on. The player picks a family first: Free Quest is priced from
    its AP/run and REC Lv. (`recLv * 10 + 15`), while Grand Duel names a class group and then the
    Rank-Up Training Battle level of that class. */

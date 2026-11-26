@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/constants.js';
+const BLANK_SERVANT_SLOTS = Array.from({ length: 30 }, (_, i) => i);
 ---
 
 <BaseLayout>
@@ -17,8 +18,8 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
           </svg>
         </button>
         <div class="navbar-tabs" role="tablist" aria-label="Calculator sections">
-          <button class="tab-btn" id="tab-servantinfo" data-tab="servantinfo" role="tab" aria-selected="false" aria-controls="panel-servantinfo">Servant Info</button>
-          <button class="tab-btn active" id="tab-cefilter" data-tab="cefilter" role="tab" aria-selected="true" aria-controls="panel-cefilter">Bond Gain CE</button>
+          <button class="tab-btn active" id="tab-servantinfo" data-tab="servantinfo" role="tab" aria-selected="true" aria-controls="panel-servantinfo">Servant Info</button>
+          <button class="tab-btn" id="tab-cefilter" data-tab="cefilter" role="tab" aria-selected="false" aria-controls="panel-cefilter">Bond Gain CE</button>
           <button class="tab-btn" id="tab-bond" data-tab="bond" role="tab" aria-selected="false" aria-controls="panel-bond">Bond Calculator</button>
           <button class="tab-btn" id="tab-event" data-tab="event" role="tab" aria-selected="false" aria-controls="panel-event">Event Shop</button>
         </div>
@@ -26,15 +27,15 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
           <span></span><span></span><span></span>
         </button>
         <div class="navbar-dropdown" id="navbarDropdown" aria-hidden="true">
-          <button class="navbar-dropdown-item" data-tab="servantinfo">Servant Info</button>
-          <button class="navbar-dropdown-item active" data-tab="cefilter">Bond Gain CE</button>
+          <button class="navbar-dropdown-item active" data-tab="servantinfo">Servant Info</button>
+          <button class="navbar-dropdown-item" data-tab="cefilter">Bond Gain CE</button>
           <button class="navbar-dropdown-item" data-tab="bond">Bond Calculator</button>
           <button class="navbar-dropdown-item" data-tab="event">Event Shop</button>
         </div>
       </nav>
 
       <main id="main-content">
-        <section class="tab-panel" id="panel-servantinfo" role="tabpanel" aria-labelledby="tab-servantinfo">
+        <section class="tab-panel active" id="panel-servantinfo" role="tabpanel" aria-labelledby="tab-servantinfo">
           <div class="card">
             <div class="card-inner">
               <div class="card-title cefilter-results-header">
@@ -76,9 +77,24 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                   <span class="cefilter-sort-order-icon">&#9650;</span>
                 </button>
               </div>
-              <div class="cefilter-pagination" id="servantInfoPaginationTop"></div>
-              <div class="cefilter-results-grid grid" id="servantInfoResults"></div>
-              <div class="cefilter-pagination" id="servantInfoPaginationBottom"></div>
+              <div class="cefilter-pagination" id="servantInfoPaginationTop">
+                <button type="button" class="cefilter-page-btn" aria-label="Previous page" disabled>&lsaquo;</button>
+                <span class="cefilter-page-indicator">1 / &ndash;</span>
+                <button type="button" class="cefilter-page-btn" aria-label="Next page" disabled>&rsaquo;</button>
+              </div>
+              <div class="cefilter-results-grid grid" id="servantInfoResults">
+                {BLANK_SERVANT_SLOTS.map(() => (
+                  <div class="cefilter-servant-card servant-info-card servant-info-card-placeholder" aria-hidden="true">
+                    <div class="servant-info-portrait-slot"></div>
+                    <div class="cefilter-servant-name">&nbsp;</div>
+                  </div>
+                ))}
+              </div>
+              <div class="cefilter-pagination" id="servantInfoPaginationBottom">
+                <button type="button" class="cefilter-page-btn" aria-label="Previous page" disabled>&lsaquo;</button>
+                <span class="cefilter-page-indicator">1 / &ndash;</span>
+                <button type="button" class="cefilter-page-btn" aria-label="Next page" disabled>&rsaquo;</button>
+              </div>
             </div>
           </div>
         </section>
@@ -759,6 +775,8 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                   alt="Max AP"
                   width="142"
                   height="155"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div class="bond-input-box bond-max-ap-box">
                   <label class="bond-input-box-label" for="maxApInput">Max AP</label>
@@ -781,6 +799,8 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                   alt="Stargazer's Teapot"
                   width="142"
                   height="155"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div class="bond-input-box bond-teapot-box">
                   <label class="bond-input-box-label" for="teapotCountInput">Stargazer's Teapot</label>
@@ -817,7 +837,7 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
           </div>
         </section>
 
-        <section class="tab-panel active" id="panel-cefilter" role="tabpanel" aria-labelledby="tab-cefilter">
+        <section class="tab-panel" id="panel-cefilter" role="tabpanel" aria-labelledby="tab-cefilter">
           <div class="card">
             <div class="card-inner">
               <div class="cefilter-subtabs" id="cefilterSubtabs">
@@ -926,10 +946,25 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
                     <span class="cefilter-sort-order-icon">&#9650;</span>
                   </button>
                 </div>
-                <div class="cefilter-pagination" id="cefilterPaginationTop"></div>
-                <div class="cefilter-results-grid grid" id="cefilterResults"></div>
+                <div class="cefilter-pagination" id="cefilterPaginationTop">
+                  <button type="button" class="cefilter-page-btn" aria-label="Previous page" disabled>&lsaquo;</button>
+                  <span class="cefilter-page-indicator">1 / &ndash;</span>
+                  <button type="button" class="cefilter-page-btn" aria-label="Next page" disabled>&rsaquo;</button>
+                </div>
+                <div class="cefilter-results-grid grid" id="cefilterResults">
+                  {BLANK_SERVANT_SLOTS.map(() => (
+                    <div class="cefilter-servant-card servant-info-card servant-info-card-placeholder" aria-hidden="true">
+                      <div class="servant-info-portrait-slot"></div>
+                      <div class="cefilter-servant-name">&nbsp;</div>
+                    </div>
+                  ))}
+                </div>
 
-                <div class="cefilter-pagination" id="cefilterPaginationBottom"></div>
+                <div class="cefilter-pagination" id="cefilterPaginationBottom">
+                  <button type="button" class="cefilter-page-btn" aria-label="Previous page" disabled>&lsaquo;</button>
+                  <span class="cefilter-page-indicator">1 / &ndash;</span>
+                  <button type="button" class="cefilter-page-btn" aria-label="Next page" disabled>&rsaquo;</button>
+                </div>
               </div>
 
               <div class="cefilter-subpanel" data-subpanel="servant" hidden>
@@ -1407,6 +1442,16 @@ import { QUEST_TIERS, GRAND_CLASSES, GRAND_DIFFICULTIES } from '../scripts/const
               <div class="cefilter-modal-section">
                 <div class="cefilter-modal-label" id="servantInfoGenderLabel">Gender</div>
                 <div class="rarity-filter" id="servantInfoGenderFilter" role="group" aria-labelledby="servantInfoGenderLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantInfoNpTypeLabel">NP Type</div>
+                <div class="rarity-filter" id="servantInfoNpTypeFilter" role="group" aria-labelledby="servantInfoNpTypeLabel"></div>
+              </div>
+              <div class="cefilter-modal-divider"></div>
+              <div class="cefilter-modal-section">
+                <div class="cefilter-modal-label" id="servantInfoNpEffectLabel">NP Effect</div>
+                <div class="rarity-filter" id="servantInfoNpEffectFilter" role="group" aria-labelledby="servantInfoNpEffectLabel"></div>
               </div>
             </div>
             <div class="cefilter-modal-footer">

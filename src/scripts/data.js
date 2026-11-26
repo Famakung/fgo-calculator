@@ -124,6 +124,7 @@ export const ServantData = {
         const name = typeof data === "string" ? data : data.name || "";
         const collectionNo = typeof data === "object" && typeof data.collectionNo === "number" ? data.collectionNo : 0;
         const altId = typeof data === "object" && data.altId ? String(data.altId) : null;
+        const np = typeof data === "object" && Array.isArray(data.np) ? data.np : [];
         const rawTraits = typeof data === "object" && data.traits ? data.traits : [];
         const isArray = Array.isArray(rawTraits);
         const traits = isArray ? rawTraits : rawTraits.base || [];
@@ -152,6 +153,8 @@ export const ServantData = {
           id,
           collectionNo,
           name: name || `Servant ${id}`,
+          np,
+          npSet: new Set(np),
           traits,
           traitSet,
           allNames,
@@ -223,6 +226,11 @@ export const ServantData = {
     const migrated = this.migrateId(id);
     if (migrated !== id) return this.byId.get(migrated) || null;
     return this.byId.get(String(id).split("-")[0]) || null;
+  },
+
+  getNpTagSet(id) {
+    const servant = this.getServant(id);
+    return servant && servant.npSet ? servant.npSet : new Set();
   },
 
   /* Bond point cost per level: index i is the cost of Lv.i -> Lv.i+1 for this servant.

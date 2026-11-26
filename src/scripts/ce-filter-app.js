@@ -2,7 +2,7 @@ import { DEBOUNCE_MS, CLASS_GROUPS } from "./constants.js";
 import { Validator, ServantSort, ServantFilters, computeCEMatchMatrix } from "./domain.js";
 import { FilterSections, FilterModalController } from "./filter-sections.js";
 import { ServantData, CEData, CEById, TraitCEs, TraitNames } from "./data.js";
-import { DOMFactory, debounce } from "./presentation.js";
+import { DOMFactory, createProgressiveLoader, debounce } from "./presentation.js";
 import { ServantSelect, CEFilterStore } from "./ce-servant-select.js";
 
 /* The #cefilterMode select's option values; a stored mode outside this list is ignored. */
@@ -661,38 +661,34 @@ export const CEFilterApp = {
     const frag = document.createDocumentFragment();
     const isFirstPage = this.state.currentPage === 1;
     const cols = this._getCols();
-
-    // Reuse existing placeholder cards from inline script to avoid LCP render delay
-    const existingCards = isFirstPage ? grid.querySelectorAll(":scope > .cefilter-servant-card") : null;
+    const portraitQueue = [];
+    const badgeQueue = [];
+    const imageQueues = { portraits: portraitQueue, badges: badgeQueue };
 
     pageSlice.forEach(
       ({ servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll, primaryAscension }, idx) => {
-        // Only the first row can be inside the tile. Eager-loading all pageSize cards puts ~100 portraits
-        // and CE badges in the same pipe as the chunks that build them, so the LCP portrait queues behind them.
-        const cardAttrs = !isFirstPage
-          ? {}
-          : idx < cols
-            ? { loading: "eager", fetchpriority: "high" }
-            : { loading: "lazy" };
-        const existing = existingCards && existingCards[idx];
+        const cardAttrs = isFirstPage && idx < cols ? { fetchpriority: "high" } : {};
         frag.appendChild(
           this._buildCard(
             { servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll, primaryAscension },
             cardAttrs,
-            existing,
+            imageQueues,
           ),
         );
       },
     );
 
     grid.replaceChildren(frag);
+    grid.dataset.hydrated = "1";
     this._renderPagination(totalPages);
+    this._imageLoader ||= createProgressiveLoader(6);
+    this._imageLoader.start([...portraitQueue, ...badgeQueue]);
   },
 
   _buildCard(
     { servant, matchingCEs, allTraitNames, matchedAscensions, baseMatchesAll, primaryAscension },
     eagerAttrs,
-    existingCard,
+    imageQueues = null,
   ) {
     const card = DOMFactory.el("div", "cefilter-servant-card");
 
@@ -700,7 +696,24 @@ export const CEFilterApp = {
     const imgSrc = imgAsc ? ServantData.getImageForAscension(servant.id, imgAsc) : servant.image;
 
     let portraitEl;
-    if (!imgAsc && servant.altImage) {
+    if (imageQueues) {
+      if (!imgAsc && servant.altImage) {
+        const { wrap, imgA, imgB } = DOMFactory.createDeferredSwapImg({
+          className: "servant-slot-portrait",
+          attrs: { alt: servant.name, ...eagerAttrs },
+          fallbackId: servant.id,
+        });
+        portraitEl = wrap;
+        imageQueues.portraits.push({ img: imgA, src: imgSrc, altImg: imgB, altSrc: servant.altImage });
+      } else {
+        portraitEl = DOMFactory.createDeferredImg("servant-slot-portrait", {
+          alt: servant.name,
+          ...eagerAttrs,
+        });
+        DOMFactory.addAscensionFallback(portraitEl, servant.id);
+        imageQueues.portraits.push({ img: portraitEl, src: imgSrc });
+      }
+    } else if (!imgAsc && servant.altImage) {
       portraitEl = DOMFactory.createSwapImg({
         src: imgSrc,
         altSrc: servant.altImage,
@@ -708,18 +721,7 @@ export const CEFilterApp = {
         attrs: { alt: servant.name, ...eagerAttrs },
         fallbackId: servant.id,
       });
-    } else if (existingCard) {
-      // Reuse placeholder img to avoid LCP render delay from re-decode
-      const placeholderImg = existingCard.querySelector("img.servant-slot-portrait");
-      if (placeholderImg) {
-        placeholderImg.src = imgSrc;
-        placeholderImg.alt = servant.name;
-        if (eagerAttrs.fetchpriority) placeholderImg.fetchPriority = eagerAttrs.fetchpriority;
-        if (eagerAttrs.loading) placeholderImg.loading = eagerAttrs.loading;
-        portraitEl = placeholderImg;
-      }
-    }
-    if (!portraitEl) {
+    } else {
       portraitEl = DOMFactory.createLazyImg(imgSrc, "servant-slot-portrait", {
         alt: servant.name,
         ...eagerAttrs,
@@ -766,12 +768,19 @@ export const CEFilterApp = {
     if (matchingCEs.length > 0) {
       const badges = DOMFactory.el("div", ["ce-badges", "grid-micro"]);
       matchingCEs.forEach((ce) => {
-        const badge = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-match-badge", {
-          alt: ce.name,
-          title: ce.name,
-          ...eagerAttrs,
-        });
+        const badge = imageQueues
+          ? DOMFactory.createDeferredImg("cefilter-match-badge", {
+              alt: ce.name,
+              title: ce.name,
+              ...eagerAttrs,
+            })
+          : DOMFactory.createLazyImg(ce.thumbImage, "cefilter-match-badge", {
+              alt: ce.name,
+              title: ce.name,
+              ...eagerAttrs,
+            });
         DOMFactory.addSimpleFallback(badge, "cefilter-match-badge-fallback", ce.id);
+        if (imageQueues) imageQueues.badges.push({ img: badge, src: ce.thumbImage });
         badge.style.cursor = "pointer";
         badge.addEventListener("click", (e) => {
           e.stopPropagation();

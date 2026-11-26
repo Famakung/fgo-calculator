@@ -32,6 +32,19 @@ export const DOMFactory = {
     return img;
   },
 
+  createDeferredImg(className, attrs = {}) {
+    const { src: _ignored, fetchpriority, ...rest } = attrs;
+    const img = this.el("img", className, {
+      ...rest,
+      loading: "eager",
+      ...(fetchpriority ? { fetchpriority } : {}),
+    });
+    img.loading = "eager";
+    img.decoding = "async";
+    if (fetchpriority) img.fetchPriority = fetchpriority;
+    return img;
+  },
+
   appendCheckMark(parent) {
     const check = this.el("div", "ce-filter-check");
     check.textContent = "\u2713";
@@ -70,6 +83,18 @@ export const DOMFactory = {
     wrap.appendChild(imgA);
     wrap.appendChild(imgB);
     return wrap;
+  },
+
+  createDeferredSwapImg({ className, attrs = {}, fallbackId } = {}) {
+    const wrap = this.el("div", "servant-swap-wrap");
+    const classListA = [].concat(className || [], "servant-swap-a");
+    const classListB = [].concat(className || [], "servant-swap-b");
+    const imgA = this.createDeferredImg(classListA, attrs);
+    const imgB = this.createDeferredImg(classListB, { ...attrs, "aria-hidden": "true" });
+    if (fallbackId) this.addAscensionFallback(imgA, fallbackId);
+    wrap.appendChild(imgA);
+    wrap.appendChild(imgB);
+    return { wrap, imgA, imgB };
   },
 
   fillSwapName(container, primaryName, altName) {
@@ -144,28 +169,45 @@ export const CollapsibleFactory = {
 };
 
 export const ComboCardRenderer = {
-  buildServantCell(entry, rowCEs) {
+  buildServantCell(entry, rowCEs, queue = null) {
     const servant = entry.servant;
     const { imgSrc, altImgSrc, fullName } = ServantData.resolveEntryDisplay(entry, rowCEs);
     const cell = DOMFactory.el("div", "cefilter-combo-servant");
     const title = servant.altName ? `${fullName} / ${servant.altName}` : fullName;
     const badgeClasses = ["cefilter-match-badge", "cefilter-combo-servant-badge"];
-    const element = altImgSrc
-      ? DOMFactory.createSwapImg({
-          src: imgSrc,
-          altSrc: altImgSrc,
+    let element;
+    if (queue) {
+      if (altImgSrc) {
+        const { wrap, imgA, imgB } = DOMFactory.createDeferredSwapImg({
           className: badgeClasses,
           attrs: { alt: fullName, title },
           fallbackId: servant.id,
-        })
-      : DOMFactory.createLazyImg(imgSrc, badgeClasses, { alt: fullName, title });
-    if (!altImgSrc) DOMFactory.addAscensionFallback(element, servant.id);
+        });
+        element = wrap;
+        queue.push({ img: imgA, src: imgSrc, altImg: imgB, altSrc: altImgSrc });
+      } else {
+        element = DOMFactory.createDeferredImg(badgeClasses, { alt: fullName, title });
+        DOMFactory.addAscensionFallback(element, servant.id);
+        queue.push({ img: element, src: imgSrc });
+      }
+    } else {
+      element = altImgSrc
+        ? DOMFactory.createSwapImg({
+            src: imgSrc,
+            altSrc: altImgSrc,
+            className: badgeClasses,
+            attrs: { alt: fullName, title },
+            fallbackId: servant.id,
+          })
+        : DOMFactory.createLazyImg(imgSrc, badgeClasses, { alt: fullName, title });
+      if (!altImgSrc) DOMFactory.addAscensionFallback(element, servant.id);
+    }
     cell.appendChild(element);
     return cell;
   },
 
   buildCard(group, options = {}) {
-    const { onSelectCE, membersKey = "members" } = options;
+    const { onSelectCE, membersKey = "members", queue = null } = options;
     const card = DOMFactory.el("div", ["cefilter-servant-card", "cefilter-combo-card"]);
 
     const ceRow = DOMFactory.el("div", ["ce-badges", "cefilter-combo-ce-row"]);
@@ -184,8 +226,15 @@ export const ComboCardRenderer = {
             }
           : { title: ce.name },
       );
-      const img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-combo-ce-img", { alt: ce.name, title: ce.name });
-      DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
+      let img;
+      if (queue) {
+        img = DOMFactory.createDeferredImg("cefilter-combo-ce-img", { alt: ce.name, title: ce.name });
+        DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
+        queue.push({ img, src: ce.thumbImage });
+      } else {
+        img = DOMFactory.createLazyImg(ce.thumbImage, "cefilter-combo-ce-img", { alt: ce.name, title: ce.name });
+        DOMFactory.addSimpleFallback(img, "cefilter-match-badge-fallback", ce.id);
+      }
       cell.appendChild(img);
       if (isInteractive) {
         cell.addEventListener("click", (e) => {
@@ -202,12 +251,51 @@ export const ComboCardRenderer = {
     const members = group[membersKey] || [];
     members.forEach((entry) => {
       if (!entry || !entry.servant) return;
-      servantRow.appendChild(this.buildServantCell(entry, rowCEs));
+      servantRow.appendChild(this.buildServantCell(entry, rowCEs, queue));
     });
     card.appendChild(servantRow);
 
     return card;
   },
 };
+
+export function createProgressiveLoader(concurrency = 6) {
+  let gen = 0;
+  return {
+    start(queue) {
+      const loadGen = ++gen;
+      const total = queue.length;
+      if (total === 0) return;
+      let nextIdx = 0;
+
+      const pump = () => {
+        if (loadGen !== gen || nextIdx >= total) return;
+        const task = queue[nextIdx++];
+        let settled = false;
+        const onSettled = () => {
+          if (settled) return;
+          settled = true;
+          if (loadGen !== gen) return;
+          pump();
+        };
+
+        task.img.addEventListener("load", onSettled, { once: true });
+        task.img.addEventListener("error", onSettled, { once: true });
+        task.img.src = task.src;
+        if (task.altImg && task.altSrc) {
+          task.altImg.src = task.altSrc;
+        }
+        if (task.img.complete && task.img.naturalWidth > 0) {
+          onSettled();
+        }
+      };
+
+      const workerCount = Math.min(concurrency, total);
+      for (let i = 0; i < workerCount; i++) {
+        pump();
+      }
+    },
+  };
+}
 
 export { debounce };

@@ -1,5 +1,5 @@
 import { DOMFactory } from "./presentation.js";
-import { ServantFilters } from "./domain.js";
+import { ServantFilters } from "./servant-filters.js";
 import {
   CLASS_FILTERS,
   CLASS_GROUPS,

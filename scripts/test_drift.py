@@ -58,6 +58,11 @@ def trait_add_entry(cno, traits, adds):
     return base
 
 
+def make_np(card, funcs=("damageNp",), flags=("attackEnemyAll",)):
+    """Minimal NP payload enough for extract_servant_np_tags."""
+    return {"card": card, "functions": [{"funcType": f} for f in funcs], "effectFlags": list(flags)}
+
+
 def main():
     tmp = tempfile.mkdtemp()
     n = 0
@@ -138,6 +143,48 @@ def main():
     m.SERVANTS_JS = write_servants_file(tmp, {stored_key: stored_entry})
     changed = m.revalidate_servant_traits({81: {}}, [svt_81])
     assert 81 not in changed, f"costume translated servant wrongly flagged as drifted: {changed}"
+    n += 1
+
+    # K. NP tag extraction: card type (int or string) + AOE/ST/Support scope
+    svt = make_nice(1, 5, ["0100"])
+    svt["noblePhantasms"] = [make_np(3)]  # Quick, AOE damage
+    assert m.extract_servant_np_tags(svt) == ["quick", "aoe"], m.extract_servant_np_tags(svt)
+    svt["noblePhantasms"] = [make_np("arts", flags=("attackEnemy",))]
+    assert m.extract_servant_np_tags(svt) == ["arts", "st"], m.extract_servant_np_tags(svt)
+    svt["noblePhantasms"] = [make_np(2, funcs=("addState",), flags=())]
+    assert m.extract_servant_np_tags(svt) == ["buster", "support"], m.extract_servant_np_tags(svt)
+    svt["noblePhantasms"] = [make_np(1, flags=())]  # damage without enemy flags falls back to support
+    assert m.extract_servant_np_tags(svt) == ["arts", "support"], m.extract_servant_np_tags(svt)
+    svt["noblePhantasms"] = [{"card": 1}]  # NP with no functions is skipped
+    assert m.extract_servant_np_tags(svt) == [], m.extract_servant_np_tags(svt)
+    n += 1
+
+    # L. transform partner NPs merge into the tag set (Jekyll/Hyde style)
+    main = make_nice(81, 3, ["0105"])
+    main["noblePhantasms"] = [make_np(1, funcs=("addState",), flags=())]  # Arts support
+    main["relateId"] = {"transform": [100082]}
+    partner = {"id": 100082, "noblePhantasms": [make_np(2, flags=("attackEnemy",))]}  # Buster ST
+    tags = m.extract_servant_np_tags(main, {100081: main, 100082: partner})
+    assert tags == ["arts", "buster", "st", "support"], tags
+    n += 1
+
+    # M. missing or changed np tags on an existing entry -> flagged for re-sync
+    svt = make_nice(1, 5, ["0100"])
+    svt["noblePhantasms"] = [make_np(3)]
+    key = str(svt["id"])
+    base, diffs, ol, on, _cb = m.extract_servant_traits(svt)
+    stored = m.format_servant_js_entry(key, svt["name"], base, diffs, ol, on, collection_no=1)
+    assert ", np: " not in stored, f"np emitted for empty tag list: {stored}"
+    m.SERVANTS_JS = write_servants_file(tmp, {key: stored})
+    assert 1 in m.revalidate_servant_traits({1: {}}, [svt]), "missing np tags not flagged"
+    stored = m.format_servant_js_entry(key, svt["name"], base, diffs, ol, on, collection_no=1,
+                                       np_tags=m.extract_servant_np_tags(svt))
+    assert 'np: ["quick", "aoe"]' in stored, f"np tags not emitted: {stored}"
+    m.SERVANTS_JS = write_servants_file(tmp, {key: stored})
+    assert 1 not in m.revalidate_servant_traits({1: {}}, [svt]), "matching np tags wrongly flagged"
+    changed_svt = make_nice(1, 5, ["0100"])
+    changed_svt["noblePhantasms"] = [make_np(1)]  # Quick AOE became Arts AOE
+    assert 1 in m.revalidate_servant_traits({1: {}}, [changed_svt]), "changed np tags not flagged"
     n += 1
 
     print(f"{n} tests passed")

@@ -1,7 +1,7 @@
 import { ServantData } from "./data.js";
 import { ServantComboCalculator, Validator } from "./domain.js";
 import { CEFILTER_STORAGE_KEY } from "./constants.js";
-import { DOMFactory, ComboCardRenderer } from "./presentation.js";
+import { DOMFactory, ComboCardRenderer, createProgressiveLoader } from "./presentation.js";
 import { ServantSelector } from "./selectors.js";
 
 /* ============================================
@@ -50,6 +50,7 @@ export const ServantSelect = {
   _deps: null,
   _initialized: false,
   _lastGroups: [],
+  _imageLoader: createProgressiveLoader(6),
 
   _bindEvents() {
     const addBtn = document.getElementById("cefilterServantAddBtn");
@@ -208,9 +209,9 @@ export const ServantSelect = {
     });
   },
 
-  _buildGrid(shown) {
+  _buildGrid(shown, queue = null) {
     const grid = DOMFactory.el("div", "cefilter-combo-grid");
-    shown.forEach((group) => grid.appendChild(this._buildCard(group)));
+    shown.forEach((group) => grid.appendChild(this._buildCard(group, queue)));
     return grid;
   },
 
@@ -227,13 +228,16 @@ export const ServantSelect = {
     const totalPages = Math.max(1, Math.ceil(groups.length / pageSize));
     if (this.state.currentPage > totalPages) this.state.currentPage = totalPages;
     const start = (this.state.currentPage - 1) * pageSize;
-    wrapper.replaceChildren(this._buildGrid(groups.slice(start, start + pageSize)));
+    const queue = [];
+    wrapper.replaceChildren(this._buildGrid(groups.slice(start, start + pageSize), queue));
     this._renderPagination(totalPages);
+    this._imageLoader.start(queue);
   },
 
-  _buildCard(group) {
+  _buildCard(group, queue = null) {
     return ComboCardRenderer.buildCard(group, {
       onSelectCE: (ceId) => this._deps?.onSelectCE?.(ceId),
+      queue,
     });
   },
 

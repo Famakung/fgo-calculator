@@ -1,8 +1,8 @@
-import { CLASS_FILTERS, DEBOUNCE_MS, IMAGE_VERSION } from "./constants.js";
+import { CLASS_FILTERS, DEBOUNCE_MS, IMAGE_VERSION, NP_TYPE_FILTERS, NP_EFFECT_FILTERS } from "./constants.js";
 import { ServantData } from "./data.js";
-import { ServantFilters, ServantSort } from "./domain.js";
-import { FilterModalController } from "./filter-sections.js";
-import { DOMFactory, debounce } from "./presentation.js";
+import { ServantFilters, ServantSort } from "./servant-filters.js";
+import { FilterSections, FilterModalController } from "./filter-sections.js";
+import { DOMFactory, createProgressiveLoader, debounce } from "./presentation.js";
 
 /* ============================================
    CONSTANTS & TRANSLATION HELPERS
@@ -854,6 +854,7 @@ function getVariantByTier(slot, tier) {
    ============================================ */
 
 export const ServantInfoApp = {
+  _portraitLoader: createProgressiveLoader(6),
   state: {
     searchQuery: "",
     classFilters: [],
@@ -863,6 +864,8 @@ export const ServantInfoApp = {
     subAliFilters: [],
     subAttrFilters: [],
     genderFilters: [],
+    npTypeFilters: [],
+    npEffectFilters: [],
     sortBy: "id",
     sortOrder: "asc",
     currentPage: 1,
@@ -872,7 +875,6 @@ export const ServantInfoApp = {
   _lastFiltered: [],
   _draftFilters: null,
   _infoCache: new Map(),
-  _imagePreloadCache: new Map(),
   _activeRequestId: 0,
   _modalOpener: null,
   _modalState: null,
@@ -1023,7 +1025,7 @@ export const ServantInfoApp = {
   _openFilterModal() {
     const modal = document.getElementById("servantInfoFilterModal");
     if (!modal) return;
-    this._draftFilters = FilterModalController.clone(this.state);
+    this._draftFilters = FilterModalController.clone(this.state, ["npTypeFilters", "npEffectFilters"]);
     this._renderFilterRows(this._draftFilters);
     modal.classList.add("open");
   },
@@ -1036,7 +1038,7 @@ export const ServantInfoApp = {
 
   _defaultFilterModal() {
     if (!this._draftFilters) return;
-    this._draftFilters = FilterModalController.createInitial();
+    this._draftFilters = { ...FilterModalController.createInitial(), npTypeFilters: [], npEffectFilters: [] };
     this._renderFilterRows(this._draftFilters);
   },
 
@@ -1045,6 +1047,8 @@ export const ServantInfoApp = {
     this._draftFilters = FilterModalController.selectAll({}, (res) => {
       const scope = ServantFilters.rowScope(res.groupClassFilters);
       if (scope) res.classFilters = res.classFilters.filter((id) => scope.includes(id));
+      res.npTypeFilters = NP_TYPE_FILTERS.map((c) => c.id);
+      res.npEffectFilters = NP_EFFECT_FILTERS.map((c) => c.id);
     });
     this._renderFilterRows(this._draftFilters);
   },
@@ -1075,10 +1079,26 @@ export const ServantInfoApp = {
       }
     };
     FilterModalController.renderStandardRows("servantInfo", filterState, toggle);
+    FilterSections.renderRow(
+      document.getElementById("servantInfoNpTypeFilter"),
+      NP_TYPE_FILTERS,
+      filterState.npTypeFilters,
+      toggle("npTypeFilters"),
+      { word: true },
+    );
+    FilterSections.renderRow(
+      document.getElementById("servantInfoNpEffectFilter"),
+      NP_EFFECT_FILTERS,
+      filterState.npEffectFilters,
+      toggle("npEffectFilters"),
+      { word: true },
+    );
   },
 
   _hasActiveFilters() {
-    return FilterModalController.STANDARD_KEYS.some((key) => this.state[key].length > 0);
+    return [...FilterModalController.STANDARD_KEYS, "npTypeFilters", "npEffectFilters"].some(
+      (key) => (this.state[key] || []).length > 0,
+    );
   },
 
   _updateFilterBtn() {
@@ -1102,7 +1122,8 @@ export const ServantInfoApp = {
             ServantData.getAllNames(servant.id).some((n) => n.toLowerCase().includes(query));
         if (!matchesQuery) return false;
       }
-      if (matcher && !matcher(ServantData.getAllTraitSet(servant.id))) return false;
+      if (matcher && !matcher(ServantData.getAllTraitSet(servant.id), ServantData.getNpTagSet(servant.id)))
+        return false;
       return true;
     });
   },
@@ -1133,49 +1154,57 @@ export const ServantInfoApp = {
     const cols = this._getCols();
 
     const frag = document.createDocumentFragment();
+    const queue = [];
     if (pageSlice.length === 0) {
       const empty = DOMFactory.el("div", "servant-info-empty");
       empty.textContent = "No servants matched your search.";
       frag.appendChild(empty);
     } else {
       pageSlice.forEach((servant, idx) => {
-        const imgAttrs = !isFirstPage
-          ? {}
-          : idx < cols
-            ? { loading: "eager", fetchpriority: "high" }
-            : { loading: "lazy" };
-        frag.appendChild(this._buildCard(servant, imgAttrs));
+        const { card, loadTask } = this._buildCard(servant, isFirstPage && idx < cols);
+        frag.appendChild(card);
+        queue.push(loadTask);
       });
     }
 
     grid.replaceChildren(frag);
+    grid.dataset.hydrated = "1";
     this._renderPagination(totalPages);
+    this._portraitLoader.start(queue);
   },
 
-  _buildCard(servant, imgAttrs) {
+  _buildCard(servant, isPriority) {
     const card = DOMFactory.el("div", ["cefilter-servant-card", "servant-info-card"], {
       role: "button",
       tabindex: "0",
       "aria-label": `View ${servant.name} info`,
     });
 
-    let portraitEl;
+    const slot = DOMFactory.el("div", "servant-info-portrait-slot");
+    let imgA;
+    let imgB = null;
     if (servant.altImage) {
-      portraitEl = DOMFactory.createSwapImg({
-        src: servant.image,
-        altSrc: servant.altImage,
-        className: "servant-slot-portrait",
-        attrs: { alt: servant.name, ...imgAttrs },
-        fallbackId: servant.id,
-      });
-    } else {
-      portraitEl = DOMFactory.createLazyImg(servant.image, "servant-slot-portrait", {
+      const wrap = DOMFactory.el("div", "servant-swap-wrap");
+      imgA = DOMFactory.el("img", ["servant-slot-portrait", "servant-swap-a"], { alt: servant.name });
+      imgB = DOMFactory.el("img", ["servant-slot-portrait", "servant-swap-b"], {
         alt: servant.name,
-        ...imgAttrs,
+        "aria-hidden": "true",
       });
-      DOMFactory.addAscensionFallback(portraitEl, servant.id);
+      imgA.loading = "eager";
+      imgB.loading = "eager";
+      if (isPriority) imgA.fetchPriority = "high";
+      DOMFactory.addAscensionFallback(imgA, servant.id);
+      wrap.appendChild(imgA);
+      wrap.appendChild(imgB);
+      slot.appendChild(wrap);
+    } else {
+      imgA = DOMFactory.el("img", "servant-slot-portrait", { alt: servant.name });
+      imgA.loading = "eager";
+      if (isPriority) imgA.fetchPriority = "high";
+      DOMFactory.addAscensionFallback(imgA, servant.id);
+      slot.appendChild(imgA);
     }
-    card.appendChild(portraitEl);
+    card.appendChild(slot);
 
     const nameEl = DOMFactory.el("div", "cefilter-servant-name");
     if (servant.altName) {
@@ -1194,7 +1223,15 @@ export const ServantInfoApp = {
       }
     });
 
-    return card;
+    return {
+      card,
+      loadTask: {
+        img: imgA,
+        src: servant.image,
+        altImg: imgB,
+        altSrc: servant.altImage || null,
+      },
+    };
   },
 
   _renderPagination(totalPages) {
@@ -1245,93 +1282,6 @@ export const ServantInfoApp = {
 
   /* ===...=== Detail Popup Modal ===...=== */
 
-  _collectModalImageUrls(svt, baseServant) {
-    const urls = new Set();
-    const svtId = (svt && svt.id) || (baseServant && baseServant.id);
-    const baseImgSrc =
-      (baseServant && baseServant.image) || (svtId ? `servants/${svtId}/000.webp?v=${IMAGE_VERSION}` : "");
-    if (baseImgSrc) urls.add(baseImgSrc);
-    if (baseServant && baseServant.altImage) urls.add(baseServant.altImage);
-
-    if (svt && Array.isArray(svt.saintGraphs)) {
-      svt.saintGraphs.forEach((entry) => {
-        if (!entry) return;
-        if (entry.file) urls.add(`saint_graphs/${entry.file}?v=${IMAGE_VERSION}`);
-        if (entry.face) urls.add(`servants/${entry.face}?v=${IMAGE_VERSION}`);
-      });
-    }
-
-    const formConfig = (svt && svt.formatted && svt.formatted.formConfig) || (svt && svt.formConfig) || null;
-    if (formConfig && typeof formConfig === "object") {
-      Object.values(formConfig).forEach((rule) => {
-        if (rule && rule.faces && typeof rule.faces === "object") {
-          Object.values(rule.faces).forEach((face) => {
-            if (face) urls.add(`servants/${face}?v=${IMAGE_VERSION}`);
-          });
-        }
-      });
-    }
-
-    const slots = (svt && svt.formatted && Array.isArray(svt.formatted.slots) && svt.formatted.slots) || [];
-    slots.forEach((slot) => {
-      if (!slot || slot.type !== "skill" || !slot.variantsByTier || typeof slot.variantsByTier !== "object") return;
-      Object.values(slot.variantsByTier).forEach((variant) => {
-        if (!variant) return;
-        if (variant.icon) urls.add(`${variant.icon}?v=${IMAGE_VERSION}`);
-        if (Array.isArray(variant.forms)) {
-          variant.forms.forEach((form) => {
-            if (form && form.icon) urls.add(`${form.icon}?v=${IMAGE_VERSION}`);
-          });
-        }
-      });
-    });
-
-    return [...urls];
-  },
-
-  _preloadImageUrl(url) {
-    if (!url) return Promise.resolve();
-    if (this._imagePreloadCache.has(url)) {
-      return this._imagePreloadCache.get(url);
-    }
-    const promise = new Promise((resolve) => {
-      if (typeof document === "undefined" || typeof document.createElement !== "function") {
-        resolve();
-        return;
-      }
-      const img = DOMFactory.el("img");
-      let settled = false;
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        resolve();
-      };
-      img.onload = () => {
-        if (typeof img.decode === "function") {
-          Promise.resolve(img.decode()).then(done, done);
-        } else {
-          done();
-        }
-      };
-      img.onerror = done;
-      img.setAttribute("src", url);
-      if (img.complete) {
-        if (img.naturalWidth > 0 && typeof img.decode === "function") {
-          Promise.resolve(img.decode()).then(done, done);
-        } else {
-          done();
-        }
-      }
-    });
-    this._imagePreloadCache.set(url, promise);
-    return promise;
-  },
-
-  _preloadModalImages(svt, baseServant) {
-    const urls = this._collectModalImageUrls(svt, baseServant);
-    return Promise.all(urls.map((url) => this._preloadImageUrl(url)));
-  },
-
   async _openDetailModal(servant, openerEl) {
     const modal = document.getElementById("servantInfoModal");
     const titleEl = document.getElementById("servantInfoModalTitle");
@@ -1357,10 +1307,7 @@ export const ServantInfoApp = {
     const svtId = String(servant.id);
     if (this._infoCache.has(svtId)) {
       const cachedData = this._infoCache.get(svtId);
-      await this._preloadModalImages(cachedData, servant);
-      if (reqId === this._activeRequestId && modal.classList.contains("open")) {
-        this._renderDetailModal(cachedData, servant, bodyEl, titleEl);
-      }
+      this._renderDetailModal(cachedData, servant, bodyEl, titleEl);
       return;
     }
 
@@ -1371,11 +1318,9 @@ export const ServantInfoApp = {
       }
       const data = await resp.json();
       this._infoCache.set(svtId, data);
-      await this._preloadModalImages(data, servant);
       if (reqId !== this._activeRequestId || !modal.classList.contains("open")) return;
       this._renderDetailModal(data, servant, bodyEl, titleEl);
     } catch (_err) {
-      await this._preloadModalImages(null, servant);
       if (reqId !== this._activeRequestId || !modal.classList.contains("open")) return;
       this._renderFallbackModal(servant, bodyEl);
     }
@@ -1539,20 +1484,31 @@ export const ServantInfoApp = {
 
     const viewer = DOMFactory.el("div", "f-sg-viewer");
     const wrap = DOMFactory.el("div", "f-sg-stage-wrap");
-    const img = DOMFactory.el("img", "f-sg-img", { width: "512", height: "724", decoding: "async" });
+    const slot = DOMFactory.el("div", "f-sg-slot");
+    let img = null;
+    let currentSrc = "";
     const caption = DOMFactory.el("div", "f-sg-caption", { "aria-live": "polite" });
     const errorEl = DOMFactory.el("div", "f-sg-error");
     errorEl.hidden = true;
 
-    img.addEventListener("load", () => {
-      img.classList.remove("f-sg-img--loading");
-    });
-    img.addEventListener("error", () => {
-      img.classList.remove("f-sg-img--loading");
-      img.hidden = true;
-      errorEl.textContent = "Saint Graph image not available locally.";
-      errorEl.hidden = false;
-    });
+    const mountImg = (src, alt) => {
+      const nextImg = DOMFactory.el("img", "f-sg-img", {
+        width: "512",
+        height: "724",
+        fetchpriority: "high",
+        alt,
+        src,
+      });
+      nextImg.addEventListener("error", () => {
+        if (nextImg !== img) return;
+        slot.hidden = true;
+        nextImg.hidden = true;
+        errorEl.textContent = "Saint Graph image not available locally.";
+        errorEl.hidden = false;
+      });
+      img = nextImg;
+      slot.replaceChildren(nextImg);
+    };
 
     let prev = null;
     let next = null;
@@ -1566,16 +1522,16 @@ export const ServantInfoApp = {
         ["1st Ascension", "2nd Ascension", "3rd Ascension", "Final Ascension"][idx] || `Stage ${idx + 1}`;
       const label = translateOptionLabel(entry.label || fallbackLabel);
       const nextSrc = `saint_graphs/${entry.file}?v=${IMAGE_VERSION}`;
+      const alt = `${name} — ${label}`;
       caption.textContent = label;
       errorEl.hidden = true;
-      img.hidden = false;
-      img.setAttribute("alt", `${name} — ${label}`);
-      if (img.getAttribute("src") !== nextSrc) {
-        img.classList.add("f-sg-img--loading");
-        img.setAttribute("src", nextSrc);
-        if (img.complete && img.naturalWidth > 0) {
-          img.classList.remove("f-sg-img--loading");
-        }
+      slot.hidden = false;
+      if (currentSrc !== nextSrc) {
+        currentSrc = nextSrc;
+        mountImg(nextSrc, alt);
+      } else if (img) {
+        img.hidden = false;
+        img.setAttribute("alt", alt);
       }
       if (modalState) {
         const activeFormHasSg = entries.some((e) => e.form === modalState.activeFormIndex);
@@ -1687,9 +1643,9 @@ export const ServantInfoApp = {
       });
       next.textContent = "›";
       next.addEventListener("click", () => step(1));
-      wrap.append(prev, img, next);
+      wrap.append(prev, slot, next);
     } else {
-      wrap.appendChild(img);
+      wrap.appendChild(slot);
     }
 
     viewer.append(wrap, caption, errorEl);
@@ -1789,7 +1745,6 @@ export const ServantInfoApp = {
     const imgSrc = (baseServant && baseServant.image) || `servants/${svt.id}/000.webp?v=${IMAGE_VERSION}`;
 
     const portraitEl = DOMFactory.el("img", "servant-info-portrait", {
-      src: imgSrc,
       alt: svt.name || "",
     });
     const portraitFallbackEl = DOMFactory.el("div", "servant-slot-portrait-fallback");
@@ -1807,6 +1762,7 @@ export const ServantInfoApp = {
       portraitFallbackEl.hidden = false;
       portraitFallbackEl.style.display = "";
     });
+    portraitEl.setAttribute("src", imgSrc);
     hero.append(portraitEl, portraitFallbackEl);
 
     const meta = DOMFactory.el("div", "servant-info-meta");

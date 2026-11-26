@@ -1,5 +1,5 @@
 import { EventShop } from "./domain.js";
-import { DOMFactory } from "./presentation.js";
+import { DOMFactory, createProgressiveLoader } from "./presentation.js";
 import { buildDraftRow, fmt } from "./event-planner-parts.js";
 
 /* ===...=== Event Shop currency modal (draft editor) ===...=== */
@@ -176,10 +176,13 @@ export const EventShopModal = {
       list.replaceChildren(empty);
       return;
     }
-    const ctx = { state: { requires: this._draft }, handlers: this._draftHandlers() };
+    const imageQueue = [];
+    const ctx = { state: { requires: this._draft }, handlers: this._draftHandlers(), imageQueue };
     const fragment = document.createDocumentFragment();
     for (const item of this._items) fragment.appendChild(buildDraftRow(item, this._currency, ctx));
     list.replaceChildren(fragment);
+    this._imageLoader ||= createProgressiveLoader(6);
+    this._imageLoader.start(imageQueue);
   },
 
   _draftHandlers() {
