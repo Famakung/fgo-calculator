@@ -88,13 +88,13 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
   #servantInfoResults:not([data-hydrated="1"]) > .servant-info-card-placeholder:nth-child(n+26) { display: flex; }
 }
 .servant-info-portrait-slot { position: relative; width: auto; height: var(--servant-portrait-h); aspect-ratio: 142 / 155; border-radius: 4px; overflow: hidden; background: var(--bg); flex-shrink: 0; }
-.servant-info-portrait-slot .servant-slot-portrait, .servant-info-portrait-slot .servant-swap-wrap { width: 100%; height: 100%; margin-bottom: 0; transition: opacity 0.16s ease; }
-.servant-info-portrait-slot.is-loading .servant-slot-portrait { opacity: 0; }
+.servant-info-portrait-slot .servant-slot-portrait, .servant-info-portrait-slot .servant-swap-wrap { width: 100%; height: 100%; margin-bottom: 0; }
+.servant-info-portrait-slot .servant-slot-portrait:not([src]) { opacity: 0; }
 .servant-info-card:focus-visible, .f-option-btn:focus-visible, .f-strengthen-btn:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
 .servant-info-modal-body { gap: 12px; }
 .servant-info-loading, .servant-info-empty { padding: 24px 12px; text-align: center; font-size: 0.85rem; color: var(--text-secondary); }
 .servant-info-hero { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--bg); border: 2px solid var(--border); border-radius: var(--radius-sm); }
-.servant-info-portrait { width: auto; height: var(--servant-portrait-h); aspect-ratio: 142 / 155; border-radius: 4px; object-fit: contain; flex-shrink: 0; }
+.servant-info-portrait { width: auto; height: var(--servant-portrait-h); aspect-ratio: 142 / 155; border-radius: 4px; object-fit: contain; flex-shrink: 0; background: var(--card); }
 .servant-info-hero [hidden] { display: none; }
 .servant-info-hero .servant-slot-portrait-fallback { background: var(--card); border: 2px solid var(--border); }
 .servant-info-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
@@ -113,7 +113,7 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
 .f-section-box { background: var(--bg); border: 2px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .f-section-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-bottom: 2px solid var(--border); padding-bottom: 6px; }
 .f-section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-.f-skill-icon { display: block; width: 32px; height: 32px; border-radius: 6px; object-fit: contain; flex-shrink: 0; }
+.f-skill-icon { display: block; width: 32px; height: 32px; border-radius: 6px; object-fit: contain; flex-shrink: 0; background: var(--card); }
 .f-skill-icon[hidden] { display: none; }
 .f-title-text { display: inline-flex; align-items: center; line-height: 1.25; }
 .f-strengthen-icons { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
@@ -153,8 +153,8 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
 .f-rankup-mark--2 { color: var(--rankup-2); }
 .f-sg-viewer { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-top: 4px; }
 .f-sg-stage-wrap { display: flex; justify-content: center; align-items: center; gap: 8px; width: 100%; max-width: 100%; min-height: 200px; }
-.f-sg-img { display: block; flex: 0 1 auto; min-width: 0; width: auto; max-width: 100%; max-height: 512px; height: auto; object-fit: contain; border-radius: var(--radius-sm); border: 2px solid var(--border); background: var(--card); transition: opacity 0.12s ease; }
-.f-sg-img--loading { opacity: 0.4; }
+.f-sg-slot { position: relative; flex: 0 1 366px; min-width: 0; width: 100%; max-width: 366px; aspect-ratio: 512 / 724; border-radius: var(--radius-sm); border: 2px solid var(--border); background: var(--card); overflow: hidden; }
+.f-sg-img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .f-sg-nav-btn { min-width: 36px; height: 36px; padding: 0; font-size: 1.2rem; line-height: 1; flex-shrink: 0; }
 .f-sg-nav-btn--hidden { visibility: hidden; pointer-events: none; }
 .f-sg-caption { font-size: 0.76rem; font-weight: 600; color: var(--text-secondary); text-align: center; }
@@ -169,7 +169,7 @@ const { title = 'FGO Calculator', description = 'FGO Calculator — Event Shop o
 .servant-info-card:active { border-color: var(--accent); }
 .f-option-btn:active:not(.active), .f-strengthen-btn:active:not(.active) { border-color: var(--accent); background: var(--accent-light); }
 @media (width >= 580px) { .f-profile-table { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (prefers-reduced-motion: reduce) { .servant-info-card, .servant-info-portrait-slot .servant-slot-portrait, .f-option-btn, .f-strengthen-btn, .f-sg-img { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .servant-info-card, .f-option-btn, .f-strengthen-btn { transition: none; } }
 </style>
     <link rel="manifest" href={`${import.meta.env.BASE_URL}manifest.json`} />
     <script is:inline>if(window.trustedTypes&&window.trustedTypes.createPolicy){window.trustedTypes.createPolicy('default',{createHTML:function(s){return s},createScriptURL:function(s){return s},createScript:function(s){return s}})}</script>

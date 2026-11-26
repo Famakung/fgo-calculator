@@ -132,114 +132,11 @@ globalThis.document = {
   activeElement: null,
 };
 
-test("_collectModalImageUrls: collects and deduplicates Saint Graphs, base/alt portraits, stage faces, formConfig faces, and skill icons", async () => {
-  const { IMAGE_VERSION } = await import("../src/scripts/constants.js");
-  const { ServantInfoApp } = await import("../src/scripts/servant-info-app.js");
-
-  const baseServant = {
-    id: "505600",
-    name: "François Prélat",
-    image: `servants/505600/000.webp?v=${IMAGE_VERSION}`,
-    altImage: `servants/505700/000.webp?v=${IMAGE_VERSION}`,
-  };
-
-  const svt = {
-    id: 505600,
-    saintGraphs: [
-      { file: "505600a@1.webp", face: "505600/000.webp" },
-      { file: "505600a@2.webp", face: "505600/001.webp" },
-      { file: "505600a@1.webp", face: "505600/000.webp" }, // duplicate
-      { file: "505700a@1.webp", face: "505700/000.webp" },
-      { file: "505730a.webp", face: "505700/c_505730.webp" },
-    ],
-    formatted: {
-      formConfig: {
-        0: { index: 0, label: "Form 0" },
-        1: {
-          index: 1,
-          label: "Form 1",
-          faces: {
-            1: "600710/000.webp",
-            2: "600710/001.webp",
-            3: "600710/000.webp", // duplicate
-          },
-        },
-      },
-      slots: [
-        {
-          slotKey: "skill_1",
-          type: "skill",
-          variantsByTier: {
-            0: {
-              tier: 0,
-              icon: "skill_icons/skill_00300.webp",
-              forms: [{ icon: "skill_icons/skill_00300.webp" }, { icon: "skill_icons/skill_00601.webp" }],
-            },
-            1: {
-              tier: 1,
-              icon: "skill_icons/skill_00400.webp",
-              forms: [],
-            },
-          },
-        },
-        {
-          slotKey: "np_1",
-          type: "np",
-          variantsByTier: {
-            0: { tier: 0, icon: "skill_icons/should_ignore_np.webp" },
-          },
-        },
-      ],
-    },
-  };
-
-  const urls = ServantInfoApp._collectModalImageUrls(svt, baseServant);
-  const expected = [
-    `servants/505600/000.webp?v=${IMAGE_VERSION}`,
-    `servants/505700/000.webp?v=${IMAGE_VERSION}`,
-    `saint_graphs/505600a@1.webp?v=${IMAGE_VERSION}`,
-    `saint_graphs/505600a@2.webp?v=${IMAGE_VERSION}`,
-    `servants/505600/001.webp?v=${IMAGE_VERSION}`,
-    `saint_graphs/505700a@1.webp?v=${IMAGE_VERSION}`,
-    `saint_graphs/505730a.webp?v=${IMAGE_VERSION}`,
-    `servants/505700/c_505730.webp?v=${IMAGE_VERSION}`,
-    `servants/600710/000.webp?v=${IMAGE_VERSION}`,
-    `servants/600710/001.webp?v=${IMAGE_VERSION}`,
-    `skill_icons/skill_00300.webp?v=${IMAGE_VERSION}`,
-    `skill_icons/skill_00601.webp?v=${IMAGE_VERSION}`,
-    `skill_icons/skill_00400.webp?v=${IMAGE_VERSION}`,
-  ];
-
-  assert.deepEqual(urls, expected);
-  assert.equal(new Set(urls).size, urls.length, "URLs must be deduplicated");
-});
-
-test("_preloadImageUrl: caches promises per URL and resolves gracefully on error or decode rejection", async () => {
-  const { ServantInfoApp } = await import("../src/scripts/servant-info-app.js");
-
-  ServantInfoApp._imagePreloadCache.clear();
-  createdImages.length = 0;
-
-  imageBehavior = "load";
-  const p1 = ServantInfoApp._preloadImageUrl("servants/100100/000.webp?v=test");
-  const p2 = ServantInfoApp._preloadImageUrl("servants/100100/000.webp?v=test");
-  assert.equal(p1, p2, "Repeated preload for same URL must reuse cached promise");
-  await p1;
-  assert.equal(createdImages.length, 1, "Only one <img> element created for cached URL");
-
-  imageBehavior = "error";
-  await ServantInfoApp._preloadImageUrl("servants/missing/404.webp?v=test");
-
-  imageBehavior = "decodeReject";
-  await ServantInfoApp._preloadImageUrl("saint_graphs/corrupt.webp?v=test");
-});
-
-test("_openDetailModal: stays in loading state until JSON and all images finish preloading, and guards against stale renders", async () => {
+test("_openDetailModal: awaits only JSON, loads only visible images on-demand, and guards against stale renders", async () => {
   const { IMAGE_VERSION } = await import("../src/scripts/constants.js");
   const { ServantInfoApp } = await import("../src/scripts/servant-info-app.js");
 
   ServantInfoApp._infoCache.clear();
-  ServantInfoApp._imagePreloadCache.clear();
   createdImages.length = 0;
   imageBehavior = "manual";
 
@@ -266,21 +163,24 @@ test("_openDetailModal: stays in loading state until JSON and all images finish 
     saintGraphs: [
       { key: "1", label: "1st Ascension", file: "100100a@1.webp", kind: "ascension", form: 0, face: "100100/000.webp" },
       { key: "2", label: "2nd Ascension", file: "100100a@2.webp", kind: "ascension", form: 0, face: "100100/001.webp" },
+      { key: "3", label: "3rd Ascension", file: "100100a@3.webp", kind: "ascension", form: 0, face: "100100/002.webp" },
+      { key: "4", label: "Final Ascension", file: "100100b@1.webp", kind: "ascension", form: 0, face: "100100/003.webp" },
     ],
     formatted: { profile: { forms: [] }, slots: [] },
   };
 
+  let fetchCalls = 0;
+  let resolveFetch;
   const origFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({
-    ok: true,
-    status: 200,
-    json: async () => payload,
-  });
+  globalThis.fetch = () => {
+    fetchCalls++;
+    return new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+  };
 
   try {
     const openPromise = ServantInfoApp._openDetailModal(servant);
-
-    // Wait a tick for fetch() to resolve and image preloading to start
     await new Promise((r) => setTimeout(r, 10));
 
     assert.equal(modal.classList.contains("open"), true);
@@ -289,56 +189,55 @@ test("_openDetailModal: stays in loading state until JSON and all images finish 
     assert.equal(
       bodyEl.children[0].classList.contains("servant-info-loading"),
       true,
-      "Modal must remain in loading state while images are still preloading",
-    );
-    assert.equal(createdImages.length, 4, "Should preload 2 Saint Graphs + 2 deduplicated face icons");
-
-    // Finish loading the first 3 images — modal must STILL be in loading state
-    for (let i = 0; i < 3; i++) {
-      createdImages[i].onload();
-    }
-    await new Promise((r) => setTimeout(r, 10));
-    assert.equal(
-      bodyEl.children[0].classList.contains("servant-info-loading"),
-      true,
-      "Modal must still show loading state when 1 image has not settled",
+      "Modal must remain in loading state while JSON fetch is pending",
     );
 
-    // Settle the 4th image (even with onerror) -> modal renders content
-    createdImages[3].onerror();
+    // Resolve JSON fetch — modal renders immediately without waiting for images
+    resolveFetch({ ok: true, status: 200, json: async () => payload });
     await openPromise;
 
     assert.equal(
       bodyEl.children[0].classList.contains("servant-info-loading"),
       false,
-      "Modal must replace loading state after all images settle",
+      "Modal must render detail content as soon as JSON resolves",
     );
     assert.equal(bodyEl.children[0].classList.contains("servant-info-hero"), true);
 
-    // Repeat open with warm _infoCache + _imagePreloadCache renders without spawning duplicate image requests
-    const preloadImgsBeforeRepeat = createdImages.filter((img) => typeof img.onload === "function").length;
-    await ServantInfoApp._openDetailModal(servant);
-    const preloadImgsAfterRepeat = createdImages.filter((img) => typeof img.onload === "function").length;
-    assert.equal(
-      preloadImgsAfterRepeat,
-      preloadImgsBeforeRepeat,
-      "Repeat open must reuse cached image preload promises",
-    );
+    // Only visible images are requested on open; off-screen ascensions and faces are NOT predownloaded
+    const requestedSrcs = createdImages.map((img) => img.getAttribute("src"));
+    assert.deepEqual(requestedSrcs, [
+      `servants/100100/000.webp?v=${IMAGE_VERSION}`,
+      "icons/classes/saber.webp",
+      `saint_graphs/100100a@1.webp?v=${IMAGE_VERSION}`,
+    ]);
+    assert.equal(requestedSrcs.some((s) => s.includes("100100a@2") || s.includes("100100/001")), false);
 
-    // Stale render guard: closing modal while preloading prevents render
-    ServantInfoApp._infoCache.clear();
-    ServantInfoApp._imagePreloadCache.clear();
+    // Repeat open with warm _infoCache renders synchronously without calling fetch() again
+    ServantInfoApp._closeDetailModal();
     createdImages.length = 0;
+    await ServantInfoApp._openDetailModal(servant);
+    assert.equal(fetchCalls, 1, "Warm _infoCache must not re-fetch JSON");
+    assert.equal(bodyEl.children[0].classList.contains("servant-info-hero"), true);
+    ServantInfoApp._closeDetailModal();
+
+    // Stale render guard: closing modal while JSON fetch is in flight prevents detail render
+    ServantInfoApp._infoCache.clear();
+    createdImages.length = 0;
+    let resolveStaleFetch;
+    globalThis.fetch = () =>
+      new Promise((resolve) => {
+        resolveStaleFetch = resolve;
+      });
     const staleOpen = ServantInfoApp._openDetailModal(servant);
     await new Promise((r) => setTimeout(r, 10));
     ServantInfoApp._closeDetailModal();
-    createdImages.forEach((img) => img.onload && img.onload());
+    resolveStaleFetch({ ok: true, status: 200, json: async () => payload });
     await staleOpen;
     assert.equal(modal.classList.contains("open"), false);
     assert.equal(
       bodyEl.children[0].classList.contains("servant-info-loading"),
       true,
-      "Closed modal must not render detail content after stale preload finishes",
+      "Closed modal must not render detail content after stale JSON fetch finishes",
     );
   } finally {
     globalThis.fetch = origFetch;
