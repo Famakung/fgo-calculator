@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Merge a source branch into main carrying code only.
 #
-# The agent-doc tree (.claude/, .wiki/, AGENTS.md, GEMINI.md), tools/ (including
+# The agent-doc tree (.claude/, .gemini/, .wiki/, AGENTS.md, GEMINI.md), tools/ (including
 # this script, query_effect.py, verify_render.js, and test_*.js QA scripts), and
 # the unit tests (tests/, which CI never runs either — deploy.yml's only test
 # steps are `npm run check:build` and the Python self-checks under scripts/) are
@@ -19,7 +19,7 @@ set -euo pipefail
 TARGET="main"
 # develop-only paths; HIDDEN must stay a subset of '$TARGET's .gitignore entries.
 # scripts/ stays 100% public (CI and npm run build depend on it).
-HIDDEN_PATHS=(.claude .wiki AGENTS.md GEMINI.md tools tests)
+HIDDEN_PATHS=(.claude .gemini .wiki AGENTS.md GEMINI.md tools tests)
 SKIP_WIKI=0
 
 while [ "$#" -gt 0 ]; do
