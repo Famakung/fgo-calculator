@@ -18,6 +18,7 @@ from .utils import (
 )
 from .context import FetchContext
 from .function_formatter import (
+    _buff_icon_token,
     fmt_function,
     fmt_function_stacked,
     fmt_delay_fn,
@@ -38,6 +39,21 @@ _MEAL_SKILL_CHAIN = {
 
 def _fmt_single_skill_functions(lines, sk, ctx=None):
     functions = sk.get("functions", [])
+    add_indiv_ex_ids = {
+        sv0["AddIndividualityEx"]
+        for fn in functions
+        for sv0 in [(fn.get("svals") or [{}])[0]]
+        if sv0.get("AddIndividualityEx")
+    }
+    if add_indiv_ex_ids:
+        functions = [
+            fn
+            for fn in functions
+            if not (
+                (sv0 := (fn.get("svals") or [{}])[0]).get("ShowState") == -2
+                and sv0.get("SameIndivBuffActorOnField") in add_indiv_ex_ids
+            )
+        ]
     if not any(
         (fn.get("buffs") or [{}])[0].get("type", "")
         in (
@@ -882,6 +898,8 @@ def _fmt_passive_skill_list(passives, ctx=None) -> list:
         if ctx is not None:
             ctx.functions = sk_fns
         seen_lines = set()
+        if sk.get("id") == 2372650:
+            lines.append("Master Affection starts at Lv. 1 (0 points); +1 Level per 10 points (Max Lv. 10 at 90 points)")
         k = 0
         while k < len(sk_fns):
             fn = sk_fns[k]
@@ -892,7 +910,9 @@ def _fmt_passive_skill_list(passives, ctx=None) -> list:
                 prefix_tag = f" [{card_prefix}]" if card_prefix else ""
                 val_str = f" by {sv0.get('Value', '')}" if sv0.get("Value") else ""
                 cond = fmt_condition(sv0.get("Turn", -1), sv0.get("Count", -1))
-                line = f"Apply Guts{prefix_tag}{val_str}{' ' + cond if cond else ''}"
+                tok = _buff_icon_token(bufs[0])
+                icon_part = f" {tok}" if tok else ""
+                line = f"Apply Guts{prefix_tag}{icon_part}{val_str}{' ' + cond if cond else ''}"
                 if k + 1 < len(sk_fns):
                     nb = sk_fns[k + 1].get("buffs", [])
                     if nb and nb[0]["type"] == "guts" and not nb[0].get("ckOpIndv"):

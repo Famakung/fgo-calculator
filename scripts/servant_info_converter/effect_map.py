@@ -328,7 +328,7 @@ BUFF_TYPE_MAP = {
     "pierceDefence": BuffTypeEntry("Apply Ignore DEF", 0, False),
     "pierceInvincible": BuffTypeEntry("Apply Ignore Invincible", 0, False),
     "pierceSpecialInvincible": BuffTypeEntry(
-        "Apply Ignore Anti-Enforcement DEF", 0, False
+        "Apply Ignore Anti-Enforcement DEF <Does not ignore Evade>", 0, False
     ),
     "pierceSubdamage": BuffTypeEntry("Apply Pierce Damage Cut", 0, False),
     "specialInvincible": BuffTypeEntry(
@@ -514,6 +514,29 @@ TARGET_LABELS = {
     "enemyOne": "for one enemy",
     "enemy": "for one enemy",
     "commandTypeSelfTreasureDevice": "for yourself",
+}
+
+# Target labels when an enemy-targeted delayFunction inner skill runs from the enemy's perspective
+ENEMY_CASTER_TARGET_LABELS = {
+    "self": "for that enemy",
+    "noTarget": "for that enemy",
+    "ptOne": "for one enemy",
+    "ptAll": "for all enemies",
+    "ptFull": "for all enemies",
+    "ptOther": "for all other enemies",
+    "ptOtherFull": "for all other enemies",
+    "enemy": "for a single ally",
+    "enemyOne": "for a single ally",
+    "enemyAll": "for all allies",
+    "enemyFull": "for all allies",
+    "enemyOther": "for all other allies",
+    "enemyOtherFull": "for all other allies",
+}
+
+# BattlePoint ID -> (gauge_name, sub_gauge_name, level_name)
+BATTLE_POINT_NAMES = {
+    3300200: ("Master Affection Gauge", "Master Affection Gauge", "Master Affection Level"),
+    705300: ("Fullness gauge", "the fullness gauge", "Fullness Level"),
 }
 
 # trait id -> display label (used in ckOpIndv / ckSelfIndv condition formatting)
@@ -832,7 +855,7 @@ NP_TYPE_MAP = {
     "damageNpPierce": "Deal {damage_word} DEF-ignoring damage by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpIndividual": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpRare": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
-    "damageNpBattlePointPhase": "Deal {damage_word} damage <STR increases with Master Affection Level> by {val_str}% <effect increases with Level> {dmg_target}",
+    "damageNpBattlePointPhase": "Deal {damage_word} damage <STR increases by {corr_str}% per {bp_level_name} (Max 10, {bp_min_str}-{bp_max_str}%)> by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpStateIndividualFix": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpAndOrCheckIndividuality": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpIndividualSum": {
@@ -891,6 +914,7 @@ JP_BUFF_NAME_MAP = {
     "特性付与〔新選組〕": "Shinsengumi",
     "特性付与〔イリヤ〕": "Illya",
     "湖水の夢": "Lake Water Dream",
+    "巨人の庇護": "Protection of the Giant",
 }
 
 # Costume / Spiritron Dress ID -> English display name

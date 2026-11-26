@@ -168,11 +168,16 @@ def apply_card_prefix(buff_type, template, card_prefix):
     return f"{clean_prefix} {template}"
 
 
-def is_demerit(fn):
+def is_demerit(fn, invert_perspective=False):
     target = fn.get("funcTargetType", "")
     team = fn.get("funcTargetTeam", "")
     # If the function itself targets the enemy team, it's not a demerit for the player.
-    if target in ("enemy", "enemyOne", "enemyAll") or team == "enemy":
+    if team == "enemy":
+        return False
+    if invert_perspective:
+        if target == "self" or (target.startswith("pt") and not target.startswith("ptAndEnemy")):
+            return False
+    elif target in ("enemy", "enemyOne", "enemyAll"):
         return False
     if (fn.get("svals") or [{}])[0].get("FieldBuffApplyTarget") == 2:
         return False

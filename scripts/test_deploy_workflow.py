@@ -179,14 +179,18 @@ def main():
     assert "fgo-static-images-v2-${{ runner.os }}-" in img_restore_keys, "static image restore-keys must include v2 prefix"
     assert "fgo-static-images-v1-" not in img_restore_keys, "v1 restore-key cannot match v2 path-version hash"
     sg_cache_step = next(s for s in steps if s.get("name") == "Restore Saint Graph Cache")
+    buff_cache_step = next(s for s in steps if s.get("name") == "Restore Buff Icon Cache")
     assert cache_step.get("id") == "atlas_cache", "Restore Atlas Data & Asset Cache must set id: atlas_cache"
     assert img_cache_step.get("id") == "static_img_cache", "Restore Static Image Cache must set id: static_img_cache"
     assert sg_cache_step.get("id") == "saint_graph_cache", "Restore Saint Graph Cache must set id: saint_graph_cache"
+    assert buff_cache_step.get("id") == "buff_icon_cache", "Restore Buff Icon Cache must set id: buff_icon_cache"
+    assert "public/buff_icons/" in buff_cache_step["with"]["path"], "public/buff_icons/ missing from buff icon cache"
     for guard in (
         "steps.data_version.outputs.CHECK",
         "steps.atlas_cache.outputs.cache-hit",
         "steps.static_img_cache.outputs.cache-hit",
         "steps.saint_graph_cache.outputs.cache-hit",
+        "steps.buff_icon_cache.outputs.cache-hit",
     ):
         assert guard in sync_run, f"sync skip guard missing {guard}"
     assert "rm -f" not in sync_run, "sync still wipes generated data"

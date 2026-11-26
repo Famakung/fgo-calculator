@@ -123,6 +123,8 @@ img:not([src]) { opacity: 0; }
 .f-section-title { font-size: 0.9rem; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .f-skill-icon { display: block; width: 32px; height: 32px; border-radius: 6px; object-fit: contain; flex-shrink: 0; background: var(--card); }
 .f-skill-icon[hidden] { display: none; }
+.f-buff-icon { display: inline-block; width: 24px; height: 24px; vertical-align: middle; margin: -2px 0 0; object-fit: contain; flex-shrink: 0; }
+.f-buff-icon[hidden] { display: none; }
 .f-title-text { display: inline-flex; align-items: center; line-height: 1.25; }
 .f-strengthen-icons { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .f-strengthen-btn { display: inline-flex; align-items: center; justify-content: center; padding: 2px 8px; border: 2px solid var(--border); border-radius: var(--radius-sm); background: var(--card); color: var(--text-secondary); font-size: 0.72rem; font-weight: 600; line-height: 1.2; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease; user-select: none; }
@@ -152,9 +154,10 @@ img:not([src]) { opacity: 0; }
 .f-np-meta { display: flex; gap: 6px; flex-wrap: wrap; }
 .f-effects-container { display: flex; flex-direction: column; gap: 8px; }
 .f-bullet-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
-.f-bullet-item { font-size: 0.82rem; line-height: 1.45; color: var(--text); padding-left: 12px; position: relative; overflow-wrap: break-word; }
-.f-bullet-item::before { content: "\2022"; position: absolute; left: 1px; color: var(--text-secondary); font-weight: 700; }
-.f-demerit-tag { display: inline-block; color: var(--error); border: 2px solid var(--error); font-size: 0.68rem; font-weight: 700; padding: 1px 5px; border-radius: 8px; margin-right: 5px; vertical-align: middle; line-height: 1.2; }
+.f-bullet-item { font-size: 0.82rem; line-height: 24px; min-height: 24px; color: var(--text); padding-left: 12px; position: relative; overflow-wrap: break-word; }
+.f-bullet-item::before { content: "\2022"; position: absolute; left: 1px; top: 0; line-height: 24px; color: var(--text-secondary); font-weight: 700; }
+.f-bullet-item .f-buff-icon { vertical-align: top; margin: 0; }
+.f-demerit-tag { display: inline-block; color: var(--error); border: 2px solid var(--error); font-size: 0.68rem; font-weight: 700; padding: 1px 5px; border-radius: 8px; margin: 0 5px 0 0; vertical-align: middle; line-height: 1.2; }
 .f-effect-note { color: var(--text-secondary); }
 .f-rankup-marks { display: inline-flex; align-items: center; }
 .f-rankup-mark { color: var(--rankup-1); font-weight: 700; vertical-align: baseline; letter-spacing: 0.02em; }

@@ -134,6 +134,16 @@ jobs:
           key: fgo-saint-graphs-v1-${{ runner.os }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
           restore-keys: fgo-saint-graphs-v1-${{ runner.os }}-
 
+      # Dedicated Buff Icon cache: keyed only on game data version so Python edits never re-download icons.
+      - name: Restore Buff Icon Cache
+        id: buff_icon_cache
+        if: steps.do_work.outputs.DO_WORK == 'true'
+        uses: actions/cache@v6
+        with:
+          path: public/buff_icons/
+          key: fgo-buff-icons-v1-${{ runner.os }}-${{ hashFiles('.ci-baselines/data_version.txt') }}
+          restore-keys: fgo-buff-icons-v1-${{ runner.os }}-
+
       # Every step below is skipped when DO_WORK=false (idle poll / no-force dispatch)
       - name: Set up Python
         if: steps.do_work.outputs.DO_WORK == 'true'
@@ -156,7 +166,8 @@ jobs:
           if [ "${{ steps.data_version.outputs.CHECK }}" = "UNCHANGED" ] \
              && [ "${{ steps.atlas_cache.outputs.cache-hit }}" = "true" ] \
              && [ "${{ steps.static_img_cache.outputs.cache-hit }}" = "true" ] \
-             && [ "${{ steps.saint_graph_cache.outputs.cache-hit }}" = "true" ]; then
+             && [ "${{ steps.saint_graph_cache.outputs.cache-hit }}" = "true" ] \
+             && [ "${{ steps.buff_icon_cache.outputs.cache-hit }}" = "true" ]; then
             echo "Atlas data unchanged and all data/image caches hit — skipping sync_atlas_data.py."
             exit 0
           fi
