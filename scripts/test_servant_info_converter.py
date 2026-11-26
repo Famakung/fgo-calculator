@@ -2822,8 +2822,8 @@ class ServantInfoConverterTests(unittest.TestCase):
         self.assertEqual(
             fmt_function(oberon_s3_fn),
             'Inflict Ending of Dreams <Apply a state that "Removes Buffs & Apply [Eternal Slumber] '
-            "<nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change> "
-            '& Apply Target Focus (3 turns)" at turn end> (1 time) for a single ally '
+            "{{icon:bufficon_558}} <nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change> "
+            '& Apply Target Focus {{icon:bufficon_323}} (3 turns)" at turn end> (1 time) for a single ally '
             "<nullify Resistance, unable to remove> [Demerit]",
         )
 
@@ -3189,6 +3189,483 @@ class ServantInfoConverterTests(unittest.TestCase):
             ),
             'After 1 turn "Decrease Charge for that enemy" (1 turn) for all other enemies',
         )
+
+    def test_buff_icon_tokens_and_extraction(self):
+        from servant_info_converter.function_formatter import fmt_function
+        from servant_info_converter.export_servant_info import extract_buff_icons
+
+        def_up_fn = {
+            "funcId": 100,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "player",
+            "buffs": [
+                {
+                    "id": 128,
+                    "type": "upDefence",
+                    "name": "DEF Up",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_301.png",
+                    "vals": [],
+                }
+            ],
+            "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 150}, {"Rate": 1000, "Turn": 3, "Count": -1, "Value": 200}],
+        }
+        self.assertEqual(
+            fmt_function(def_up_fn),
+            "Increase DEF {{icon:bufficon_301}} by 15-20% (3 turns) for yourself",
+        )
+
+        invinc_fn = {
+            "funcId": 101,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "player",
+            "buffs": [
+                {
+                    "id": 200,
+                    "type": "invincible",
+                    "name": "Invincible",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_307.png",
+                    "vals": [],
+                }
+            ],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 0}],
+        }
+        self.assertEqual(
+            fmt_function(invinc_fn),
+            "Apply Invincible {{icon:bufficon_307}} (1 turn) for yourself",
+        )
+
+        # Effect without buff icon skips token
+        gain_star_fn = {
+            "funcId": 476,
+            "funcType": "gainStar",
+            "funcTargetType": "self",
+            "funcTargetTeam": "player",
+            "buffs": [],
+            "svals": [{"Rate": 1000, "Value": 10}],
+        }
+        self.assertEqual(fmt_function(gain_star_fn), "Gain Critical Stars by 10")
+
+        urls = extract_buff_icons({"skills": [{"functions": [def_up_fn, invinc_fn, gain_star_fn]}]})
+        self.assertEqual(
+            urls,
+            {
+                "bufficon_301.webp": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_301.png",
+                "bufficon_307.webp": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_307.png",
+            },
+        )
+
+    def test_delay_and_inner_trigger_buff_icons(self):
+        from servant_info_converter.context import FetchContext
+        from servant_info_converter.function_formatter import fmt_delay_fn, fmt_function
+
+        inner_skills = {
+            9901: {
+                "id": 9901,
+                "functions": [
+                    {
+                        "funcId": 1,
+                        "funcType": "addStateShort",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "player",
+                        "buffs": [
+                            {
+                                "id": 500,
+                                "type": "donotAct",
+                                "name": "Stun",
+                                "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_401.png",
+                                "vals": [{"id": 3005, "name": "debuff"}, {"id": 3011, "name": "buffStun"}],
+                            }
+                        ],
+                        "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 0}],
+                    }
+                ],
+            },
+            9902: {
+                "id": 9902,
+                "functions": [
+                    {
+                        "funcId": 2,
+                        "funcType": "addStateShort",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "player",
+                        "buffs": [
+                            {
+                                "id": 128,
+                                "type": "upDefence",
+                                "name": "DEF Up",
+                                "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_301.png",
+                                "vals": [],
+                            }
+                        ],
+                        "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 200}],
+                    },
+                    {
+                        "funcId": 3,
+                        "funcType": "addStateShort",
+                        "funcTargetType": "enemy",
+                        "funcTargetTeam": "player",
+                        "buffs": [
+                            {
+                                "id": 150,
+                                "type": "reduceHp",
+                                "name": "Burn",
+                                "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_404.png",
+                                "vals": [{"id": 3005, "name": "debuff"}, {"id": 3007, "name": "burn"}],
+                            }
+                        ],
+                        "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 500}],
+                    },
+                ],
+            },
+        }
+        ctx = FetchContext(fetch_inner_skill=inner_skills.get)
+
+        delay_debuff_fn = {
+            "funcId": 10,
+            "funcType": "addState",
+            "funcTargetType": "self",
+            "funcTargetTeam": "player",
+            "buffs": [
+                {
+                    "id": 293,
+                    "type": "delayFunction",
+                    "name": "Stun After 1 Turn",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_525.png",
+                    "vals": [{"id": 3005}],
+                }
+            ],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 9901}],
+        }
+        self.assertEqual(
+            fmt_delay_fn(delay_debuff_fn, ctx=ctx),
+            'After 1 turn {{icon:bufficon_525}} "100% Chance to Inflict Poison {{icon:bufficon_401}} (1 turn) for yourself [Demerit]" (1 turn) for yourself',
+        )
+
+        # Delay buff with no icon emits no token and no double spaces
+        delay_no_icon_fn = {
+            **delay_debuff_fn,
+            "buffs": [{"id": 6075, "type": "delayFunction", "name": "", "icon": "", "vals": []}],
+        }
+        self.assertEqual(
+            fmt_delay_fn(delay_no_icon_fn, ctx=ctx),
+            'After 1 turn "100% Chance to Inflict Poison {{icon:bufficon_401}} (1 turn) for yourself [Demerit]" (1 turn) for yourself',
+        )
+
+        # Trigger function inner BUFF_TYPE_MAP and reduceHp keep {{icon:...}} intact
+        trig_fn = {
+            "funcId": 20,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "player",
+            "buffs": [
+                {
+                    "id": 600,
+                    "type": "attackAfterFunction",
+                    "name": "Trigger on Attack",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_333.png",
+                    "vals": [],
+                    "ckSelfIndv": [],
+                }
+            ],
+            "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 9902}],
+        }
+        self.assertEqual(
+            fmt_function(trig_fn, ctx=ctx),
+            'Apply a state {{icon:bufficon_333}} that "Increase DEF {{icon:bufficon_301}} by 20% (3 turns) for yourself & Inflict Burn {{icon:bufficon_404}} by 500 (3 turns) for one enemy" when attacking after damage (3 turns) for yourself',
+        )
+
+        # Oberon Skill 3 Ending of Dreams (buff 3712) includes outer and inner Target Focus icons
+        oberon_fn = {
+            "funcId": 966457,
+            "funcType": "addState",
+            "funcTargetType": "ptOne",
+            "buffs": [
+                {
+                    "id": 3712,
+                    "type": "selfturnendFunction",
+                    "name": "Ending of Dreams",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_525.png",
+                    "vals": [{"id": 3005}],
+                }
+            ],
+            "svals": [{"Rate": 5000, "Turn": -1, "Count": 1, "Value": 966458}],
+        }
+        self.assertEqual(
+            fmt_function(oberon_fn, ctx=ctx),
+            'Inflict Ending of Dreams {{icon:bufficon_525}} <Apply a state that "Removes Buffs & Apply [Eternal Slumber] {{icon:bufficon_558}} <nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change> & Apply Target Focus {{icon:bufficon_323}} (3 turns)" at turn end> (1 time) for a single ally <nullify Resistance, unable to remove> [Demerit]',
+        )
+
+        # NP addIndividuality emits buff icon token (e.g., Apply [Evil] / [Chaotic]) and skips empty icon
+        from scripts.servant_info_converter.np_formatter import fmt_np_function
+        np_align_fn = {
+            "funcId": 1,
+            "funcType": "addState",
+            "funcTargetType": "enemy",
+            "buffs": [
+                {
+                    "id": 1534,
+                    "type": "addIndividuality",
+                    "name": "Apply Trait [Evil]",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_520.png",
+                    "vals": [],
+                }
+            ],
+            "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 304}],
+        }
+        self.assertEqual(
+            fmt_np_function(np_align_fn, ctx=ctx),
+            "Apply [Evil] {{icon:bufficon_520}} (3 turns) for one enemy",
+        )
+        np_align_no_icon = {
+            **np_align_fn,
+            "buffs": [{"id": 5940, "type": "addIndividuality", "name": "", "icon": "", "vals": []}],
+        }
+        self.assertEqual(
+            fmt_np_function(np_align_no_icon, ctx=ctx),
+            "Apply [Evil] (3 turns) for one enemy",
+        )
+
+    def test_icon_precedes_explain_and_lord_logres_fixes(self):
+        from scripts.servant_info_converter.export_servant_info import build_skill_by_id
+        from scripts.servant_info_converter.function_formatter import (
+            FetchContext,
+            _insert_buff_icon_in_template,
+            fmt_function,
+        )
+
+        # 1. _insert_buff_icon_in_template places {{icon:...}} before <explain>
+        self.assertEqual(
+            _insert_buff_icon_in_template(
+                "Apply Anti-Enforcement DEF <disregard [Ignore Invincible] and reduce ATK damage received to 0>",
+                {"icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_368.png"},
+            ),
+            "Apply Anti-Enforcement DEF {{icon:bufficon_368}} <disregard [Ignore Invincible] and reduce ATK damage received to 0>",
+        )
+        self.assertEqual(
+            _insert_buff_icon_in_template(
+                "Apply Damage Absorption <restore HP by {val} of damage taken>",
+                {"icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_428.png"},
+            ),
+            "Apply Damage Absorption {{icon:bufficon_428}} <restore HP by {val} of damage taken>",
+        )
+        self.assertEqual(
+            _insert_buff_icon_in_template(
+                "Increase ATK by {val} <special condition>",
+                {"icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_300.png"},
+            ),
+            "Increase ATK {{icon:bufficon_300}} by {val} <special condition>",
+        )
+
+        # 2. _handle_multi_guts_before (Lord Logres Passive 3) emits buff icon token
+        guts_fn = {
+            "funcId": 23132,
+            "funcType": "addState",
+            "funcTargetType": "self",
+            "buffs": [
+                {
+                    "id": 6002,
+                    "type": "multiGutsBeforeFunction",
+                    "name": "騎士叙勲",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_438.png",
+                    "vals": [],
+                }
+            ],
+            "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 970825}],
+        }
+        self.assertEqual(
+            fmt_function(guts_fn, ctx=FetchContext()),
+            'Apply a state {{icon:bufficon_438}} that "Increase Guts HP recovery amount by 20% (1 time) & Increase ATK by 20% (3 turns) for the triggered ally" before Guts is activated on any ally excluding yourself for yourself',
+        )
+
+        # 3. build_skill_by_id accepts dict-shaped nice_skills (e.g. inner_skills.json)
+        skills_dict = {
+            "970829": {"id": 970829, "functions": []},
+            "970825": None,
+            "999": {"functions": []},
+        }
+        by_id = build_skill_by_id([], nice_skills=skills_dict)
+        self.assertIn(970829, by_id)
+        self.assertIn(999, by_id)
+        self.assertNotIn(970825, by_id)
+
+    def test_special_handlers_and_passive_guts_icons(self):
+        from scripts.servant_info_converter.context import FetchContext
+        from scripts.servant_info_converter.function_formatter import fmt_function
+        from scripts.servant_info_converter.skill_formatter import fmt_passives, _fmt_single_skill_functions
+
+        # Passive Guts emits icon token (e.g. U-Olga Marie Threat to Humanity Guts)
+        passive_lines = fmt_passives(
+            [
+                {
+                    "id": 2163650,
+                    "functions": [
+                        {
+                            "funcId": 1,
+                            "funcType": "addState",
+                            "funcTargetType": "self",
+                            "buffs": [
+                                {
+                                    "id": 5892,
+                                    "type": "guts",
+                                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_304.png",
+                                    "ckOpIndv": [{"id": 1172, "name": "Threat to Humanity"}],
+                                }
+                            ],
+                            "svals": [{"Value": 5000, "Turn": -1, "Count": 1}],
+                        }
+                    ],
+                }
+            ],
+            ctx=FetchContext(),
+        )
+        self.assertEqual(
+            passive_lines,
+            ["", "Passives", "Apply Guts [Threat to Humanity] {{icon:bufficon_304}} by 5000 (1 time) for yourself"],
+        )
+
+        # tdTypeChange (single Mash, state-trait Jade Rabbit, grouped Emiya)
+        mash_td = {
+            "funcId": 22584,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "buffs": [
+                {
+                    "id": 5825,
+                    "type": "tdTypeChangeBuster",
+                    "name": "聖剣装填",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_393.png",
+                }
+            ],
+            "svals": [{"Turn": 3, "Count": -1}],
+        }
+        self.assertEqual(
+            fmt_function(mash_td, ctx=FetchContext()),
+            "Apply [Holy Sword Loaded] {{icon:bufficon_393}} & Change Noble Phantasm to [Rayproof Kyrielight] (3 turns) for yourself",
+        )
+
+        grouped_lines = []
+        _fmt_single_skill_functions(
+            grouped_lines,
+            {
+                "id": 1,
+                "functions": [
+                    {
+                        "funcId": 1,
+                        "funcType": "addStateShort",
+                        "funcTargetType": "self",
+                        "buffs": [{"id": 2928, "type": "tdTypeChangeArts", "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_361.png", "script": {"INDIVIDUALITIE": 200100}}],
+                        "svals": [{"Turn": 3, "Count": -1, "Value": 1}],
+                    },
+                    {
+                        "funcId": 2,
+                        "funcType": "addStateShort",
+                        "funcTargetType": "self",
+                        "buffs": [{"id": 2929, "type": "tdTypeChangeBuster", "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_361.png", "script": {"INDIVIDUALITIE": 200100}}],
+                        "svals": [{"Turn": 3, "Count": -1, "Value": 2}],
+                    },
+                ],
+            },
+            ctx=FetchContext(),
+        )
+        self.assertEqual(
+            grouped_lines,
+            ["Change NP Card type to [Arts or Buster] {{icon:bufficon_361}} (3 turns) for yourself"],
+        )
+
+        # Special handlers: skillRankUp, deadFunction, functionedFunction, tdPostAfter, counter, reflection, multiattack, overwriteClassRelation
+        cases = [
+            (
+                {
+                    "funcId": 1,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 2937, "type": "skillRankUp", "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_367.png"}],
+                    "svals": [{"Turn": 4, "Count": -1}],
+                },
+                "Apply [Skill Rank Up] {{icon:bufficon_367}} (4 turns) for yourself",
+            ),
+            (
+                {
+                    "funcId": 1,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 4213, "type": "deadFunction", "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_543.png"}],
+                    "svals": [{"Turn": 3, "Count": 1}],
+                },
+                'Inflict Taisui\'s Calamity {{icon:bufficon_543}} <Apply a state that "Decrease DEF by 20% (3 turns) & Inflict Curse by 1000 (3 turns) & Inflict Disastrous Curse by 100% (3 turns) for all enemies" when defeated> (1 time, 3 turns) for yourself',
+            ),
+            (
+                {
+                    "funcId": 1,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5874, "type": "functionedFunction", "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_331.png"}],
+                    "svals": [{"Turn": -1, "Count": -1, "Value": 970722}],
+                },
+                'Apply a state {{icon:bufficon_331}} that "Increase NP Gauge by 5% for yourself" when receiving HP recovery or Max HP Up for yourself',
+            ),
+            (
+                {
+                    "funcId": 1,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 5981, "type": "treasureDevicePostAfterFunction", "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_436.png"}],
+                    "svals": [{"Turn": 3, "Count": -1}],
+                },
+                'Apply a state {{icon:bufficon_436}} that "Increase NP Gauge by 20-30% based on NP consumed for yourself" when a [Caster] ally excluding yourself uses NP (3 turns) for yourself',
+            ),
+            (
+                {
+                    "funcId": 1,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 4081, "type": "counterFunction", "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_371.png"}],
+                    "svals": [{"Turn": 1, "Count": -1}],
+                },
+                'Apply [Fragarach Counter] {{icon:bufficon_371}} <Counterattack with "Deal significant Quick damage by 600-1000% <effect increases with Level> & Decrease Quick Card resistance by 10% (3 turns) to a single enemy & Gain Critical Stars by 10" when targeted by an enemy\'s normal action> (1 turn) for yourself',
+            ),
+            (
+                {
+                    "funcId": 1,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 233, "type": "reflectionFunction", "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_520.png"}],
+                    "svals": [{"Turn": 1, "Count": 1}],
+                },
+                "Apply [Reflect Damage] {{icon:bufficon_520}} <Deal damage to all enemies at enemy turn end equal to 2-3x the damage taken during the turn> (1 time, 1 turn) for yourself",
+            ),
+            (
+                {
+                    "funcId": 1,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "buffs": [{"id": 386, "type": "multiattack", "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_349.png"}],
+                    "svals": [{"Turn": 1, "Count": -1}],
+                },
+                "Double the number of hits of normal attacks {{icon:bufficon_349}} (strength greatly decreases for each hit, but overall damage increases by 0-30%) (1 turn) for yourself",
+            ),
+            (
+                {
+                    "funcId": 1,
+                    "funcType": "addState",
+                    "funcTargetType": "self",
+                    "buffs": [
+                        {
+                            "id": 2590,
+                            "type": "overwriteClassRelation",
+                            "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_520.png",
+                            "script": {"relationId": {"defSide": {"1": {"saber": 1, "archer": 1, "lancer": 1, "rider": 1, "caster": 1, "assassin": 1, "berserker": 1}}}},
+                        }
+                    ],
+                    "svals": [{"Turn": 3, "Count": -1}],
+                },
+                "Negate the DEF disadvantage due to Class attributes {{icon:bufficon_520}} (3 turns) for yourself",
+            ),
+        ]
+        for fn, expected in cases:
+            self.assertEqual(fmt_function(fn, ctx=FetchContext()), expected)
 
 
 if __name__ == "__main__":

@@ -47,20 +47,34 @@ def build_svt_by_id(nice_servants: Iterable[dict]) -> Dict[int, dict]:
 
 def build_skill_by_id(
     nice_servants: Iterable[dict],
-    nice_skills: Optional[Iterable[dict]] = None,
+    nice_skills: Optional[Iterable[dict] | dict] = None,
 ) -> Dict[int, dict]:
     """Build in-memory skill lookup dict from servant-embedded skills and optional bulk skills."""
     skill_by_id: Dict[int, dict] = {}
+    if isinstance(nice_skills, dict):
+        for raw_id, sk in nice_skills.items():
+            if not isinstance(sk, dict):
+                continue
+            sk_id = sk.get("id")
+            if sk_id is None:
+                try:
+                    sk_id = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+            skill_by_id[sk_id] = sk
+    else:
+        for sk in nice_skills or []:
+            if not isinstance(sk, dict):
+                continue
+            sk_id = sk.get("id")
+            if sk_id is not None:
+                skill_by_id[sk_id] = sk
     for svt in nice_servants or []:
         for group_key in ("skills", "classPassive", "appendPassive"):
             for sk in svt.get(group_key, []) or []:
                 sk_id = sk.get("id")
                 if sk_id is not None:
                     skill_by_id[sk_id] = sk
-    for sk in nice_skills or []:
-        sk_id = sk.get("id")
-        if sk_id is not None:
-            skill_by_id[sk_id] = sk
     return skill_by_id
 
 
@@ -371,6 +385,47 @@ def extract_skill_icons(
     return url_by_filename
 
 
+def _collect_buff_icons_from_entries(entries, url_by_filename: Dict[str, str]) -> None:
+    """Collect buff icon {webp filename: source url} from skill/NP entries."""
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        for fn in entry.get("functions") or []:
+            if not isinstance(fn, dict):
+                continue
+            for buff in fn.get("buffs") or []:
+                if not isinstance(buff, dict):
+                    continue
+                url = buff.get("icon")
+                if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+                    continue
+                base = os.path.basename(urlparse(url).path)
+                stem = os.path.splitext(base)[0]
+                if stem:
+                    url_by_filename[f"{stem}.webp"] = url
+
+
+def extract_buff_icons(
+    svt: dict,
+    svt_by_id: Optional[Dict[int, dict]] = None,
+    skill_by_id: Optional[Dict[int, dict]] = None,
+) -> Dict[str, str]:
+    """Return {webp filename: source url} for buff icons on svt, transform partner, and inner skills."""
+    url_by_filename: Dict[str, str] = {}
+    svts = [svt]
+    partner_id = find_transform_svt_id(svt)
+    if svt_by_id and partner_id:
+        partner = svt_by_id.get(partner_id)
+        if partner:
+            svts.append(partner)
+    for item in svts:
+        for key in ("skills", "noblePhantasms", "classPassive", "appendPassive"):
+            _collect_buff_icons_from_entries(item.get(key), url_by_filename)
+    if skill_by_id:
+        _collect_buff_icons_from_entries(skill_by_id.values(), url_by_filename)
+    return url_by_filename
+
+
 def build_servant_info_payload(
     data: dict,
     svt_by_id: Optional[Dict[int, dict]] = None,
@@ -506,6 +561,9 @@ def export_all_servant_info(
     saint_graph_urls: Dict[str, str] = {}
     face_urls: Dict[str, str] = {}
     skill_icon_urls: Dict[str, str] = {}
+    buff_icon_urls: Dict[str, str] = {}
+    if skill_by_id:
+        _collect_buff_icons_from_entries(skill_by_id.values(), buff_icon_urls)
 
     for svt in nice_servants:
         if not is_playable_servant(svt):
@@ -527,6 +585,7 @@ def export_all_servant_info(
             saint_graph_urls.update(sg_urls)
             face_urls.update(svt_face_urls)
             skill_icon_urls.update(extract_skill_icons(svt, svt_by_id))
+            buff_icon_urls.update(extract_buff_icons(svt, svt_by_id))
             if not dry_run:
                 dest = out_path / f"{svt_id_str}.json"
                 serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -543,6 +602,7 @@ def export_all_servant_info(
         "saint_graph_urls": saint_graph_urls,
         "face_urls": face_urls,
         "skill_icon_urls": skill_icon_urls,
+        "buff_icon_urls": buff_icon_urls,
         "output_dir": str(out_path),
     }
 
@@ -573,8 +633,13 @@ def main():
         nice_servants = json.load(f)
 
     nice_skills = None
-    if args.nice_skills and os.path.exists(args.nice_skills):
-        with open(args.nice_skills, "r", encoding="utf-8") as f:
+    skills_path = args.nice_skills
+    if not skills_path:
+        default_inner = os.path.join(os.path.dirname(args.nice_servants) or ".", "inner_skills.json")
+        if os.path.exists(default_inner):
+            skills_path = default_inner
+    if skills_path and os.path.exists(skills_path):
+        with open(skills_path, "r", encoding="utf-8") as f:
             nice_skills = json.load(f)
 
     result = export_all_servant_info(

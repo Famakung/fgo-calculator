@@ -20,6 +20,8 @@ public/saint_graphs/
 public/craft_essences/
 public/skill_icons/*
 !public/skill_icons/.gitkeep
+public/buff_icons/*
+!public/buff_icons/.gitkeep
 # Directory kept via .gitkeep (a bare `public/event_shop/` exclusion would block the negation).
 public/event_shop/*
 !public/event_shop/.gitkeep

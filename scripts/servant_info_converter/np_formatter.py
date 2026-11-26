@@ -25,7 +25,7 @@ from .utils import (
     fmt_sub_state_label,
 )
 from .context import FetchContext
-from .function_formatter import fmt_function
+from .function_formatter import fmt_function, _buff_icon_token
 
 DAMAGE_FUNC_TYPES = {
     "damageNp",
@@ -284,8 +284,10 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
         if not val or sv0.get("ShowState") == -1 or sv0.get("HideNoEffect") == 1:
             return None
         trait_name = TRAIT_ID_LABELS.get(val, f"{val}:Unknown")
+        tok = _buff_icon_token(buffs[0])
+        icon_part = f" {tok}" if tok else ""
         cond = fmt_condition(sv0.get("Turn", -1), sv0.get("Count", -1))
-        return f"Apply [{trait_name}]{' ' + cond if cond else ''} {target}"
+        return f"Apply [{trait_name}]{icon_part}{' ' + cond if cond else ''} {target}"
     if svals:
         sv_oc5 = oc_last(fn, svals)
         if any(

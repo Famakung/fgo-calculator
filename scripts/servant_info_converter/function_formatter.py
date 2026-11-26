@@ -1,5 +1,7 @@
+import os
 import re
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from .effect_map import (
     FUNC_TYPE_NO_BUFF,
@@ -64,6 +66,45 @@ class _CoreCtx:
 # ---------------------------------------------------------------------------
 # Module-level helpers (lifted from nested closures)
 # ---------------------------------------------------------------------------
+
+
+_ICON_STEM_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _buff_icon_token(buff) -> str:
+    """Return {{icon:<stem>}} for a buff with a valid icon URL, else empty string."""
+    if not isinstance(buff, dict):
+        return ""
+    url = buff.get("icon")
+    if not isinstance(url, str) or not url:
+        return ""
+    base = os.path.basename(urlparse(url).path)
+    stem = os.path.splitext(base)[0]
+    if stem and _ICON_STEM_RE.match(stem):
+        return f"{{{{icon:{stem}}}}}"
+    return ""
+
+
+def _insert_buff_icon_in_template(template: str, buff) -> str:
+    """Insert {{icon:<stem>}} after the effect display phrase and before values or <explain>."""
+    tok = _buff_icon_token(buff)
+    if not tok:
+        return template
+    if not template:
+        return tok
+    explain_idx = template.find(" <")
+    head, tail = (
+        (template[:explain_idx], template[explain_idx:])
+        if explain_idx > 0
+        else (template, "")
+    )
+    for sep in (" by {val}", " with {val}", " of {val}", " {val}"):
+        if sep in head:
+            return f"{head.replace(sep, f' {tok}{sep}', 1)}{tail}"
+    m = re.search(r"\s*\([^)]*\{val\}", head)
+    if m:
+        return f"{head[:m.start()]} {tok}{head[m.start():]}{tail}"
+    return f"{head} {tok}{tail}"
 
 
 def _fmt_mult(m):
@@ -245,7 +286,8 @@ def _parse_stack_consumption_loop(inner_skill, buff):
 
     divisor = entry.divisor or 1
     val_str = f"{buff_val // divisor}%" if entry.is_pct else str(buff_val // divisor)
-    buff_action = entry.template.format(val=val_str)
+    template = _insert_buff_icon_in_template(entry.template, add_fn0["buffs"][0])
+    buff_action = template.replace("{val}", val_str)
     if buff_action:
         buff_action = buff_action[0].lower() + buff_action[1:]
 
@@ -281,11 +323,13 @@ def _parse_stack_consumption_loop(inner_skill, buff):
 def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
     buff = fn["buffs"][0]
     if buff.get("id") == 3712:
+        tok = _buff_icon_token(buff)
+        icon_part = f" {tok}" if tok else ""
         return (
-            'Inflict Ending of Dreams <Apply a state that "Removes Buffs & Apply [Eternal Slumber] '
-            '<nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change> '
-            '& Apply Target Focus (3 turns)" at turn end> (1 time) for a single ally '
-            '<nullify Resistance, unable to remove> [Demerit]'
+            f'Inflict Ending of Dreams{icon_part} <Apply a state that "Removes Buffs & Apply [Eternal Slumber] '
+            '{{icon:bufficon_558}} <nullify Resistance, unable to remove, unable to select Sacrifice, '
+            'unable to Order Change> & Apply Target Focus {{icon:bufficon_323}} (3 turns)" at turn end> '
+            '(1 time) for a single ally <nullify Resistance, unable to remove> [Demerit]'
         )
     sv0 = outer_svals[0] if outer_svals else {}
     inner_skill_id = sv0.get("SkillID") or sv0.get("Value")
@@ -462,8 +506,10 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
                 else inner_buffs[0]["name"]
             )
             val_str = fmt_val_range(inner_val0, inner_val9, 1, False)
+            tok = _buff_icon_token(inner_buffs[0])
+            icon_part = f" {tok}" if tok else ""
             inner_parts.append(
-                f"Inflict {ailment} by {val_str}{inner_cond_str} {inner_target}"
+                f"Inflict {ailment}{icon_part} by {val_str}{inner_cond_str} {inner_target}"
             )
             continue
 
@@ -481,7 +527,9 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
             )
             if not label:
                 continue
-            inner_parts.append(f"Apply [{label}]{inner_cond_str} {inner_target}")
+            tok = _buff_icon_token(inner_buffs[0])
+            icon_part = f" {tok}" if tok else ""
+            inner_parts.append(f"Apply [{label}]{icon_part}{inner_cond_str} {inner_target}")
             continue
 
         inner_rate0 = inner_sv0.get("Rate", 1000)
@@ -503,17 +551,21 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
                 if ailment_ids
                 else inner_buffs[0]["name"]
             )
-            inner_parts.append(f"{inner_rate_prefix}Inflict {ailment}{inner_cond_str} {inner_target}")
+            tok = _buff_icon_token(inner_buffs[0])
+            icon_part = f" {tok}" if tok else ""
+            inner_parts.append(f"{inner_rate_prefix}Inflict {ailment}{icon_part}{inner_cond_str} {inner_target}")
             continue
 
         if inner_buff_type == "delayFunction":
             delayed = fmt_delay_fn(inner_fn, ctx=ctx)
             if not delayed:
+                tok = _buff_icon_token(inner_buffs[0])
+                icon_part = f" {tok}" if tok else ""
                 if "即死" in inner_buffs[0].get("detail", "") or inner_buff_id == 5441:
-                    delayed = f'After {inner_turn if inner_turn > 0 else 1} turn "Apply Death {inner_target} [Demerit]"{inner_cond_str} {inner_target}'
+                    delayed = f'After {inner_turn if inner_turn > 0 else 1} turn{icon_part} "Apply Death {inner_target} [Demerit]"{inner_cond_str} {inner_target}'
                 else:
                     bname = JP_BUFF_NAME_MAP.get(inner_buffs[0].get("name", ""), inner_buffs[0].get("name", "Delayed Effect"))
-                    delayed = f"Apply [{bname}]{inner_cond_str} {inner_target}"
+                    delayed = f"Apply [{bname}]{icon_part}{inner_cond_str} {inner_target}"
             inner_parts.append(delayed)
             continue
 
@@ -541,6 +593,7 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
                 template = template.replace("{traits}", " / ".join(ck_hp))
         card_prefix = get_card_prefix(inner_buffs[0])
         template = apply_card_prefix(inner_buff_type, template, card_prefix)
+        template = _insert_buff_icon_in_template(template, inner_buffs[0])
 
         demerit_suffix = (
             " [Demerit]" if is_demerit(inner_fn) and not is_enemy_target else ""
@@ -556,9 +609,9 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
                     or inner_buffs[0].get("ckSelfIndv", [])
                 )
                 traits_str = " / ".join(fmt_trait_name(t) for t in tvals) if tvals else "Target"
-                rendered = template.format(val=val_str, traits=traits_str)
+                rendered = template.replace("{val}", str(val_str)).replace("{traits}", traits_str)
             else:
-                rendered = template.format(val=val_str)
+                rendered = template.replace("{val}", str(val_str))
             part = f"{rendered}{inner_cond_str} {inner_target}{demerit_suffix}"
 
         state_trait_vals = [
@@ -603,11 +656,13 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
         target_type = fn.get("funcTargetType", "")
         outer_target = TARGET_LABELS.get(target_type, f"for {target_type}")
 
+        tok = _buff_icon_token(buff)
+        icon_part = f" {tok}" if tok else ""
         if inner_parts:
             return (
-                f'Apply [{trait_name}] <Apply a state when countdown reaches 0 to trigger {rate_prefix}"{" & ".join(inner_parts)}">{outer_cond_str} {outer_target}'
+                f'Apply [{trait_name}]{icon_part} <Apply a state when countdown reaches 0 to trigger {rate_prefix}"{" & ".join(inner_parts)}">{outer_cond_str} {outer_target}'
             )
-        return f"Apply [{trait_name}]{outer_cond_str} {outer_target}"
+        return f"Apply [{trait_name}]{icon_part}{outer_cond_str} {outer_target}"
 
     if buff.get("type") in ("selfturnendFunction", "selfturnstartFunction"):
         timing_str = "at turn start" if buff.get("type") == "selfturnstartFunction" else "at turn end"
@@ -623,12 +678,14 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
         outer_target = TARGET_LABELS.get(target_type, f"for {target_type}")
 
         if trait_name:
+            tok = _buff_icon_token(buff)
+            icon_part = f" {tok}" if tok else ""
             if inner_parts:
                 return (
-                    f'Inflict {trait_name} <Apply a state that {rate_prefix}"{" & ".join(inner_parts)}" '
+                    f'Inflict {trait_name}{icon_part} <Apply a state that {rate_prefix}"{" & ".join(inner_parts)}" '
                     f"{timing_str}>{outer_cond_str} {outer_target}"
                 )
-            return f"Inflict {trait_name}{outer_cond_str} {outer_target}"
+            return f"Inflict {trait_name}{icon_part}{outer_cond_str} {outer_target}"
 
         if inner_parts:
             tag_traits = [
@@ -645,7 +702,9 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
                     m = re.search(r"Apply \[([^\]]+)\]", first_p)
                     if m:
                         counter_name = m.group(1)
-                        return f"Gain {len(inner_parts)} [{counter_name}] each turn {timing_str} {outer_target}"
+                        tok = _buff_icon_token(buff)
+                        icon_part = f" {tok}" if tok else ""
+                        return f"Gain {len(inner_parts)} [{counter_name}]{icon_part} each turn {timing_str} {outer_target}"
                 elif len(inner_parts) == 1:
                     p = inner_parts[0]
                     if " by " in p:
@@ -656,11 +715,15 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
                         return f"{base_p} each turn {timing_str} {outer_target}"
                     else:
                         return f"{p} each turn {timing_str}"
+            tok = _buff_icon_token(buff)
+            icon_part = f" {tok}" if tok else ""
             return (
-                f'Apply a state{tag_str} that {rate_prefix}"{" & ".join(inner_parts)}" '
+                f'Apply a state{icon_part}{tag_str} that {rate_prefix}"{" & ".join(inner_parts)}" '
                 f"{timing_str}{outer_cond_str} {outer_target}"
             )
-        return f"Inflict {buff.get('name', '')}{outer_cond_str} {outer_target}"
+        tok = _buff_icon_token(buff)
+        icon_part = f" {tok}" if tok else ""
+        return f"Inflict {buff.get('name', '')}{icon_part}{outer_cond_str} {outer_target}"
 
     that_verb = ""
     if inner_parts and inner_parts[0].startswith("["):
@@ -685,6 +748,9 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
         TARGET_LABELS.get(target_type, "for yourself"), fn.get("functvals", [])
     )
 
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
+
     if not inner_parts and inner_skill is None:
         if inner_skill_id == 970917:
             inner_parts = ["Reduces the fullness gauge by 1"]
@@ -692,10 +758,10 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
             inner_parts = ["Decrease DEF for one enemy"]
         else:
             label = buff.get("name") or "Trigger"
-            return f"Apply a state ({label}) {trigger_phrase}{outer_cond_str} {outer_target}"
+            return f"Apply a state ({label}){icon_part} {trigger_phrase}{outer_cond_str} {outer_target}"
 
     return (
-        f'Apply a state that {that_verb}{rate_prefix}"{" & ".join(inner_parts)}" '
+        f'Apply a state{icon_part} that {that_verb}{rate_prefix}"{" & ".join(inner_parts)}" '
         f"{trigger_phrase}{outer_cond_str} {outer_target}"
     )
 
@@ -759,7 +825,10 @@ def fmt_delay_fn(fn, ctx=None) -> str | None:
             )
     if not inner_parts:
         return None
-    return f'{delay_str} "{" & ".join(inner_parts)}"{outer_cond_str} {outer_target}'
+    buffs = fn.get("buffs") or []
+    tok = _buff_icon_token(buffs[0]) if buffs else ""
+    icon_part = f" {tok}" if tok else ""
+    return f'{delay_str}{icon_part} "{" & ".join(inner_parts)}"{outer_cond_str} {outer_target}'
 
 
 # ---------------------------------------------------------------------------
@@ -1099,6 +1168,8 @@ def _handle_skill_rank_up(core, buff):
     """Dynamically handle skillRankUp buff by looking up svt_data.script.SkillRankUp."""
     cond_str = core.cond_str
     target = core.target
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
     if core.ctx and getattr(core.ctx, "svt_data", None):
         rankup_map = core.ctx.svt_data.get("script", {}).get("SkillRankUp", {})
         non_empty = [(k, v) for k, v in rankup_map.items() if v]
@@ -1114,8 +1185,8 @@ def _handle_skill_rank_up(core, buff):
                         slot = sk.get("num")
                         break
                 slot_str = f"Skill {slot}" if slot else "Skill"
-                return f"Change {slot_str} to [{sk_name}]{cond_str} {target}"
-    return f"Apply [Skill Rank Up]{cond_str} {target}"
+                return f"Change {slot_str} to [{sk_name}]{icon_part}{cond_str} {target}"
+    return f"Apply [Skill Rank Up]{icon_part}{cond_str} {target}"
 
 
 def _handle_td_type_change(core, buff):
@@ -1123,6 +1194,8 @@ def _handle_td_type_change(core, buff):
     sv0 = core.sv0
     cond_str = core.cond_str
     target = core.target
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
 
     if buff.get("name") == "聖剣装填" or "聖剣装填" in buff.get("originalName", ""):
         target_np_name = "Rayproof Kyrielight"
@@ -1131,24 +1204,24 @@ def _handle_td_type_change(core, buff):
                 if np_item.get("card") in ("buster", "2") and "Rayproof" in np_item.get("name", ""):
                     target_np_name = np_item.get("name")
                     break
-        return f"Apply [Holy Sword Loaded] & Change Noble Phantasm to [{target_np_name}]{cond_str} {target}"
+        return f"Apply [Holy Sword Loaded]{icon_part} & Change Noble Phantasm to [{target_np_name}]{cond_str} {target}"
 
     indv_val = buff.get("script", {}).get("INDIVIDUALITIE")
     svt_id = indv_val.get("id") if isinstance(indv_val, dict) else indv_val
     if not svt_id:
-        return f"Change NP Card type to [Unknown Servant]{cond_str} {target}"
+        return f"Change NP Card type to [Unknown Servant]{icon_part}{cond_str} {target}"
 
     svt_data = None
     if core.ctx and core.ctx.fetch:
         try:
             svt_data = core.ctx.fetch(svt_id)
         except Exception:
-            return f"Change NP Card type to [Error Fetching Servant]{cond_str} {target}"
+            return f"Change NP Card type to [Error Fetching Servant]{icon_part}{cond_str} {target}"
     if not svt_data:
         color = CARD_NAMES.get(str(sv0.get("Value")), "Unknown")
         if color != "Unknown":
-            return f"Change NP Card type to [{color}]{cond_str} {target}"
-        return f"Change NP Card type to [Unknown Servant]{cond_str} {target}"
+            return f"Change NP Card type to [{color}]{icon_part}{cond_str} {target}"
+        return f"Change NP Card type to [Unknown Servant]{icon_part}{cond_str} {target}"
 
     td_ids = None
     for np in svt_data.get("noblePhantasms", []):
@@ -1158,7 +1231,7 @@ def _handle_td_type_change(core, buff):
             break
     if not td_ids:
         color = CARD_NAMES.get(str(sv0.get("Value")), "Unknown")
-        return f"Change NP Card type to [{color}]{cond_str} {target}"
+        return f"Change NP Card type to [{color}]{icon_part}{cond_str} {target}"
 
     act_set = sv0.get("ActSet")
     act_sel = sv0.get("ActSelectIndex")
@@ -1175,7 +1248,7 @@ def _handle_td_type_change(core, buff):
     all_nps = [n for n in svt_data.get("noblePhantasms", []) if n["id"] in td_ids]
     target_np = next((n for n in all_nps if n["id"] == target_np_id), None)
     if not target_np:
-        return f"Change NP Card type to [Unknown Variant]{cond_str} {target}"
+        return f"Change NP Card type to [Unknown Variant]{icon_part}{cond_str} {target}"
 
     all_types = [_get_np_type(n) for n in all_nps]
     all_colors = [n.get("card") for n in all_nps]
@@ -1204,15 +1277,17 @@ def _handle_td_type_change(core, buff):
 
     if state_trait:
         st_label = TRAIT_ID_LABELS.get(state_trait["id"], fmt_trait_name(state_trait))
-        return f"Apply [{st_label}] <{res_core_no_target}> {target}"
+        return f"Apply [{st_label}]{icon_part} <{res_core_no_target}> {target}"
 
-    return f"{res_core_no_target} {target}"
+    return f"Change NP Card type to [{label}]{icon_part}{cond_str} {target}"
 
 
 def _handle_overwrite_class_relation(core, buff):
     """Handle the overwriteClassRelation special buff handler."""
     cond_str = core.cond_str
     target = core.target
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
 
     relation_id = buff.get("script", {}).get("relationId", {})
     atk_side = relation_id.get("atkSide", {})
@@ -1228,7 +1303,7 @@ def _handle_overwrite_class_relation(core, buff):
 
     if atk_classes:
         class_names = ", ".join(_camel_to_title(c) for c in sorted(atk_classes))
-        return f"Gain advantage against ({class_names}) class{cond_str} {target}"
+        return f"Gain advantage against ({class_names}) class{icon_part}{cond_str} {target}"
 
     if def_classes:
         standard_classes = {
@@ -1241,15 +1316,17 @@ def _handle_overwrite_class_relation(core, buff):
             "berserker",
         }
         if standard_classes.issubset(def_classes) or len(def_classes) >= 7:
-            return f"Negate the DEF disadvantage due to Class attributes{cond_str} {target}"
+            return f"Negate the DEF disadvantage due to Class attributes{icon_part}{cond_str} {target}"
         class_names = ", ".join(_camel_to_title(c) for c in sorted(def_classes))
-        return f"Negate the DEF disadvantage due to Class attributes against ({class_names}) class{cond_str} {target}"
+        return f"Negate the DEF disadvantage due to Class attributes against ({class_names}) class{icon_part}{cond_str} {target}"
 
-    return f"Negate the DEF disadvantage due to Class attributes{cond_str} {target}"
+    return f"Negate the DEF disadvantage due to Class attributes{icon_part}{cond_str} {target}"
 
 
 def _handle_multiattack(core, buff):
     """Handle multiattack buff (Musashi Fifth Force / Fifth Zenith)."""
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
     card_type = ""
     for t in buff.get("ckSelfIndv", []):
         tid = t.get("id")
@@ -1270,7 +1347,7 @@ def _handle_multiattack(core, buff):
                     v9 = svals[-1].get("Value", 0) // 10
                     dmg_str = f"{v0}-{v9}%" if v0 != v9 else f"{v0}%"
                     break
-    return f"Double the number of hits of normal {card_type}attacks (strength greatly decreases for each hit, but overall damage increases by {dmg_str}){core.cond_str} {core.target}"
+    return f"Double the number of hits of normal {card_type}attacks{icon_part} (strength greatly decreases for each hit, but overall damage increases by {dmg_str}){core.cond_str} {core.target}"
 
 
 def _handle_overwrite_svt_card_type(core, buff):
@@ -1348,14 +1425,16 @@ def _handle_dead_function(core, buff):
         return None
     cond_str = core.cond_str
     target = core.target
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
     dead_map = {
-        3016: 'Apply a state that "Restore HP by 1000-3000 for all allies" when defeated',
-        5746: 'Apply a state that "Gain Critical Stars by 30" when defeated',
-        4295: 'Apply a state that "Increase NP Gauge by 20-30% & Increase Critical Strength by 30-50% (3 turns) & Gain Critical Stars each turn by 5-15 (3 turns) of the back-most single ally, excluding yourself" when defeated',
-        951: 'Apply a state that "Apply Invincible (2-3 times, 3 turns) for all allies & Restore HP by 1000-2000 for all allies" when defeated',
-        1686: 'Apply a state that "Gain Critical Stars by 10-20" when defeated',
-        4213: 'Inflict Taisui\'s Calamity <Apply a state that "Decrease DEF by 20% (3 turns) & Inflict Curse by 1000 (3 turns) & Inflict Disastrous Curse by 100% (3 turns) for all enemies" when defeated>',
-        6022: 'Apply a state that "Increase NP Gauge by 10% for all allies" when defeated',
+        3016: f'Apply a state{icon_part} that "Restore HP by 1000-3000 for all allies" when defeated',
+        5746: f'Apply a state{icon_part} that "Gain Critical Stars by 30" when defeated',
+        4295: f'Apply a state{icon_part} that "Increase NP Gauge by 20-30% & Increase Critical Strength by 30-50% (3 turns) & Gain Critical Stars each turn by 5-15 (3 turns) of the back-most single ally, excluding yourself" when defeated',
+        951: f'Apply a state{icon_part} that "Apply Invincible (2-3 times, 3 turns) for all allies & Restore HP by 1000-2000 for all allies" when defeated',
+        1686: f'Apply a state{icon_part} that "Gain Critical Stars by 10-20" when defeated',
+        4213: f'Inflict Taisui\'s Calamity{icon_part} <Apply a state that "Decrease DEF by 20% (3 turns) & Inflict Curse by 1000 (3 turns) & Inflict Disastrous Curse by 100% (3 turns) for all enemies" when defeated>',
+        6022: f'Apply a state{icon_part} that "Increase NP Gauge by 10% for all allies" when defeated',
     }
     if bid in dead_map:
         return f"{dead_map[bid]}{cond_str} {target}"
@@ -1372,10 +1451,10 @@ def _handle_dead_function(core, buff):
             if r:
                 parts.append(r)
         if parts:
-            return f'Apply a state that "{" & ".join(parts)}" when defeated{cond_str} {target}'
+            return f'Apply a state{icon_part} that "{" & ".join(parts)}" when defeated{cond_str} {target}'
     if bid == 5513 or inner_id == 970452:
-        return f'Apply a state that "Increase NP Gauge for yourself" when an ally is defeated{cond_str} {target}'
-    return f"Apply [Activate on Defeat]{cond_str} {target}"
+        return f'Apply a state{icon_part} that "Increase NP Gauge for yourself" when an ally is defeated{cond_str} {target}'
+    return f"Apply [Activate on Defeat]{icon_part}{cond_str} {target}"
 
 
 def _handle_shorten_skill_after_use(core, buff):
@@ -1401,25 +1480,31 @@ def _handle_functioned_function(core, buff):
         return None
     cond_str = core.cond_str
     target = core.target
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
     if bid == 5874:
         inner_id = core.sv0.get("Value")
         np_pct = "5%" if inner_id == 970722 else "10%"
-        return f'Apply a state that "Increase NP Gauge by {np_pct} for yourself" when receiving HP recovery or Max HP Up{cond_str} {target}'
+        return f'Apply a state{icon_part} that "Increase NP Gauge by {np_pct} for yourself" when receiving HP recovery or Max HP Up{cond_str} {target}'
     if bid == 5908:
-        return f'Apply a state that "Increase Quick Card effectiveness by 10% (3 turns, Max 10 stacks) for yourself" when receiving HP recovery or Max HP Up{cond_str} {target}'
-    return f"Apply a state triggered when receiving an effect{cond_str} {target}"
+        return f'Apply a state{icon_part} that "Increase Quick Card effectiveness by 10% (3 turns, Max 10 stacks) for yourself" when receiving HP recovery or Max HP Up{cond_str} {target}'
+    return f"Apply a state{icon_part} triggered when receiving an effect{cond_str} {target}"
 
 
 def _handle_multi_guts_before(core, buff):
     """Handle multiGutsBeforeFunction buff (Lord Logres Knighthood Conferment A)."""
-    return f'Apply a state that "Increase Guts HP recovery amount by 20% (1 time) & Increase ATK by 20% (3 turns) for the triggered ally" before Guts is activated on any ally excluding yourself{core.cond_str} {core.target}'
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
+    return f'Apply a state{icon_part} that "Increase Guts HP recovery amount by 20% (1 time) & Increase ATK by 20% (3 turns) for the triggered ally" before Guts is activated on any ally excluding yourself{core.cond_str} {core.target}'
 
 
 def _handle_td_post_after(core, buff):
     """Handle treasureDevicePostAfterFunction buff (Solomon Seal of Solomon E)."""
     if buff.get("id") == 5982:
         return None
-    return f'Apply a state that "Increase NP Gauge by 20-30% based on NP consumed for yourself" when a [Caster] ally excluding yourself uses NP{core.cond_str} {core.target}'
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
+    return f'Apply a state{icon_part} that "Increase NP Gauge by 20-30% based on NP consumed for yourself" when a [Caster] ally excluding yourself uses NP{core.cond_str} {core.target}'
 
 
 def _handle_battle_point_trigger(core, buff):
@@ -1447,12 +1532,16 @@ def _handle_battle_point_trigger(core, buff):
 
 def _handle_counter_function(core, buff):
     """Handle counterFunction buff (Manannán mac Lir (Bazett) Fragarach)."""
-    return f'Apply [Fragarach Counter] <Counterattack with "Deal significant Quick damage by 600-1000% <effect increases with Level> & Decrease Quick Card resistance by 10% (3 turns) to a single enemy & Gain Critical Stars by 10" when targeted by an enemy\'s normal action>{core.cond_str} {core.target}'
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
+    return f'Apply [Fragarach Counter]{icon_part} <Counterattack with "Deal significant Quick damage by 600-1000% <effect increases with Level> & Decrease Quick Card resistance by 10% (3 turns) to a single enemy & Gain Critical Stars by 10" when targeted by an enemy\'s normal action>{core.cond_str} {core.target}'
 
 
 def _handle_reflection_function(core, buff):
     """Handle reflectionFunction buff (Aŋra Mainiiu Verg Avesta)."""
-    return f"Apply [Reflect Damage] <Deal damage to all enemies at enemy turn end equal to 2-3x the damage taken during the turn>{core.cond_str} {core.target}"
+    tok = _buff_icon_token(buff)
+    icon_part = f" {tok}" if tok else ""
+    return f"Apply [Reflect Damage]{icon_part} <Deal damage to all enemies at enemy turn end equal to 2-3x the damage taken during the turn>{core.cond_str} {core.target}"
 
 
 def _resolve_traits_from_config(core, buff, config, template, divisor, is_pct):
@@ -1609,6 +1698,7 @@ def _render_buff_template(
             template = template.replace(" by {val}", f" with [{tag_name}] by {{val}}")
         elif "{val}" in template:
             template = template.replace("{val}", f"with [{tag_name}] {{val}}")
+    template = _insert_buff_icon_in_template(template, buff)
     use_rate = not config and isinstance(entry, FuncTypeEntry) and entry.use_rate
     val0 = core.val0
     val9 = core.val9
@@ -1744,7 +1834,7 @@ def _render_buff_template(
             "  ", " "
         )
         return None if "{traits}" in res else res
-    res = f"{rate_prefix}{template.format(val=val_str)}{core.cond_str}{op_cond_str}{hp_cond} {_target}{core.on_field_str}{demerit_suffix}".strip().replace(
+    res = f"{rate_prefix}{template.replace('{val}', str(val_str))}{core.cond_str}{op_cond_str}{hp_cond} {_target}{core.on_field_str}{demerit_suffix}".strip().replace(
         "  ", " "
     )
     return None if "{traits}" in res else res
@@ -1759,8 +1849,10 @@ def _handle_buff_type(core):
             bname = JP_BUFF_NAME_MAP.get(
                 buff.get("name", ""), buff.get("name", "Protection of the Giant")
             )
+            tok = _buff_icon_token(buff)
+            icon_part = f" {tok}" if tok else ""
             return (
-                f"Apply [{bname}] <activates a special Invincible [Guardian Parry] "
+                f"Apply [{bname}]{icon_part} <activates a special Invincible [Guardian Parry] "
                 f"that also activates for allies other than yourself>{core.cond_str} {core.target}"
             )
         if not buff.get("name") and not core.sv0.get("Value") and not [v for v in buff.get("vals", []) if v.get("id") not in (3004, 3005)]:
@@ -1770,8 +1862,10 @@ def _handle_buff_type(core):
     ):
         bname = JP_BUFF_NAME_MAP.get(buff.get("name", ""), buff.get("name", ""))
         rate_prefix = f"{fmt_val_range(core.sv0.get('Rate', 1000), core.sv9.get('Rate', 1000), 10, False)}% Chance to "
+        tok = _buff_icon_token(buff)
+        icon_part = f" {tok}" if tok else ""
         return (
-            f"{rate_prefix}Apply [{bname}] "
+            f"{rate_prefix}Apply [{bname}]{icon_part} "
             f"<nullify Resistance, unable to remove, unable to select Sacrifice, unable to Order Change>"
             f"{core.cond_str} {core.target}"
         )
@@ -2293,7 +2387,9 @@ def fmt_function_stacked(fn, count, ctx=None) -> str | None:
         traits = (
             " with " if buff.get("script", {}).get("checkIndvType") == 1 else " and "
         ).join(fmt_trait_name(t) for t in buff["ckOpIndv"])
-        return f"Apply {count} [{state_name}]<Decrease {traits} Resist by {fmt_val_range(sv0.get('Value', 0), sv9.get('Value', 0), 10, True)}>{cond_str} {target}"
+        tok = _buff_icon_token(buff)
+        icon_part = f" {tok}" if tok else ""
+        return f"Apply {count} [{state_name}]{icon_part}<Decrease {traits} Resist by {fmt_val_range(sv0.get('Value', 0), sv9.get('Value', 0), 10, True)}>{cond_str} {target}"
     base_res = fmt_function(fn, ctx=ctx)
     if not base_res:
         return None

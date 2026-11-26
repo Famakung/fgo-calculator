@@ -27,12 +27,15 @@ const requiredFiles = [
 
 const servantInfoDir = path.join(baseDir, "public", "servant_info");
 const skillIconsDir = path.join(baseDir, "public", "skill_icons");
+const buffIconsDir = path.join(baseDir, "public", "buff_icons");
 
 const missing = requiredFiles.filter((file) => !fs.existsSync(file));
 const hasServantInfo =
   fs.existsSync(servantInfoDir) && fs.readdirSync(servantInfoDir).some((name) => name.endsWith(".json"));
 const hasSkillIcons =
   fs.existsSync(skillIconsDir) && fs.readdirSync(skillIconsDir).some((name) => name.endsWith(".webp"));
+const hasBuffIcons =
+  fs.existsSync(buffIconsDir) && fs.readdirSync(buffIconsDir).some((name) => name.endsWith(".webp"));
 
 if (missing.length > 0) {
   console.log("Local game dataset missing. Auto-generating from Atlas Academy API...");
@@ -45,8 +48,8 @@ if (missing.length > 0) {
     console.error("Failed to generate game dataset via sync_atlas_data.py:", error.message);
     process.exit(1);
   }
-} else if (!hasServantInfo || !hasSkillIcons) {
-  console.log("Local servant info JSON or skill icons missing. Auto-generating via sync_atlas_data.py --servant-info-only...");
+} else if (!hasServantInfo || !hasSkillIcons || !hasBuffIcons) {
+  console.log("Local servant info JSON or icons missing. Auto-generating via sync_atlas_data.py --servant-info-only...");
   try {
     execSync("python3 scripts/sync_atlas_data.py --servant-info-only", {
       cwd: baseDir,

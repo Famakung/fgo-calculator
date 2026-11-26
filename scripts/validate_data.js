@@ -196,7 +196,28 @@ if (servantKeys.length > 0 && !fs.existsSync(servantInfoDir)) {
         errors.push(`Servant ${id}: servant_info.formatted missing required profile/slots arrays`);
       } else {
         for (const slot of fmt.slots) {
-          if (!slot || slot.type !== "skill" || !slot.variantsByTier || typeof slot.variantsByTier !== "object") {
+          if (!slot || typeof slot !== "object") continue;
+          const checkEffectIcons = (effectsList, label) => {
+            if (!Array.isArray(effectsList)) return;
+            for (const eff of effectsList) {
+              if (typeof eff !== "string") continue;
+              const re = /\{\{icon:([^}]*)\}\}/g;
+              let m;
+              while ((m = re.exec(eff)) !== null) {
+                const stem = m[1];
+                if (!/^[A-Za-z0-9_-]+$/.test(stem)) {
+                  errors.push(`Servant ${id}: ${label} has invalid buff icon token ${JSON.stringify(m[0])}`);
+                  continue;
+                }
+                const buffIconPath = path.join(ROOT_DIR, "public", "buff_icons", `${stem}.webp`);
+                if (!fs.existsSync(buffIconPath)) {
+                  errors.push(`Servant ${id}: ${label} buff icon missing at public/buff_icons/${stem}.webp`);
+                }
+              }
+            }
+          };
+          checkEffectIcons(slot.effects, `${slot.slotKey}`);
+          if (!slot.variantsByTier || typeof slot.variantsByTier !== "object") {
             continue;
           }
           for (const [tierKey, variant] of Object.entries(slot.variantsByTier)) {
@@ -211,11 +232,17 @@ if (servantKeys.length > 0 && !fs.existsSync(servantInfoDir)) {
                 errors.push(`Servant ${id}: ${label} skill icon missing at public/${iconVal}`);
               }
             };
-            checkSkillIcon(variant.icon, `${slot.slotKey} tier ${tierKey}`);
+            if (slot.type === "skill") {
+              checkSkillIcon(variant.icon, `${slot.slotKey} tier ${tierKey}`);
+            }
+            checkEffectIcons(variant.effects, `${slot.slotKey} tier ${tierKey}`);
             if (Array.isArray(variant.forms)) {
               variant.forms.forEach((f, fIdx) => {
                 if (f && typeof f === "object") {
-                  checkSkillIcon(f.icon, `${slot.slotKey} tier ${tierKey} form ${fIdx}`);
+                  if (slot.type === "skill") {
+                    checkSkillIcon(f.icon, `${slot.slotKey} tier ${tierKey} form ${fIdx}`);
+                  }
+                  checkEffectIcons(f.effects, `${slot.slotKey} tier ${tierKey} form ${fIdx}`);
                 }
               });
             }

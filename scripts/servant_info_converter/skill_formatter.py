@@ -18,6 +18,7 @@ from .utils import (
 )
 from .context import FetchContext
 from .function_formatter import (
+    _buff_icon_token,
     fmt_function,
     fmt_function_stacked,
     fmt_delay_fn,
@@ -909,7 +910,9 @@ def _fmt_passive_skill_list(passives, ctx=None) -> list:
                 prefix_tag = f" [{card_prefix}]" if card_prefix else ""
                 val_str = f" by {sv0.get('Value', '')}" if sv0.get("Value") else ""
                 cond = fmt_condition(sv0.get("Turn", -1), sv0.get("Count", -1))
-                line = f"Apply Guts{prefix_tag}{val_str}{' ' + cond if cond else ''}"
+                tok = _buff_icon_token(bufs[0])
+                icon_part = f" {tok}" if tok else ""
+                line = f"Apply Guts{prefix_tag}{icon_part}{val_str}{' ' + cond if cond else ''}"
                 if k + 1 < len(sk_fns):
                     nb = sk_fns[k + 1].get("buffs", [])
                     if nb and nb[0]["type"] == "guts" and not nb[0].get("ckOpIndv"):

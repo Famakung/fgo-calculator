@@ -307,7 +307,7 @@ function findBalancedAngleEnd(str, openIdx) {
   return -1;
 }
 
-function appendHighlightedEffect(container, text) {
+export function appendHighlightedEffect(container, text) {
   const str = String(text || "");
   let i = 0;
   let textStart = 0;
@@ -337,6 +337,30 @@ function appendHighlightedEffect(container, text) {
       i += 4;
       textStart = i;
       continue;
+    }
+    if (str.startsWith("{{icon:", i)) {
+      const closeIdx = str.indexOf("}}", i + 7);
+      if (closeIdx > i + 7) {
+        const stem = str.slice(i + 7, closeIdx);
+        if (/^[A-Za-z0-9_-]+$/.test(stem)) {
+          flushText(i);
+          const img = DOMFactory.el("img", "f-buff-icon", {
+            src: `buff_icons/${stem}.webp`,
+            alt: "",
+            width: "24",
+            height: "24",
+            loading: "lazy",
+            decoding: "async",
+          });
+          img.addEventListener("error", () => {
+            img.hidden = true;
+          });
+          container.appendChild(img);
+          i = closeIdx + 2;
+          textStart = i;
+          continue;
+        }
+      }
     }
     if (str[i] === "<") {
       const closeIdx = findBalancedAngleEnd(str, i);
@@ -470,6 +494,7 @@ function maskQuotedInner(line) {
  */
 export function normalizeEffectSignature(line) {
   return maskQuotedInner(line)
+    .replace(/\{\{icon:[A-Za-z0-9_-]+\}\}/g, "")
     .replace(/\[Demerit\]/gi, "")
     .replace(/\([^)]*(?:turn|time)[^)]*\)/gi, "(#D)")
     .replace(/\b\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?%?/g, "#N")
@@ -575,24 +600,40 @@ function diffInlineTokens(prevText, currText, entry, tierIdx) {
 
 function advancePastEffectNote(text, pos) {
   let outPos = pos;
-  const chanceMatch = text.slice(outPos).match(/^\s+chance\b/i);
-  if (chanceMatch) {
-    outPos += chanceMatch[0].length;
-  }
-  const damageNoteMatch = text.slice(outPos).match(/^\s+damage\s+(?=<)/i);
-  if (damageNoteMatch) {
-    const angleStart = outPos + damageNoteMatch[0].length;
-    const closeIdx = findBalancedAngleEnd(text, angleStart);
-    if (closeIdx > angleStart && SCALING_NOTE_REGEX.test(text.slice(angleStart, closeIdx + 1))) {
-      return closeIdx + 1;
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    const chanceMatch = text.slice(outPos).match(/^\s+chance\b/i);
+    if (chanceMatch) {
+      outPos += chanceMatch[0].length;
+      progressed = true;
+      continue;
     }
-  }
-  let idx = outPos;
-  while (idx < text.length && text[idx] === " ") idx += 1;
-  if (text[idx] === "<") {
-    const closeIdx = findBalancedAngleEnd(text, idx);
-    if (closeIdx > idx && SCALING_NOTE_REGEX.test(text.slice(idx, closeIdx + 1))) {
-      return closeIdx + 1;
+    const iconMatch = text.slice(outPos).match(/^\s*\{\{icon:[A-Za-z0-9_-]+\}\}/);
+    if (iconMatch) {
+      outPos += iconMatch[0].length;
+      progressed = true;
+      continue;
+    }
+    const damageNoteMatch = text.slice(outPos).match(/^\s+damage\s+(?=<)/i);
+    if (damageNoteMatch) {
+      const angleStart = outPos + damageNoteMatch[0].length;
+      const closeIdx = findBalancedAngleEnd(text, angleStart);
+      if (closeIdx > angleStart && SCALING_NOTE_REGEX.test(text.slice(angleStart, closeIdx + 1))) {
+        outPos = closeIdx + 1;
+        progressed = true;
+        continue;
+      }
+    }
+    let idx = outPos;
+    while (idx < text.length && text[idx] === " ") idx += 1;
+    if (text[idx] === "<") {
+      const closeIdx = findBalancedAngleEnd(text, idx);
+      if (closeIdx > idx && SCALING_NOTE_REGEX.test(text.slice(idx, closeIdx + 1))) {
+        outPos = closeIdx + 1;
+        progressed = true;
+        continue;
+      }
     }
   }
   return outPos;

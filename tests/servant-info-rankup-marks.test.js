@@ -20,7 +20,7 @@ globalThis.document = globalThis.document || {
   addEventListener: () => {},
 };
 
-const { annotateRankUpEffects, getCooldownRankUpCount, getCooldownRankUpTiers } =
+const { annotateRankUpEffects, appendHighlightedEffect, getCooldownRankUpCount, getCooldownRankUpTiers } =
   await import("../src/scripts/servant-info-app.js");
 
 test("base tier only produces no rank up marks", () => {
@@ -284,4 +284,58 @@ test("chance percentage increase places mark after chance", () => {
   assert.deepEqual(annotateRankUpEffects([t0, t1]), [
     "80-100% Chance [\u25b21] to Inflict Stun (1 turn) for one enemy",
   ]);
+});
+
+test("rank-up mark placed near {{icon:...}} renders icon before mark", () => {
+  const t0 = ["Apply 3 [Magic Bullets] {{icon:bufficon_398}} for yourself"];
+  const t1 = ["Apply 5 [Magic Bullets] {{icon:bufficon_398}} for yourself"];
+  assert.deepEqual(annotateRankUpEffects([t0, t1]), [
+    "Apply 5 [Magic Bullets] {{icon:bufficon_398}} [\u25b21] for yourself",
+  ]);
+});
+
+test("inline {{icon:...}} tokens preserve rank-up diffing and render 24px img elements", () => {
+  const t0 = ["Increase DEF {{icon:bufficon_301}} by 15-20% (3 turns) for yourself"];
+  const t1 = ["Increase DEF {{icon:bufficon_301}} by 20-30% (3 turns) for yourself"];
+  assert.deepEqual(annotateRankUpEffects([t0, t1]), [
+    "Increase DEF {{icon:bufficon_301}} by 20-30% [\u25b21] (3 turns) for yourself",
+  ]);
+
+  const origCreateElement = globalThis.document.createElement;
+  const created = [];
+  globalThis.document.createElement = (tag) => {
+    const attrs = {};
+    const node = {
+      tagName: tag.toUpperCase(),
+      className: "",
+      textContent: "",
+      attrs,
+      children: [],
+      classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+      setAttribute(k, v) {
+        attrs[k] = v;
+      },
+      appendChild(child) {
+        this.children.push(child);
+      },
+      addEventListener() {},
+      style: {},
+    };
+    created.push(node);
+    return node;
+  };
+  try {
+    const container = globalThis.document.createElement("li");
+    appendHighlightedEffect(container, "Increase DEF {{icon:bufficon_301}} by 15-20%");
+    const imgs = container.children.filter((c) => c.tagName === "IMG");
+    assert.equal(imgs.length, 1);
+    assert.equal(imgs[0].className, "f-buff-icon");
+    assert.equal(imgs[0].attrs.src, "buff_icons/bufficon_301.webp");
+    assert.equal(imgs[0].attrs.width, "24");
+    assert.equal(imgs[0].attrs.height, "24");
+    assert.equal(container.children[0].textContent, "Increase DEF ");
+    assert.equal(container.children[2].textContent, " by 15-20%");
+  } finally {
+    globalThis.document.createElement = origCreateElement;
+  }
 });
