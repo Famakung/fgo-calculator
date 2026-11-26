@@ -1,6 +1,7 @@
 import re
 
 from .effect_map import (
+    BATTLE_POINT_NAMES,
     CLASS_TRAIT_IDS,
     NP_TYPE_MAP,
     TARGET_LABELS,
@@ -130,8 +131,13 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
             sv_oc5 = oc_last(fn, svals)
             bp_min_str = ""
             bp_max_str = ""
+            bp_level_name = ""
             if func_type == "damageNpBattlePointPhase":
-                # 1-indexed phases 1..10 (0..90 Master Affection Gauge): STR = Value2 + phase * Correction
+                # 1-indexed phases 1..10 (0..90 BattlePoint Gauge): STR = Value2 + phase * Correction
+                bp_id = sv0.get("Target") or ((ctx.svt_data or {}).get("id") if ctx else None)
+                bp_level_name = BATTLE_POINT_NAMES.get(
+                    bp_id, ("Battle Point Gauge", "Battle Point Gauge", "Battle Point Level")
+                )[2]
                 base_val = sv0["Value2"] if sv0.get("Value2") is not None else 1000
                 step_val = sv0.get("Correction") or 0
                 bp_min_str = fmt_val_range(base_val + step_val, base_val + step_val, 10, False)
@@ -249,6 +255,7 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                 dmg_target=dmg_target,
                 trait=trait,
                 corr_str=corr_str,
+                bp_level_name=bp_level_name,
                 bp_min_str=bp_min_str,
                 bp_max_str=bp_max_str,
                 max_count=sv0.get("ParamAddMaxCount", 1),

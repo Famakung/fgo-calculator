@@ -8,6 +8,7 @@ from .effect_map import (
     BUFF_TYPE_MAP,
     TARGET_LABELS,
     ENEMY_CASTER_TARGET_LABELS,
+    BATTLE_POINT_NAMES,
     TRAIT_ID_LABELS,
     HP_REDUCE_LABELS,
     JP_BUFF_NAME_MAP,
@@ -712,9 +713,17 @@ def fmt_delay_fn(fn, ctx=None) -> str | None:
     outer_cond = fmt_condition(sv0.get("Turn", -1), sv0.get("Count", -1))
     outer_cond_str = f" {outer_cond}" if outer_cond else ""
     target_type = fn.get("funcTargetType", "")
-    outer_target = TARGET_LABELS.get(target_type, f"for {target_type}")
     parent_invert = bool(ctx and ctx.invert_perspective)
-    child_invert = (not parent_invert) if target_type in ("enemy", "enemyOne", "enemyAll") else parent_invert
+    outer_target = (
+        ENEMY_CASTER_TARGET_LABELS.get(target_type, TARGET_LABELS.get(target_type, f"for {target_type}"))
+        if parent_invert
+        else TARGET_LABELS.get(target_type, f"for {target_type}")
+    )
+    child_invert = (
+        (not parent_invert)
+        if target_type in ("enemy", "enemyOne", "enemyAll", "enemyFull", "enemyOther", "enemyOtherFull")
+        else parent_invert
+    )
     inner_ctx = (
         ctx.with_perspective(child_invert)
         if ctx is not None
@@ -1037,9 +1046,11 @@ def _handle_gain_multiply_np(core):
 
 def _battle_point_label(sv, *, is_sub=False) -> str:
     """Return the display gauge name for a BattlePoint svals entry."""
-    if sv.get("BattlePointId") == 3300200:
-        return "Master Affection Gauge"
-    return "the fullness gauge" if is_sub else "Fullness gauge"
+    bp_id = sv.get("BattlePointId")
+    entry = BATTLE_POINT_NAMES.get(bp_id)
+    if entry:
+        return entry[1] if is_sub else entry[0]
+    return "Battle Point Gauge"
 
 
 def _handle_sub_battle_point(core):
@@ -2099,8 +2110,13 @@ def _fmt_function_core(fn, sv_start=None, sv_end=None, ctx=None) -> str | None:
         return None
 
     if core.func_type == "displayBuffstring" and "CheckOverChargeStageRange" in core.sv0:
+        svt_id = (core.ctx.svt_data or {}).get("id") if core.ctx else None
+        bp_id = core.sv0.get("BattlePointId") or (3300200 if core.fn.get("funcId") == 21839 else svt_id)
+        if bp_id not in BATTLE_POINT_NAMES:
+            return None
+        gauge_name = BATTLE_POINT_NAMES[bp_id][0]
         target_str = f" {core.target}" if core.target else ""
-        return f"Increase Master Affection Gauge by 0-20 <effect increases with Overcharge>{target_str}"
+        return f"Increase {gauge_name} by 0-20 <effect increases with Overcharge>{target_str}"
     if core.func_type == "addStateShortUserEquipSkillAvailable":
         val_str = fmt_val_range(core.val0, core.val9, 10, True)
         max_count = core.sv0.get("ParamAddMaxCount")
@@ -2186,9 +2202,19 @@ def fmt_function(fn, sv_start=None, sv_end=None, ctx=None) -> str | None:
         result = f"When Critical Stars are {star_lower} or less, {result}"
     bp_phase_ranges = sv0.get("CheckBattlePointPhaseRange")
     if bp_phase_ranges:
+        bp_id = bp_phase_ranges[0].get("battlePointId") or ((ctx.svt_data or {}).get("id") if ctx else None)
+        level_name = BATTLE_POINT_NAMES.get(
+            bp_id, ("Battle Point Gauge", "Battle Point Gauge", "Battle Point Level")
+        )[2]
         rng = (bp_phase_ranges[0].get("range") or [""])[0]
         if rng.endswith("<=") and rng[:-2].isdigit():
-            result = f"When Master Affection Level is {rng[:-2]} or higher, {result}"
+            lvl_num = int(rng[:-2])
+            if bp_id == 3300200 and lvl_num >= 10:
+                result = f"When {level_name} is {lvl_num}, {result}"
+            else:
+                result = f"When {level_name} is {lvl_num} or higher, {result}"
+        elif rng.isdigit():
+            result = f"When {level_name} is {rng}, {result}"
     buff_type = ((fn.get("buffs") or [{}])[0]).get("type", "")
     rate0, rate9 = sv0.get("Rate", 1000), sv9.get("Rate", 1000)
     if (

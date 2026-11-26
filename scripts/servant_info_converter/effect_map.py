@@ -533,6 +533,12 @@ ENEMY_CASTER_TARGET_LABELS = {
     "enemyOtherFull": "for all other allies",
 }
 
+# BattlePoint ID -> (gauge_name, sub_gauge_name, level_name)
+BATTLE_POINT_NAMES = {
+    3300200: ("Master Affection Gauge", "Master Affection Gauge", "Master Affection Level"),
+    705300: ("Fullness gauge", "the fullness gauge", "Fullness Level"),
+}
+
 # trait id -> display label (used in ckOpIndv / ckSelfIndv condition formatting)
 CLASS_TRAIT_IDS = {
     100,
@@ -849,7 +855,7 @@ NP_TYPE_MAP = {
     "damageNpPierce": "Deal {damage_word} DEF-ignoring damage by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpIndividual": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpRare": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
-    "damageNpBattlePointPhase": "Deal {damage_word} damage <STR increases by {corr_str}% per Master Affection Level (Max 10, {bp_min_str}-{bp_max_str}%)> by {val_str}% <effect increases with Level> {dmg_target}",
+    "damageNpBattlePointPhase": "Deal {damage_word} damage <STR increases by {corr_str}% per {bp_level_name} (Max 10, {bp_min_str}-{bp_max_str}%)> by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpStateIndividualFix": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpAndOrCheckIndividuality": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpIndividualSum": {

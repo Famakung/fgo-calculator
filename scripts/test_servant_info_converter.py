@@ -2542,8 +2542,12 @@ class ServantInfoConverterTests(unittest.TestCase):
             ),
             'Apply a state that "Increases Master Affection Gauge by 3 for yourself" when using a skill for yourself',
         )
-        # Phase boundaries: Level 1, 4, 10
-        for lvl in (1, 4, 10):
+        # Phase boundaries: Level 1, 4, 10 (10<= collapses to exact Lv. 10 for 3300200)
+        for lvl, expected_cond in (
+            (1, "When Master Affection Level is 1 or higher"),
+            (4, "When Master Affection Level is 4 or higher"),
+            (10, "When Master Affection Level is 10"),
+        ):
             res = fmt_function(
                 {
                     "funcId": 878,
@@ -2562,8 +2566,90 @@ class ServantInfoConverterTests(unittest.TestCase):
                     ],
                 }
             )
-            self.assertEqual(res, f"When Master Affection Level is {lvl} or higher, Increase Death Success Rate 100% (1 turn) for yourself")
-        # Infinity Indicator EX passive (2372650) prepends Level/Gauge rule
+            self.assertEqual(res, f"{expected_cond}, Increase Death Success Rate 100% (1 turn) for yourself")
+        # Exact phase and non-3300200 BattlePoint ID fallback
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcId": 878,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "buffs": [{"id": 248, "type": "upGrantInstantdeath", "name": "Death Chance Up"}],
+                    "svals": [
+                        {
+                            "Rate": 1000,
+                            "Turn": 1,
+                            "Count": -1,
+                            "Value": 1000,
+                            "CheckBattlePointPhaseRange": [{"battlePointId": 9999999, "range": ["10<="]}],
+                        }
+                    ],
+                }
+            ),
+            "When Battle Point Level is 10 or higher, Increase Death Success Rate 100% (1 turn) for yourself",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcId": 878,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "buffs": [{"id": 248, "type": "upGrantInstantdeath", "name": "Death Chance Up"}],
+                    "svals": [
+                        {
+                            "Rate": 1000,
+                            "Turn": 1,
+                            "Count": -1,
+                            "Value": 1000,
+                            "CheckBattlePointPhaseRange": [{"battlePointId": 3300200, "range": ["5"]}],
+                        }
+                    ],
+                }
+            ),
+            "When Master Affection Level is 5, Increase Death Success Rate 100% (1 turn) for yourself",
+        )
+        # Non-3300200 displayBuffstring + CheckOverChargeStageRange is ignored
+        self.assertIsNone(
+            fmt_function(
+                {
+                    "funcId": 99999,
+                    "funcType": "displayBuffstring",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "svals": [{"Rate": 1000, "CheckOverChargeStageRange": ["1<="]}],
+                }
+            )
+        )
+        # Non-3300200 damageNpBattlePointPhase falls back to Battle Point Level
+        self.assertEqual(
+            _extract_single_np_data(
+                {
+                    "id": 9999901,
+                    "card": "arts",
+                    "npDistribution": [1, 2, 3],
+                    "effectFlags": ["attackEnemyAll"],
+                    "functions": [
+                        {
+                            "funcId": 21836,
+                            "funcType": "damageNpBattlePointPhase",
+                            "funcTargetType": "enemyAll",
+                            "funcTargetTeam": "playerAndEnemy",
+                            "functvals": [],
+                            "funcquestTvals": [],
+                            "buffs": [],
+                            "svals": [
+                                {"Rate": 1000, "Value": 4500, "Value2": 1000, "Target": 9999999, "Correction": 100},
+                                {"Rate": 1000, "Value": 7500, "Value2": 1000, "Target": 9999999, "Correction": 100},
+                            ],
+                        }
+                    ],
+                }
+            )["effects"],
+            ["Deal heavy damage <STR increases by 10% per Battle Point Level (Max 10, 110-200%)> by 450-750% <effect increases with Level> to all enemies"],
+        )
+        # Infinity Indicator EX passive (2372650) prepends Level/points rule
         from scripts.servant_info_converter.skill_formatter import _fmt_passive_skill_list
         passive_lines = _fmt_passive_skill_list([
             {
@@ -2582,7 +2668,7 @@ class ServantInfoConverterTests(unittest.TestCase):
         self.assertEqual(
             passive_lines,
             [
-                "Master Affection starts at Lv. 1 (0 Gauge); +1 Level per 10 Gauge (Max Lv. 10 at 90 Gauge)",
+                "Master Affection starts at Lv. 1 (0 points); +1 Level per 10 points (Max Lv. 10 at 90 points)",
                 "Increases Master Affection Gauge by 5 for yourself",
             ],
         )
@@ -3067,6 +3153,41 @@ class ServantInfoConverterTests(unittest.TestCase):
         self.assertEqual(
             fmt_function(ally_demerit_fn, ctx=ctx),
             'After 1 turn "Decrease NP Gauge by 10% for all allies [Demerit]" (1 turn) for one enemy',
+        )
+
+        # enemyOther delayFunction and nested parent_invert=True
+        inner_skills["960915"] = {
+            "id": 960915,
+            "functions": [
+                {"funcId": 3996, "funcType": "delayNpturn", "funcTargetType": "self", "funcTargetTeam": "enemy", "buffs": [], "svals": [{"Rate": 1000, "Value": 1}]},
+            ],
+        }
+        enemy_other_fn = {
+            "funcId": 9004,
+            "funcType": "addState",
+            "funcTargetType": "enemyOther",
+            "funcTargetTeam": "player",
+            "buffs": [{"id": 5004, "type": "delayFunction", "script": {}, "vals": []}],
+            "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 960915}],
+        }
+        self.assertEqual(
+            fmt_function(enemy_other_fn, ctx=ctx),
+            'After 1 turn "Decrease Charge for that enemy" (1 turn) for enemyOther',
+        )
+        inverted_outer_ctx = ctx.with_perspective(True)
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcId": 9005,
+                    "funcType": "addState",
+                    "funcTargetType": "ptOther",
+                    "funcTargetTeam": "enemy",
+                    "buffs": [{"id": 5005, "type": "delayFunction", "script": {}, "vals": []}],
+                    "svals": [{"Rate": 1000, "Turn": 1, "Count": -1, "Value": 960915}],
+                },
+                ctx=inverted_outer_ctx,
+            ),
+            'After 1 turn "Decrease Charge for that enemy" (1 turn) for all other enemies',
         )
 
 
