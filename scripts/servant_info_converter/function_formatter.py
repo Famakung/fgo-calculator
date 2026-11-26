@@ -410,10 +410,12 @@ def fmt_trigger_function(fn, outer_svals, ctx=None) -> str | None:
                 inner_parts.append(f"Gain Critical Stars by {val}")
             elif inner_func_type == "subBattlePoint":
                 val = inner_sv0.get("Target") or inner_sv0.get("BattlePointValue") or inner_sv0.get("Value", 0)
-                inner_parts.append(f"Reduces the fullness gauge by {val}{inner_cond_str}")
+                bp_label = _battle_point_label(inner_sv0, is_sub=True)
+                inner_parts.append(f"Reduces {bp_label} by {val}{inner_cond_str}")
             elif inner_func_type == "addBattlePoint":
                 val = inner_sv0.get("BattlePointValue") or inner_sv0.get("Value", 0)
-                inner_parts.append(f"Increases Fullness gauge by {val}{inner_cond_str}{target_str}")
+                bp_label = _battle_point_label(inner_sv0)
+                inner_parts.append(f"Increases {bp_label} by {val}{inner_cond_str}{target_str}")
             elif inner_func_type in ("gainNpFromTargets", "gainHpFromTargets"):
                 delegated = _fmt_function_core(inner_fn, ctx=ctx)
                 if delegated:
@@ -1004,12 +1006,20 @@ def _handle_gain_multiply_np(core):
     return f"Multiply NP Gauge by {val_str} {core.target}"
 
 
+def _battle_point_label(sv, *, is_sub=False) -> str:
+    """Return the display gauge name for a BattlePoint svals entry."""
+    if sv.get("BattlePointId") == 3300200:
+        return "Master Affection Gauge"
+    return "the fullness gauge" if is_sub else "Fullness gauge"
+
+
 def _handle_sub_battle_point(core):
     """Handle the subBattlePoint func type."""
     v0 = core.sv0.get("Target") or core.sv0.get("BattlePointValue") or core.sv0.get("Value", 0)
     v9 = core.sv9.get("Target") or core.sv9.get("BattlePointValue") or core.sv9.get("Value", 0)
     val_str = f"{v0}-{v9}" if v0 != v9 else str(v0)
-    return f"Reduces the fullness gauge by {val_str}{core.cond_str}"
+    bp_label = _battle_point_label(core.sv0, is_sub=True)
+    return f"Reduces {bp_label} by {val_str}{core.cond_str}"
 
 
 def _handle_add_battle_point(core):
@@ -1017,7 +1027,8 @@ def _handle_add_battle_point(core):
     v0 = core.sv0.get("BattlePointValue") or core.sv0.get("Value", 0)
     v9 = core.sv9.get("BattlePointValue") or core.sv9.get("Value", 0)
     val_str = f"{v0}-{v9}" if v0 != v9 else str(v0)
-    return f"Increases Fullness gauge by {val_str}{core.cond_str} {core.target}"
+    bp_label = _battle_point_label(core.sv0)
+    return f"Increases {bp_label} by {val_str}{core.cond_str} {core.target}"
 
 
 # ---------------------------------------------------------------------------
@@ -1378,19 +1389,19 @@ def _handle_battle_point_trigger(core, buff):
     cond_str = core.cond_str
     target = core.target
     if btype == "fieldIndividualityChangedFunction":
-        return f'Apply a state that "Increases Master Affection gauge by 10 for yourself" when entering a [Near Water] field{cond_str} {target}'
+        return f'Apply a state that "Increases Master Affection Gauge by 10 for yourself" when entering a [Near Water] field{cond_str} {target}'
     if btype == "confirmCommandFunction":
         if bid == 5653:
-            return f'Apply a state that "Increases Master Affection gauge by 6 for yourself" when forming a Brave Chain{cond_str} {target}'
-        return f'Apply a state that "Increases Master Affection gauge by 3 for yourself" when selecting a Command Card{cond_str} {target}'
+            return f'Apply a state that "Increases Master Affection Gauge by 6 for yourself" when forming a Brave Chain{cond_str} {target}'
+        return f'Apply a state that "Increases Master Affection Gauge by 3 for yourself" when selecting a Command Card{cond_str} {target}'
     if btype == "skillBeforeFunction":
         if buff.get("script", {}).get("useFirstTimeInTurn"):
-            return f'Apply a state that "Increases Master Affection gauge by 2 for yourself" when using a skill first in the turn{cond_str} {target}'
-        return f'Apply a state that "Increases Master Affection gauge by 3 for yourself" when using a skill{cond_str} {target}'
+            return f'Apply a state that "Increases Master Affection Gauge by 2 for yourself" when using a skill first in the turn{cond_str} {target}'
+        return f'Apply a state that "Increases Master Affection Gauge by 3 for yourself" when using a skill{cond_str} {target}'
     if btype == "skillTargetedBeforeFunction":
         if buff.get("script", {}).get("fromCommandSpell"):
-            return f'Apply a state that "Increases Master Affection gauge by 10 for yourself" when targeted by a Command Spell{cond_str} {target}'
-        return f'Apply a state that "Increases Master Affection gauge by 5 for yourself" when targeted by a Master Skill{cond_str} {target}'
+            return f'Apply a state that "Increases Master Affection Gauge by 10 for yourself" when targeted by a Command Spell{cond_str} {target}'
+        return f'Apply a state that "Increases Master Affection Gauge by 5 for yourself" when targeted by a Master Skill{cond_str} {target}'
     return None
 
 
@@ -2055,7 +2066,8 @@ def _fmt_function_core(fn, sv_start=None, sv_end=None, ctx=None) -> str | None:
         return None
 
     if core.func_type == "displayBuffstring" and "CheckOverChargeStageRange" in core.sv0:
-        return f"Increase Master Affection Gauge <effect increases with Overcharge> {core.target}"
+        target_str = f" {core.target}" if core.target else ""
+        return f"Increase Master Affection Gauge by 0-20 <effect increases with Overcharge>{target_str}"
     if core.func_type == "addStateShortUserEquipSkillAvailable":
         val_str = fmt_val_range(core.val0, core.val9, 10, True)
         max_count = core.sv0.get("ParamAddMaxCount")
@@ -2142,7 +2154,7 @@ def fmt_function(fn, sv_start=None, sv_end=None, ctx=None) -> str | None:
     bp_phase_ranges = sv0.get("CheckBattlePointPhaseRange")
     if bp_phase_ranges:
         rng = (bp_phase_ranges[0].get("range") or [""])[0]
-        if rng.endswith("<="):
+        if rng.endswith("<=") and rng[:-2].isdigit():
             result = f"When Master Affection Level is {rng[:-2]} or higher, {result}"
     buff_type = ((fn.get("buffs") or [{}])[0]).get("type", "")
     rate0, rate9 = sv0.get("Rate", 1000), sv9.get("Rate", 1000)

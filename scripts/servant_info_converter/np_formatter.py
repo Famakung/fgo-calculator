@@ -128,41 +128,52 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                 template = template.get(sv0.get("Target", 1), template[1])
         if template:
             sv_oc5 = oc_last(fn, svals)
-            if func_type in ("damageNpHpratioLow", "damageNpHpratioHigh"):
-                corr_val0 = sv0.get("Target", 0)
-                corr_val_end = sv_oc5.get("Target", 0)
-                corr_is_level = False
-            else:
-                corr_val0 = sv0.get("Correction") or sv0.get("Value2", 0)
-                corr_val_oc5 = sv_oc5.get("Correction") or sv_oc5.get("Value2", 0)
-                corr_val_np5 = sv_np5.get("Correction") or sv_np5.get("Value2", 0)
-                if corr_val0 == corr_val_oc5 and corr_val_np5 != corr_val0:
-                    corr_val_end = corr_val_np5
-                    corr_is_level = True
-                else:
-                    corr_val_end = corr_val_oc5
-                    corr_is_level = False
-            corr_oc1, corr_oc5 = (
-                corr_val0 // 10,
-                corr_val_end // 10,
-            )
-            corr_str = (
-                f"{corr_oc1}-{corr_oc5}" if corr_oc1 != corr_oc5 else str(corr_oc1)
-            )
-            if func_type in ("damageNpHpratioLow", "damageNpHpratioHigh"):
-                oc_tag = (
-                    " <strength increases with Overcharge>"
-                    if corr_oc1 != corr_oc5
-                    else ""
-                )
-            elif corr_oc1 != corr_oc5:
-                oc_tag = (
-                    " <Special Attack damage increases with Level>"
-                    if corr_is_level
-                    else " <Special Attack damage increases with Overcharge>"
-                )
-            else:
+            bp_min_str = ""
+            bp_max_str = ""
+            if func_type == "damageNpBattlePointPhase":
+                # 1-indexed phases 1..10 (0..90 Master Affection Gauge): STR = Value2 + phase * Correction
+                base_val = sv0["Value2"] if sv0.get("Value2") is not None else 1000
+                step_val = sv0.get("Correction") or 0
+                bp_min_str = fmt_val_range(base_val + step_val, base_val + step_val, 10, False)
+                bp_max_str = fmt_val_range(base_val + 10 * step_val, base_val + 10 * step_val, 10, False)
+                corr_str = fmt_val_range(step_val, step_val, 10, False)
                 oc_tag = ""
+            else:
+                if func_type in ("damageNpHpratioLow", "damageNpHpratioHigh"):
+                    corr_val0 = sv0.get("Target", 0)
+                    corr_val_end = sv_oc5.get("Target", 0)
+                    corr_is_level = False
+                else:
+                    corr_val0 = sv0.get("Correction") or sv0.get("Value2", 0)
+                    corr_val_oc5 = sv_oc5.get("Correction") or sv_oc5.get("Value2", 0)
+                    corr_val_np5 = sv_np5.get("Correction") or sv_np5.get("Value2", 0)
+                    if corr_val0 == corr_val_oc5 and corr_val_np5 != corr_val0:
+                        corr_val_end = corr_val_np5
+                        corr_is_level = True
+                    else:
+                        corr_val_end = corr_val_oc5
+                        corr_is_level = False
+                corr_oc1, corr_oc5 = (
+                    corr_val0 // 10,
+                    corr_val_end // 10,
+                )
+                corr_str = (
+                    f"{corr_oc1}-{corr_oc5}" if corr_oc1 != corr_oc5 else str(corr_oc1)
+                )
+                if func_type in ("damageNpHpratioLow", "damageNpHpratioHigh"):
+                    oc_tag = (
+                        " <strength increases with Overcharge>"
+                        if corr_oc1 != corr_oc5
+                        else ""
+                    )
+                elif corr_oc1 != corr_oc5:
+                    oc_tag = (
+                        " <Special Attack damage increases with Level>"
+                        if corr_is_level
+                        else " <Special Attack damage increases with Overcharge>"
+                    )
+                else:
+                    oc_tag = ""
             if func_type == "damageNpAndOrCheckIndividuality":
                 and_list = sv0.get("AndCheckIndividualityList") or []
                 or_list = sv0.get("OrCheckIndividualityList") or []
@@ -238,6 +249,8 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                 dmg_target=dmg_target,
                 trait=trait,
                 corr_str=corr_str,
+                bp_min_str=bp_min_str,
+                bp_max_str=bp_max_str,
                 max_count=sv0.get("ParamAddMaxCount", 1),
                 oc_tag=oc_tag,
             )

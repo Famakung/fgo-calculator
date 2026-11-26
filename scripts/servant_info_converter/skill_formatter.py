@@ -897,6 +897,8 @@ def _fmt_passive_skill_list(passives, ctx=None) -> list:
         if ctx is not None:
             ctx.functions = sk_fns
         seen_lines = set()
+        if sk.get("id") == 2372650:
+            lines.append("Master Affection starts at Lv. 1 (0 Gauge); +1 Level per 10 Gauge (Max Lv. 10 at 90 Gauge)")
         k = 0
         while k < len(sk_fns):
             fn = sk_fns[k]

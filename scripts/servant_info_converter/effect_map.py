@@ -832,7 +832,7 @@ NP_TYPE_MAP = {
     "damageNpPierce": "Deal {damage_word} DEF-ignoring damage by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpIndividual": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpRare": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
-    "damageNpBattlePointPhase": "Deal {damage_word} damage <STR increases with Master Affection Level> by {val_str}% <effect increases with Level> {dmg_target}",
+    "damageNpBattlePointPhase": "Deal {damage_word} damage <STR increases by {corr_str}% per Master Affection Level (Max 10, {bp_min_str}-{bp_max_str}%)> by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpStateIndividualFix": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpAndOrCheckIndividuality": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpIndividualSum": {

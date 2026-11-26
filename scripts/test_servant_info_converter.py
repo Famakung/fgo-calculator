@@ -2416,12 +2416,176 @@ class ServantInfoConverterTests(unittest.TestCase):
         self.assertIn("Deal additional heavy damage by 100-400% (at OC2-5) <effect increases with Overcharge> to all enemies", fx)
         self.assertIn("Deal significant Special Attack [Male] by 150-250% damage <Special Attack damage increases with Level> by 900% <effect increases with Level> to a single enemy", fx)
         self.assertIn("Decrease Critical Rate by 10-50% (3 turns) for all enemies <effect increases with Overcharge>", fx)
-        self.assertIn("Increase Master Affection Gauge <effect increases with Overcharge> for yourself", fx)
+        self.assertIn("Increase Master Affection Gauge by 0-20 <effect increases with Overcharge> for yourself", fx)
         self.assertIn("When Master Affection Level is 7 or higher, Apply Ignore DEF (1 turn) for yourself", fx)
+        self.assertEqual(
+            _extract_single_np_data(
+                {
+                    "id": 3300201,
+                    "card": "arts",
+                    "npDistribution": [1, 2, 3],
+                    "effectFlags": ["attackEnemyAll"],
+                    "functions": [
+                        {
+                            "funcId": 21836,
+                            "funcType": "damageNpBattlePointPhase",
+                            "funcTargetType": "enemyAll",
+                            "funcTargetTeam": "playerAndEnemy",
+                            "functvals": [],
+                            "funcquestTvals": [],
+                            "buffs": [],
+                            "svals": [
+                                {"Rate": 1000, "Value": 4500, "Value2": 1000, "Target": 3300200, "Correction": 100},
+                                {"Rate": 1000, "Value": 7500, "Value2": 1000, "Target": 3300200, "Correction": 100},
+                            ],
+                        }
+                    ],
+                }
+            )["effects"],
+            ["Deal heavy damage <STR increases by 10% per Master Affection Level (Max 10, 110-200%)> by 450-750% <effect increases with Level> to all enemies"],
+        )
         self.assertFalse(any("Reduce HP by 0" in line for line in fx))
         self.assertIn("60-100% Chance to Decrease DEF by 10% (3 turns) for one enemy <effect increases with Overcharge> (x2)", fx)
         self.assertIn("Apply Death for the front-most single ally, excluding yourself [Demerit]", fx)
         self.assertIn("Increase NP Strength by 20% per Master Skill drained (Max 3) (1 turn) for yourself", fx)
+
+    def test_master_affection_gauge_and_fullness_formatting(self):
+        # Space Ereshkigal (BattlePointId 3300200) uses Master Affection Gauge
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcId": 21806,
+                    "funcType": "addBattlePoint",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "svals": [{"Rate": 1000, "BattlePointId": 3300200, "BattlePointValue": 5}],
+                }
+            ),
+            "Increases Master Affection Gauge by 5 for yourself",
+        )
+        # Beni-Enma (BattlePointId 705300) preserves Fullness gauge
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcId": 23459,
+                    "funcType": "addBattlePoint",
+                    "funcTargetType": "ptAll",
+                    "funcTargetTeam": "player",
+                    "svals": [{"Rate": 1000, "BattlePointId": 705300, "BattlePointValue": 2}],
+                }
+            ),
+            "Increases Fullness gauge by 2 for all allies",
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcId": 23460,
+                    "funcType": "subBattlePoint",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "player",
+                    "svals": [{"Rate": 1000, "BattlePointId": 705300, "BattlePointValue": 2}],
+                }
+            ),
+            "Reduces the fullness gauge by 2",
+        )
+        # Inner treasureDeviceBeforeFunction (970541) uses Master Affection Gauge
+        inner_ctx = FetchContext(
+            fetch_inner_skill=lambda sid: (
+                {
+                    "id": 970541,
+                    "functions": [
+                        {
+                            "funcId": 21806,
+                            "funcType": "addBattlePoint",
+                            "funcTargetType": "self",
+                            "funcTargetTeam": "playerAndEnemy",
+                            "svals": [{"Rate": 1000, "BattlePointId": 3300200, "BattlePointValue": 5}],
+                        },
+                        {
+                            "funcId": 21806,
+                            "funcType": "addBattlePoint",
+                            "funcTargetType": "self",
+                            "funcTargetTeam": "playerAndEnemy",
+                            "svals": [{"Rate": 1000, "BattlePointId": 3300200, "BattlePointValue": 10}],
+                        },
+                    ],
+                }
+                if sid == 970541
+                else None
+            )
+        )
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcId": 21816,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "buffs": [{"id": 5659, "type": "treasureDeviceBeforeFunction", "name": ""}],
+                    "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 970541, "Value2": 1}],
+                },
+                ctx=inner_ctx,
+            ),
+            'Apply a state that "Increases Master Affection Gauge by 5 for yourself & Increases Master Affection Gauge by 10 for yourself" when using NP for yourself',
+        )
+        # Passive trigger capitalization
+        self.assertEqual(
+            fmt_function(
+                {
+                    "funcId": 21811,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "buffs": [{"id": 5654, "type": "skillBeforeFunction", "name": ""}],
+                    "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 970532, "Value2": 1}],
+                }
+            ),
+            'Apply a state that "Increases Master Affection Gauge by 3 for yourself" when using a skill for yourself',
+        )
+        # Phase boundaries: Level 1, 4, 10
+        for lvl in (1, 4, 10):
+            res = fmt_function(
+                {
+                    "funcId": 878,
+                    "funcType": "addStateShort",
+                    "funcTargetType": "self",
+                    "funcTargetTeam": "playerAndEnemy",
+                    "buffs": [{"id": 248, "type": "upGrantInstantdeath", "name": "Death Chance Up"}],
+                    "svals": [
+                        {
+                            "Rate": 1000,
+                            "Turn": 1,
+                            "Count": -1,
+                            "Value": 1000,
+                            "CheckBattlePointPhaseRange": [{"battlePointId": 3300200, "range": [f"{lvl}<="]}],
+                        }
+                    ],
+                }
+            )
+            self.assertEqual(res, f"When Master Affection Level is {lvl} or higher, Increase Death Success Rate 100% (1 turn) for yourself")
+        # Infinity Indicator EX passive (2372650) prepends Level/Gauge rule
+        from scripts.servant_info_converter.skill_formatter import _fmt_passive_skill_list
+        passive_lines = _fmt_passive_skill_list([
+            {
+                "id": 2372650,
+                "functions": [
+                    {
+                        "funcId": 21806,
+                        "funcType": "addBattlePoint",
+                        "funcTargetType": "self",
+                        "funcTargetTeam": "playerAndEnemy",
+                        "svals": [{"Rate": 1000, "BattlePointId": 3300200, "BattlePointValue": 5}],
+                    }
+                ],
+            }
+        ])
+        self.assertEqual(
+            passive_lines,
+            [
+                "Master Affection starts at Lv. 1 (0 Gauge); +1 Level per 10 Gauge (Max Lv. 10 at 90 Gauge)",
+                "Increases Master Affection Gauge by 5 for yourself",
+            ],
+        )
 
     def test_sub_individuality_and_npattack_prev_buff(self):
         sub_indv_fn = {
