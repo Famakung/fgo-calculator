@@ -3770,6 +3770,38 @@ class ServantInfoConverterTests(unittest.TestCase):
             "Deal heavy damage <STR increases by 5% based on the number of [Debuff] states (Max 10) on yourself> by 300% <effect increases with Level> to all enemies",
         )
 
+    def test_named_status_gated_upcommandall_deaths_abyss(self):
+        # First Hassan (#154) S1 2nd effect: named upCommandall gated by ignored status trait (3024 buffGuts)
+        fn = {
+            "funcId": 5182,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [
+                {
+                    "id": 2724,
+                    "type": "upCommandall",
+                    "name": "Death's Abyss",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_314.png",
+                    "ckSelfIndv": [{"id": 4002, "name": "cardBuster"}],
+                    "script": {
+                        "INDIVIDUALITIE": {"id": 3024, "name": "buffGuts"},
+                        "ProgressSelfTurn": 1,
+                    },
+                }
+            ],
+            "svals": [
+                {"Rate": 1000, "Turn": 5, "Count": -1, "Value": 200},
+                {"Rate": 1000, "Turn": 5, "Count": -1, "Value": 300},
+            ],
+        }
+        self.assertEqual(
+            fmt_function(fn),
+            "Apply [Death's Abyss] {{icon:bufficon_314}} <Increase Buster Card effectiveness by 20-30% while Guts is applied> (5 turns) for yourself",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
