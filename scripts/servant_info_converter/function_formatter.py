@@ -1604,7 +1604,7 @@ def _resolve_traits_from_config(core, buff, config, template, divisor, is_pct):
         ]
         t0_id = traits_raw[0].get("id", 0) if traits_raw else 0
         special_cases = config.get("special_cases", {})
-        if t0_id in special_cases:
+        if len(traits_raw) == 1 and t0_id in special_cases:
             template = special_cases[t0_id]
         else:
             template = config.get("trait_template", template)
@@ -1698,6 +1698,20 @@ def _render_buff_template(
             template = template.replace(" by {val}", f" with [{tag_name}] by {{val}}")
         elif "{val}" in template:
             template = template.replace("{val}", f"with [{tag_name}] {{val}}")
+    script_indv = (buff.get("script") or {}).get("INDIVIDUALITIE")
+    if (
+        buff_type_str == "upCommandall"
+        and isinstance(script_indv, dict)
+        and script_indv.get("id") in INDIVIDUALITIE_IGNORE
+        and script_indv.get("id") in TRAIT_ID_LABELS
+        and " <" not in template
+    ):
+        status_label = TRAIT_ID_LABELS[script_indv["id"]]
+        is_word = "is not" if script_indv.get("negative") else "is"
+        raw_bname = buff.get("name", "")
+        state_name = JP_BUFF_NAME_MAP.get(raw_bname, raw_bname).strip()
+        if state_name:
+            template = f"Apply [{state_name}] <{template} while {status_label} {is_word} applied>"
     template = _insert_buff_icon_in_template(template, buff)
     use_rate = not config and isinstance(entry, FuncTypeEntry) and entry.use_rate
     val0 = core.val0
@@ -1707,7 +1721,8 @@ def _render_buff_template(
         val9 = core.sv9.get("Rate")
     op_cond_str = (
         " when receiving a Buff"
-        if len(buff.get("ckOpIndv", [])) == 1
+        if buff_type_str != "avoidState"
+        and len(buff.get("ckOpIndv", [])) == 1
         and buff.get("ckOpIndv", [])[0]["id"] == 3004
         and "when receiving a Buff" not in template
         else ""

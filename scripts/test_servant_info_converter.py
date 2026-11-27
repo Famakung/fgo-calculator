@@ -3683,6 +3683,259 @@ class ServantInfoConverterTests(unittest.TestCase):
         for fn, expected in cases:
             self.assertEqual(fmt_function(fn, ctx=FetchContext()), expected)
 
+    def test_np_damage_special_and_buff_scaling_icons(self):
+        # damageNpStateIndividualFix with status debuff trait -> icon
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 1,
+                    "funcType": "damageNpStateIndividualFix",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 9000, "Target": 3011, "Correction": 2000}, {"Value": 15000, "Target": 3011, "Correction": 2000}],
+                    "svals5": [{"Value": 9000, "Target": 3011, "Correction": 2500}],
+                }
+            ),
+            "Deal significant Special Attack [Poison] {{icon:bufficon_500}} by 200-250% damage <Special Attack damage increases with Overcharge> by 900-1500% <effect increases with Level> to a single enemy",
+        )
+        # damageNpIndividual with status trait vs innate trait
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 2,
+                    "funcType": "damageNpIndividual",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 6000, "Target": 2467, "Correction": 1500}, {"Value": 10000, "Target": 2467, "Correction": 1500}],
+                }
+            ),
+            "Deal significant Special Attack [Weakness Found] {{icon:bufficon_520}} by 150% damage by 600-1000% <effect increases with Level> to a single enemy",
+        )
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 3,
+                    "funcType": "damageNpIndividual",
+                    "funcTargetType": "enemyAll",
+                    "svals": [{"Value": 3000, "Target": 2002, "Correction": 1500}, {"Value": 5000, "Target": 2002, "Correction": 1500}],
+                }
+            ),
+            "Deal heavy Special Attack [Dragon] by 150% damage by 300-500% <effect increases with Level> to all enemies",
+        )
+        # damageNpIndividualSum Target=0 (STR scaling on self buff)
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 4,
+                    "funcType": "damageNpIndividualSum",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 8000, "Target": 0, "TargetList": [2827], "Correction": 50, "ParamAddMaxCount": 10}, {"Value": 12000, "Target": 0, "TargetList": [2827], "Correction": 50, "ParamAddMaxCount": 10}],
+                }
+            ),
+            "Deal significant damage <STR increases by 5% based on the number of [Likes!] {{icon:bufficon_372}} states (Max 10) on yourself> by 800-1200% <effect increases with Level> to a single enemy",
+        )
+        # damageNpIndividualSum Target=1 (Special Attack on target status, icon only on leading clause)
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 5,
+                    "funcType": "damageNpIndividualSum",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 9000, "Target": 1, "TargetList": [3026], "Correction": 100, "ParamAddMaxCount": 10}, {"Value": 15000, "Target": 1, "TargetList": [3026], "Correction": 100, "ParamAddMaxCount": 10}],
+                }
+            ),
+            "Deal significant Special Attack [Curse] {{icon:bufficon_521}} damage <Special Attack damage increases by 10% with each [Curse] status (Maximum 10) on the target> by 900-1500% <effect increases with Level> to a single enemy",
+        )
+        # damageNpIndividualSum max_count=0 flat multi-trait
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 6,
+                    "funcType": "damageNpIndividualSum",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 9000, "Target": 1, "TargetList": [3021, 3088], "Correction": 1500, "ParamAddMaxCount": 0}, {"Value": 15000, "Target": 1, "TargetList": [3021, 3088], "Correction": 1500, "ParamAddMaxCount": 0}],
+                    "svals5": [{"Value": 9000, "Target": 1, "TargetList": [3021, 3088], "Correction": 2000, "ParamAddMaxCount": 0}],
+                }
+            ),
+            "Deal significant Special Attack [Evade] {{icon:bufficon_305}} or [Marking] {{icon:bufficon_520}} by 150-200% damage <Special Attack damage increases with Overcharge> by 900-1500% <effect increases with Level> to a single enemy",
+        )
+        # Category traits without a single icon (Debuff / Mental Debuff) remain iconless
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 7,
+                    "funcType": "damageNpIndividualSum",
+                    "funcTargetType": "enemyAll",
+                    "svals": [{"Value": 3000, "Target": 0, "TargetList": [3005], "Correction": 50, "ParamAddMaxCount": 10}],
+                }
+            ),
+            "Deal heavy damage <STR increases by 5% based on the number of [Debuff] states (Max 10) on yourself> by 300% <effect increases with Level> to all enemies",
+        )
+
+    def test_named_status_gated_upcommandall_deaths_abyss(self):
+        # First Hassan (#154) S1 2nd effect: named upCommandall gated by ignored status trait (3024 buffGuts)
+        fn = {
+            "funcId": 5182,
+            "funcType": "addStateShort",
+            "funcTargetType": "self",
+            "funcTargetTeam": "playerAndEnemy",
+            "functvals": [],
+            "funcquestTvals": [],
+            "buffs": [
+                {
+                    "id": 2724,
+                    "type": "upCommandall",
+                    "name": "Death's Abyss",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_314.png",
+                    "ckSelfIndv": [{"id": 4002, "name": "cardBuster"}],
+                    "script": {
+                        "INDIVIDUALITIE": {"id": 3024, "name": "buffGuts"},
+                        "ProgressSelfTurn": 1,
+                    },
+                }
+            ],
+            "svals": [
+                {"Rate": 1000, "Turn": 5, "Count": -1, "Value": 200},
+                {"Rate": 1000, "Turn": 5, "Count": -1, "Value": 300},
+            ],
+        }
+        self.assertEqual(
+            fmt_function(fn),
+            "Apply [Death's Abyss] {{icon:bufficon_314}} <Increase Buster Card effectiveness by 20-30% while Guts is applied> (5 turns) for yourself",
+        )
+
+    def test_avoid_state_nullify_buff_and_regressions(self):
+        nullify_buff = {
+            "id": 230,
+            "type": "avoidState",
+            "name": "Nullify Buff",
+            "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_531.png",
+            "vals": [{"id": 3005, "name": "buffNegativeEffect"}],
+            "ckOpIndv": [{"id": 3004, "name": "buffPositiveEffect"}],
+        }
+        self.assertEqual(
+            fmt_function({
+                "funcId": 778,
+                "funcType": "addState",
+                "funcTargetType": "enemy",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [nullify_buff],
+                "svals": [{"Rate": 1000, "Turn": -1, "Count": 1}],
+            }),
+            "Inflict Nullify Buff {{icon:bufficon_531}} (1 time) for one enemy",
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 778,
+                "funcType": "addState",
+                "funcTargetType": "self",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [nullify_buff],
+                "svals": [{"Rate": 1000, "Turn": -1, "Count": 1}],
+            }),
+            "Inflict Nullify Buff {{icon:bufficon_531}} (1 time) for yourself [Demerit]",
+        )
+        inner_skill = {
+            "id": 999901,
+            "functions": [{
+                "funcId": 778,
+                "funcType": "addState",
+                "funcTargetType": "enemy",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [nullify_buff],
+                "svals": [{"Rate": 1000, "Turn": 3, "Count": 1}],
+            }],
+        }
+        ctx = FetchContext(fetch_inner_skill=lambda sid: inner_skill if sid == 999901 else None)
+        self.assertEqual(
+            fmt_function({
+                "funcId": 999902,
+                "funcType": "addState",
+                "funcTargetType": "self",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 999903,
+                    "type": "attackAfterFunction",
+                    "name": "Trigger",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_528.png",
+                    "vals": [{"id": 3004, "name": "buffPositiveEffect"}],
+                }],
+                "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 999901, "Value2": 200}],
+            }, ctx=ctx),
+            'Apply a state {{icon:bufficon_528}} that "Inflict Nullify Buff {{icon:bufficon_531}} (1 time, 3 turns) for one enemy" when attacking after damage for yourself',
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 628,
+                "funcType": "addState",
+                "funcTargetType": "ptOne",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 171,
+                    "type": "avoidState",
+                    "name": "Debuff Immune",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_322.png",
+                    "vals": [{"id": 3004, "name": "buffPositiveEffect"}],
+                    "ckOpIndv": [{"id": 3005, "name": "buffNegativeEffect"}],
+                }],
+                "svals": [{"Rate": 1000, "Turn": 1, "Count": -1}],
+            }),
+            "Apply Debuff Immune {{icon:bufficon_322}} (1 turn) for a single ally",
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 21607,
+                "funcType": "addState",
+                "funcTargetType": "ptAll",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 5324,
+                    "type": "avoidState",
+                    "name": "Invincible Immune",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_531.png",
+                    "vals": [{"id": 3005, "name": "buffNegativeEffect"}],
+                    "ckOpIndv": [{"id": 3022, "name": "buffInvincible"}],
+                }],
+                "svals": [{"Rate": 5000, "Turn": 3, "Count": 1}],
+            }),
+            "Apply Invincible Immune {{icon:bufficon_531}} (1 time, 3 turns) for all allies [Demerit]",
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 999904,
+                "funcType": "addState",
+                "funcTargetType": "enemyAll",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 999905,
+                    "type": "upTolerance",
+                    "name": "Buff Resist Up",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_506.png",
+                    "ckOpIndv": [{"id": 3004, "name": "buffPositiveEffect"}],
+                }],
+                "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 200}],
+            }),
+            "Increase Buff Resist {{icon:bufficon_506}} by 20% (3 turns) when receiving a Buff for all enemies",
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 999906,
+                "funcType": "addState",
+                "funcTargetType": "ptAll",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 999907,
+                    "type": "downTolerance",
+                    "name": "Buff Success Rate Up",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_306.png",
+                    "ckOpIndv": [{"id": 3004, "name": "buffPositiveEffect"}],
+                }],
+                "svals": [
+                    {"Rate": 1000, "Turn": 1, "Count": -1, "Value": 200},
+                    {"Rate": 1000, "Turn": 1, "Count": -1, "Value": 400},
+                ],
+            }),
+            "Increase Buff Success Rate when receiving a Buff {{icon:bufficon_306}} by 20-40% (1 turn) for all allies",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

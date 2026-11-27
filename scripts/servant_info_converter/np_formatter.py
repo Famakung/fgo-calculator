@@ -5,6 +5,7 @@ from .effect_map import (
     CLASS_TRAIT_IDS,
     NP_TYPE_MAP,
     TARGET_LABELS,
+    TRAIT_ICON_MAP,
     TRAIT_ID_LABELS,
 )
 from .utils import (
@@ -39,6 +40,18 @@ DAMAGE_FUNC_TYPES = {
     "damageNpHpratioLow",
     "damageNpHpratioHigh",
 }
+
+
+def _trait_icon_part(trait_id) -> str:
+    """Return ' {{icon:<stem>}}' if trait_id maps to a known buff/debuff icon."""
+    stem = TRAIT_ICON_MAP.get(trait_id) if trait_id else None
+    return f" {{{{icon:{stem}}}}}" if stem else ""
+
+
+def _fmt_trait_with_icon(trait_id) -> str:
+    """Format a bracketed trait label followed by its icon token when mapped."""
+    label = TRAIT_ID_LABELS.get(trait_id, f"{trait_id}:Unknown")
+    return f"[{label}]{_trait_icon_part(trait_id)}"
 
 
 def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
@@ -180,6 +193,7 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                     )
                 else:
                     oc_tag = ""
+            trait_icon = ""
             if func_type == "damageNpAndOrCheckIndividuality":
                 and_list = sv0.get("AndCheckIndividualityList") or []
                 or_list = sv0.get("OrCheckIndividualityList") or []
@@ -215,22 +229,18 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                         if trait_id
                         else ""
                     )
+                    trait_icon = _trait_icon_part(trait_id)
             elif func_type == "damageNpIndividualSum":
                 max_count = sv0.get("ParamAddMaxCount", 0)
                 if max_count == 0:
                     target_list = sv0.get("TargetList") or []
                     if target_list:
                         trait = " or ".join(
-                            f"[{TRAIT_ID_LABELS.get(t, f'{t}:Unknown')}]"
-                            for t in target_list
+                            _fmt_trait_with_icon(t) for t in target_list
                         )
                     else:
                         trait_id = sv0.get("Target")
-                        trait = (
-                            f"[{TRAIT_ID_LABELS.get(trait_id, f'{trait_id}:Unknown')}]"
-                            if trait_id
-                            else ""
-                        )
+                        trait = _fmt_trait_with_icon(trait_id) if trait_id else ""
                 else:
                     trait_id = sv0.get("TargetList", [None])[0]
                     trait = (
@@ -238,6 +248,7 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                         if trait_id
                         else ""
                     )
+                    trait_icon = _trait_icon_part(trait_id)
             elif func_type == "damageNpRare":
                 trait = "Low Rarity"
             elif func_type in ("damageNpHpratioLow", "damageNpHpratioHigh", "damageNpBattlePointPhase"):
@@ -249,11 +260,13 @@ def fmt_np_function(fn, np_individuality_trait=None, ctx=None) -> str | None:
                     if trait_id
                     else ""
                 )
+                trait_icon = _trait_icon_part(trait_id)
             return template.format(
                 damage_word=damage_word,
                 val_str=val_str,
                 dmg_target=dmg_target,
                 trait=trait,
+                trait_icon=trait_icon,
                 corr_str=corr_str,
                 bp_level_name=bp_level_name,
                 bp_min_str=bp_min_str,
