@@ -335,7 +335,30 @@ test("inline {{icon:...}} tokens preserve rank-up diffing and render 24px img el
     assert.equal(imgs[0].attrs.height, "24");
     assert.equal(container.children[0].textContent, "Increase DEF ");
     assert.equal(container.children[2].textContent, " by 15-20%");
+
+    const scalingContainer = globalThis.document.createElement("li");
+    appendHighlightedEffect(
+      scalingContainer,
+      "Deal significant damage <STR increases by 5% based on the number of [Likes!] {{icon:bufficon_372}} states (Max 10) on yourself> by 800-1200% <effect increases with Level> to a single enemy",
+    );
+    const emNotes = scalingContainer.children.filter((c) => c.tagName === "EM");
+    assert.equal(emNotes.length, 2);
+    const scalingImgs = emNotes[0].children.filter((c) => c.tagName === "IMG");
+    assert.equal(scalingImgs.length, 1);
+    assert.equal(scalingImgs[0].attrs.src, "buff_icons/bufficon_372.webp");
+    assert.equal(emNotes[0].children[0].textContent, "<");
+    assert.equal(emNotes[0].children.at(-1).textContent, ">");
   } finally {
     globalThis.document.createElement = origCreateElement;
   }
+
+  const bunyanIcon0 = [
+    "Deal significant damage <STR increases by 5% based on the number of [Likes!] {{icon:bufficon_372}} states (Max 10) on yourself> by 600-1000% <effect increases with Level> to a single enemy",
+  ];
+  const bunyanIcon1 = [
+    "Deal significant damage <STR increases by 5% based on the number of [Likes!] {{icon:bufficon_372}} states (Max 10) on yourself> by 800-1200% <effect increases with Level> to a single enemy",
+  ];
+  assert.deepEqual(annotateRankUpEffects([bunyanIcon0, bunyanIcon1]), [
+    "Deal significant damage <STR increases by 5% based on the number of [Likes!] {{icon:bufficon_372}} states (Max 10) on yourself> by 800-1200% <effect increases with Level> [\u25b21] to a single enemy",
+  ]);
 });

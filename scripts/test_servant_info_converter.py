@@ -3683,6 +3683,93 @@ class ServantInfoConverterTests(unittest.TestCase):
         for fn, expected in cases:
             self.assertEqual(fmt_function(fn, ctx=FetchContext()), expected)
 
+    def test_np_damage_special_and_buff_scaling_icons(self):
+        # damageNpStateIndividualFix with status debuff trait -> icon
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 1,
+                    "funcType": "damageNpStateIndividualFix",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 9000, "Target": 3011, "Correction": 2000}, {"Value": 15000, "Target": 3011, "Correction": 2000}],
+                    "svals5": [{"Value": 9000, "Target": 3011, "Correction": 2500}],
+                }
+            ),
+            "Deal significant Special Attack [Poison] {{icon:bufficon_500}} by 200-250% damage <Special Attack damage increases with Overcharge> by 900-1500% <effect increases with Level> to a single enemy",
+        )
+        # damageNpIndividual with status trait vs innate trait
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 2,
+                    "funcType": "damageNpIndividual",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 6000, "Target": 2467, "Correction": 1500}, {"Value": 10000, "Target": 2467, "Correction": 1500}],
+                }
+            ),
+            "Deal significant Special Attack [Weakness Found] {{icon:bufficon_520}} by 150% damage by 600-1000% <effect increases with Level> to a single enemy",
+        )
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 3,
+                    "funcType": "damageNpIndividual",
+                    "funcTargetType": "enemyAll",
+                    "svals": [{"Value": 3000, "Target": 2002, "Correction": 1500}, {"Value": 5000, "Target": 2002, "Correction": 1500}],
+                }
+            ),
+            "Deal heavy Special Attack [Dragon] by 150% damage by 300-500% <effect increases with Level> to all enemies",
+        )
+        # damageNpIndividualSum Target=0 (STR scaling on self buff)
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 4,
+                    "funcType": "damageNpIndividualSum",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 8000, "Target": 0, "TargetList": [2827], "Correction": 50, "ParamAddMaxCount": 10}, {"Value": 12000, "Target": 0, "TargetList": [2827], "Correction": 50, "ParamAddMaxCount": 10}],
+                }
+            ),
+            "Deal significant damage <STR increases by 5% based on the number of [Likes!] {{icon:bufficon_372}} states (Max 10) on yourself> by 800-1200% <effect increases with Level> to a single enemy",
+        )
+        # damageNpIndividualSum Target=1 (Special Attack on target status, icon only on leading clause)
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 5,
+                    "funcType": "damageNpIndividualSum",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 9000, "Target": 1, "TargetList": [3026], "Correction": 100, "ParamAddMaxCount": 10}, {"Value": 15000, "Target": 1, "TargetList": [3026], "Correction": 100, "ParamAddMaxCount": 10}],
+                }
+            ),
+            "Deal significant Special Attack [Curse] {{icon:bufficon_521}} damage <Special Attack damage increases by 10% with each [Curse] status (Maximum 10) on the target> by 900-1500% <effect increases with Level> to a single enemy",
+        )
+        # damageNpIndividualSum max_count=0 flat multi-trait
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 6,
+                    "funcType": "damageNpIndividualSum",
+                    "funcTargetType": "enemyOne",
+                    "svals": [{"Value": 9000, "Target": 1, "TargetList": [3021, 3088], "Correction": 1500, "ParamAddMaxCount": 0}, {"Value": 15000, "Target": 1, "TargetList": [3021, 3088], "Correction": 1500, "ParamAddMaxCount": 0}],
+                    "svals5": [{"Value": 9000, "Target": 1, "TargetList": [3021, 3088], "Correction": 2000, "ParamAddMaxCount": 0}],
+                }
+            ),
+            "Deal significant Special Attack [Evade] {{icon:bufficon_305}} or [Marking] {{icon:bufficon_520}} by 150-200% damage <Special Attack damage increases with Overcharge> by 900-1500% <effect increases with Level> to a single enemy",
+        )
+        # Category traits without a single icon (Debuff / Mental Debuff) remain iconless
+        self.assertEqual(
+            fmt_np_function(
+                {
+                    "funcId": 7,
+                    "funcType": "damageNpIndividualSum",
+                    "funcTargetType": "enemyAll",
+                    "svals": [{"Value": 3000, "Target": 0, "TargetList": [3005], "Correction": 50, "ParamAddMaxCount": 10}],
+                }
+            ),
+            "Deal heavy damage <STR increases by 5% based on the number of [Debuff] states (Max 10) on yourself> by 300% <effect increases with Level> to all enemies",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

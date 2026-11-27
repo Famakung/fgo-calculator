@@ -369,7 +369,14 @@ export function appendHighlightedEffect(container, text) {
         const token = str.slice(i, closeIdx + 1);
         if (SCALING_NOTE_REGEX.test(token)) {
           const note = DOMFactory.el("em", "f-overcharge-note");
-          note.textContent = token;
+          const inner = str.slice(i + 1, closeIdx);
+          if (inner.includes("{{icon:")) {
+            note.appendChild(document.createTextNode("<"));
+            appendHighlightedEffect(note, inner);
+            note.appendChild(document.createTextNode(">"));
+          } else {
+            note.textContent = token;
+          }
           container.appendChild(note);
         } else {
           const note = DOMFactory.el("span", "f-effect-note");

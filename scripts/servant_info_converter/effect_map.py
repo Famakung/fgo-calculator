@@ -848,19 +848,44 @@ HP_REDUCE_LABELS = {
     3026: "Disastrous Curse",
 }
 
+# Buff/debuff/status trait ID -> buff icon stem for NP damage special attack / STR scaling
+TRAIT_ICON_MAP = {
+    2004: "bufficon_360",   # Roman (Apply Trait [Roman])
+    2467: "bufficon_520",   # Weakness Found
+    2759: "bufficon_369",   # Grudge of Vengeance
+    2827: "bufficon_372",   # Likes!
+    2828: "bufficon_520",   # Heroic King
+    2872: "bufficon_520",   # Manuscript Complete
+    2880: "bufficon_520",   # Anger of the Spirits
+    3011: "bufficon_500",   # Poison
+    3012: "bufficon_502",   # Charm
+    3015: "bufficon_513",   # Burn
+    3021: "bufficon_305",   # Evade
+    3025: "bufficon_511",   # Skill Seal
+    3026: "bufficon_521",   # Curse
+    3039: "bufficon_506",   # Death Resist Down
+    3058: "bufficon_301",   # DEF Up
+    3087: "bufficon_501",   # Bound
+    3088: "bufficon_520",   # Marking
+    3103: "bufficon_520",   # Not Protected
+    10039: "bufficon_615",  # Past Alteration
+    10047: "bufficon_616",  # Thirst for death
+    10051: "bufficon_520",  # Target Acquisition
+}
+
 # NP funcType string -> action_template
 # Used for deal damage functions (damageNp, etc.)
 NP_TYPE_MAP = {
     "damageNp": "Deal {damage_word} damage by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpPierce": "Deal {damage_word} DEF-ignoring damage by {val_str}% <effect increases with Level> {dmg_target}",
-    "damageNpIndividual": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
-    "damageNpRare": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
+    "damageNpIndividual": "Deal {damage_word} Special Attack [{trait}]{trait_icon} by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
+    "damageNpRare": "Deal {damage_word} Special Attack [{trait}]{trait_icon} by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpBattlePointPhase": "Deal {damage_word} damage <STR increases by {corr_str}% per {bp_level_name} (Max 10, {bp_min_str}-{bp_max_str}%)> by {val_str}% <effect increases with Level> {dmg_target}",
-    "damageNpStateIndividualFix": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
-    "damageNpAndOrCheckIndividuality": "Deal {damage_word} Special Attack [{trait}] by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
+    "damageNpStateIndividualFix": "Deal {damage_word} Special Attack [{trait}]{trait_icon} by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
+    "damageNpAndOrCheckIndividuality": "Deal {damage_word} Special Attack [{trait}]{trait_icon} by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     "damageNpIndividualSum": {
-        0: "Deal {damage_word} damage <STR increases by {corr_str}% based on the number of [{trait}] states (Max {max_count}) on yourself> by {val_str}% <effect increases with Level> {dmg_target}",
-        1: "Deal {damage_word} Special Attack [{trait}] damage <Special Attack damage increases by {corr_str}% with each [{trait}] status (Maximum {max_count}) on the target> by {val_str}% <effect increases with Level> {dmg_target}",
+        0: "Deal {damage_word} damage <STR increases by {corr_str}% based on the number of [{trait}]{trait_icon} states (Max {max_count}) on yourself> by {val_str}% <effect increases with Level> {dmg_target}",
+        1: "Deal {damage_word} Special Attack [{trait}]{trait_icon} damage <Special Attack damage increases by {corr_str}% with each [{trait}] status (Maximum {max_count}) on the target> by {val_str}% <effect increases with Level> {dmg_target}",
         "flat": "Deal {damage_word} Special Attack {trait} by {corr_str}% damage{oc_tag} by {val_str}% <effect increases with Level> {dmg_target}",
     },
     "damageNpHpratioLow": "Deal {damage_word} damage by {val_str}% <effect increases with Level> that gets more powerful when your HP is low (up to +{corr_str}%){oc_tag} {dmg_target}",
