@@ -318,6 +318,7 @@ BUFF_TYPE_MAP = {
             "trait_source": "ckOpIndv",
             "trait_template": "Apply {traits} Immune",
             "brackets": False,
+            "special_cases": {3004: "Inflict Nullify Buff"},
         },
     ),
     "breakAvoidance": BuffTypeEntry("Apply Sure Hit", 0, False),

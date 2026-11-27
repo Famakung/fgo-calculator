@@ -3802,6 +3802,140 @@ class ServantInfoConverterTests(unittest.TestCase):
             "Apply [Death's Abyss] {{icon:bufficon_314}} <Increase Buster Card effectiveness by 20-30% while Guts is applied> (5 turns) for yourself",
         )
 
+    def test_avoid_state_nullify_buff_and_regressions(self):
+        nullify_buff = {
+            "id": 230,
+            "type": "avoidState",
+            "name": "Nullify Buff",
+            "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_531.png",
+            "vals": [{"id": 3005, "name": "buffNegativeEffect"}],
+            "ckOpIndv": [{"id": 3004, "name": "buffPositiveEffect"}],
+        }
+        self.assertEqual(
+            fmt_function({
+                "funcId": 778,
+                "funcType": "addState",
+                "funcTargetType": "enemy",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [nullify_buff],
+                "svals": [{"Rate": 1000, "Turn": -1, "Count": 1}],
+            }),
+            "Inflict Nullify Buff {{icon:bufficon_531}} (1 time) for one enemy",
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 778,
+                "funcType": "addState",
+                "funcTargetType": "self",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [nullify_buff],
+                "svals": [{"Rate": 1000, "Turn": -1, "Count": 1}],
+            }),
+            "Inflict Nullify Buff {{icon:bufficon_531}} (1 time) for yourself [Demerit]",
+        )
+        inner_skill = {
+            "id": 999901,
+            "functions": [{
+                "funcId": 778,
+                "funcType": "addState",
+                "funcTargetType": "enemy",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [nullify_buff],
+                "svals": [{"Rate": 1000, "Turn": 3, "Count": 1}],
+            }],
+        }
+        ctx = FetchContext(fetch_inner_skill=lambda sid: inner_skill if sid == 999901 else None)
+        self.assertEqual(
+            fmt_function({
+                "funcId": 999902,
+                "funcType": "addState",
+                "funcTargetType": "self",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 999903,
+                    "type": "attackAfterFunction",
+                    "name": "Trigger",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_528.png",
+                    "vals": [{"id": 3004, "name": "buffPositiveEffect"}],
+                }],
+                "svals": [{"Rate": 1000, "Turn": -1, "Count": -1, "Value": 999901, "Value2": 200}],
+            }, ctx=ctx),
+            'Apply a state {{icon:bufficon_528}} that "Inflict Nullify Buff {{icon:bufficon_531}} (1 time, 3 turns) for one enemy" when attacking after damage for yourself',
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 628,
+                "funcType": "addState",
+                "funcTargetType": "ptOne",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 171,
+                    "type": "avoidState",
+                    "name": "Debuff Immune",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_322.png",
+                    "vals": [{"id": 3004, "name": "buffPositiveEffect"}],
+                    "ckOpIndv": [{"id": 3005, "name": "buffNegativeEffect"}],
+                }],
+                "svals": [{"Rate": 1000, "Turn": 1, "Count": -1}],
+            }),
+            "Apply Debuff Immune {{icon:bufficon_322}} (1 turn) for a single ally",
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 21607,
+                "funcType": "addState",
+                "funcTargetType": "ptAll",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 5324,
+                    "type": "avoidState",
+                    "name": "Invincible Immune",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_531.png",
+                    "vals": [{"id": 3005, "name": "buffNegativeEffect"}],
+                    "ckOpIndv": [{"id": 3022, "name": "buffInvincible"}],
+                }],
+                "svals": [{"Rate": 5000, "Turn": 3, "Count": 1}],
+            }),
+            "Apply Invincible Immune {{icon:bufficon_531}} (1 time, 3 turns) for all allies [Demerit]",
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 999904,
+                "funcType": "addState",
+                "funcTargetType": "enemyAll",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 999905,
+                    "type": "upTolerance",
+                    "name": "Buff Resist Up",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_506.png",
+                    "ckOpIndv": [{"id": 3004, "name": "buffPositiveEffect"}],
+                }],
+                "svals": [{"Rate": 1000, "Turn": 3, "Count": -1, "Value": 200}],
+            }),
+            "Increase Buff Resist {{icon:bufficon_506}} by 20% (3 turns) when receiving a Buff for all enemies",
+        )
+        self.assertEqual(
+            fmt_function({
+                "funcId": 999906,
+                "funcType": "addState",
+                "funcTargetType": "ptAll",
+                "funcTargetTeam": "playerAndEnemy",
+                "buffs": [{
+                    "id": 999907,
+                    "type": "downTolerance",
+                    "name": "Buff Success Rate Up",
+                    "icon": "https://static.atlasacademy.io/JP/BuffIcons/bufficon_306.png",
+                    "ckOpIndv": [{"id": 3004, "name": "buffPositiveEffect"}],
+                }],
+                "svals": [
+                    {"Rate": 1000, "Turn": 1, "Count": -1, "Value": 200},
+                    {"Rate": 1000, "Turn": 1, "Count": -1, "Value": 400},
+                ],
+            }),
+            "Increase Buff Success Rate when receiving a Buff {{icon:bufficon_306}} by 20-40% (1 turn) for all allies",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

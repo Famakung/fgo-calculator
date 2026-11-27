@@ -1604,7 +1604,7 @@ def _resolve_traits_from_config(core, buff, config, template, divisor, is_pct):
         ]
         t0_id = traits_raw[0].get("id", 0) if traits_raw else 0
         special_cases = config.get("special_cases", {})
-        if t0_id in special_cases:
+        if len(traits_raw) == 1 and t0_id in special_cases:
             template = special_cases[t0_id]
         else:
             template = config.get("trait_template", template)
@@ -1721,7 +1721,8 @@ def _render_buff_template(
         val9 = core.sv9.get("Rate")
     op_cond_str = (
         " when receiving a Buff"
-        if len(buff.get("ckOpIndv", [])) == 1
+        if buff_type_str != "avoidState"
+        and len(buff.get("ckOpIndv", [])) == 1
         and buff.get("ckOpIndv", [])[0]["id"] == 3004
         and "when receiving a Buff" not in template
         else ""
